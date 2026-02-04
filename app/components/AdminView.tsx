@@ -42,6 +42,13 @@ export const AdminView = ({
         } else alert("비밀번호가 일치하지 않습니다.");
     };
 
+    // [추가] 엔터키 입력 감지 핸들러
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            handleLogin();
+        }
+    };
+
     const handleDeleteSeason = async (seasonId: number) => {
         if (!confirm("시즌을 삭제할 경우, 모든 기록이 삭제됩니다. 삭제하시겠습니까?")) return;
         await deleteDoc(doc(db, "seasons", String(seasonId)));
@@ -55,7 +62,7 @@ export const AdminView = ({
         alert("스케줄 삭제 완료");
     };
 
-    if (!adminUnlocked) return <div className="flex flex-col items-center justify-center py-20 space-y-4"><div className="text-4xl animate-bounce">🔒</div><input type="password" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} className="bg-slate-950 border border-slate-700 p-3 rounded-xl text-center text-white" placeholder="Password" /><button onClick={handleLogin} className="bg-slate-800 px-6 py-2 rounded-xl font-bold text-emerald-400">LOGIN</button></div>;
+    if (!adminUnlocked) return <div className="flex flex-col items-center justify-center py-20 space-y-4"><div className="text-4xl animate-bounce">🔒</div><input type="password" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={handleKeyDown} className="bg-slate-950 border border-slate-700 p-3 rounded-xl text-center text-white" placeholder="Password" /><button onClick={handleLogin} className="bg-slate-800 px-6 py-2 rounded-xl font-bold text-emerald-400">LOGIN</button></div>;
 
     // 1. 시즌 선택 또는 메뉴 선택 핸들러
     const handleTabChange = (val: string) => {

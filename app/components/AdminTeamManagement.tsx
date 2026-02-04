@@ -13,7 +13,9 @@ const TierSelector = ({ value, onChange, isMini = false }: { value: string, onCh
                 <button 
                     key={t} 
                     onClick={(e) => { e.stopPropagation(); onChange(t); }}
-                    className={`flex-1 rounded font-bold transition-all border ${
+                    className={`flex-1 font-bold transition-all border ${
+                        isMini ? 'rounded-md aspect-square' : 'rounded-lg'
+                    } ${
                         value === t 
                         ? getTierBadgeColor(t) + ' ring-1 ring-white' 
                         : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
@@ -74,19 +76,20 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
         return (
             <div className="space-y-2 mb-6">
                 <h3 className={`text-sm font-bold border-l-4 pl-2 ${category === 'CLUB' ? 'text-emerald-400 border-emerald-500' : 'text-blue-400 border-blue-500'}`}>{title}</h3>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                     {displayList.map(l => (
-                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl flex items-center justify-between border cursor-pointer transition-all group ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl border cursor-pointer transition-all group relative ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
+                            {/* 배치 수정: 로고 -> 리그명 -> 소속팀수 */}
+                            <div className="flex flex-col items-center gap-2">
+                                <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                     <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                 </div>
-                                <div>
-                                    <p className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors">{l.name}</p>
+                                <div className="text-center">
+                                    <p className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors leading-tight">{l.name}</p>
                                     <span className="text-[10px] text-slate-500">{masterTeams.filter(t => t.region === l.name).length} Teams</span>
                                 </div>
                             </div>
-                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors">✕</button>
+                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs">✕</button>
                         </div>
                     ))}
                 </div>
@@ -180,11 +183,14 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     if (categoryFilter !== 'ALL') filteredTeams = filteredTeams.filter(t => categoryFilter === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
     if (selectedLeague) filteredTeams = filteredTeams.filter(t => t.region === selectedLeague);
     if (searchTerm) filteredTeams = filteredTeams.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    
     filteredTeams = getSortedTeamsLogic(filteredTeams, ''); 
 
     let displayLeagues = leagues;
     if (categoryFilter !== 'ALL') displayLeagues = displayLeagues.filter(l => l.category === categoryFilter);
+    
     const sortedLeagueNames = getSortedLeagues(displayLeagues.map(l=>l.name));
+    const displaySortedLeagues = sortedLeagueNames.map(name => displayLeagues.find(l => l.name === name)).filter(Boolean) as League[];
     
     return (
         <div className="space-y-6 animate-in fade-in">
@@ -244,14 +250,15 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'NATIONAL' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-emerald-500 pl-2">⚽ Club Leagues</h3>
-                                <div className="grid grid-cols-4 gap-3">
-                                    {displayLeagues.filter(l=>l.category==='CLUB').map(l => (
+                                <div className="grid grid-cols-3 gap-3">
+                                    {displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                                            {/* 배치 수정: 로고 -> 리그명 -> 소속팀수 */}
+                                            <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
                                             <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
-                                            <span className="absolute top-1 right-1 bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length}</span>
+                                            <span className="bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
                                         </div>
                                     ))}
                                 </div>
@@ -260,14 +267,15 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'CLUB' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-blue-500 pl-2">🌍 National Teams</h3>
-                                <div className="grid grid-cols-4 gap-3">
-                                    {displayLeagues.filter(l=>l.category==='NATIONAL').map(l => (
+                                <div className="grid grid-cols-3 gap-3">
+                                    {displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                                            {/* 배치 수정: 로고 -> 지역명 -> 소속팀수 */}
+                                            <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
                                             <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
-                                            <span className="absolute top-1 right-1 bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length}</span>
+                                            <span className="bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
                                         </div>
                                     ))}
                                 </div>
@@ -277,7 +285,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 )}
 
                 {(selectedLeague || searchTerm) && (
-                    <div className="grid grid-cols-4 gap-3 animate-in fade-in">
+                    <div className="grid grid-cols-3 gap-3 animate-in fade-in">
                         {filteredTeams.map(t => (
                             <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-3 rounded-xl border flex flex-col items-center cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
                                 <div className="w-12 h-12 bg-white rounded-full overflow-hidden flex items-center justify-center mb-2 shadow-lg ring-1 ring-slate-700 p-1">
