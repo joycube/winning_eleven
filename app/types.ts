@@ -59,9 +59,12 @@ export interface Season {
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
 }
 
+// 🔥 [수정됨] docId와 photo 속성 추가
 export interface Owner {
   id: number;
+  docId?: string; // Firebase 문서 ID
   nickname: string;
+  photo?: string; // 프로필 사진 URL
   password?: string;
 }
 
@@ -83,13 +86,12 @@ export interface MasterTeam {
   category: 'CLUB' | 'NATIONAL';
 }
 
-// 🔥 [수정됨] description 속성 추가
 export interface Banner {
   id: number;
   docId?: string;
   url: string;
   linkUrl?: string;
-  description?: string; // 여기가 추가되었습니다!
+  description?: string;
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
