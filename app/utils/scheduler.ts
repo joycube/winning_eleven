@@ -20,28 +20,20 @@ const shuffleArray = <T>(array: T[]): T[] => {
 };
 
 // ==========================================
-// 2. 리그 매칭 알고리즘 (Best-Effort Constraints)
+// 2. 리그 매칭 알고리즘 (내전 삭제 로직 포함)
 // ==========================================
 
-// 라운드 내 충돌(내전) 횟수 계산
-const countConflictsInRound = (matches: MatchSlot[]): number => {
-    let conflicts = 0;
+// 조건 검증기: 특정 라운드의 매치업들이 유효한가?
+const isValidRound = (matches: MatchSlot[]): boolean => {
     for (const match of matches) {
         if (match.home.name !== 'BYE' && match.away.name !== 'BYE') {
-            if (match.home.ownerName === match.away.ownerName) {
-                conflicts++;
-            }
+            if (match.home.ownerName === match.away.ownerName) return false;
         }
     }
-    return conflicts;
+    return true;
 };
 
-// 전체 스케줄의 충돌 횟수 계산
-const countTotalConflicts = (rounds: MatchSlot[][]): number => {
-    return rounds.reduce((sum, round) => sum + countConflictsInRound(round), 0);
-};
-
-// 백트래킹 + 최선 노력(Best Effort) 리그 일정 생성기
+// 리그 일정 생성기
 const generateLeagueSchedule = (teams: Team[], isDouble: boolean): MatchSlot[][] => {
     // 1. 팀 수가 홀수면 BYE 추가
     const scheduleTeams = [...teams];
@@ -60,72 +52,83 @@ const generateLeagueSchedule = (teams: Team[], isDouble: boolean): MatchSlot[][]
     const MAX_ATTEMPTS = 5000;
     
     let bestSchedule: MatchSlot[][] | null = null;
-    let minConflicts = Infinity;
+    // 내전 횟수가 적은 스케줄을 찾기 위한 변수 (초기값 무한대)
+    let minConflicts = Infinity; 
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        // 매 시도마다 팀 순서를 섞음
         const shuffledTeams = shuffleArray([...scheduleTeams]);
         const fixedTeam = shuffledTeams[0];
         const rotatingTeams = shuffledTeams.slice(1);
 
         const currentSchedule: MatchSlot[][] = [];
+        let currentConflicts = 0;
         
-        // 라운드 로빈 생성 (Circle Method)
+        // 라운드 로빈 생성
         for (let r = 0; r < roundsPerCycle; r++) {
             const currentRoundMatches: MatchSlot[] = [];
             
-            // 첫 번째 매치
             currentRoundMatches.push({ home: fixedTeam, away: rotatingTeams[0] });
 
-            // 나머지 매치
             for (let i = 1; i < matchesPerRound; i++) {
                 const home = rotatingTeams[i];
                 const away = rotatingTeams[rotatingTeams.length - i];
                 currentRoundMatches.push({ home, away });
             }
 
+            // 내전 발생 여부 카운트 (삭제를 위해 기록)
+            for(const m of currentRoundMatches) {
+                if(m.home.name !== 'BYE' && m.away.name !== 'BYE' && m.home.ownerName === m.away.ownerName) {
+                    currentConflicts++;
+                }
+            }
+
             currentSchedule.push(currentRoundMatches);
-            
-            // 회전
             rotatingTeams.push(rotatingTeams.shift()!);
         }
 
-        // 이번 스케줄의 충돌(내전) 횟수 확인
-        const totalConflicts = countTotalConflicts(currentSchedule);
-
-        // 1. 충돌이 0이면 즉시 반환 (완벽한 스케줄)
-        if (totalConflicts === 0) {
-            if (!isDouble) return currentSchedule;
-            const returnRounds = currentSchedule.map(round => 
-                round.map(match => ({ home: match.away, away: match.home }))
-            );
-            return [...currentSchedule, ...returnRounds];
+        // 1. 내전이 0개인 완벽한 스케줄 발견 시 즉시 사용
+        if (currentConflicts === 0) {
+            bestSchedule = currentSchedule;
+            break; 
         }
 
-        // 2. 완벽하진 않지만, 지금까지 중 가장 좋은 스케줄이라면 저장
-        if (totalConflicts < minConflicts) {
-            minConflicts = totalConflicts;
+        // 2. 완벽하진 않지만, 지금까지 중 내전이 가장 적은 스케줄 저장
+        if (currentConflicts < minConflicts) {
+            minConflicts = currentConflicts;
             bestSchedule = currentSchedule;
         }
     }
 
-    // 완벽한 해를 못 찾았다면, 시도했던 것 중 가장 내전이 적은 스케줄 반환
-    console.warn(`⚠️ 완벽한 대진표 생성 실패. 최소 충돌(${minConflicts}회) 스케줄을 사용합니다.`);
-    
+    // 최적의 스케줄이 없으면 기본 로직(Fallback) 사용
     if (!bestSchedule) {
-        // 혹시라도 bestSchedule이 없으면 기본 로직(Fallback) 실행
-        return generateLeagueScheduleFallback(teams, isDouble);
+        console.warn("⚠️ 최적 스케줄 생성 실패, 기본 로직 사용");
+        bestSchedule = generateLeagueScheduleFallback(teams, isDouble);
     }
 
-    if (!isDouble) return bestSchedule;
-    
-    const returnRounds = bestSchedule.map(round => 
-        round.map(match => ({ home: match.away, away: match.home }))
-    );
-    return [...bestSchedule, ...returnRounds];
+    // 더블 라운드 처리
+    let fullSchedule = [...bestSchedule];
+    if (isDouble) {
+        const returnRounds = bestSchedule.map(round => 
+            round.map(match => ({ home: match.away, away: match.home }))
+        );
+        fullSchedule = [...bestSchedule, ...returnRounds];
+    }
+
+    // 🔥 [핵심 로직] 생성된 스케줄에서 '내전 경기'만 필터링하여 삭제
+    const filteredSchedule = fullSchedule.map(round => {
+        return round.filter(match => {
+            // BYE 제거
+            if (match.home.name === 'BYE' || match.away.name === 'BYE') return false;
+            // 내전 제거 (같은 오너끼리 경기 삭제)
+            if (match.home.ownerName === match.away.ownerName) return false;
+            return true;
+        });
+    }).filter(round => round.length > 0); // 경기가 하나도 없는 빈 라운드는 제거
+
+    return filteredSchedule;
 };
 
-// 최후의 수단 (단순 순차 생성)
+// 실패 시 사용하는 기본 로직
 const generateLeagueScheduleFallback = (teams: Team[], isDouble: boolean): MatchSlot[][] => {
     const scheduleTeams = [...teams];
     if (scheduleTeams.length % 2 !== 0) scheduleTeams.push({ id: -1, name: 'BYE', logo: FALLBACK_IMG, ownerName: '-', seasonId: 0, region: '', tier: '', win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0 });
@@ -144,11 +147,7 @@ const generateLeagueScheduleFallback = (teams: Team[], isDouble: boolean): Match
         rounds.push(round);
         rotating.push(rotating.shift()!);
     }
-    if(isDouble) {
-        const returnRounds = rounds.map(r => r.map(m => ({ home: m.away, away: m.home })));
-        return [...rounds, ...returnRounds];
-    }
-    return rounds;
+    return rounds; // Fallback에서는 더블 처리를 위에서 함
 }
 
 
@@ -156,7 +155,6 @@ const generateLeagueScheduleFallback = (teams: Team[], isDouble: boolean): Match
 // 3. 토너먼트 시딩 알고리즘 (Smart Seeding)
 // ==========================================
 
-// 오너별로 팀을 그룹화
 const groupTeamsByOwner = (teams: Team[]): Record<string, Team[]> => {
     return teams.reduce((acc, team) => {
         if (!acc[team.ownerName]) acc[team.ownerName] = [];
@@ -165,15 +163,11 @@ const groupTeamsByOwner = (teams: Team[]): Record<string, Team[]> => {
     }, {} as Record<string, Team[]>);
 };
 
-// 분할 정복 시딩
 const distributeTeamsSmartly = (teams: Team[], targetSize: number): Team[] => {
     const slots: (Team | null)[] = new Array(targetSize).fill(null);
     const ownerGroups = groupTeamsByOwner(teams);
-    
-    // 오너별 팀 많은 순으로 정렬
     const sortedOwners = Object.keys(ownerGroups).sort((a, b) => ownerGroups[b].length - ownerGroups[a].length);
 
-    // 비트 리버스 순열 (Bit-Reversal Permutation)
     const bitReversePermutation = (n: number): number[] => {
         const result: number[] = [];
         const bits = Math.log2(n);
@@ -251,7 +245,7 @@ export const getTournamentMatchLabel = (totalTeams: number, matchIndex: number):
     let stagePrefix = '';
     if (roundMatches === 2) stagePrefix = 'Semi-Final';
     else if (roundMatches === 4) stagePrefix = 'Quarter-Final';
-    else stagePrefix = `Ro${roundMatches * 2}`; // Ro16, Ro32
+    else stagePrefix = `Ro${roundMatches * 2}`; 
 
     return `${stagePrefix} ${currentIdx + 1}`;
 };
@@ -268,13 +262,11 @@ export const generateRoundsLogic = (season: Season): Round[] => {
     if (season.type === 'LEAGUE') {
         const isDouble = season.leagueMode === 'DOUBLE';
         
-        // 1. 최적화된 리그 스케줄 생성 (Best-Effort)
+        // 🔥 [수정] 내전이 삭제된 스케줄 생성
         const schedule = generateLeagueSchedule(teams, isDouble);
         
-        // 2. Round 포맷 변환 및 영문 표기 적용
         schedule.forEach((matches, rIndex) => {
             const roundMatches: Match[] = matches
-                .filter(m => m.home.name !== 'BYE' && m.away.name !== 'BYE')
                 .map((m, mIndex) => ({
                     id: `${season.id}_R${rIndex+1}_M${mIndex}`,
                     seasonId: season.id,
@@ -350,7 +342,6 @@ export const generateRoundsLogic = (season: Season): Round[] => {
             });
         }
 
-        // 3/4위전 추가
         if (teamCount >= 4) {
             const finalId = `${season.id}_M${totalMainMatches - 1}`;
             const semiFinals = matches.filter(m => m.nextMatchId === finalId);
