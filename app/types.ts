@@ -21,8 +21,8 @@ export interface Match {
   awayAssists: any[];
   
   // 토너먼트 로직용 속성
-  nextMatchId?: string | null;  // 승자가 진출할 다음 경기 ID
-  loserMatchId?: string | null; // 패자가 진출할 다음 경기 ID (3,4위전용)
+  nextMatchId?: string | null;
+  loserMatchId?: string | null;
 }
 
 export interface Team {
@@ -83,11 +83,11 @@ export interface MasterTeam {
   category: 'CLUB' | 'NATIONAL';
 }
 
-// 🔥 [오류 해결] Banner 타입 정의 추가
+// 🔥 [수정됨] imageUrl -> url로 변경 (기존 코드와 호환되도록)
 export interface Banner {
   id: number;
   docId?: string;
-  imageUrl: string;
+  url: string;      // 여기가 수정되었습니다!
   linkUrl?: string;
 }
 
