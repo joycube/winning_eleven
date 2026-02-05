@@ -2,7 +2,8 @@ import { Match } from '../types';
 import { COMMENTARY_POOL } from '../commentaryData'; // 경로 확인 필요
 
 export const getMatchCommentary = (m: Match): string | null => {
-    if (m.status !== 'FINISHED') return null;
+    // 🔥 [수정] FINISHED -> COMPLETED로 변경 (타입 일치)
+    if (m.status !== 'COMPLETED') return null;
     
     const homeScore = Number(m.homeScore);
     const awayScore = Number(m.awayScore);
