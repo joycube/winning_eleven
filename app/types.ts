@@ -1,4 +1,5 @@
-// [수정] Match 인터페이스에 토너먼트 진행용 id 속성 추가 (nextMatchId, loserMatchId)
+// app/types.ts
+
 export interface Match {
   id: string;
   seasonId: number;
@@ -11,7 +12,7 @@ export interface Match {
   homeScore: string;
   awayScore: string;
   status: 'UPCOMING' | 'COMPLETED' | 'BYE';
-  youtubeUrl?: string; // 유튜브 URL (필수 아님, undefined 가능하게 ? 처리하거나 scheduler에서 빈 문자열 '' 할당)
+  youtubeUrl?: string; // 유튜브 URL
   stage: string;
   matchLabel: string;
   homeScorers: any[];
@@ -19,13 +20,11 @@ export interface Match {
   homeAssists: any[];
   awayAssists: any[];
   
-  // 🔥 [추가된 속성] 토너먼트 로직용
+  // 토너먼트 로직용 속성
   nextMatchId?: string | null;  // 승자가 진출할 다음 경기 ID
   loserMatchId?: string | null; // 패자가 진출할 다음 경기 ID (3,4위전용)
 }
 
-// (참고) 아래는 기존에 존재했을 Team, Season 등의 타입들입니다. 
-// 기존 파일에 이미 있다면 Match 부분만 위와 같이 수정하시면 됩니다.
 export interface Team {
   id: number;
   seasonId: number;
@@ -82,6 +81,14 @@ export interface MasterTeam {
   region: string;
   tier: string;
   category: 'CLUB' | 'NATIONAL';
+}
+
+// 🔥 [오류 해결] Banner 타입 정의 추가
+export interface Banner {
+  id: number;
+  docId?: string;
+  imageUrl: string;
+  linkUrl?: string;
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
