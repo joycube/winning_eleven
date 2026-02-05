@@ -82,7 +82,8 @@ export default function FootballLeagueApp() {
           ...r,
           matches: r.matches.map(m => m.id === matchId ? { 
               ...m, 
-              homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'FINISHED',
+              // 🔥 [수정] FINISHED -> COMPLETED로 변경 (타입 일치)
+              homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
               homeScorers: records.homeScorers, awayScorers: records.awayScorers,
               homeAssists: records.homeAssists, awayAssists: records.awayAssists
           } : m)
@@ -122,8 +123,9 @@ export default function FootballLeagueApp() {
   const handleCreateSeason = async (name: string, type: string, mode: string, prize: number, prizesObj: any) => {
       if(!name) return alert("시즌 이름을 입력하세요.");
       const id = Date.now();
-      const newSeason: Season = { 
-          id, name, type: type as any, leagueMode: mode as any, isActive: true, 
+      // 🔥 [수정] isActive: true -> status: 'ACTIVE' (타입 일치)
+      const newSeason: any = { 
+          id, name, type: type as any, leagueMode: mode as any, status: 'ACTIVE', 
           teams: [], rounds: [], prizes: prizesObj 
       };
       await setDoc(doc(db, "seasons", String(id)), newSeason);
