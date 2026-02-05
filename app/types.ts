@@ -83,12 +83,13 @@ export interface MasterTeam {
   category: 'CLUB' | 'NATIONAL';
 }
 
-// 🔥 [수정됨] imageUrl -> url로 변경 (기존 코드와 호환되도록)
+// 🔥 [수정됨] description 속성 추가
 export interface Banner {
   id: number;
   docId?: string;
-  url: string;      // 여기가 수정되었습니다!
+  url: string;
   linkUrl?: string;
+  description?: string; // 여기가 추가되었습니다!
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
