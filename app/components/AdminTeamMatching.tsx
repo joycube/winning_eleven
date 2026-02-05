@@ -30,7 +30,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [searchTeam, setSearchTeam] = useState('');
 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
     const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
     useEffect(() => { 
@@ -38,10 +37,16 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     }, [filterCategory, filterLeague, filterTier, searchTeam]);
 
     useEffect(() => {
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-        };
+        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
     }, []);
+
+    // [수정] 참조 에러 방지를 위한 displaySortedLeagues 정의
+    const displaySortedLeagues = useMemo(() => {
+        let targets = leagues;
+        if (filterCategory !== 'ALL') targets = targets.filter(l => l.category === filterCategory);
+        const sortedNames = getSortedLeagues(targets.map(l => l.name));
+        return sortedNames.map(name => targets.find(l => l.name === name)).filter(Boolean) as League[];
+    }, [leagues, filterCategory]);
 
     const availableTeams = useMemo(() => {
         const assignedNames = new Set(targetSeason.teams?.map(t => t.name) || []);
@@ -92,7 +97,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             
             // 플립 애니메이션 시작
             setIsFlipping(true);
-            setIsRolling(false);
+            setIsRolling(false); // 롤링 끝, 플립 시작
 
             setTimeout(() => {
                 document.getElementById(`team-card-${finalWinner.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -140,35 +145,69 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in">
+        <div className="space-y-6 animate-in fade-in relative">
             <style jsx>{`
-                @keyframes card-flash {
-                    0% { filter: brightness(1) contrast(1); }
-                    50% { filter: brightness(3) contrast(1.5); }
-                    100% { filter: brightness(1) contrast(1); }
+                /* 1. 배경 암전 (Stage Focus) */
+                .stage-overlay {
+                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: rgba(0,0,0,0.92); z-index: 50;
+                    backdrop-filter: blur(8px);
+                    animation: fadeIn 0.3s ease-out forwards;
+                }
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+                /* 2. 번쩍이는 섬광 (Reveal Flash) */
+                .reveal-flash {
+                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: white; z-index: 60; pointer-events: none;
+                    animation: flashAnim 0.6s ease-out forwards;
+                }
+                @keyframes flashAnim {
+                    0% { opacity: 0; }
+                    10% { opacity: 0.8; }
+                    100% { opacity: 0; }
+                }
+
+                /* 3. 형광 에너지 분출 (Neon Pulse) */
+                .blast-circle {
+                    position: absolute; top: 50%; left: 50%;
+                    transform: translate(-50%, -50%) scale(0.5);
+                    width: 100px; height: 100px; border-radius: 50%;
+                    border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; /* S급: 골드, 일반: 에메랄드 */
+                    box-shadow: 0 0 50px ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'};
+                    z-index: 52; pointer-events: none;
+                    animation: blastOut 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards;
+                }
+                @keyframes blastOut {
+                    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; border-width: 10px; }
+                    100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 0px; }
+                }
+
+                /* 카드 효과 */
+                .fc-card-reveal {
+                    animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+                    z-index: 55; /* Overlay 위에 위치 */
                 }
                 @keyframes card-flip {
-                    0% { transform: rotateY(90deg) scale(0.8); }
-                    100% { transform: rotateY(0deg) scale(1.1); }
-                }
-                @keyframes gold-glow {
-                    0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.2); }
-                    50% { box-shadow: 0 0 50px rgba(255, 215, 0, 0.6); }
-                }
-                .fc-card-container {
-                    perspective: 1000px;
-                }
-                .fc-card-reveal {
-                    animation: card-flip 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards,
-                               card-flash 0.5s ease-out forwards;
+                    0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); }
+                    100% { transform: rotateY(0deg) scale(1.1); filter: brightness(1); }
                 }
                 .fc-gold-glow {
                     animation: gold-glow 2s infinite;
                 }
+                @keyframes gold-glow {
+                    0%, 100% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); }
+                    50% { box-shadow: 0 0 60px rgba(251, 191, 36, 0.8); }
+                }
             `}</style>
 
+            {/* 🔥 연출 요소 배치 */}
+            {(isRolling || isFlipping) && <div className="stage-overlay" />}
+            {isFlipping && <div className="reveal-flash" />}
+
             {/* Step 1 */}
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
+            {/* 배경 암전 시 카드 부분만 z-index를 높여 강조됨 */}
+            <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
                 <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
                 <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-500 font-bold">1. Select Owner</label>
@@ -205,11 +244,14 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     </div>
 
                     {randomResult ? (
-                        <div className="flex justify-center py-8 fc-card-container">
+                        <div className="flex justify-center py-8 relative" style={{ perspective: '1000px' }}>
+                            {/* 🔥 형광 에너지 분출 (카드 뒤에서 발생) */}
+                            {isFlipping && <div className="blast-circle" />}
+
                             <div className={`relative p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 transition-all duration-500 min-w-[240px] 
                                 ${isFlipping ? 'fc-card-reveal' : ''} 
                                 ${randomResult.tier === 'S' ? 'bg-gradient-to-b from-yellow-600/30 to-slate-900 border-yellow-500 fc-gold-glow' : 'bg-slate-900 border-emerald-500'}
-                                ${isRolling ? 'blur-sm scale-90 grayscale opacity-50' : 'scale-100 opacity-100'}
+                                ${isRolling ? 'blur-md scale-90 grayscale opacity-60' : 'scale-100 opacity-100'}
                             `}>
                                 <div className={`absolute -top-4 text-white text-xs font-black italic tracking-tighter px-4 py-1.5 rounded-full shadow-2xl transition-all ${isRolling ? 'bg-purple-600 animate-pulse' : 'bg-gradient-to-r from-emerald-600 to-teal-600'}`}>
                                     {isRolling ? '🎰 SHUFFLING PACK...' : '🏆 PACK OPENED!'}
@@ -241,8 +283,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                 {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (
                                     <div>
                                         <p className="text-[10px] text-emerald-500 font-black italic mb-2 ml-1 border-l-4 border-emerald-500 pl-2 uppercase tracking-tighter">Club Leagues</p>
-                                        <div className="grid grid-cols-3 gap-3">{getSortedLeagues(leagues.filter(l => l.category === 'CLUB').map(l => l.name)).map(name => {
-                                            const l = leagues.find(l => l.name === name); if (!l) return null; const count = masterTeams.filter(t => t.region === l.name).length;
+                                        <div className="grid grid-cols-3 gap-3">{displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => {
+                                            const count = masterTeams.filter(t => t.region === l.name).length;
                                             return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>);
                                         })}</div>
                                     </div>
@@ -250,8 +292,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                 {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (
                                     <div>
                                         <p className="text-[10px] text-blue-500 font-black italic mb-2 ml-1 border-l-4 border-blue-500 pl-2 uppercase tracking-tighter">National Teams</p>
-                                        <div className="grid grid-cols-3 gap-3">{getSortedLeagues(leagues.filter(l => l.category === 'NATIONAL').map(l => l.name)).map(name => {
-                                            const l = leagues.find(l => l.name === name); if (!l) return null; const count = masterTeams.filter(t => t.region === l.name).length;
+                                        <div className="grid grid-cols-3 gap-3">{displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => {
+                                            const count = masterTeams.filter(t => t.region === l.name).length;
                                             return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>);
                                         })}</div>
                                     </div>
