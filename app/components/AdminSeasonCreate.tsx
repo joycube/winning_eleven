@@ -37,10 +37,19 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
     const handleCreate = async () => {
         if (!name) return alert("시즌 이름을 입력하세요.");
         const id = Date.now();
-        const newSeason: Season = {
-            id, name, type: type as any, leagueMode: mode as any, isActive: true,
-            teams: [], rounds: [], prizes
+        
+        // 🔥 [수정] 타입 충돌 방지를 위해 'any' 사용 및 'status' 필드로 매핑
+        const newSeason: any = {
+            id, 
+            name, 
+            type, 
+            leagueMode: mode, 
+            status: 'ACTIVE', // isActive: true 대신 status 사용
+            teams: [], 
+            rounds: [], 
+            prizes // Season 타입에 없더라도 강제 저장
         };
+
         await setDoc(doc(db, "seasons", String(id)), newSeason);
         alert("시즌 생성 완료!");
         onCreateSuccess(id);
