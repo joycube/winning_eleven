@@ -5,6 +5,7 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG } from '../types';
 import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
+import { QuickDraftModal } from './QuickDraftModal'; // 🔥 모달 import
 
 interface Props {
     targetSeason: Season;
@@ -22,6 +23,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
     const [isRolling, setIsRolling] = useState(false);
     const [isFlipping, setIsFlipping] = useState(false); // 🔥 FC25 플립 연출용
+    
+    // 🔥 퀵 드래프트 모달 상태 (추가)
+    const [isDraftOpen, setIsDraftOpen] = useState(false);
 
     // 필터 옵션
     const [filterCategory, setFilterCategory] = useState('ALL');
@@ -144,6 +148,13 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
 
+    // 🔥 퀵 드래프트 결과 적용
+    const handleDraftApply = async (newTeams: Team[]) => {
+        const teamsWithSeason = newTeams.map(t => ({ ...t, seasonId: targetSeason.id }));
+        const updatedTeams = [...(targetSeason.teams || []), ...teamsWithSeason];
+        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in relative">
             <style jsx>{`
@@ -209,8 +220,32 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             {/* 배경 암전 시 카드 부분만 z-index를 높여 강조됨 */}
             <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
                 <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
+
+                {/* 🔥 [추가됨] ⚡ 퀵 팀매칭 버튼 섹션 */}
+                <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-2">
+                    <div className="flex-1">
+                        <div className="text-white font-black italic flex items-center gap-2 text-sm">
+                            <span className="text-yellow-400">⚡</span> 퀵 팀매칭 (Quick Match)
+                            <span className="text-[9px] bg-yellow-500 text-black px-1.5 rounded font-black tracking-tighter">HOT</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            오너와 조건을 선택하면 자동으로 팀을 추첨하고 배정합니다. 카드깡 연출 포함!
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => {
+                            if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 실행할 수 없습니다.\n[Step 2]에서 스케줄을 먼저 삭제해주세요.");
+                            setIsDraftOpen(true);
+                        }}
+                        disabled={hasSchedule}
+                        className={`px-5 py-2.5 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all ${hasSchedule ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}
+                    >
+                        🎲 START MATCHING
+                    </button>
+                </div>
+
                 <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-500 font-bold">1. Select Owner</label>
+                    <label className="text-[10px] text-slate-500 font-bold">1. Select Owner (Manual)</label>
                     <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm font-bold">
                         <option value="">👤 Select Owner</option>
                         {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
@@ -219,7 +254,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
                 <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
                     <div className="flex justify-between items-center">
-                        <label className="text-[10px] text-slate-500 font-bold">2. Search Options</label>
+                        <label className="text-[10px] text-slate-500 font-bold">2. Search Options (Manual)</label>
                         <button 
                             onClick={handleRandom} 
                             disabled={isRolling || hasSchedule}
@@ -346,6 +381,15 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     ))}
                 </div>
             </div>
+
+            {/* 🔥 모달 컴포넌트 연결 */}
+            <QuickDraftModal 
+                isOpen={isDraftOpen}
+                onClose={() => setIsDraftOpen(false)}
+                owners={owners}
+                masterTeams={masterTeams}
+                onConfirm={handleDraftApply}
+            />
         </div>
     );
 };
