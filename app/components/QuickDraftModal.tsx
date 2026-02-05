@@ -20,8 +20,8 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     const [teamsPerOwner, setTeamsPerOwner] = useState<number>(2);
     
     // --- 필터 상태 ---
-    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']); // 기본 ALL
-    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A']); // 기본 S, A
+    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']); 
+    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A']); 
     
     // --- 결과 상태 ---
     const [draftResults, setDraftResults] = useState<Team[]>([]);
@@ -32,7 +32,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             setStep('SETTINGS');
             setSelectedOwnerIds(owners.map(o => o.id));
             setDraftResults([]);
-            setFilterCategory(['ALL']); // 리셋 시 ALL
+            setFilterCategory(['ALL']);
         }
     }, [isOpen, owners]);
 
@@ -43,9 +43,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 
     const getFilteredTeams = () => {
         return masterTeams.filter(t => {
-            // ALL이 포함되어 있지 않으면 해당 조건만 체크
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
-            // Tier는 ALL이 포함되어 있으면 전체 허용, 아니면 선택된 것만
             if (!filterTiers.includes('ALL') && !filterTiers.includes(t.tier)) return false;
             return true;
         });
@@ -86,7 +84,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             }
         });
 
-        // 결과 섞기
         setDraftResults(results.sort(() => Math.random() - 0.5));
         setStep('OPENING');
     };
@@ -94,24 +91,29 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     const handlePackOpened = () => {
         setTimeout(() => {
             setStep('RESULT');
-        }, 2000); // 연출 시간 2초
+        }, 2000); 
     };
 
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
+            {/* [레이아웃 수정 핵심] 
+               1. h-[85vh]: 모달 높이를 화면의 85%로 고정
+               2. flex flex-col: 내부 요소를 세로로 배치
+               3. overflow-hidden: 모달 자체 스크롤 제거 (내부 스크롤 사용)
+            */}
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className={`w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl transition-colors duration-500 border border-slate-700
+                className={`w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 flex flex-col
                     ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}
                 `}
             >
-                {/* 헤더 */}
+                {/* 헤더 (고정 영역) */}
                 {step !== 'OPENING' && (
-                    <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                    <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                         <h2 className="text-2xl font-black italic text-white flex items-center gap-3 tracking-tighter">
                             <span className="text-emerald-400 text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> 
                             QUICK TEAM DRAFT
@@ -120,31 +122,36 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                     </div>
                 )}
 
-                {/* 컨텐츠 영역 */}
-                <div className={`relative ${step === 'OPENING' ? 'h-[80vh] flex items-center justify-center' : 'p-8 min-h-[60vh]'}`}>
+                {/* 컨텐츠 영역 (가변 영역) */}
+                {/* flex-1 overflow-hidden: 남은 공간을 다 차지하되 넘치면 숨김 (하위 컴포넌트에서 스크롤 제어) */}
+                <div className="flex-1 relative overflow-hidden flex flex-col">
                     
                     {step === 'SETTINGS' && (
-                        <DraftSettings 
-                            owners={owners}
-                            selectedOwnerIds={selectedOwnerIds}
-                            setSelectedOwnerIds={setSelectedOwnerIds}
-                            teamsPerOwner={teamsPerOwner}
-                            setTeamsPerOwner={setTeamsPerOwner}
-                            filterCategory={filterCategory}
-                            setFilterCategory={setFilterCategory}
-                            filterTiers={filterTiers}
-                            setFilterTiers={setFilterTiers}
-                            filteredCount={filteredCount}
-                            totalNeeded={selectedOwnerIds.length * teamsPerOwner}
-                            onStart={handleStartDraft}
-                        />
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                            <DraftSettings 
+                                owners={owners}
+                                selectedOwnerIds={selectedOwnerIds}
+                                setSelectedOwnerIds={setSelectedOwnerIds}
+                                teamsPerOwner={teamsPerOwner}
+                                setTeamsPerOwner={setTeamsPerOwner}
+                                filterCategory={filterCategory}
+                                setFilterCategory={setFilterCategory}
+                                filterTiers={filterTiers}
+                                setFilterTiers={setFilterTiers}
+                                filteredCount={filteredCount}
+                                totalNeeded={selectedOwnerIds.length * teamsPerOwner}
+                                onStart={handleStartDraft}
+                            />
+                        </div>
                     )}
 
                     {step === 'OPENING' && (
-                        <PackOpeningAnimation 
-                            onOpen={handlePackOpened} 
-                            cardCount={draftResults.length} 
-                        />
+                        <div className="flex-1 flex items-center justify-center">
+                            <PackOpeningAnimation 
+                                onOpen={handlePackOpened} 
+                                cardCount={draftResults.length} 
+                            />
+                        </div>
                     )}
 
                     {step === 'RESULT' && (
@@ -162,7 +169,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 };
 
 // =============================================================================
-// STEP 1: 설정 화면 (레이아웃 개선)
+// STEP 1: 설정 화면
 // =============================================================================
 const DraftSettings = ({ 
     owners, selectedOwnerIds, setSelectedOwnerIds, 
@@ -177,27 +184,21 @@ const DraftSettings = ({
         else setFn([...current, id]);
     };
 
-    // 필터 토글 로직 (ALL 포함)
     const toggleFilterWithAll = (val: string, current: string[], setFn: any) => {
         if (val === 'ALL') {
             setFn(['ALL']);
             return;
         }
-        
         let next = [...current];
-        if (next.includes('ALL')) {
-            next = []; // ALL 상태에서 다른거 누르면 ALL 해제
-        }
-
+        if (next.includes('ALL')) next = [];
         if (next.includes(val)) next = next.filter(v => v !== val);
         else next = [...next, val];
-
-        if (next.length === 0) setFn(['ALL']); // 다 해제하면 자동으로 ALL
+        if (next.length === 0) setFn(['ALL']);
         else setFn(next);
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
             {/* 1. 오너 선택 */}
             <div className="space-y-2">
                 <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Owners</label>
@@ -235,12 +236,10 @@ const DraftSettings = ({
                     </div>
                 </div>
 
-                {/* 3. 팀 필터 (요청사항 1번 반영) */}
+                {/* 3. 팀 필터 */}
                 <div className="space-y-2">
                     <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">3. Filter Options</label>
                     <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-3">
-                        
-                        {/* 상단: 유형 (ALL / Club / National) */}
                         <div className="flex gap-2">
                             {['ALL', 'CLUB', 'NATIONAL'].map(cat => (
                                 <button key={cat} onClick={() => toggleFilterWithAll(cat, filterCategory, setFilterCategory)}
@@ -252,8 +251,6 @@ const DraftSettings = ({
                                 >{cat}</button>
                             ))}
                         </div>
-
-                        {/* 하단: 티어 (ALL / S / A / B / C) */}
                         <div className="flex gap-2">
                             {['ALL', 'S', 'A', 'B', 'C'].map(tier => (
                                 <button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)}
@@ -265,8 +262,6 @@ const DraftSettings = ({
                                 >{tier === 'ALL' ? 'ALL' : tier}</button>
                             ))}
                         </div>
-
-                        {/* 상태 표시 */}
                         <div className="pt-2 border-t border-slate-700 text-xs flex justify-between items-center">
                             <span className="text-slate-500">Need: <strong className="text-white">{totalNeeded}</strong></span>
                             <span className={`font-bold ${filteredCount >= totalNeeded ? 'text-emerald-400' : 'text-red-400'}`}>Available: {filteredCount} Teams</span>
@@ -275,7 +270,6 @@ const DraftSettings = ({
                 </div>
             </div>
 
-            {/* 실행 버튼 */}
             <button 
                 onClick={onStart}
                 disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0}
@@ -288,7 +282,7 @@ const DraftSettings = ({
 };
 
 // =============================================================================
-// STEP 2: 오프닝 연출 (회전 & 펄스) - 요청사항 2번 반영
+// STEP 2: 오프닝 연출
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'EXPLODING' | 'DEALING'>('IDLE');
@@ -296,30 +290,14 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
     const handleClick = () => {
         if (phase !== 'IDLE') return;
         setPhase('CHARGING');
-        
-        // 1. 차징 (에너지 모으기)
-        setTimeout(() => {
-            setPhase('EXPLODING');
-        }, 800);
-
-        // 2. 폭발 후 딜링
-        setTimeout(() => {
-            setPhase('DEALING');
-            onOpen();
-        }, 1200);
+        setTimeout(() => setPhase('EXPLODING'), 800);
+        setTimeout(() => { setPhase('DEALING'); onOpen(); }, 1200);
     };
 
     return (
         <div className="relative w-full h-full flex items-center justify-center perspective-[1000px]">
-            {/* 암전 효과 */}
-            {phase !== 'IDLE' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black z-0 pointer-events-none" />
-            )}
-
-            {/* 메인 팩 컨테이너 */}
+            {phase !== 'IDLE' && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black z-0 pointer-events-none" />}
             <div className="relative flex items-center justify-center">
-                
-                {/* 🔥 배경 회전 카드들 (Spirit Bomb 효과) */}
                 <AnimatePresence>
                     {(phase === 'CHARGING' || phase === 'EXPLODING') && (
                         <motion.div 
@@ -329,19 +307,16 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             transition={{ duration: 1, ease: "easeInOut" }}
                             className="absolute z-0 w-[500px] h-[500px] rounded-full border-2 border-emerald-500/30 flex items-center justify-center"
                         >
-                             {/* 회전하는 카드 잔상들 */}
                              {Array.from({ length: 8 }).map((_, i) => (
                                 <div key={i} className="absolute w-16 h-24 bg-gradient-to-t from-emerald-500 to-sky-500 opacity-50 rounded" 
                                     style={{ transform: `rotate(${i * 45}deg) translate(0, -180px)` }} 
                                 />
                              ))}
-                             {/* 네온 링 */}
                              <div className="absolute inset-0 border-4 border-sky-400/50 rounded-full animate-ping" />
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* 메인 팩 */}
                 <AnimatePresence>
                     {phase !== 'DEALING' && (
                         <motion.div
@@ -354,10 +329,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                                 ? { scale: [1, 1.5, 0], opacity: 0 } 
                                 : { scale: 1, y: [0, -10, 0] }
                             }
-                            transition={{ 
-                                y: { repeat: Infinity, duration: 2 },
-                                default: { duration: 0.3 }
-                            }}
+                            transition={{ y: { repeat: Infinity, duration: 2 }, default: { duration: 0.3 }}}
                             className={`relative z-10 cursor-pointer ${phase !== 'IDLE' ? 'pointer-events-none' : ''}`}
                         >
                             <div className="w-56 h-80 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-2xl border-4 border-white/20 shadow-[0_0_80px_rgba(6,182,212,0.5)] flex items-center justify-center relative overflow-hidden group">
@@ -375,26 +347,15 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                         </motion.div>
                     )}
                 </AnimatePresence>
-
-                {/* 폭발 섬광 */}
-                {phase === 'EXPLODING' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.4 }} className="fixed inset-0 bg-white z-50 pointer-events-none" />
-                )}
+                {phase === 'EXPLODING' && <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.4 }} className="fixed inset-0 bg-white z-50 pointer-events-none" />}
             </div>
-
-            {/* 카드 딜링 (화면 밖으로 날아감) */}
             {phase === 'DEALING' && (
                 <div className="absolute inset-0 flex items-center justify-center z-20">
                     {Array.from({ length: cardCount }).map((_, i) => (
                         <motion.div
                             key={i}
                             initial={{ scale: 0, x: 0, y: 0 }}
-                            animate={{ 
-                                scale: [0, 1, 0.5], 
-                                x: [0, (Math.random() - 0.5) * 1200], 
-                                y: [0, (Math.random() - 0.5) * 1000],
-                                rotate: Math.random() * 720 
-                            }}
+                            animate={{ scale: [0, 1, 0.5], x: [0, (Math.random() - 0.5) * 1200], y: [0, (Math.random() - 0.5) * 1000], rotate: Math.random() * 720 }}
                             transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.03 }}
                             className="absolute w-32 h-48 bg-gradient-to-br from-slate-800 to-black border border-slate-600 rounded-xl shadow-xl"
                         />
@@ -406,65 +367,64 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
 };
 
 // =============================================================================
-// STEP 3: 결과 화면 (디자인 정제) - 요청사항 3번 반영
+// STEP 3: 결과 화면 (버튼 고정 및 스크롤 개선)
 // =============================================================================
 const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
     return (
-        <div className="h-full flex flex-col">
-            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 overflow-y-auto p-4 custom-scrollbar content-start">
-                {results.map((team: Team, idx: number) => {
-                    const owner = owners.find((o: Owner) => o.nickname === team.ownerName);
-                    
-                    return (
-                        <motion.div 
-                            key={team.id}
-                            initial={{ scale: 3, opacity: 0, y: -100 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            transition={{ 
-                                type: "spring", stiffness: 400, damping: 20, // 쿵! 찍히는 타격감
-                                delay: 0.5 + (idx * 0.15) 
-                            }}
-                            className={`relative overflow-hidden rounded-[1.5rem] bg-slate-800 shadow-2xl flex flex-col items-center
-                                ${team.tier === 'S' ? 'shadow-[0_0_40px_rgba(250,204,21,0.2)]' : 'shadow-lg'}
-                            `}
-                        >
-                            {/* 1. 상단: 오너 & 티어 (심플하게) */}
-                            <div className="w-full flex justify-between items-center p-3 z-10 bg-black/20">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 rounded-full border border-slate-500 overflow-hidden bg-slate-900">
-                                        {owner?.photo ? <img src={owner.photo} alt="" className="w-full h-full object-cover"/> : <div className="text-[9px] h-full flex items-center justify-center">👤</div>}
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* 1. 스크롤 영역 (카드 리스트) */}
+            {/* flex-1로 남은 높이 다 차지하게 하고, overflow-y-auto로 이 안에서만 스크롤 발생 */}
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {results.map((team: Team, idx: number) => {
+                        const owner = owners.find((o: Owner) => o.nickname === team.ownerName);
+                        
+                        return (
+                            <motion.div 
+                                key={team.id}
+                                initial={{ scale: 3, opacity: 0, y: -100 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                transition={{ type: "spring", stiffness: 400, damping: 20, delay: 0.5 + (idx * 0.15) }}
+                                className={`relative overflow-hidden rounded-[1.5rem] bg-slate-800 shadow-2xl flex flex-col items-center
+                                    ${team.tier === 'S' ? 'shadow-[0_0_40px_rgba(250,204,21,0.2)]' : 'shadow-lg'}
+                                `}
+                            >
+                                {/* 상단: 오너 & 티어 */}
+                                <div className="w-full flex justify-between items-center p-3 z-10 bg-black/20">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full border border-slate-500 overflow-hidden bg-slate-900">
+                                            {owner?.photo ? <img src={owner.photo} alt="" className="w-full h-full object-cover"/> : <div className="text-[9px] h-full flex items-center justify-center">👤</div>}
+                                        </div>
+                                        <span className="text-[10px] font-bold text-slate-300 truncate max-w-[60px]">{team.ownerName}</span>
                                     </div>
-                                    <span className="text-[10px] font-bold text-slate-300 truncate max-w-[60px]">{team.ownerName}</span>
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black italic ${team.tier === 'S' ? 'bg-yellow-400 text-black' : 'bg-slate-700 text-slate-300'}`}>
+                                        {team.tier}
+                                    </span>
                                 </div>
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-black italic ${team.tier === 'S' ? 'bg-yellow-400 text-black' : 'bg-slate-700 text-slate-300'}`}>
-                                    {team.tier}
-                                </span>
-                            </div>
 
-                            {/* 2. 중앙: 엠블럼 (사이즈 축소 및 깔끔한 배치) */}
-                            <div className="flex-1 w-full flex items-center justify-center py-4 relative bg-gradient-to-b from-transparent to-black/30">
-                                {team.tier === 'S' && <div className="absolute inset-0 bg-yellow-400/5 animate-pulse" />}
-                                
-                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center p-2 shadow-lg ring-4 ring-white/10">
-                                    <img src={team.logo} alt={team.name} className="w-full h-full object-contain" />
+                                {/* 중앙: 엠블럼 */}
+                                <div className="flex-1 w-full flex items-center justify-center py-4 relative bg-gradient-to-b from-transparent to-black/30">
+                                    {team.tier === 'S' && <div className="absolute inset-0 bg-yellow-400/5 animate-pulse" />}
+                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center p-2 shadow-lg ring-4 ring-white/10">
+                                        <img src={team.logo} alt={team.name} className="w-full h-full object-contain" />
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* 3. 하단: 팀명 (프레임 제거, 텍스트 강조) */}
-                            <div className="w-full text-center pb-4 pt-1 px-2 z-10">
-                                <div className="font-black italic text-white text-sm leading-tight uppercase truncate drop-shadow-md">{team.name}</div>
-                                <div className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-wider">{team.region}</div>
-                            </div>
-
-                            {/* 바닥 먼지 효과 */}
-                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-white/10 blur-xl rounded-full opacity-0 animate-[dust_0.4s_ease-out_forwards]" style={{ animationDelay: `${0.5 + idx * 0.15}s` }}></div>
-                        </motion.div>
-                    );
-                })}
+                                {/* 하단: 팀명 */}
+                                <div className="w-full text-center pb-4 pt-1 px-2 z-10">
+                                    <div className="font-black italic text-white text-sm leading-tight uppercase truncate drop-shadow-md">{team.name}</div>
+                                    <div className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-wider">{team.region}</div>
+                                </div>
+                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-white/10 blur-xl rounded-full opacity-0 animate-[dust_0.4s_ease-out_forwards]" style={{ animationDelay: `${0.5 + idx * 0.15}s` }}></div>
+                            </motion.div>
+                        );
+                    })}
+                </div>
             </div>
 
-            {/* 버튼 밸런스 조정 */}
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800 mt-auto bg-slate-900 z-20">
+            {/* 2. 하단 고정 버튼 영역 */}
+            {/* flex-none으로 높이 고정, border-t로 구분선 */}
+            <div className="flex-none p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-2 gap-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 <button 
                     onClick={onRetry}
                     className="py-4 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 hover:text-white transition-colors border border-slate-700"
@@ -478,7 +438,7 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                     💾 SAVE
                 </button>
             </div>
-
+            
             <style jsx>{`
                 @keyframes dust {
                     0% { opacity: 0; transform: translate(-50%, 10px) scale(0.5); }
