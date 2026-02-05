@@ -12,7 +12,7 @@ export interface Match {
   homeScore: string;
   awayScore: string;
   status: 'UPCOMING' | 'COMPLETED' | 'BYE';
-  youtubeUrl?: string; // 유튜브 URL
+  youtubeUrl?: string;
   stage: string;
   matchLabel: string;
   homeScorers: any[];
@@ -20,7 +20,7 @@ export interface Match {
   homeAssists: any[];
   awayAssists: any[];
   
-  // 토너먼트 로직용 속성
+  // 토너먼트 로직용
   nextMatchId?: string | null;
   loserMatchId?: string | null;
 }
@@ -49,6 +49,15 @@ export interface Round {
   matches: Match[];
 }
 
+// 🔥 [추가] 상금 타입 정의
+export interface Prizes {
+  first: number;
+  second: number;
+  third: number;
+  scorer: number;
+  assist: number;
+}
+
 export interface Season {
   id: number;
   name: string;
@@ -57,14 +66,14 @@ export interface Season {
   teams: Team[];
   rounds?: Round[];
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
+  prizes?: Prizes; // 🔥 [수정] 여기에 상금 속성 추가!
 }
 
-// 🔥 [수정됨] docId와 photo 속성 추가
 export interface Owner {
   id: number;
-  docId?: string; // Firebase 문서 ID
+  docId?: string;
   nickname: string;
-  photo?: string; // 프로필 사진 URL
+  photo?: string;
   password?: string;
 }
 

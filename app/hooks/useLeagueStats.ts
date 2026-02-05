@@ -17,13 +17,15 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
         const playerStatsMap = new Map<string, any>(); 
         
         targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
-          if(m.status === 'FINISHED' || m.status === 'BYE') {
+          // 🔥 [수정] FINISHED -> COMPLETED로 변경
+          if(m.status === 'COMPLETED' || m.status === 'BYE') {
             const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
             const ht = teamStats.get(m.home); const at = teamStats.get(m.away);
             if(ht) { ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } }
             if(at && m.away !== 'BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } }
           }
-          if(m.status === 'FINISHED') {
+          // 🔥 [수정] FINISHED -> COMPLETED로 변경
+          if(m.status === 'COMPLETED') {
             [...m.homeScorers, ...m.awayScorers].forEach(s => { 
                 const key = `${s.name.trim()}-${m.homeScorers.includes(s)?m.home:m.away}-${m.homeScorers.includes(s)?m.homeOwner:m.awayOwner}`;
                 if(!playerStatsMap.has(key)) playerStatsMap.set(key, {name:s.name.trim(), team: m.homeScorers.includes(s)?m.home:m.away, teamLogo: m.homeScorers.includes(s)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(s)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
@@ -71,13 +73,15 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
             const sTeamStats = new Map<string, any>();
             s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
             s.rounds?.forEach(r => r.matches.forEach(m => {
-                if(m.status === 'FINISHED' || m.status === 'BYE') {
+                // 🔥 [수정] FINISHED -> COMPLETED로 변경
+                if(m.status === 'COMPLETED' || m.status === 'BYE') {
                     const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
                     const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
                     if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
                     if(at && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
                 }
-                if(m.status === 'FINISHED') {
+                // 🔥 [수정] FINISHED -> COMPLETED로 변경
+                if(m.status === 'COMPLETED') {
                     [...m.homeScorers, ...m.awayScorers].forEach(p => { 
                         const key = `${p.name.trim()}-${m.homeScorers.includes(p)?m.home:m.away}-${m.homeScorers.includes(p)?m.homeOwner:m.awayOwner}`;
                         if(!playerHistMap.has(key)) playerHistMap.set(key, {name:p.name.trim(), team: m.homeScorers.includes(p)?m.home:m.away, teamLogo: m.homeScorers.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
