@@ -4,8 +4,6 @@ import { Season, Team, Match, Round, FALLBACK_IMG } from '../types';
 // 1. 공통 유틸리티 및 타입 정의
 // ==========================================
 
-const DEFAULT_LEAGUES = ['Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'K League'];
-
 interface MatchSlot {
     home: Team;
     away: Team;
@@ -259,7 +257,7 @@ export const generateRoundsLogic = (season: Season): Round[] => {
                     awayOwner: m.away.ownerName,
                     homeScore: '', awayScore: '',
                     status: 'UPCOMING',
-                    youtubeUrl: '', // 🔥 [오류 수정] youtubeUrl 초기화 추가
+                    youtubeUrl: '', 
                     stage: 'Regular Season',
                     matchLabel: `R${rIndex+1}`,
                     homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
@@ -317,7 +315,7 @@ export const generateRoundsLogic = (season: Season): Round[] => {
                 homeOwner: home.owner, awayOwner: away.owner,
                 homeScore: '', awayScore: '',
                 status: (home.name === 'BYE' || away.name === 'BYE') ? 'BYE' : 'UPCOMING',
-                youtubeUrl: '', // 🔥 [오류 수정] youtubeUrl 초기화 추가
+                youtubeUrl: '', 
                 stage: getTournamentStageName(nextPowerOf2, i),
                 matchLabel: `Match ${i+1}`,
                 homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
@@ -342,7 +340,7 @@ export const generateRoundsLogic = (season: Season): Round[] => {
                     homeOwner: 'Loser of SF1', awayOwner: 'Loser of SF2',
                     homeScore: '', awayScore: '',
                     status: 'UPCOMING',
-                    youtubeUrl: '', // 🔥 [오류 수정] youtubeUrl 초기화 추가
+                    youtubeUrl: '', 
                     stage: '3rd Place Match',
                     matchLabel: '3rd Place',
                     homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
