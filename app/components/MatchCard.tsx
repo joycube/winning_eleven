@@ -21,10 +21,13 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
 
   const prediction = getPrediction(match.home, match.away, activeRankingData, historyData);
 
+  // 🔥 [수정] FINISHED -> COMPLETED 로 변경 (타입 일치)
+  const isCompleted = match.status === 'COMPLETED';
+
   return (
     <div 
       onClick={() => onClick(match)} 
-      className={`relative bg-slate-950 p-3 rounded-xl border ${match.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}
+      className={`relative bg-slate-950 p-3 rounded-xl border ${isCompleted ? 'border-slate-800' : 'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}
     >
         <div className="flex justify-center items-center mb-2">
             <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded uppercase">{match.matchLabel || 'Match'}</span>
@@ -38,7 +41,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
 
             <div className="flex flex-col items-center justify-center">
-                {match.status === 'FINISHED' ? (
+                {isCompleted ? (
                     <div className="flex items-center gap-2 text-3xl font-black italic text-white tracking-tighter">
                         <span className={Number(match.homeScore)>Number(match.awayScore)?'text-emerald-400':''}>{match.homeScore}</span>
                         <span className="text-slate-700 text-xl">:</span>
@@ -56,7 +59,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         </div>
 
-        {match.status === 'FINISHED' && (
+        {isCompleted && (
             <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-[1fr_auto_1fr] gap-2 text-[9px] items-center">
                 <div className="text-right space-y-0.5">
                     {match.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
@@ -80,7 +83,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         )}
 
-        {match.status !== 'FINISHED' && match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && (
+        {!isCompleted && match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && (
             <div className="w-full mt-3 mb-2 px-1">
                 <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
                 <div className="flex items-center gap-2">
@@ -89,7 +92,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
                         <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-gradient-to-r from-emerald-900 to-emerald-400 transition-all duration-1000 ease-out absolute left-0 top-0 skew-x-[-12deg] origin-bottom-left -ml-2 w-[calc(100%+8px)]" />
                         <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-gradient-to-l from-blue-900 to-blue-400 transition-all duration-1000 ease-out absolute right-0 top-0 skew-x-[-12deg] origin-top-right -mr-2 w-[calc(100%+8px)]" />
                         
-                        {/* 🔥 [복구] 번개 아이콘 (Z-index 및 위치 보정) */}
                         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center">
                             <div className="w-5 h-5 bg-slate-900 border-2 border-slate-600 rounded-full flex items-center justify-center shadow-lg">
                                 <span className="text-[9px] text-yellow-400 font-bold animate-pulse">⚡</span>
@@ -101,7 +103,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         )}
 
-        {match.status === 'FINISHED' && (
+        {isCompleted && (
             <div className="bg-slate-900/50 p-2 mt-2 rounded text-center border border-slate-800/50">
                 <p className="text-[10px] text-emerald-300 italic">
                     &quot; {getMatchCommentary(match)} &quot;
