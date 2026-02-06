@@ -24,7 +24,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [isRolling, setIsRolling] = useState(false);
     const [isFlipping, setIsFlipping] = useState(false); // 🔥 FC25 플립 연출용
     
-    // 🔥 퀵 드래프트 모달 상태 (추가)
+    // 🔥 퀵 드래프트 모달 상태
     const [isDraftOpen, setIsDraftOpen] = useState(false);
 
     // 필터 옵션
@@ -44,7 +44,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
     }, []);
 
-    // [수정] 참조 에러 방지를 위한 displaySortedLeagues 정의
     const displaySortedLeagues = useMemo(() => {
         let targets = leagues;
         if (filterCategory !== 'ALL') targets = targets.filter(l => l.category === filterCategory);
@@ -76,14 +75,12 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         const winnerIndex = Math.floor(Math.random() * availableTeams.length);
         const finalWinner = availableTeams[winnerIndex];
 
-        // 1단계: 빠른 셔플 (긴장감 조성)
         let shuffleCount = 0;
         intervalRef.current = setInterval(() => {
             const tempIndex = Math.floor(Math.random() * availableTeams.length);
             setRandomResult(availableTeams[tempIndex]);
             shuffleCount++;
             
-            // 셔플이 진행될수록 점점 느려지게 하여 긴장감 유도
             if (shuffleCount > 20 && intervalRef.current) {
                 clearInterval(intervalRef.current);
                 intervalRef.current = setInterval(() => {
@@ -93,15 +90,13 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             }
         }, 60);
 
-        // 2단계: 최종 결과 공개 (FC25 카드 플립 연출)
         setTimeout(() => {
             if (intervalRef.current) clearInterval(intervalRef.current);
             setRandomResult(finalWinner);
             setSelectedMasterTeamDocId(finalWinner.docId || String(finalWinner.id));
             
-            // 플립 애니메이션 시작
             setIsFlipping(true);
-            setIsRolling(false); // 롤링 끝, 플립 시작
+            setIsRolling(false); 
 
             setTimeout(() => {
                 document.getElementById(`team-card-${finalWinner.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -148,7 +143,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
 
-    // 🔥 퀵 드래프트 결과 적용
     const handleDraftApply = async (newTeams: Team[]) => {
         const teamsWithSeason = newTeams.map(t => ({ ...t, seasonId: targetSeason.id }));
         const updatedTeams = [...(targetSeason.teams || []), ...teamsWithSeason];
@@ -158,7 +152,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     return (
         <div className="space-y-6 animate-in fade-in relative">
             <style jsx>{`
-                /* 1. 배경 암전 (Stage Focus) */
+                /* 1. 배경 암전 */
                 .stage-overlay {
                     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
                     background: rgba(0,0,0,0.92); z-index: 50;
@@ -167,7 +161,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-                /* 2. 번쩍이는 섬광 (Reveal Flash) */
+                /* 2. 번쩍이는 섬광 */
                 .reveal-flash {
                     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
                     background: white; z-index: 60; pointer-events: none;
@@ -179,12 +173,12 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     100% { opacity: 0; }
                 }
 
-                /* 3. 형광 에너지 분출 (Neon Pulse) */
+                /* 3. 형광 에너지 분출 */
                 .blast-circle {
                     position: absolute; top: 50%; left: 50%;
                     transform: translate(-50%, -50%) scale(0.5);
                     width: 100px; height: 100px; border-radius: 50%;
-                    border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; /* S급: 골드, 일반: 에메랄드 */
+                    border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; 
                     box-shadow: 0 0 50px ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'};
                     z-index: 52; pointer-events: none;
                     animation: blastOut 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards;
@@ -197,7 +191,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 /* 카드 효과 */
                 .fc-card-reveal {
                     animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-                    z-index: 55; /* Overlay 위에 위치 */
+                    z-index: 55;
                 }
                 @keyframes card-flip {
                     0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); }
@@ -212,24 +206,23 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 }
             `}</style>
 
-            {/* 🔥 연출 요소 배치 */}
             {(isRolling || isFlipping) && <div className="stage-overlay" />}
             {isFlipping && <div className="reveal-flash" />}
 
             {/* Step 1 */}
-            {/* 배경 암전 시 카드 부분만 z-index를 높여 강조됨 */}
             <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
                 <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
 
-                {/* 🔥 [추가됨] ⚡ 퀵 팀매칭 버튼 섹션 */}
+                {/* 🔥 [수정됨] ⚡ 퀵 팀매칭 버튼 섹션 */}
                 <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-2">
-                    <div className="flex-1">
+                    {/* 🔥 텍스트 영역 수정: 중앙 정렬 및 폰트 강조 */}
+                    <div className="flex-1 flex flex-col items-center justify-center text-center">
                         <div className="text-white font-black italic flex items-center gap-2 text-sm">
                             <span className="text-yellow-400">⚡</span> 퀵 팀매칭 (Quick Match)
                             <span className="text-[9px] bg-yellow-500 text-black px-1.5 rounded font-black tracking-tighter">HOT</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                            오너와 조건을 선택하면 자동으로 팀을 추첨하고 배정합니다. 카드깡 연출 포함!
+                        <p className="text-sm text-white mt-1 font-bold">
+                            ✨ 지금 자동으로 팀을 추천 받으세요 ✨
                         </p>
                     </div>
                     <button 
@@ -238,9 +231,10 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                             setIsDraftOpen(true);
                         }}
                         disabled={hasSchedule}
-                        className={`px-5 py-2.5 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all ${hasSchedule ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}
+                        // 🔥 [버튼 규격화] h-10, px-6, text-xs, font-black italic
+                        className={`h-10 px-6 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all flex items-center justify-center gap-2 ${hasSchedule ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}
                     >
-                        🎲 START MATCHING
+                        <span>⚡</span> 퀵 매칭 시작
                     </button>
                 </div>
 
@@ -255,13 +249,15 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
                     <div className="flex justify-between items-center">
                         <label className="text-[10px] text-slate-500 font-bold">2. Search Options (Manual)</label>
+                        {/* 🔥 [수정됨] 랜덤 매칭 버튼 규격화 */}
                         <button 
                             onClick={handleRandom} 
                             disabled={isRolling || hasSchedule}
-                            className={`px-4 py-2 rounded text-xs font-black italic tracking-tighter text-white shadow-lg border border-purple-500 flex items-center gap-2 transition-all ${isRolling || hasSchedule ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95 hover:shadow-purple-500/50'}`}
+                            // 🔥 [버튼 규격화] h-10, px-6, text-xs, font-black italic (퀵매칭 버튼과 동일)
+                            className={`h-10 px-6 rounded-lg text-xs font-black italic tracking-tighter text-white shadow-lg border border-purple-500 flex items-center justify-center gap-2 transition-all ${isRolling || hasSchedule ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95 hover:shadow-purple-500/50'}`}
                         >
                             {isRolling ? <span className="animate-spin text-lg">🎰</span> : <span className="text-lg">🎲</span>} 
-                            {isRolling ? 'OPENING PACK...' : 'RANDOM PACK OPEN'}
+                            {isRolling ? 'OPENING...' : '랜덤 매칭 시작'}
                         </button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
