@@ -17,23 +17,64 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
         const playerStatsMap = new Map<string, any>(); 
         
         targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
-          // 🔥 [수정] FINISHED -> COMPLETED로 변경
+          // 🔥 [수정 1] 데이터 안전성 확보 (부전승/TBD 상황에서 배열이 없어도 크래시 방지)
+          const homeScorers = m.homeScorers || [];
+          const awayScorers = m.awayScorers || [];
+          const homeAssists = m.homeAssists || [];
+          const awayAssists = m.awayAssists || [];
+
+          // 🔥 [수정 2] FINISHED -> COMPLETED 변경 및 부전승 로직 안정화
           if(m.status === 'COMPLETED' || m.status === 'BYE') {
             const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
-            const ht = teamStats.get(m.home); const at = teamStats.get(m.away);
-            if(ht) { ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } }
-            if(at && m.away !== 'BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } }
+            const ht = teamStats.get(m.home); 
+            const at = teamStats.get(m.away);
+
+            if(ht) { 
+                ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; 
+                if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } 
+            }
+            // 부전승(BYE)이 아닐 때만 어웨이 팀 스탯 계산
+            if(at && m.away !== 'BYE' && m.away !== 'BYE (부전승)') { 
+                at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; 
+                if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } 
+            }
           }
-          // 🔥 [수정] FINISHED -> COMPLETED로 변경
+          
+          // 🔥 [수정 3] FINISHED -> COMPLETED 변경 및 이미지 Fallback 적용
           if(m.status === 'COMPLETED') {
-            [...m.homeScorers, ...m.awayScorers].forEach(s => { 
-                const key = `${s.name.trim()}-${m.homeScorers.includes(s)?m.home:m.away}-${m.homeScorers.includes(s)?m.homeOwner:m.awayOwner}`;
-                if(!playerStatsMap.has(key)) playerStatsMap.set(key, {name:s.name.trim(), team: m.homeScorers.includes(s)?m.home:m.away, teamLogo: m.homeScorers.includes(s)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(s)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
+            [...homeScorers, ...awayScorers].forEach(s => { 
+                const isHome = homeScorers.includes(s);
+                const key = `${s.name.trim()}-${isHome ? m.home : m.away}-${isHome ? m.homeOwner : m.awayOwner}`;
+                
+                // TBD 또는 이미지 없을 때 대체 이미지 적용
+                const teamLogo = (isHome ? m.homeLogo : m.awayLogo) || FALLBACK_IMG;
+
+                if(!playerStatsMap.has(key)) playerStatsMap.set(key, {
+                    name: s.name.trim(), 
+                    team: isHome ? m.home : m.away, 
+                    teamLogo: teamLogo, 
+                    owner: isHome ? m.homeOwner : m.awayOwner, 
+                    goals: 0, 
+                    assists: 0
+                }); 
                 playerStatsMap.get(key).goals += s.count; 
             });
-            [...m.homeAssists, ...m.awayAssists].forEach(s => { 
-                const key = `${s.name.trim()}-${m.homeAssists.includes(s)?m.home:m.away}-${m.homeAssists.includes(s)?m.homeOwner:m.awayOwner}`;
-                if(!playerStatsMap.has(key)) playerStatsMap.set(key, {name:s.name.trim(), team: m.homeAssists.includes(s)?m.home:m.away, teamLogo: m.homeAssists.includes(s)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(s)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
+
+            [...homeAssists, ...awayAssists].forEach(s => { 
+                const isHome = homeAssists.includes(s);
+                const key = `${s.name.trim()}-${isHome ? m.home : m.away}-${isHome ? m.homeOwner : m.awayOwner}`;
+                
+                // TBD 또는 이미지 없을 때 대체 이미지 적용
+                const teamLogo = (isHome ? m.homeLogo : m.awayLogo) || FALLBACK_IMG;
+
+                if(!playerStatsMap.has(key)) playerStatsMap.set(key, {
+                    name: s.name.trim(), 
+                    team: isHome ? m.home : m.away, 
+                    teamLogo: teamLogo, 
+                    owner: isHome ? m.homeOwner : m.awayOwner, 
+                    goals: 0, 
+                    assists: 0
+                }); 
                 playerStatsMap.get(key).assists += s.count; 
             });
           }
@@ -57,7 +98,16 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
             o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0);
         });
         
-        const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl).map(m => ({ ...m, winner: Number(m.homeScore) > Number(m.awayScore) ? m.home : Number(m.awayScore) > Number(m.homeScore) ? m.away : 'DRAW', winnerLogo: Number(m.homeScore) > Number(m.awayScore) ? m.homeLogo : Number(m.awayScore) > Number(m.homeScore) ? m.awayLogo : FALLBACK_IMG })) || [];
+        // 🔥 [수정 4] 하이라이트 승자 로고 처리 (TBD/Null 일 때 FALLBACK_IMG)
+        const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl).map(m => {
+            const isHomeWin = Number(m.homeScore) > Number(m.awayScore);
+            const isAwayWin = Number(m.awayScore) > Number(m.homeScore);
+            
+            const winner = isHomeWin ? m.home : (isAwayWin ? m.away : 'DRAW');
+            const winnerLogo = (isHomeWin ? m.homeLogo : (isAwayWin ? m.awayLogo : FALLBACK_IMG)) || FALLBACK_IMG;
+
+            return { ...m, winner, winnerLogo };
+        }) || [];
     
         return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players: Array.from(playerStatsMap.values()).sort((a:any,b:any)=>b.goals-a.goals), highlights };
     }, [seasons, viewSeasonId]);
@@ -72,28 +122,57 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
             if(!s.teams) return;
             const sTeamStats = new Map<string, any>();
             s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
+            
             s.rounds?.forEach(r => r.matches.forEach(m => {
-                // 🔥 [수정] FINISHED -> COMPLETED로 변경
+                // 🔥 [수정 5] 데이터 안전성 확보 (통합 기록)
+                const homeScorers = m.homeScorers || [];
+                const awayScorers = m.awayScorers || [];
+                const homeAssists = m.homeAssists || [];
+                const awayAssists = m.awayAssists || [];
+
                 if(m.status === 'COMPLETED' || m.status === 'BYE') {
                     const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
                     const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
                     if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
-                    if(at && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
+                    if(at && m.away!=='BYE' && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
                 }
-                // 🔥 [수정] FINISHED -> COMPLETED로 변경
+                
                 if(m.status === 'COMPLETED') {
-                    [...m.homeScorers, ...m.awayScorers].forEach(p => { 
-                        const key = `${p.name.trim()}-${m.homeScorers.includes(p)?m.home:m.away}-${m.homeScorers.includes(p)?m.homeOwner:m.awayOwner}`;
-                        if(!playerHistMap.has(key)) playerHistMap.set(key, {name:p.name.trim(), team: m.homeScorers.includes(p)?m.home:m.away, teamLogo: m.homeScorers.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
+                    [...homeScorers, ...awayScorers].forEach(p => { 
+                        const isHome = homeScorers.includes(p);
+                        const key = `${p.name.trim()}-${isHome ? m.home : m.away}-${isHome ? m.homeOwner : m.awayOwner}`;
+                        const teamLogo = (isHome ? m.homeLogo : m.awayLogo) || FALLBACK_IMG;
+
+                        if(!playerHistMap.has(key)) playerHistMap.set(key, {
+                            name: p.name.trim(), 
+                            team: isHome ? m.home : m.away, 
+                            teamLogo: teamLogo, 
+                            owner: isHome ? m.homeOwner : m.awayOwner, 
+                            goals: 0, 
+                            assists: 0
+                        }); 
                         playerHistMap.get(key).goals += p.count; 
                     });
-                    [...m.homeAssists, ...m.awayAssists].forEach(p => { 
-                         const key = `${p.name.trim()}-${m.homeAssists.includes(p)?m.home:m.away}-${m.homeAssists.includes(p)?m.homeOwner:m.awayOwner}`;
-                        if(!playerHistMap.has(key)) playerHistMap.set(key, {name:p.name.trim(), team: m.homeAssists.includes(p)?m.home:m.away, teamLogo: m.homeAssists.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); 
+                    
+                    [...homeAssists, ...awayAssists].forEach(p => { 
+                        const isHome = homeAssists.includes(p);
+                        const key = `${p.name.trim()}-${isHome ? m.home : m.away}-${isHome ? m.homeOwner : m.awayOwner}`;
+                        const teamLogo = (isHome ? m.homeLogo : m.awayLogo) || FALLBACK_IMG;
+
+                        if(!playerHistMap.has(key)) playerHistMap.set(key, {
+                            name: p.name.trim(), 
+                            team: isHome ? m.home : m.away, 
+                            teamLogo: teamLogo, 
+                            owner: isHome ? m.homeOwner : m.awayOwner, 
+                            goals: 0, 
+                            assists: 0
+                        }); 
                         playerHistMap.get(key).assists += p.count; 
                     });
                 }
             }));
+            
+            // ... 기존 로직 유지 ...
             Array.from(sTeamStats.values()).sort((a,b)=>b.points-a.points).forEach((t, idx) => {
                 const played = t.win + t.draw + t.loss;
                 if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0});
