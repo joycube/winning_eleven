@@ -14,12 +14,13 @@ const TierSelector = ({ value, onChange, isMini = false }: { value: string, onCh
                     key={t} 
                     onClick={(e) => { e.stopPropagation(); onChange(t); }}
                     className={`flex-1 font-bold transition-all border ${
+                        // 🔥 [수정] isMini일 때 'aspect-square'를 추가하여 정사각형 비율 고정
                         isMini ? 'rounded-md aspect-square' : 'rounded-lg'
                     } ${
                         value === t 
                         ? getTierBadgeColor(t) + ' ring-1 ring-white' 
                         : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
-                    } ${isMini ? 'py-1 text-[10px]' : 'py-2 text-xs'}`}
+                    } ${isMini ? 'py-2 text-[10px]' : 'py-2 text-xs'}`} 
                 >
                     {t}
                 </button>
@@ -79,7 +80,6 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
                 <div className="grid grid-cols-3 gap-3">
                     {displayList.map(l => (
                         <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl border cursor-pointer transition-all group relative ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
-                            {/* 배치 수정: 로고 -> 리그명 -> 소속팀수 */}
                             <div className="flex flex-col items-center gap-2">
                                 <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                     <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
@@ -236,10 +236,10 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
 
             <div className="space-y-8">
                 <div className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800 sticky top-0 z-10 shadow-xl">
-                    <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`text-xs px-4 py-2 rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
+                    <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`h-9 px-4 text-xs rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
                     {selectedLeague ? (
                          <div className="flex gap-2">
-                             <button onClick={()=>handleBulkTier('C')} className="bg-slate-800 px-3 py-2 rounded-lg text-xs text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">모두 C 등급 변경</button>
+                             <button onClick={()=>handleBulkTier('C')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 C등급 변경</button>
                              <button onClick={()=>setSelectedLeague('')} className="bg-slate-800 px-3 py-2 rounded-lg text-xs text-white border border-slate-700 hover:bg-slate-700">↩ 목록으로</button>
                          </div>
                     ) : <span className="text-xs text-slate-500 pr-2">리그를 선택하세요</span>}
@@ -253,7 +253,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                 <div className="grid grid-cols-3 gap-3">
                                     {displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            {/* 배치 수정: 로고 -> 리그명 -> 소속팀수 */}
                                             <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
@@ -270,7 +269,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                 <div className="grid grid-cols-3 gap-3">
                                     {displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            {/* 배치 수정: 로고 -> 지역명 -> 소속팀수 */}
                                             <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
