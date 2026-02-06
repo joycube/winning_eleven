@@ -34,7 +34,7 @@ export const TutorialView = () => {
                         <p className="text-slate-400 text-xs leading-relaxed">
                             사용될 축구 팀 데이터베이스입니다. 
                             <br/>[ADMIN] &gt; [팀 관리] 탭에서 팀 로고, 이름, 리그(Region), 등급(Tier)을 관리할 수 있습니다.
-                            <br/>* 팁: '빠른 등급 설정' 기능을 켜면 리스트에서 바로 등급(S/A/B/C)을 수정할 수 있습니다.
+                            <br/>* 팁: &apos;빠른 등급 설정&apos; 기능을 켜면 리스트에서 바로 등급(S/A/B/C)을 수정할 수 있습니다.
                         </p>
                     </div>
                 </div>
@@ -70,7 +70,7 @@ export const TutorialView = () => {
                         <span className="text-xl">💰</span>
                         <div>
                             <strong className="text-white block mb-1">상금 설정</strong>
-                            시즌 생성 시 1, 2, 3위 및 득점왕/도움왕 상금을 미리 설정할 수 있습니다. 이 데이터는 나중에 '역대 기록'에 합산됩니다.
+                            시즌 생성 시 1, 2, 3위 및 득점왕/도움왕 상금을 미리 설정할 수 있습니다. 이 데이터는 나중에 &apos;역대 기록&apos;에 합산됩니다.
                         </div>
                     </li>
                 </ul>
@@ -150,7 +150,7 @@ export const TutorialView = () => {
                             <h4 className="font-bold text-white text-base mb-1">토너먼트 자동 진출</h4>
                             <p className="text-xs text-slate-400">
                                 토너먼트 모드에서는 승리한 팀이 자동으로 다음 대진표로 이동합니다. 
-                                <br/>무승부일 경우 'Home 승' 또는 'Away 승' 버튼을 눌러 승부차기 승자를 지정해주세요.
+                                <br/>무승부일 경우 &apos;Home 승&apos; 또는 &apos;Away 승&apos; 버튼을 눌러 승부차기 승자를 지정해주세요.
                                 <br/>부전승(BYE) 상대를 만난 팀은 결과 저장 시 자동으로 다음 라운드로 진출합니다.
                             </p>
                         </div>
