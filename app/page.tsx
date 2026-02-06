@@ -37,11 +37,10 @@ export default function FootballLeagueApp() {
   // 4. 경기 수정 모달 상태
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
-  // [초기화] URL에서 파라미터 읽어오기 (공유된 링크로 들어왔을 때)
+  // [초기화] URL에서 파라미터 읽어오기
   useEffect(() => {
     if (seasons.length === 0) return;
     
-    // URL 확인 (?view=SCHEDULE&season=123123)
     const params = new URLSearchParams(window.location.search);
     const paramView = params.get('view');
     const paramSeasonId = Number(params.get('season'));
@@ -53,7 +52,6 @@ export default function FootballLeagueApp() {
     if (paramSeasonId && seasons.find(s => s.id === paramSeasonId)) {
         setViewSeasonId(paramSeasonId);
     } else if (viewSeasonId === 0 && seasons.length > 0) {
-        // 시즌 ID가 없으면 가장 최신(첫번째) 시즌을 보여줌
         setViewSeasonId(seasons[0].id);
     }
   }, [seasons]);
@@ -70,48 +68,109 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // 경기 결과 저장 (스코어 입력)
+  // ==================================================================================
+  // 🔥 [핵심 수정] 경기 결과 저장 및 토너먼트 자동 진출 (부전승 포함)
+  // ==================================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
-      // 1. 해당 매치 찾아서 업데이트
+      console.log("Saving Match:", matchId, "Type:", s.type);
+
+      // 1. 점수 및 기록 업데이트
       let newRounds = [...s.rounds];
-      newRounds = newRounds.map(r => ({
+      let currentRoundIndex = -1;
+      let currentMatchIndex = -1; // 전체 배열에서의 절대 인덱스
+
+      newRounds = newRounds.map((r, rIdx) => ({
           ...r,
-          matches: r.matches.map(m => m.id === matchId ? { 
-              ...m, 
-              // 🔥 [수정] FINISHED -> COMPLETED로 변경 (타입 일치)
-              homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
-              homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-              homeAssists: records.homeAssists, awayAssists: records.awayAssists
-          } : m)
+          matches: r.matches.map((m, mIdx) => {
+              if (m.id === matchId) {
+                  currentRoundIndex = rIdx;
+                  currentMatchIndex = mIdx;
+                  return { 
+                      ...m, 
+                      homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+                      homeScorers: records.homeScorers, awayScorers: records.awayScorers,
+                      homeAssists: records.homeAssists, awayAssists: records.awayAssists
+                  };
+              }
+              return m;
+          })
       }));
 
-      // 2. 토너먼트라면? 다음 경기에 승리팀 자동 진출
-      if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) {
-          let winningTeam: {name: string, logo: string, owner: string} | null = null;
-          const h = Number(hScore); const a = Number(aScore);
+      // 2. 토너먼트 승자 자동 진출 로직 (TOURNAMENT 또는 CUP)
+      if ((s.type === 'TOURNAMENT' || s.type === 'CUP') && currentRoundIndex !== -1 && currentMatchIndex !== -1) {
           
-          if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          let winningTeam: {name: string, logo: string, owner: string} | null = null;
+          const h = Number(hScore); 
+          const a = Number(aScore);
+          
+          // (A) 승자 판별 로직
+          // 1. 상대가 BYE(부전승)이면 무조건 Home 승리
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') {
+              winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+              console.log("Auto-win by BYE:", winningTeam.name);
+          }
+          // 2. 수동 승자 선택 (동점 승부차기 등)
+          else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          // 3. 점수 비교
+          else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          else if (manualWinner) {
-             winningTeam = manualWinner === 'HOME' 
-                ? {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner}
-                : {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          } else {
-              return alert("⚠️ 무승부입니다! 승부차기 승리팀을 선택해주세요.");
+          else {
+              // 무승부이고 수동 선택도 안 함
+              return alert("⚠️ 무승부입니다! 'Home 승' 또는 'Away 승' 버튼을 눌러 승자를 선택해주세요.");
           }
 
-          if (winningTeam) {
-              newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => { 
-                  if(m.id === editingMatch.nextMatchId) { 
-                      const isHomeSlot = Number(editingMatch.id.split('_M')[1]) % 2 === 0; 
-                      return isHomeSlot ? { ...m, home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner } : { ...m, away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner }; 
-                  } 
-                  return m; 
-              }) }));
+          // (B) 다음 라운드 진출 로직 (Flat Tree 구조 계산)
+          // newRounds[0].matches 안에 모든 경기가 다 들어있다고 가정
+          if (winningTeam && newRounds[0] && newRounds[0].matches) {
+              const allMatches = newRounds[0].matches;
+              const totalMatches = allMatches.length;
+              
+              // 현재 레벨(8강, 4강 등) 파악을 위한 초기값
+              // 예: 7경기면 첫 라운드는 4경기 (0~3 인덱스)
+              let levelSize = (totalMatches + 1) / 2; 
+              let startIndex = 0;
+
+              // 현재 매치 인덱스가 어느 레벨 구간에 있는지 찾기
+              while (currentMatchIndex >= startIndex + levelSize) {
+                  startIndex += levelSize;
+                  levelSize /= 2;
+                  
+                  // 무한 루프 방지
+                  if (levelSize < 1) break; 
+              }
+
+              // 다음 매치 인덱스 계산 공식
+              const nextMatchIndex = (startIndex + levelSize) + Math.floor((currentMatchIndex - startIndex) / 2);
+
+              console.log(`Advancing ${winningTeam.name} to Match Index: ${nextMatchIndex}`);
+
+              // 다음 경기가 존재하면 업데이트
+              if (allMatches[nextMatchIndex]) {
+                  const targetMatch = allMatches[nextMatchIndex];
+                  
+                  // 현재 위치가 짝수면 Home 슬롯, 홀수면 Away 슬롯
+                  const isHomeSlot = (currentMatchIndex - startIndex) % 2 === 0;
+
+                  if (isHomeSlot) {
+                      targetMatch.home = winningTeam.name;
+                      targetMatch.homeLogo = winningTeam.logo;
+                      targetMatch.homeOwner = winningTeam.owner;
+                  } else {
+                      targetMatch.away = winningTeam.name;
+                      targetMatch.awayLogo = winningTeam.logo;
+                      targetMatch.awayOwner = winningTeam.owner;
+                  }
+                  
+                  // 'TBD' 텍스트 제거 (UI 깔끔하게)
+                  if (targetMatch.home !== 'TBD' && targetMatch.away !== 'TBD') {
+                      targetMatch.matchLabel = targetMatch.matchLabel.replace(' (TBD)', '');
+                  }
+              }
           }
       }
 
@@ -123,7 +182,6 @@ export default function FootballLeagueApp() {
   const handleCreateSeason = async (name: string, type: string, mode: string, prize: number, prizesObj: any) => {
       if(!name) return alert("시즌 이름을 입력하세요.");
       const id = Date.now();
-      // 🔥 [수정] isActive: true -> status: 'ACTIVE' (타입 일치)
       const newSeason: any = { 
           id, name, type: type as any, leagueMode: mode as any, status: 'ACTIVE', 
           teams: [], rounds: [], prizes: prizesObj 
@@ -140,7 +198,6 @@ export default function FootballLeagueApp() {
           await updateDoc(doc(db, "users", editId), { nickname: name, photo });
           alert("오너 정보 수정 완료");
       } else {
-          // ID 충돌 방지를 위해 Firestore 자동 ID 사용 권장하지만, 기존 로직 유지
           await addDoc(collection(db, "users"), { id: Date.now(), nickname: name, photo });
           alert("새 오너 등록 완료");
       }
@@ -161,7 +218,7 @@ export default function FootballLeagueApp() {
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="relative">
-          <BannerSlider banners={banners || []} /> {/* 안전장치 추가 */}
+          <BannerSlider banners={banners || []} />
           <TopBar />
       </div>
 
