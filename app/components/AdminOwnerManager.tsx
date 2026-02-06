@@ -30,7 +30,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
     try {
       if (editId) {
         // 수정 모드
-        const ownerRef = doc(db, 'owners', editId);
+        const ownerRef = doc(db, 'users', editId);
         await updateDoc(ownerRef, { 
             nickname: name, 
             photo: photo,
@@ -39,21 +39,21 @@ export const AdminOwnerManager = ({ owners }: Props) => {
         alert('수정되었습니다!');
       } else {
         // 신규 등록 모드
-        await addDoc(collection(db, 'owners'), {
-          id: Date.now(), // 임시 숫자 ID
+        await addDoc(collection(db, 'users'), {
+          id: Date.now(),
           nickname: name,
           photo: photo,
           password: password,
-          win: 0, draw: 0, loss: 0 // 초기 전적
+          win: 0, draw: 0, loss: 0
         });
         alert('등록되었습니다!');
       }
       resetForm();
-      // 데이터 갱신을 위해 새로고침 (간편한 방법)
-      window.location.reload(); 
+      // 🔥 [수정] 새로고침 코드 삭제 (탭 유지됨)
+      // window.location.reload(); 
     } catch (e) {
       console.error(e);
-      alert('저장 중 오류가 발생했습니다.');
+      alert('저장 중 오류가 발생했습니다.\n(원인: DB 연결 문제 또는 컬렉션 이름 불일치)');
     } finally {
       setIsLoading(false);
     }
@@ -62,12 +62,24 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   // 오너 삭제
   const handleDelete = async (docId?: string) => {
     if (!docId) return;
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+
+    const message = 
+`정말 삭제하시겠습니까?
+
+[주의사항]
+해당 오너를 삭제할 경우:
+1. 진행 중인 시즌의 팀 배정 정보가 사라질 수 있습니다.
+2. 과거 경기 기록의 오너 정보가 'Unknown'으로 표시될 수 있습니다.
+
+그래도 진행하시겠습니까?`;
+
+    if (!confirm(message)) return;
 
     try {
-      await deleteDoc(doc(db, 'owners', docId));
+      await deleteDoc(doc(db, 'users', docId));
       alert('삭제되었습니다.');
-      window.location.reload();
+      // 🔥 [수정] 새로고침 코드 삭제 (탭 유지됨)
+      // window.location.reload();
     } catch (e) {
       console.error(e);
       alert('삭제 실패');
@@ -119,26 +131,26 @@ export const AdminOwnerManager = ({ owners }: Props) => {
         {owners.map(o => (
           <div 
             key={o.id} 
-            // 🔥 [여기가 핵심 수정] photo나 docId가 없을 때 빈 문자열('')로 처리하여 오류 방지
             onClick={() => { 
                 setEditId(o.docId || ''); 
                 setName(o.nickname); 
                 setPhoto(o.photo || ''); 
                 setPassword(o.password || '');
             }}
-            className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer border transition-colors ${editId === o.docId ? 'bg-purple-900/30 border-purple-500' : 'bg-slate-950 border-slate-800 hover:border-emerald-500'}`}
+            className={`relative p-3 rounded-xl flex items-center gap-3 cursor-pointer border transition-colors ${editId === o.docId ? 'bg-purple-900/30 border-purple-500' : 'bg-slate-950 border-slate-800 hover:border-emerald-500'}`}
           >
             <img src={o.photo || 'https://via.placeholder.com/40'} className="w-10 h-10 rounded-full object-cover bg-black" alt="" />
-            <div className="flex flex-col">
-                <span className="font-bold text-white">{o.nickname}</span>
+            <div className="flex flex-col pr-6"> 
+                <span className="font-bold text-white truncate">{o.nickname}</span>
                 {o.password && <span className="text-[10px] text-slate-500">pw: {o.password}</span>}
             </div>
             
             <button 
               onClick={(e) => { e.stopPropagation(); handleDelete(o.docId); }}
-              className="ml-auto w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-500/20 text-slate-600 hover:text-red-500 transition-colors"
+              className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full text-slate-600 hover:text-red-500 hover:bg-red-900/30 transition-colors text-xs font-bold"
+              title="삭제"
             >
-              🗑️
+              ✕
             </button>
           </div>
         ))}
