@@ -228,8 +228,9 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                                             </div>
 
                                             <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
-                                                <div className="w-24 h-24 relative mb-3 filter drop-shadow-2xl bg-white/5 rounded-full flex items-center justify-center">
-                                                    <img src={team.logo} className="w-20 h-20 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                                {/* 🔥 [수정] bg-white (완전 흰색), w-16 h-16 (로고 사이즈 축소) */}
+                                                <div className="w-24 h-24 relative mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
+                                                    <img src={team.logo} className="w-16 h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                                 </div>
                                                 <div className="text-center w-full px-2"><div className="font-black italic text-white text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
                                             </div>
