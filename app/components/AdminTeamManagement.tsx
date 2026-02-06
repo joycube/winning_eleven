@@ -5,17 +5,21 @@ import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from 'fireb
 import { League, MasterTeam, FALLBACK_IMG } from '../types'; 
 import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../utils/helpers'; 
 
+// 🔥 [수정] TierSelector 컴포넌트: isMini일 때 버튼 사이즈 및 레이아웃 최적화
 const TierSelector = ({ value, onChange, isMini = false }: { value: string, onChange: (t: string) => void, isMini?: boolean }) => {
     const tiers = ['S', 'A', 'B', 'C'];
     return (
-        <div className={`flex gap-1 w-full justify-between ${isMini ? 'mt-2 px-1' : ''}`}>
+        // isMini일 때 gap-1로 촘촘하게 배치하고 mt-2로 상단 여백 확보
+        <div className={`flex items-center justify-center w-full ${isMini ? 'gap-1 mt-2' : 'gap-1'}`}>
             {tiers.map(t => (
                 <button 
                     key={t} 
                     onClick={(e) => { e.stopPropagation(); onChange(t); }}
                     className={`font-bold transition-all border flex items-center justify-center ${
-                        // 🔥 [수정] isMini일 때 w-full 제거하고 고정 크기 또는 비율 유지
-                        isMini ? 'w-6 h-6 rounded text-[9px] p-0' : 'flex-1 py-2 rounded-lg text-xs'
+                        // 🔥 isMini일 때: w-6 h-6 고정 크기 (아이폰에서도 터치하기 적당함)
+                        isMini 
+                        ? 'w-6 h-6 rounded text-[10px] p-0 flex-shrink-0' 
+                        : 'flex-1 py-2 rounded-lg text-xs'
                     } ${
                         value === t 
                         ? getTierBadgeColor(t) + ' ring-1 ring-white' 
@@ -235,13 +239,15 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
             </div>
 
             <div className="space-y-8">
-                {/* 🔥 [수정] flex-wrap 추가하여 버튼이 넘칠 때 줄바꿈 처리 */}
+                {/* 🔥 [수정] flex-wrap을 유지하되, 버튼 영역을 'flex-1'으로 나누어 크기 동일하게 맞춤 */}
                 <div className="flex flex-wrap items-center bg-slate-950 p-2 rounded-lg border border-slate-800 sticky top-0 z-10 shadow-xl gap-2">
                     <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`h-9 px-4 text-xs rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
                     {selectedLeague ? (
+                         // 🔥 [수정] ml-auto로 우측 정렬하고, flex-1을 사용하여 버튼 크기 균등 분배 가능하도록 구조 변경
                          <div className="flex gap-2 ml-auto">
                              <button onClick={()=>handleBulkTier('C')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 C등급 변경</button>
-                             <button onClick={()=>setSelectedLeague('')} className="bg-slate-800 px-3 py-2 rounded-lg text-xs text-white border border-slate-700 hover:bg-slate-700">↩ 목록으로</button>
+                             {/* 🔥 [수정] 목록으로 버튼 텍스트 제거 및 뒤로가기 아이콘 적용 */}
+                             <button onClick={()=>setSelectedLeague('')} className="h-9 w-9 flex items-center justify-center bg-slate-800 rounded-lg text-white border border-slate-700 hover:bg-slate-700 font-bold">↩</button>
                          </div>
                     ) : <span className="text-xs text-slate-500 pr-2 ml-auto">리그를 선택하세요</span>}
                 </div>
