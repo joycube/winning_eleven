@@ -61,7 +61,7 @@ export interface Prizes {
 export interface Season {
   id: number;
   name: string;
-  type: 'LEAGUE' | 'TOURNAMENT';
+  type: 'LEAGUE' | 'TOURNAMENT' | 'CUP'; // 🔥 [수정] 빌드 오류 해결을 위해 'CUP' 추가
   leagueMode?: 'SINGLE' | 'DOUBLE';
   teams: Team[];
   rounds?: Round[];
