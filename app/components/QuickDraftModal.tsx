@@ -13,7 +13,6 @@ interface QuickDraftModalProps {
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
 export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
-    // 🔥 [핵심 1] dialog 태그를 제어하기 위한 ref 생성
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
     
@@ -28,15 +27,15 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     const [draftResults, setDraftResults] = useState<Team[]>([]);
     const [filteredCount, setFilteredCount] = useState(0);
 
-    // 🔥 [핵심 2] isOpen 상태에 따라 진짜 모달(showModal)을 열고 닫음
+    // isOpen 상태에 따라 진짜 모달(showModal)을 열고 닫음
     useEffect(() => {
         if (!mounted) return;
         const dialog = dialogRef.current;
         if (!dialog) return;
 
         if (isOpen) {
-            dialog.showModal(); // 브라우저 최상위 레이어에 강제로 띄움
-            document.body.style.overflow = 'hidden'; // 배경 스크롤 막기
+            dialog.showModal();
+            document.body.style.overflow = 'hidden';
             setStep('SETTINGS');
             setSelectedOwnerIds(owners.map(o => o.id));
             setDraftResults([]);
@@ -46,7 +45,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             document.body.style.overflow = 'unset';
         }
         
-        // ESC 키로 닫힐 때 처리
         const handleCancel = (e: Event) => {
             e.preventDefault();
             onClose();
@@ -101,32 +99,40 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     if (!mounted) return null;
 
     return (
-        // 🔥 [핵심 3] dialog 태그 사용 (배경 투명, 테두리 없음 설정 필수)
         <dialog 
             ref={dialogRef}
             className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl open:animate-in open:fade-in open:duration-300"
-            style={{ zIndex: 99999 }} // 혹시 모를 보험
+            style={{ zIndex: 99999 }}
         >
             {isOpen && (
-                <div className="w-full h-full flex items-center justify-center p-4">
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                        className={`w-full max-w-6xl h-[90vh] rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 flex flex-col ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}>
+                // 모바일 대응: h-[100dvh], p-2
+                <div className="w-full h-[100dvh] flex items-center justify-center p-2 md:p-4">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }} 
+                        animate={{ opacity: 1, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        // 모바일 대응: max-h-[85dvh], flex-col
+                        className={`w-full max-w-6xl max-h-[85dvh] flex flex-col rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}
+                    >
                         {step !== 'OPENING' && (
-                            <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                                <h2 className="text-2xl font-black italic text-white flex items-center gap-3 tracking-tighter">
-                                    <span className="text-emerald-400 text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK TEAM DRAFT
+                            // 헤더 고정 (flex-none)
+                            <div className="flex-none p-4 md:p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                                <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
+                                    <span className="text-emerald-400 text-2xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK DRAFT
                                 </h2>
-                                <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
+                                <button onClick={onClose} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
                             </div>
                         )}
-                        <div className="flex-1 relative overflow-hidden flex flex-col">
+                        
+                        {/* 내부 스크롤 (flex-1, min-h-0) */}
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col">
                             {step === 'SETTINGS' && (
-                                <div className="flex-1 flex flex-col p-8 overflow-y-auto custom-scrollbar">
+                                <div className="flex-1 flex flex-col p-4 md:p-8">
                                     <DraftSettings owners={owners} selectedOwnerIds={selectedOwnerIds} setSelectedOwnerIds={setSelectedOwnerIds} teamsPerOwner={teamsPerOwner} setTeamsPerOwner={setTeamsPerOwner} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterTiers={filterTiers} setFilterTiers={setFilterTiers} filteredCount={filteredCount} totalNeeded={selectedOwnerIds.length * teamsPerOwner} onStart={handleStartDraft} />
                                 </div>
                             )}
                             {step === 'OPENING' && (
-                                <div className="flex-1 flex items-center justify-center">
+                                <div className="flex-1 flex items-center justify-center h-full">
                                     <PackOpeningAnimation onOpen={() => setTimeout(() => setStep('RESULT'), 1500)} cardCount={draftResults.length} />
                                 </div>
                             )}
@@ -141,11 +147,10 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     );
 };
 
-// ... (하단 DraftSettings, PackOpeningAnimation, DraftResultView 컴포넌트는 기존 코드 그대로 두세요!)
-// 👇 아래 부분은 파일에서 지우지 말고 그대로 유지하면 됩니다.
-
+// =============================================================================
+// SUB-COMPONENT: DraftSettings (설정)
+// =============================================================================
 const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPerOwner, setTeamsPerOwner, filterCategory, setFilterCategory, filterTiers, setFilterTiers, filteredCount, totalNeeded, onStart }: any) => {
-    // ... (기존과 동일)
     const toggleSelection = (id: number, current: number[], setFn: any) => {
         if (current.includes(id)) setFn(current.filter(i => i !== id));
         else setFn([...current, id]);
@@ -175,7 +180,9 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
                 <div className="space-y-2"><label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">2. Teams per Owner</label><div className="flex items-center justify-between bg-slate-800 p-2 rounded-2xl border border-slate-700 h-[64px]"><button onClick={() => setTeamsPerOwner(Math.max(1, teamsPerOwner - 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">-</button><div className="flex flex-col items-center"><span className="text-2xl font-black text-white italic">{teamsPerOwner}</span><span className="text-[9px] text-slate-400 font-bold uppercase">Teams Each</span></div><button onClick={() => setTeamsPerOwner(Math.min(5, teamsPerOwner + 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">+</button></div></div>
                 <div className="space-y-2"><label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">3. Filter Options</label><div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-3"><div className="flex gap-2">{['ALL', 'CLUB', 'NATIONAL'].map(cat => (<button key={cat} onClick={() => toggleFilterWithAll(cat, filterCategory, setFilterCategory)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterCategory.includes(cat) ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{cat}</button>))}</div><div className="flex gap-2">{['ALL', 'S', 'A', 'B', 'C'].map(tier => (<button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterTiers.includes(tier) ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{tier === 'ALL' ? 'ALL' : tier}</button>))}</div><div className="pt-2 border-t border-slate-700 text-xs flex justify-between items-center"><span className="text-slate-500">Need: <strong className="text-white">{totalNeeded}</strong></span><span className={`font-bold ${filteredCount >= totalNeeded ? 'text-emerald-400' : 'text-red-400'}`}>Available: {filteredCount} Teams</span></div></div></div>
             </div>
+            
             <div className="flex-1 min-h-[20px]"></div>
+
             <button 
                 onClick={onStart} 
                 disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0} 
@@ -188,7 +195,9 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
     );
 };
 
-// ... PackOpeningAnimation, DraftResultView는 이전과 동일하게 유지 ...
+// =============================================================================
+// SUB-COMPONENT: PackOpeningAnimation (오프닝)
+// =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'EXPLODING' | 'DEALING'>('IDLE');
     const handleClick = () => { if (phase !== 'IDLE') return; setPhase('CHARGING'); setTimeout(() => setPhase('EXPLODING'), 800); setTimeout(() => { setPhase('DEALING'); onOpen(); }, 1200); };
@@ -209,6 +218,9 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
     );
 };
 
+// =============================================================================
+// SUB-COMPONENT: DraftResultView (결과 및 카드 플립)
+// =============================================================================
 const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
     const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
     const handleFlip = (index: number) => { if (!flippedIndices.includes(index)) setFlippedIndices(prev => [...prev, index]); };
