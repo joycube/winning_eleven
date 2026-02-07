@@ -13,6 +13,10 @@ interface QuickDraftModalProps {
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
 export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
+    // 🔥 [SSR 방지] 서버 사이드 렌더링 시 삭제 방지 코드 추가
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
+
     const [step, setStep] = useState<Step>('SETTINGS');
     const [selectedOwnerIds, setSelectedOwnerIds] = useState<number[]>([]);
     const [teamsPerOwner, setTeamsPerOwner] = useState<number>(2);
@@ -74,10 +78,12 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         setStep('OPENING');
     };
 
+    if (!mounted) return null; // SSR 방지
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overscroll-contain">
+        // 🔥 z-index를 9999로 높여서 맨 위로 올림
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overscroll-contain">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className={`w-full max-w-6xl h-[90vh] rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 flex flex-col ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}>
                 {step !== 'OPENING' && (
@@ -85,12 +91,14 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                         <h2 className="text-2xl font-black italic text-white flex items-center gap-3 tracking-tighter">
                             <span className="text-emerald-400 text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK TEAM DRAFT
                         </h2>
-                        <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center">✕</button>
+                        {/* 🔥 닫기 버튼 명시적으로 스타일 지정 */}
+                        <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold z-50 cursor-pointer border border-slate-600">✕</button>
                     </div>
                 )}
                 <div className="flex-1 relative overflow-hidden flex flex-col">
                     {step === 'SETTINGS' && (
-                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                        // 🔥 overflow-hidden을 flex로 바꿔서 버튼이 잘리지 않게 함
+                        <div className="flex-1 flex flex-col p-8 overflow-y-auto custom-scrollbar">
                             <DraftSettings owners={owners} selectedOwnerIds={selectedOwnerIds} setSelectedOwnerIds={setSelectedOwnerIds} teamsPerOwner={teamsPerOwner} setTeamsPerOwner={setTeamsPerOwner} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterTiers={filterTiers} setFilterTiers={setFilterTiers} filteredCount={filteredCount} totalNeeded={selectedOwnerIds.length * teamsPerOwner} onStart={handleStartDraft} />
                         </div>
                     )}
@@ -125,7 +133,7 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8 flex-1 flex flex-col">
             <div className="space-y-2">
                 <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Owners</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -141,7 +149,19 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
                 <div className="space-y-2"><label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">2. Teams per Owner</label><div className="flex items-center justify-between bg-slate-800 p-2 rounded-2xl border border-slate-700 h-[64px]"><button onClick={() => setTeamsPerOwner(Math.max(1, teamsPerOwner - 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">-</button><div className="flex flex-col items-center"><span className="text-2xl font-black text-white italic">{teamsPerOwner}</span><span className="text-[9px] text-slate-400 font-bold uppercase">Teams Each</span></div><button onClick={() => setTeamsPerOwner(Math.min(5, teamsPerOwner + 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">+</button></div></div>
                 <div className="space-y-2"><label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">3. Filter Options</label><div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-3"><div className="flex gap-2">{['ALL', 'CLUB', 'NATIONAL'].map(cat => (<button key={cat} onClick={() => toggleFilterWithAll(cat, filterCategory, setFilterCategory)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterCategory.includes(cat) ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{cat}</button>))}</div><div className="flex gap-2">{['ALL', 'S', 'A', 'B', 'C'].map(tier => (<button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterTiers.includes(tier) ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{tier === 'ALL' ? 'ALL' : tier}</button>))}</div><div className="pt-2 border-t border-slate-700 text-xs flex justify-between items-center"><span className="text-slate-500">Need: <strong className="text-white">{totalNeeded}</strong></span><span className={`font-bold ${filteredCount >= totalNeeded ? 'text-emerald-400' : 'text-red-400'}`}>Available: {filteredCount} Teams</span></div></div></div>
             </div>
-            <button onClick={onStart} disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale text-white font-black italic text-xl tracking-tighter uppercase rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20">{filteredCount < totalNeeded ? "Not Enough Teams!" : "⚡ Open The Packs ⚡"}</button>
+            
+            {/* 🔥 간격 확보용 Spacer */}
+            <div className="flex-1 min-h-[20px]"></div>
+
+            {/* 🔥 [버튼 텍스트] 여기에 텍스트가 있습니다! 강제로 흰색(!text-white) 적용 */}
+            <button 
+                onClick={onStart} 
+                disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0} 
+                className="w-full py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale !text-white font-black italic text-xl tracking-tighter uppercase rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20 relative z-10"
+                style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }} // 스타일 강제 적용
+            >
+                {filteredCount < totalNeeded ? "Not Enough Teams!" : "⚡ Open The Packs ⚡"}
+            </button>
         </div>
     );
 };
@@ -228,7 +248,6 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                                             </div>
 
                                             <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
-                                                {/* 🔥 [수정] bg-white (완전 흰색), w-16 h-16 (로고 사이즈 축소) */}
                                                 <div className="w-24 h-24 relative mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
                                                     <img src={team.logo} className="w-16 h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                                 </div>
@@ -248,8 +267,9 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                 </div>
             </div>
             <div className="flex-none p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-2 gap-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                <button onClick={onRetry} className="py-4 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 hover:text-white border border-slate-700">🔄 다시 뽑기</button>
-                <button onClick={onConfirm} className="py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 text-white font-black italic text-lg shadow-[0_0_20px_rgba(6,182,212,0.4)]">💾 팀 선정 확정</button>
+                {/* 🔥 [버튼 텍스트] 여기도 강제로 !text-white 적용 */}
+                <button onClick={onRetry} className="py-4 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 !text-white border border-slate-700">🔄 다시 뽑기</button>
+                <button onClick={onConfirm} className="py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 !text-white font-black italic text-lg shadow-[0_0_20px_rgba(6,182,212,0.4)]">💾 팀 선정 확정</button>
             </div>
         </div>
     );
