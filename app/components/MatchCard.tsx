@@ -83,7 +83,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         )}
 
-        {!isCompleted && match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && (
+        {/* 🔥 [수정] !isCompleted 조건 제거 -> 경기가 끝나도 승률 예측 바 노출 */}
+        {match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && (
             <div className="w-full mt-3 mb-2 px-1">
                 <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
                 <div className="flex items-center gap-2">
