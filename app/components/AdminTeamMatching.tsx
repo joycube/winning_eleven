@@ -140,8 +140,16 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
         if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
 
-        // 1. 팀 순서를 랜덤하게 섞어 새로운 대진이 나오도록 유도
-        const shuffledTeams = [...targetSeason.teams].sort(() => Math.random() - 0.5);
+        // 1. 팀 순서를 랜덤하게 섞어 새로운 대진이 나오도록 유도 (최신 정보 동기화 포함)
+        const refreshedTeams = targetSeason.teams.map(seasonTeam => {
+            const master = masterTeams.find(m => m.name === seasonTeam.name);
+            if (master) {
+                return { ...seasonTeam, logo: master.logo, tier: master.tier, region: master.region };
+            }
+            return seasonTeam;
+        });
+
+        const shuffledTeams = [...refreshedTeams].sort(() => Math.random() - 0.5);
         
         // 2. 라운드 정보가 없는 임시 시즌 객체 생성 (스케줄러가 새 데이터로 인식하도록)
         const tempSeason = { ...targetSeason, teams: shuffledTeams, rounds: [] };
@@ -149,7 +157,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         // 3. 스케줄 생성
         const rounds = generateRoundsLogic(tempSeason);
         
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds });
+        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
 
@@ -367,24 +375,35 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     <div className="flex gap-2">{hasSchedule ? (<><button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button><button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button></>) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}</div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                    {targetSeason.teams?.map(t => (
-                        <div key={t.id} className="flex flex-col items-center bg-slate-900/50 p-3 rounded-2xl border border-slate-800 relative group transition-all hover:bg-slate-800">
-                            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 p-2 mb-2 shadow-xl"><img src={t.logo} className="w-full h-full object-contain" alt="" /></div>
-                            <div className="w-full text-center">
-                                <p className="text-[10px] font-black italic tracking-tighter text-white truncate w-full uppercase">{t.name}</p>
-                                <div className="flex flex-col items-center gap-0.5 mt-1">
-                                    <span className="text-[9px] text-emerald-400 font-black italic tracking-tighter uppercase">{t.ownerName}</span>
-                                    <div className="flex items-center gap-1">
-                                        <span className="text-[8px] text-slate-500 font-black italic uppercase tracking-tighter truncate max-w-[50px]">{t.region}</span>
-                                        <span className={`text-[8px] px-1.5 rounded-full font-black italic ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
+                    {targetSeason.teams?.map(t => {
+                        // 🔥 [수정] masterTeams에서 최신 정보를 조회
+                        const master = masterTeams.find(m => m.name === t.name);
+                        const displayLogo = master ? master.logo : t.logo;
+                        const displayTier = master ? master.tier : t.tier;
+                        const displayRegion = master ? master.region : t.region;
+
+                        return (
+                            <div key={t.id} className="flex flex-col items-center bg-slate-900/50 p-3 rounded-2xl border border-slate-800 relative group transition-all hover:bg-slate-800">
+                                {/* 🔥 [수정] 최신 로고 표시 */}
+                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 p-2 mb-2 shadow-xl"><img src={displayLogo} className="w-full h-full object-contain" alt="" /></div>
+                                <div className="w-full text-center">
+                                    <p className="text-[10px] font-black italic tracking-tighter text-white truncate w-full uppercase">{t.name}</p>
+                                    <div className="flex flex-col items-center gap-0.5 mt-1">
+                                        <span className="text-[9px] text-emerald-400 font-black italic tracking-tighter uppercase">{t.ownerName}</span>
+                                        <div className="flex items-center gap-1">
+                                            {/* 🔥 [수정] 최신 Region 표시 */}
+                                            <span className="text-[8px] text-slate-500 font-black italic uppercase tracking-tighter truncate max-w-[50px]">{displayRegion}</span>
+                                            {/* 🔥 [수정] 최신 Tier 및 색상 표시 */}
+                                            <span className={`text-[8px] px-1.5 rounded-full font-black italic ${getTierBadgeColor(displayTier)}`}>{displayTier}</span>
+                                        </div>
                                     </div>
                                 </div>
+                                <button onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} className={`absolute top-2 right-2 font-bold p-1 transition-colors ${hasSchedule ? 'text-slate-800 cursor-not-allowed' : 'text-slate-600 hover:text-red-500'}`}>
+                                    {hasSchedule ? '🔒' : '✕'}
+                                </button>
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} className={`absolute top-2 right-2 font-bold p-1 transition-colors ${hasSchedule ? 'text-slate-800 cursor-not-allowed' : 'text-slate-600 hover:text-red-500'}`}>
-                                {hasSchedule ? '🔒' : '✕'}
-                            </button>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
