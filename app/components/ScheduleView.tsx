@@ -1,8 +1,7 @@
-// components/ScheduleView.tsx
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
-import { MatchCard } from './MatchCard'; // 🔥 여기서 MatchCard를 불러와야 합니다!
+import { MatchCard } from './MatchCard'; // 🔥 MatchCard 파일 연결!
 import { Season, Match, MasterTeam } from '../types'; 
 
 interface ScheduleViewProps {
@@ -14,7 +13,6 @@ interface ScheduleViewProps {
   historyData: any;
 }
 
-// 🔥 반드시 export const ScheduleView 여야 합니다!
 export const ScheduleView = ({ 
   seasons, viewSeasonId, setViewSeasonId, onMatchClick,
   activeRankingData, historyData 
@@ -75,16 +73,27 @@ export const ScheduleView = ({
                                 </h3>
                                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
+                                        const isBye = m.away === 'BYE' || m.away === 'BYE (부전승)' || m.status === 'BYE';
                                         const customMatchLabel = `${displayStageName} ${mIdx + 1}게임`;
+                                        const displayMatch = { ...m, matchLabel: customMatchLabel };
+
                                         return (
                                             <div key={m.id} className="relative">
                                                 <MatchCard 
-                                                    match={{ ...m, matchLabel: customMatchLabel }} 
+                                                    match={displayMatch} 
                                                     onClick={onMatchClick}
                                                     activeRankingData={activeRankingData}
                                                     historyData={historyData}
                                                     masterTeams={masterTeams} 
                                                 />
+                                                {isBye && (
+                                                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-10 pointer-events-none">
+                                                        <div className="bg-slate-900/90 text-emerald-400 text-xs font-bold px-4 py-2 rounded-full border border-emerald-500/50 shadow-2xl flex items-center gap-2">
+                                                            <span>✨</span>
+                                                            <span>{m.home} 부전승 진출!</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
