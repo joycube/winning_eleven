@@ -13,6 +13,7 @@ interface QuickDraftModalProps {
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
 export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
+    // 다이얼로그 제어용 Ref
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
     
@@ -56,6 +57,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         };
     }, [isOpen, mounted, owners, onClose]);
 
+    // 필터링된 팀 카운트 계산
     useEffect(() => {
         const count = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -65,6 +67,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         setFilteredCount(count);
     }, [filterCategory, filterTiers, masterTeams]);
 
+    // 드래프트 시작 로직
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -101,38 +104,52 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     return (
         <dialog 
             ref={dialogRef}
-            className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl open:animate-in open:fade-in open:duration-300"
+            className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl"
             style={{ zIndex: 99999 }}
         >
             {isOpen && (
-                // 모바일 대응: h-[100dvh], p-2
-                <div className="w-full h-[100dvh] flex items-center justify-center p-2 md:p-4">
+                // 🔥 [모바일 해결 핵심 1] 
+                // h-[100dvh]: 모바일 주소창 제외한 실제 높이
+                // items-end: 모바일에서는 바닥에 붙임 (Bottom Sheet)
+                // md:items-center: PC에서는 중앙 정렬
+                // p-0 md:p-4: 모바일은 꽉 차게, PC는 여백
+                <div className="w-full h-[100dvh] flex items-end md:items-center justify-center p-0 md:p-4">
+                    
                     <motion.div 
-                        initial={{ opacity: 0, scale: 0.95 }} 
-                        animate={{ opacity: 1, scale: 1 }} 
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        // 모바일 대응: max-h-[85dvh], flex-col
-                        className={`w-full max-w-6xl max-h-[85dvh] flex flex-col rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}
+                        // 애니메이션: 모바일은 아래에서 위로 등장 느낌
+                        initial={{ opacity: 0, y: 20, scale: 0.98 }} 
+                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                        exit={{ opacity: 0, y: 20, scale: 0.98 }}
+                        transition={{ duration: 0.3 }}
+
+                        // 🔥 [모바일 해결 핵심 2]
+                        // max-h-[85dvh]: 화면을 뚫지 않도록 최대 높이 제한
+                        // rounded-t-[2rem] rounded-b-none: 모바일은 위쪽만 둥글게 (바닥 밀착)
+                        // md:rounded-[2rem]: PC는 전체 둥글게
+                        className={`w-full max-w-6xl max-h-[85dvh] flex flex-col rounded-t-[2rem] rounded-b-none md:rounded-[2rem] shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}
                     >
                         {step !== 'OPENING' && (
-                            // 헤더 고정 (flex-none)
-                            <div className="flex-none p-4 md:p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                            // 헤더 (고정 영역)
+                            <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                                 <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
                                     <span className="text-emerald-400 text-2xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK DRAFT
                                 </h2>
-                                <button onClick={onClose} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
+                                <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
                             </div>
                         )}
                         
-                        {/* 내부 스크롤 (flex-1, min-h-0) */}
-                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col">
+                        {/* 🔥 [모바일 해결 핵심 3] 콘텐츠 영역 (스크롤) 
+                            min-h-0: 이게 있어야 flex 내부에서 스크롤이 정상 작동함 (중요!)
+                            pb-safe: 아이폰 하단 바 여백 확보
+                        */}
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-8 md:pb-0">
                             {step === 'SETTINGS' && (
-                                <div className="flex-1 flex flex-col p-4 md:p-8">
+                                <div className="flex-1 flex flex-col p-5 md:p-8">
                                     <DraftSettings owners={owners} selectedOwnerIds={selectedOwnerIds} setSelectedOwnerIds={setSelectedOwnerIds} teamsPerOwner={teamsPerOwner} setTeamsPerOwner={setTeamsPerOwner} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterTiers={filterTiers} setFilterTiers={setFilterTiers} filteredCount={filteredCount} totalNeeded={selectedOwnerIds.length * teamsPerOwner} onStart={handleStartDraft} />
                                 </div>
                             )}
                             {step === 'OPENING' && (
-                                <div className="flex-1 flex items-center justify-center h-full">
+                                <div className="flex-1 flex items-center justify-center h-full min-h-[400px]">
                                     <PackOpeningAnimation onOpen={() => setTimeout(() => setStep('RESULT'), 1500)} cardCount={draftResults.length} />
                                 </div>
                             )}
@@ -148,7 +165,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftSettings (설정)
+// SUB-COMPONENT: DraftSettings (설정 화면)
 // =============================================================================
 const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPerOwner, setTeamsPerOwner, filterCategory, setFilterCategory, filterTiers, setFilterTiers, filteredCount, totalNeeded, onStart }: any) => {
     const toggleSelection = (id: number, current: number[], setFn: any) => {
@@ -164,7 +181,7 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8 flex-1 flex flex-col">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-4 flex-1 flex flex-col">
             <div className="space-y-2">
                 <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Owners</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -196,7 +213,7 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
 };
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation (오프닝)
+// SUB-COMPONENT: PackOpeningAnimation (오프닝 애니메이션)
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'EXPLODING' | 'DEALING'>('IDLE');
@@ -219,7 +236,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftResultView (결과 및 카드 플립)
+// SUB-COMPONENT: DraftResultView (결과 화면)
 // =============================================================================
 const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
     const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
@@ -296,7 +313,6 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                 </div>
             </div>
             <div className="flex-none p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-2 gap-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                {/* 🔥 [버튼 텍스트] 여기도 강제로 !text-white 적용 */}
                 <button onClick={onRetry} className="py-4 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 !text-white border border-slate-700">🔄 다시 뽑기</button>
                 <button onClick={onConfirm} className="py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 !text-white font-black italic text-lg shadow-[0_0_20px_rgba(6,182,212,0.4)]">💾 팀 선정 확정</button>
             </div>
