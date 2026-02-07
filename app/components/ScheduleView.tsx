@@ -1,6 +1,8 @@
-import React from 'react';
-import { MatchCard } from './MatchCard'; // MatchCard 연결
-import { Season, Match } from '../types';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, query } from 'firebase/firestore'; // 🔥 [추가 1] DB 함수
+import { db } from '../firebase'; // 🔥 [추가 1] DB 설정
+import { MatchCard } from './MatchCard'; 
+import { Season, Match, MasterTeam } from '../types'; // 🔥 [추가 1] 타입
 
 interface ScheduleViewProps {
   seasons: Season[];
@@ -17,25 +19,41 @@ export const ScheduleView = ({
 }: ScheduleViewProps) => {
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
-  // 🔥 [추가] 스테이지(그룹) 명칭 한글 변환 함수
+  // 🔥 [추가 2] 리얼월드 데이터(랭킹/컨디션)를 담을 그릇 만들기
+  const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
+
+  // 🔥 [추가 2] DB에서 데이터 가져오기 (화면 켜질 때 1번 실행)
+  useEffect(() => {
+    const fetchMasterTeams = async () => {
+      try {
+        const q = query(collection(db, 'master_teams'));
+        const querySnapshot = await getDocs(q);
+        const teams = querySnapshot.docs.map(doc => ({
+          id: doc.data().id,
+          ...doc.data()
+        })) as MasterTeam[];
+        setMasterTeams(teams); // 데이터 저장!
+      } catch (error) {
+        console.error("Error fetching master teams:", error);
+      }
+    };
+    fetchMasterTeams();
+  }, []);
+
+  // 스테이지(그룹) 명칭 한글 변환 함수 (기존 유지)
   const getKoreanStageName = (stage: string) => {
     const s = stage.toUpperCase();
-    
-    // 토너먼트 명칭 매핑
     if (s.includes('ROUND OF 32') || s.includes('32')) return '32강';
     if (s.includes('ROUND OF 16') || s.includes('16')) return '16강';
     if (s.includes('QUARTER') || s.includes('8')) return '8강';
-    if (s.includes('SEMI') || s.includes('4')) return '준결승'; // 4강 -> 준결승
+    if (s.includes('SEMI') || s.includes('4')) return '준결승';
     if (s.includes('THIRD')) return '3·4위전';
     if (s.includes('FINAL')) return '결승';
-    
-    // 리그 명칭 매핑 (ROUND 1 -> 1라운드)
     if (s.includes('ROUND')) {
-        const num = s.replace(/[^0-9]/g, ''); // 숫자만 추출
+        const num = s.replace(/[^0-9]/g, '');
         return `${num}라운드`;
     }
-    
-    return stage; // 매칭 안되면 원본 반환
+    return stage;
   };
 
   return (
@@ -52,28 +70,21 @@ export const ScheduleView = ({
             const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
 
             return (
-                <div key={rIdx} className="space-y-6"> {/* 스테이지 간 간격 확보 */}
+                <div key={rIdx} className="space-y-6">
                     {uniqueStages.map((stageName) => {
-                        // 🔥 [수정 1-1] 게임 그룹 명칭 한글화 (ex: 8강, 1라운드)
                         const displayStageName = getKoreanStageName(stageName);
                         
                         return (
                             <div key={stageName} className="space-y-2">
-                                {/* 🔥 헤더 분리: 한글 명칭 적용 */}
                                 <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">
                                     {displayStageName}
                                 </h3>
                                 
-                                {/* 해당 스테이지에 속한 경기만 필터링하여 1단 리스트로 출력 */}
                                 <div className="grid md:grid-cols-1 gap-2">
                                     {r.matches
                                         .filter(m => m.stage === stageName)
                                         .map((m, mIdx) => {
-                                            // 🔥 [수정 2] 부전승 여부 체크
                                             const isBye = m.away === 'BYE' || m.away === 'BYE (부전승)' || m.status === 'BYE';
-
-                                            // 🔥 [수정 1-2] 게임 명칭 생성 (ex: 8강 1게임, 1라운드 2게임)
-                                            // 기존 m.matchLabel 대신 화면 표시용 라벨을 덮어씌움
                                             const customMatchLabel = `${displayStageName} ${mIdx + 1}게임`;
                                             const displayMatch = { ...m, matchLabel: customMatchLabel };
 
@@ -84,9 +95,10 @@ export const ScheduleView = ({
                                                         onClick={onMatchClick}
                                                         activeRankingData={activeRankingData}
                                                         historyData={historyData}
+                                                        // 🔥 [추가 3] 드디어 데이터를 넘겨줍니다! 이제 뜹니다!
+                                                        masterTeams={masterTeams} 
                                                     />
                                                     
-                                                    {/* 🔥 [수정 2] 부전승 코멘터리 노출 (오버레이) */}
                                                     {isBye && (
                                                         <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-10 pointer-events-none">
                                                             <div className="bg-slate-900/90 text-emerald-400 text-xs font-bold px-4 py-2 rounded-full border border-emerald-500/50 shadow-2xl flex items-center gap-2">

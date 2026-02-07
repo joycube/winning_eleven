@@ -6,10 +6,13 @@ import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
 import { AdminBannerManager } from './AdminBannerManager';
 import { AdminSeasonCreate } from './AdminSeasonCreate';
 import { AdminOwnerManager } from './AdminOwnerManager';
-import { AdminTeamMatching } from './AdminTeamMatching'; // 새로 만든 것
+import { AdminTeamMatching } from './AdminTeamMatching';
+// 🔥 [추가] 현실 데이터 매니저 컴포넌트 import
+import { AdminRealWorldManager } from './AdminRealWorldManager';
 
 interface AdminViewProps {
-    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS';
+    // 🔥 [수정] 'REAL' 탭 타입 추가
+    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL';
     setAdminTab: (tab: any) => void;
     seasons: Season[];
     owners: Owner[];
@@ -17,8 +20,8 @@ interface AdminViewProps {
     masterTeams: MasterTeam[];
     banners: Banner[];
     onAdminLogin: (pw: string) => boolean;
-    onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void; // legacy support
-    onSaveOwner: (name: string, photo: string, editId: string | null) => void; // legacy support
+    onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void; 
+    onSaveOwner: (name: string, photo: string, editId: string | null) => void; 
     onNavigateToSchedule: (seasonId: number) => void;
 }
 
@@ -42,7 +45,6 @@ export const AdminView = ({
         } else alert("비밀번호가 일치하지 않습니다.");
     };
 
-    // [추가] 엔터키 입력 감지 핸들러
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             handleLogin();
@@ -64,7 +66,6 @@ export const AdminView = ({
 
     if (!adminUnlocked) return <div className="flex flex-col items-center justify-center py-20 space-y-4"><div className="text-4xl animate-bounce">🔒</div><input type="password" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={handleKeyDown} className="bg-slate-950 border border-slate-700 p-3 rounded-xl text-center text-white" placeholder="Password" /><button onClick={handleLogin} className="bg-slate-800 px-6 py-2 rounded-xl font-bold text-emerald-400">LOGIN</button></div>;
 
-    // 1. 시즌 선택 또는 메뉴 선택 핸들러
     const handleTabChange = (val: string) => {
         setAdminTab(isNaN(Number(val)) ? val : Number(val));
     };
@@ -77,6 +78,8 @@ export const AdminView = ({
                 <option value="TEAMS">🛡️ Team Management</option>
                 <option value="OWNER">👤 Owner Management</option>
                 <option value="BANNER">🖼️ Banner Management</option>
+                {/* 🔥 [추가] 현실 데이터 관리 탭 옵션 */}
+                <option value="REAL">🌏 Real-World Data Patch</option>
                 <optgroup label="Select Season to Manage">
                     {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
                 </optgroup>
@@ -87,6 +90,9 @@ export const AdminView = ({
             {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
             {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
             {adminTab === 'NEW' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
+            
+            {/* 🔥 [추가] 현실 데이터 매니저 렌더링 */}
+            {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
 
             {typeof adminTab === 'number' && (() => {
                 const targetSeason = seasons.find(s => s.id === adminTab);
@@ -100,7 +106,6 @@ export const AdminView = ({
                                 <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-900/80 px-3 py-1 rounded text-xs font-bold hover:bg-red-700 text-red-200">Season Delete</button>
                             </div>
                         </div>
-                        {/* 🔥 핵심: 팀 매칭 기능을 전용 컴포넌트로 위임 */}
                         <AdminTeamMatching 
                             targetSeason={targetSeason}
                             owners={owners}

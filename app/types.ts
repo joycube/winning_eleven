@@ -93,6 +93,9 @@ export interface MasterTeam {
   region: string;
   tier: string;
   category: 'CLUB' | 'NATIONAL';
+  // 🔥 [추가] 현실 반영 데이터 (순위 및 컨디션)
+  real_rank?: number;
+  condition?: string;
 }
 
 export interface Banner {
