@@ -6,6 +6,21 @@ interface BannerSliderProps {
   banners: Banner[];
 }
 
+// 🔥 [추가] 유튜브 ID 추출 헬퍼 함수 (다양한 URL 포맷 대응)
+const getYouTubeId = (url: string | undefined) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+};
+
+// 🔥 [추가] 유튜브 썸네일 추출 헬퍼 함수 (어드민 리스트 등에서 사용 가능)
+export const getYouTubeThumbnail = (url: string) => {
+    const vId = getYouTubeId(url);
+    if (vId) return `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
+    return url; // 유튜브가 아니면 원래 URL 반환
+};
+
 export const BannerSlider = ({ banners }: BannerSliderProps) => {
   const [bannerIdx, setBannerIdx] = useState<number>(0); 
   const [isBannerInitialized, setIsBannerInitialized] = useState(false);
@@ -13,66 +28,53 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
   const [touchEnd, setTouchEnd] = useState(0);
 
   const renderBannerContent = (b: Banner) => {
-    // URL이 없는 경우 대비
     const url = b.url || '';
+    const vId = getYouTubeId(url); // 🔥 [수정] 헬퍼 함수 사용하여 ID 추출 안정화
 
-    if (url.includes('youtube') || url.includes('youtu.be')) {
-        let vId = url.split('v=')[1];
-        
-        // 🔥 [수정] .pop() 결과가 undefined일 수 있으므로 || '' 추가하여 타입 에러 해결
-        if (!vId && url.includes('youtu.be')) {
-            vId = url.split('/').pop() || '';
-        }
-        
-        if (vId && vId.includes('&')) {
-            vId = vId.split('&')[0];
-        }
-        
-        // vId 추출 실패 시 렌더링 안 함
-        if (!vId) return null;
-
-        const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1`;
+    if (vId) {
+        // 🔥 [수정] 유튜브 영상 재생을 위한 Embed URL 구성 (자동재생, 음소거 필수)
+        const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
         
         return (
-            <div className="w-full h-full bg-black">
+            <div className="w-full h-full bg-black relative">
                  <iframe 
                     src={embedUrl} 
                     className="w-full h-full object-cover pointer-events-none opacity-60" 
-                    allow="autoplay; encrypted-media" 
+                    allow="autoplay; encrypted-media; gyroscope; picture-in-picture" 
                     title={b.description || 'Banner Video'} 
                  />
+                 {/* 터치 스크롤 등을 위한 오버레이 */}
                  <div className="absolute inset-0 z-20" />
             </div>
         );
     } else {
+        // 🔥 [수정] 일반 이미지의 경우 그대로 노출
         return <img src={url} className="w-full h-full object-cover opacity-60" alt={b.description || 'Banner'} />;
     }
   };
 
   const sortedBannersDisplay = useMemo(() => {
       if (!banners) return [];
-      return [...banners].sort((a,b) => {
-        const urlA = a.url || '';
-        const urlB = b.url || '';
-        const aIsVid = urlA.includes('youtube') || urlA.includes('youtu.be');
-        const bIsVid = urlB.includes('youtube') || urlB.includes('youtu.be');
-        return (aIsVid === bIsVid) ? 0 : aIsVid ? -1 : 1;
-    });
+      // 🔥 [수정] "아무 영상이나 먼저 노출 후 랜덤" 요구사항을 위해 강제 정렬 로직 제거
+      // 원본 배열 순서를 유지하거나 섞어서 사용해야 인덱스 관리가 용이함
+      return [...banners];
   }, [banners]);
 
   useEffect(() => {
     if (!sortedBannersDisplay || sortedBannersDisplay.length === 0) return;
 
+    // 🔥 [수정] 초기 진입 시 로직: 영상이 있으면 영상 먼저 랜덤 노출
     if (!isBannerInitialized) {
         const videoIndices = sortedBannersDisplay.map((b, i) => {
-            const url = b.url || '';
-            return (url.includes('youtube') || url.includes('youtu.be')) ? i : -1;
+            return getYouTubeId(b.url) ? i : -1;
         }).filter(i => i !== -1);
 
         if (videoIndices.length > 0) {
+            // 영상이 하나라도 있으면 그 중 하나 랜덤 선택
             const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
             setBannerIdx(randomVideoIdx);
         } else {
+            // 영상 없으면 전체 중 랜덤
             setBannerIdx(Math.floor(Math.random() * sortedBannersDisplay.length));
         }
         setIsBannerInitialized(true);
@@ -82,12 +84,15 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
     const currentBanner = sortedBannersDisplay[bannerIdx];
     if (!currentBanner) return;
 
-    const url = currentBanner.url || '';
-    const isVideo = url.includes('youtube') || url.includes('youtu.be');
+    const isVideo = !!getYouTubeId(currentBanner.url);
+    // 🔥 [수정] 영상은 15초, 이미지는 5초 노출
     const delay = isVideo ? 15000 : 5000; 
 
     const t = setTimeout(() => {
+        // 🔥 [수정] 이후에는 전체 배너 중 랜덤 노출
         let nextIdx = Math.floor(Math.random() * sortedBannersDisplay.length);
+        
+        // 배너가 여러 개일 경우, 같은 배너가 연속으로 나오는 것 방지 (선택 사항)
         if (sortedBannersDisplay.length > 1 && nextIdx === bannerIdx) {
             nextIdx = (nextIdx + 1) % sortedBannersDisplay.length;
         }
@@ -115,7 +120,7 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
         onTouchEnd={handleTouchEnd}
     >
         {sortedBannersDisplay.length > 0 ? sortedBannersDisplay.map((b, i) => (
-            <div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
+            <div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === bannerIdx ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
                 {renderBannerContent(b)}
             </div>
         )) : null}
