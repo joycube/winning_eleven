@@ -135,10 +135,20 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams, rounds: updatedRounds });
     };
 
+    // 🔥 [수정] 스케줄 생성 및 재생성(Re-GEN) 로직
     const handleGenerateSchedule = async (isRegen = false) => {
         if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
         if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
-        const rounds = generateRoundsLogic(targetSeason);
+
+        // 1. 팀 순서를 랜덤하게 섞어 새로운 대진이 나오도록 유도
+        const shuffledTeams = [...targetSeason.teams].sort(() => Math.random() - 0.5);
+        
+        // 2. 라운드 정보가 없는 임시 시즌 객체 생성 (스케줄러가 새 데이터로 인식하도록)
+        const tempSeason = { ...targetSeason, teams: shuffledTeams, rounds: [] };
+
+        // 3. 스케줄 생성
+        const rounds = generateRoundsLogic(tempSeason);
+        
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds });
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
