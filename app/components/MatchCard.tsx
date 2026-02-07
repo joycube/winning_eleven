@@ -9,7 +9,7 @@ interface MatchCardProps {
   onClick: (m: Match) => void;
   activeRankingData?: any; 
   historyData?: any;
-  masterTeams?: MasterTeam[];
+  masterTeams?: MasterTeam[]; // 🔥 데이터 받기
 }
 
 export const MatchCard = ({ match, onClick, activeRankingData, historyData, masterTeams = [] }: MatchCardProps) => {
@@ -23,6 +23,54 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   const prediction = getPrediction(match.home, match.away, activeRankingData, historyData, masterTeams);
   const isCompleted = match.status === 'COMPLETED';
 
+  // 1. 팀 정보 찾기
+  const getTeamMasterInfo = (teamName: string) => {
+    if (!masterTeams || masterTeams.length === 0) return undefined;
+    let found = masterTeams.find(t => t.name === teamName);
+    if (!found) {
+        const cleanTarget = teamName.replace(/\s+/g, '').toLowerCase();
+        found = masterTeams.find(t => t.name.replace(/\s+/g, '').toLowerCase() === cleanTarget);
+    }
+    return found;
+  };
+
+  const homeMaster = getTeamMasterInfo(match.home);
+  const awayMaster = getTeamMasterInfo(match.away);
+
+  // 2. 랭킹 뱃지 (심플 버전)
+  const getRankBadge = (rank?: number) => {
+    if (!rank || rank <= 0) return null;
+    let colorClass = 'bg-slate-800 text-slate-400 border-slate-600';
+    if (rank === 1) colorClass = 'bg-yellow-500 text-black border-yellow-300 font-bold';
+    else if (rank === 2) colorClass = 'bg-slate-300 text-black border-white font-bold';
+    else if (rank === 3) colorClass = 'bg-amber-600 text-white border-amber-400 font-bold';
+    return (
+      <span className={`ml-1 px-1.5 py-[1px] rounded-[4px] border text-[8px] shadow-sm leading-none ${colorClass}`}>
+        R.{rank}
+      </span>
+    );
+  };
+
+  // 3. 컨디션 화살표
+  const getConditionArrow = (condition?: string) => {
+    if (!condition) return null;
+    let arrow = '';
+    let colorClass = '';
+    switch (condition) {
+      case 'A': arrow = '↑'; colorClass = 'text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,1)]'; break; 
+      case 'B': arrow = '↗'; colorClass = 'text-teal-400'; break;    
+      case 'C': arrow = '→'; colorClass = 'text-slate-400'; break;   
+      case 'D': arrow = '↘'; colorClass = 'text-orange-400'; break;  
+      case 'E': arrow = '↓'; colorClass = 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,1)]'; break;    
+      default: return null;
+    }
+    return (
+      <span className={`w-4 h-4 flex items-center justify-center bg-slate-900 rounded-full border border-slate-700 shadow-sm ml-1`}>
+        <span className={`text-[10px] font-black ${colorClass}`}>{arrow}</span>
+      </span>
+    );
+  };
+
   return (
     <div 
       onClick={() => onClick(match)} 
@@ -33,8 +81,14 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         </div>
 
         <div className="flex justify-between items-center">
+            {/* HOME TEAM */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                {/* 🔥 뱃지 추가 (기존 디자인 유지) */}
+                <div className="flex items-center justify-center h-3">
+                    {getRankBadge(homeMaster?.real_rank)}
+                    {getConditionArrow(homeMaster?.condition)}
+                </div>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.home}</span>
                 <span className="text-[9px] text-slate-500">{match.homeOwner}</span>
             </div>
@@ -51,8 +105,14 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                 )}
             </div>
 
+            {/* AWAY TEAM */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                {/* 🔥 뱃지 추가 */}
+                <div className="flex items-center justify-center h-3">
+                    {getRankBadge(awayMaster?.real_rank)}
+                    {getConditionArrow(awayMaster?.condition)}
+                </div>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.away}</span>
                 <span className="text-[9px] text-slate-500">{match.awayOwner}</span>
             </div>
