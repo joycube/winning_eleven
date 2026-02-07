@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom'; // 👈 1. 이거 필수 추가!
 import { motion, AnimatePresence } from 'framer-motion';
 import { Owner, MasterTeam, Team, FALLBACK_IMG } from '../types';
 
@@ -13,7 +14,7 @@ interface QuickDraftModalProps {
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
 export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
-    // 🔥 [SSR 방지] 서버 사이드 렌더링 시 삭제 방지 코드 추가
+    // SSR 방지 및 Portal용 마운트 체크
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
 
@@ -78,11 +79,11 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         setStep('OPENING');
     };
 
-    if (!mounted) return null; // SSR 방지
+    if (!mounted) return null;
     if (!isOpen) return null;
 
-    return (
-        // 🔥 z-index를 9999로 높여서 맨 위로 올림
+    // 👇 2. createPortal로 감싸서 body로 텔레포트! (부모 스타일 무시)
+    return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overscroll-contain">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className={`w-full max-w-6xl h-[90vh] rounded-3xl shadow-2xl transition-colors duration-500 border border-slate-700 flex flex-col ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}>
@@ -91,13 +92,11 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                         <h2 className="text-2xl font-black italic text-white flex items-center gap-3 tracking-tighter">
                             <span className="text-emerald-400 text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK TEAM DRAFT
                         </h2>
-                        {/* 🔥 닫기 버튼 명시적으로 스타일 지정 */}
                         <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold z-50 cursor-pointer border border-slate-600">✕</button>
                     </div>
                 )}
                 <div className="flex-1 relative overflow-hidden flex flex-col">
                     {step === 'SETTINGS' && (
-                        // 🔥 overflow-hidden을 flex로 바꿔서 버튼이 잘리지 않게 함
                         <div className="flex-1 flex flex-col p-8 overflow-y-auto custom-scrollbar">
                             <DraftSettings owners={owners} selectedOwnerIds={selectedOwnerIds} setSelectedOwnerIds={setSelectedOwnerIds} teamsPerOwner={teamsPerOwner} setTeamsPerOwner={setTeamsPerOwner} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterTiers={filterTiers} setFilterTiers={setFilterTiers} filteredCount={filteredCount} totalNeeded={selectedOwnerIds.length * teamsPerOwner} onStart={handleStartDraft} />
                         </div>
@@ -112,10 +111,12 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                     )}
                 </div>
             </motion.div>
-        </div>
+        </div>,
+        document.body // 👈 3. 텔레포트 목적지는 바로 여기!
     );
 };
 
+// ... (DraftSettings, PackOpeningAnimation, DraftResultView 컴포넌트들은 그대로 두세요. 수정할 필요 없음!)
 // =============================================================================
 // SUB-COMPONENT: DraftSettings (설정)
 // =============================================================================
