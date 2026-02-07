@@ -1,7 +1,8 @@
+// components/ScheduleView.tsx
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
-import { MatchCard } from './MatchCard'; // 🔥 MatchCard 파일 연결!
+import { MatchCard } from './MatchCard'; // MatchCard 파일 불러오기
 import { Season, Match, MasterTeam } from '../types'; 
 
 interface ScheduleViewProps {
@@ -13,6 +14,7 @@ interface ScheduleViewProps {
   historyData: any;
 }
 
+// 🔥 핵심: 여기 이름이 반드시 'ScheduleView' 여야 합니다!
 export const ScheduleView = ({ 
   seasons, viewSeasonId, setViewSeasonId, onMatchClick,
   activeRankingData, historyData 
@@ -20,6 +22,7 @@ export const ScheduleView = ({
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
 
+  // DB에서 팀 정보 가져오기
   useEffect(() => {
     const fetchMasterTeams = async () => {
       try {
@@ -39,16 +42,11 @@ export const ScheduleView = ({
 
   const getKoreanStageName = (stage: string) => {
     const s = stage.toUpperCase();
-    if (s.includes('ROUND OF 32') || s.includes('32')) return '32강';
-    if (s.includes('ROUND OF 16') || s.includes('16')) return '16강';
-    if (s.includes('QUARTER') || s.includes('8')) return '8강';
-    if (s.includes('SEMI') || s.includes('4')) return '준결승';
-    if (s.includes('THIRD')) return '3·4위전';
+    if (s.includes('32')) return '32강';
+    if (s.includes('16')) return '16강';
+    if (s.includes('8')) return '8강';
+    if (s.includes('4')) return '준결승';
     if (s.includes('FINAL')) return '결승';
-    if (s.includes('ROUND')) {
-        const num = s.replace(/[^0-9]/g, '');
-        return `${num}라운드`;
-    }
     return stage;
   };
 
@@ -73,27 +71,16 @@ export const ScheduleView = ({
                                 </h3>
                                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        const isBye = m.away === 'BYE' || m.away === 'BYE (부전승)' || m.status === 'BYE';
-                                        const customMatchLabel = `${displayStageName} ${mIdx + 1}게임`;
-                                        const displayMatch = { ...m, matchLabel: customMatchLabel };
-
+                                        const customMatchLabel = `${displayStageName} ${mIdx + 1}경기`;
                                         return (
                                             <div key={m.id} className="relative">
                                                 <MatchCard 
-                                                    match={displayMatch} 
+                                                    match={{ ...m, matchLabel: customMatchLabel }} 
                                                     onClick={onMatchClick}
                                                     activeRankingData={activeRankingData}
                                                     historyData={historyData}
                                                     masterTeams={masterTeams} 
                                                 />
-                                                {isBye && (
-                                                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-10 pointer-events-none">
-                                                        <div className="bg-slate-900/90 text-emerald-400 text-xs font-bold px-4 py-2 rounded-full border border-emerald-500/50 shadow-2xl flex items-center gap-2">
-                                                            <span>✨</span>
-                                                            <span>{m.home} 부전승 진출!</span>
-                                                        </div>
-                                                    </div>
-                                                )}
                                             </div>
                                         );
                                     })}
