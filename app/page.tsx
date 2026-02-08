@@ -22,6 +22,9 @@ import { MatchEditModal } from './components/MatchEditModal';
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 
+// 🔥 [핵심 추가] 승률 박제 도우미 함수 import
+import { calculateMatchSnapshot } from './utils/predictor';
+
 export default function FootballLeagueApp() {
   // 1. 데이터 로딩
   const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
@@ -83,6 +86,16 @@ export default function FootballLeagueApp() {
       let currentRoundIndex = -1;
       let currentMatchIndex = -1; // 전체 배열에서의 절대 인덱스
 
+      // 🔥 [추가] 승률 박제 로직 (DB 저장용 스냅샷 생성)
+      // 현재 랭킹, 전적, 마스터 팀 정보를 활용하여 "이 경기 시점의 예측 승률"을 계산합니다.
+      const predictionSnapshot = calculateMatchSnapshot(
+          editingMatch.home,
+          editingMatch.away,
+          activeRankingData, // 현재 시즌 랭킹 데이터
+          historyData,       // 역대 전적 데이터
+          masterTeams        // 마스터 팀 정보
+      );
+
       newRounds = newRounds.map((r, rIdx) => ({
           ...r,
           matches: r.matches.map((m, mIdx) => {
@@ -93,7 +106,11 @@ export default function FootballLeagueApp() {
                       ...m, 
                       homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
                       homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-                      homeAssists: records.homeAssists, awayAssists: records.awayAssists
+                      homeAssists: records.homeAssists, awayAssists: records.awayAssists,
+
+                      // 🔥 [추가] 계산된 승률을 DB에 영구 저장 (박제)
+                      homePredictRate: predictionSnapshot.homePredictRate,
+                      awayPredictRate: predictionSnapshot.awayPredictRate
                   };
               }
               return m;

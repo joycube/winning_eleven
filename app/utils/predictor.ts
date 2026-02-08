@@ -106,7 +106,7 @@ export const getPrediction = (
   const awayRealScore = getRealWorldScore(awayTeam.name, masterTeams);
 
   // ----------------------------------------------------
-  // D. 최종 파워 스코어 합산
+  // D. 최종 파워 스코어 합산 (가중치 적용)
   // ----------------------------------------------------
   const calculateTotalPower = (owner: number, squad: number, real: number) => {
     return (owner * WEIGHTS.OWNER) + (squad * WEIGHTS.SQUAD) + (real * WEIGHTS.REAL);
@@ -116,13 +116,21 @@ export const getPrediction = (
   const awayPower = calculateTotalPower(awayOwnerScore, awaySquadScore, awayRealScore);
 
   // ----------------------------------------------------
-  // E. 승률 백분율 변환
+  // E. [수정됨] 승률 격차(Gap) 기반 계산 (엑셀 로직 반영)
   // ----------------------------------------------------
-  const totalPower = homePower + awayPower;
+  // 기존 비율 방식(Ratio)은 격차가 너무 작게 나옵니다.
+  // 따라서 (홈팀 점수 - 원정팀 점수) 격차를 구한 뒤, 기본 50%에서 가감합니다.
   
-  if (totalPower === 0) return { hRate: 50, aRate: 50 };
+  const powerDiff = homePower - awayPower; 
+  // powerDiff가 양수면 홈 우세, 음수면 원정 우세
+  
+  // 🔥 격차 증폭 계수 (Sensitivity): 2.0
+  // 점수 차이가 1점 날 때마다 승률이 2%씩 변동되도록 설정
+  // (예: 전력차가 10점 나면 승률은 50+20 = 70%가 됨)
+  let hRate = 50 + (powerDiff * 2.0);
 
-  let hRate = Math.round((homePower / totalPower) * 100);
+  // 정수로 반올림
+  hRate = Math.round(hRate);
   let aRate = 100 - hRate;
 
   // 극단값 보정 (15% ~ 85%) - 스포츠의 의외성 반영
@@ -130,4 +138,40 @@ export const getPrediction = (
   if (hRate < 15) { hRate = 15; aRate = 85; }
 
   return { hRate, aRate };
+};
+
+/**
+ * 🔥 [추가] DB 저장용 승률 스냅샷 생성 함수
+ */
+export const calculateMatchSnapshot = (
+  homeName: string,
+  awayName: string,
+  activeRankingData: any, 
+  historyData: any,
+  masterTeams: any[] 
+) => {
+  if (
+    homeName === 'BYE' || 
+    awayName === 'BYE' || 
+    homeName === 'TBD' || 
+    awayName === 'TBD'
+  ) {
+    return {
+      homePredictRate: 0,
+      awayPredictRate: 0
+    };
+  }
+
+  const { hRate, aRate } = getPrediction(
+    homeName, 
+    awayName, 
+    activeRankingData, 
+    historyData, 
+    masterTeams
+  );
+
+  return {
+    homePredictRate: hRate,
+    awayPredictRate: aRate
+  };
 };
