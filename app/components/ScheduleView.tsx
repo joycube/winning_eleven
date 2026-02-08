@@ -40,13 +40,30 @@ export const ScheduleView = ({
     fetchMasterTeams();
   }, []);
 
-  const getKoreanStageName = (stage: string) => {
+  // 🔥 [수정] 시즌 타입과 경기 수를 모두 고려한 명칭 변환 함수
+  const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
     const s = stage.toUpperCase();
-    if (s.includes('32')) return '32강';
-    if (s.includes('16')) return '16강';
-    if (s.includes('8')) return '8강';
-    if (s.includes('4')) return '준결승';
-    if (s.includes('FINAL')) return '결승';
+    
+    // 1. 리그(LEAGUE)인 경우: 경기 수 계산 안 함, 그냥 라운드 표기
+    if (seasonType === 'LEAGUE') {
+        // Round와 숫자 사이 공백 추가
+        return stage.replace(/ROUND/i, '라운드 ').replace(/GAME/i, '경기');
+    }
+
+    // 2. 토너먼트(TOURNAMENT, CUP)인 경우: 경기 수 역산 로직 적용
+    // (1) 텍스트에 명확한 힌트가 있는 경우 우선 적용
+    if (s.includes('34') || s.includes('3RD')) return '🥉 3·4위전';
+    if (s === 'FINAL') return '🏆 결승전';
+    if (s.includes('SEMI')) return '4강 (준결승)';
+
+    // (2) 경기 수(matchCount)로 단계 유추
+    if (matchCount === 16) return '32강';
+    if (matchCount === 8) return '16강';
+    if (matchCount === 4) return '8강';
+    if (matchCount === 2) return '4강 (준결승)';
+    if (matchCount === 1) return '🏆 결승전';
+
+    // (3) 예외: 매칭되지 않은 경우 그대로 출력
     return stage;
   };
 
@@ -60,10 +77,17 @@ export const ScheduleView = ({
         
         {currentSeason?.rounds?.map((r, rIdx) => {
             const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
+            // 🔥 해당 라운드의 총 경기 수 계산
+            const totalMatchesInRound = r.matches.length;
+            // 🔥 시즌 타입 확인
+            const seasonType = currentSeason.type || 'LEAGUE';
+
             return (
                 <div key={rIdx} className="space-y-6">
                     {uniqueStages.map((stageName) => {
-                        const displayStageName = getKoreanStageName(stageName);
+                        // 🔥 함수 호출 시 시즌 타입과 경기 수 전달
+                        const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, seasonType);
+                        
                         return (
                             <div key={stageName} className="space-y-2">
                                 <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">
@@ -71,7 +95,10 @@ export const ScheduleView = ({
                                 </h3>
                                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        const customMatchLabel = `${displayStageName} ${mIdx + 1}경기`;
+                                        // 🔥 [수정] 라운드명과 경기 번호 사이에 ' / ' 구분자 추가하여 가독성 개선
+                                        // 예: "라운드 2 / 2경기" 또는 "16강 / 3경기"
+                                        const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
+                                        
                                         return (
                                             <div key={m.id} className="relative">
                                                 <MatchCard 
