@@ -248,7 +248,7 @@ export default function FootballLeagueApp() {
                 viewSeasonId={viewSeasonId} 
                 setViewSeasonId={setViewSeasonId} 
                 activeRankingData={activeRankingData}
-                owners={owners} // 🔥 [수정완료] 이 부분이 추가되어야 이미지가 보입니다!
+                owners={owners} // 🔥 [수정] 오너 데이터 전달 추가
             />
         )}
 
@@ -264,7 +264,10 @@ export default function FootballLeagueApp() {
         )}
 
         {currentView === 'HISTORY' && (
-            <HistoryView historyData={historyData} />
+            <HistoryView 
+                historyData={historyData} 
+                owners={owners} // 🔥 [수정] 오너 데이터 전달 추가
+            />
         )}
 
         {currentView === 'TUTORIAL' && (

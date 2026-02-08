@@ -1,13 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from 'react';
-import { FALLBACK_IMG } from '../types';
+import { FALLBACK_IMG, Owner } from '../types';
 
 interface HistoryViewProps {
-  historyData: any; 
+  historyData: any;
+  owners?: Owner[]; // 🔥 [확인] owners 데이터를 선택적으로 받음
 }
 
-// 🔥 export const 확인!
-export const HistoryView = ({ historyData }: HistoryViewProps) => {
+export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
@@ -46,28 +46,67 @@ export const HistoryView = ({ historyData }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 2. Owners History */}
+        {/* 2. Owners History (수정됨) */}
         {historyTab === 'OWNERS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs uppercase">
                     <thead className="bg-slate-900 text-slate-500">
-                        <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-center">Awards</th><th className="p-4 text-right">Prize</th></tr>
+                        <tr>
+                            {/* 🔥 [수정] 패딩을 p-3 -> px-2 py-3 로 조절하여 가로 공간 확보 */}
+                            <th className="px-2 py-3 w-8 text-center">#</th>
+                            <th className="px-2 py-3">Owner</th>
+                            <th className="px-2 py-3 text-center">Rec</th>
+                            <th className="px-2 py-3 text-center text-emerald-400">Pts</th>
+                            <th className="px-2 py-3 text-center">Awards</th>
+                            <th className="px-2 py-3 text-right">Prize</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        {historyData.owners.map((o:any, i:number) => (
-                            <tr key={i} className="border-b border-slate-800/50">
-                                <td className={`p-4 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
-                                <td className="p-4 font-bold text-white">{o.name}</td>
-                                <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
-                                <td className="p-4 text-center">
-                                    {o.golds>0 && <span className="mr-1">🥇{o.golds}</span>}
-                                    {o.silvers>0 && <span className="mr-1">🥈{o.silvers}</span>}
-                                    {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
-                                    {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
-                                </td>
-                                <td className="p-4 text-right text-slate-300">₩ {o.prize.toLocaleString()}</td>
-                            </tr>
-                        ))}
+                        {historyData.owners.map((o:any, i:number) => {
+                            // 🔥 [이미지 매칭 로직]
+                            const matchedOwner = (owners && owners.length > 0) 
+                                ? owners.find(owner => owner.nickname === o.name) 
+                                : null;
+                            const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+
+                            return (
+                                <tr key={i} className="border-b border-slate-800/50">
+                                    <td className={`px-2 py-3 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
+                                    
+                                    {/* 🔥 [수정] 오너 프로필 + 이름 (작게) */}
+                                    <td className="px-2 py-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0">
+                                                <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            </div>
+                                            <span className="font-bold text-white text-xs whitespace-nowrap">{o.name}</span>
+                                        </div>
+                                    </td>
+
+                                    {/* 🔥 [수정] 레코드 영역: div.flex 제거, 폰트 크기 축소, 줄바꿈 방지 */}
+                                    <td className="px-2 py-3 text-center text-slate-400 text-[11px] font-medium whitespace-nowrap">
+                                        <span className="text-white">{o.win}</span>W <span className="mx-0.5"></span>
+                                        <span className="text-slate-500">{o.draw}D</span> <span className="mx-0.5"></span>
+                                        <span className="text-red-400">{o.loss}L</span>
+                                    </td>
+
+                                    {/* 🔥 [추가] 누적 승점 */}
+                                    <td className="px-2 py-3 text-center text-emerald-400 font-black text-sm">
+                                        {o.points}
+                                    </td>
+
+                                    <td className="px-2 py-3 text-center text-[10px]">
+                                        <div className="flex justify-center gap-1">
+                                            {o.golds>0 && <span>🥇{o.golds}</span>}
+                                            {o.silvers>0 && <span>🥈{o.silvers}</span>}
+                                            {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
+                                            {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap">₩ {o.prize.toLocaleString()}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
