@@ -107,50 +107,32 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl"
             style={{ zIndex: 99999 }}
         >
-            {isOpen && (
-                // 🔥 [모바일 해결 핵심 1] 
-                // h-[100dvh]: 모바일 주소창 제외한 실제 높이
-                // items-end: 모바일에서는 바닥에 붙임 (Bottom Sheet)
-                // md:items-center: PC에서는 중앙 정렬
-                // p-0 md:p-4: 모바일은 꽉 차게, PC는 여백
-                <div className="w-full h-[100dvh] flex items-end md:items-center justify-center p-0 md:p-4">
-                    
-                    <motion.div 
-                        // 애니메이션: 모바일은 아래에서 위로 등장 느낌
-                        initial={{ opacity: 0, y: 20, scale: 0.98 }} 
-                        animate={{ opacity: 1, y: 0, scale: 1 }} 
-                        exit={{ opacity: 0, y: 20, scale: 0.98 }}
-                        transition={{ duration: 0.3 }}
+            {/* 전체 화면 애니메이션 오버레이 (OPENING 단계) */}
+            {isOpen && step === 'OPENING' && (
+                <PackOpeningAnimation onOpen={() => setTimeout(() => setStep('RESULT'), 2500)} cardCount={draftResults.length} />
+            )}
 
-                        // 🔥 [모바일 해결 핵심 2]
-                        // max-h-[85dvh]: 화면을 뚫지 않도록 최대 높이 제한
-                        // rounded-t-[2rem] rounded-b-none: 모바일은 위쪽만 둥글게 (바닥 밀착)
-                        // md:rounded-[2rem]: PC는 전체 둥글게
-                        className={`w-full max-w-6xl max-h-[85dvh] flex flex-col rounded-t-[2rem] rounded-b-none md:rounded-[2rem] shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden ${step === 'OPENING' ? 'bg-black border-none' : 'bg-slate-900'}`}
+            {/* 기본 모달 (OPENING 아닐 때) */}
+            {isOpen && step !== 'OPENING' && (
+                <div className="w-full h-[100dvh] flex items-center justify-center p-4">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }} 
+                        animate={{ opacity: 1, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        className={`w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900`}
                     >
-                        {step !== 'OPENING' && (
-                            // 헤더 (고정 영역)
-                            <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                                <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
-                                    <span className="text-emerald-400 text-2xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK DRAFT
-                                </h2>
-                                <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
-                            </div>
-                        )}
+                        <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                            <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
+                                <span className="text-emerald-400 text-2xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK DRAFT
+                            </h2>
+                            <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
+                        </div>
                         
-                        {/* 🔥 [모바일 해결 핵심 3] 콘텐츠 영역 (스크롤) 
-                            min-h-0: 이게 있어야 flex 내부에서 스크롤이 정상 작동함 (중요!)
-                            pb-safe: 아이폰 하단 바 여백 확보
-                        */}
                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-8 md:pb-0">
                             {step === 'SETTINGS' && (
                                 <div className="flex-1 flex flex-col p-5 md:p-8">
                                     <DraftSettings owners={owners} selectedOwnerIds={selectedOwnerIds} setSelectedOwnerIds={setSelectedOwnerIds} teamsPerOwner={teamsPerOwner} setTeamsPerOwner={setTeamsPerOwner} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterTiers={filterTiers} setFilterTiers={setFilterTiers} filteredCount={filteredCount} totalNeeded={selectedOwnerIds.length * teamsPerOwner} onStart={handleStartDraft} />
-                                </div>
-                            )}
-                            {step === 'OPENING' && (
-                                <div className="flex-1 flex items-center justify-center h-full min-h-[400px]">
-                                    <PackOpeningAnimation onOpen={() => setTimeout(() => setStep('RESULT'), 1500)} cardCount={draftResults.length} />
                                 </div>
                             )}
                             {step === 'RESULT' && (
@@ -213,24 +195,153 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
 };
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation (오프닝 애니메이션)
+// SUB-COMPONENT: PackOpeningAnimation (애니메이션 핵심)
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
-    const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'EXPLODING' | 'DEALING'>('IDLE');
-    const handleClick = () => { if (phase !== 'IDLE') return; setPhase('CHARGING'); setTimeout(() => setPhase('EXPLODING'), 800); setTimeout(() => { setPhase('DEALING'); onOpen(); }, 1200); };
+    // Phase: IDLE -> CHARGING -> CONTRACTING -> EXPLODING -> DEALING
+    const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
+
+    const handleClick = () => { 
+        if (phase !== 'IDLE') return; 
+        
+        // 1. 에너지 충전 (진동 시작)
+        setPhase('CHARGING'); 
+        
+        // 2. 수축 (형광 번개 효과)
+        setTimeout(() => setPhase('CONTRACTING'), 800); 
+        
+        // 3. 메인 컬러 폭발
+        setTimeout(() => setPhase('EXPLODING'), 1200); 
+        
+        // 4. 카드 롤링 연출 (텍스트 대신)
+        setTimeout(() => { 
+            setPhase('DEALING'); 
+            onOpen(); 
+        }, 1600); 
+    };
+
     return (
-        <div className="relative w-full h-full flex items-center justify-center perspective-[1000px]">
-            {phase !== 'IDLE' && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black z-0 pointer-events-none" />}
-            <div className="relative flex items-center justify-center">
-                <AnimatePresence>
-                    {(phase === 'CHARGING' || phase === 'EXPLODING') && (<motion.div initial={{ scale: 0, opacity: 0, rotate: 0 }} animate={{ scale: 1.5, opacity: 1, rotate: 360 }} exit={{ scale: 3, opacity: 0 }} transition={{ duration: 1, ease: "easeInOut" }} className="absolute z-0 w-[500px] h-[500px] rounded-full border-2 border-emerald-500/30 flex items-center justify-center">{Array.from({ length: 8 }).map((_, i) => (<div key={i} className="absolute w-16 h-24 bg-gradient-to-t from-emerald-500 to-sky-500 opacity-50 rounded" style={{ transform: `rotate(${i * 45}deg) translate(0, -180px)` }} />))}<div className="absolute inset-0 border-4 border-sky-400/50 rounded-full animate-ping" /></motion.div>)}
-                </AnimatePresence>
-                <AnimatePresence>
-                    {phase !== 'DEALING' && (<motion.div layoutId="pack" onClick={handleClick} initial={{ scale: 0.8 }} animate={phase === 'CHARGING' ? { scale: 0.9, rotate: [0, -2, 2, 0], filter: "brightness(1.5)" } : phase === 'EXPLODING' ? { scale: [1, 1.5, 0], opacity: 0 } : { scale: 1, y: [0, -10, 0] }} transition={{ y: { repeat: Infinity, duration: 2 }, default: { duration: 0.3 }}} className={`relative z-10 cursor-pointer ${phase !== 'IDLE' ? 'pointer-events-none' : ''}`}><div className="w-56 h-80 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-2xl border-4 border-white/20 shadow-[0_0_80px_rgba(6,182,212,0.5)] flex items-center justify-center relative overflow-hidden group"><div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 mix-blend-overlay"></div><div className="text-center z-10"><div className="text-7xl mb-4 drop-shadow-md animate-pulse">⚡</div><div className="font-black text-white text-3xl italic tracking-tighter leading-none drop-shadow-lg">PREMIUM<br/>PACK</div></div>{phase === 'IDLE' && (<div className="absolute bottom-6 left-0 right-0 text-center"><p className="text-sky-900 font-bold text-xs animate-bounce bg-white/80 py-1 px-3 rounded-full inline-block">CLICK TO OPEN</p></div>)}</div></motion.div>)}
-                </AnimatePresence>
-                {phase === 'EXPLODING' && <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.4 }} className="fixed inset-0 bg-white z-50 pointer-events-none" />}
-            </div>
-            {phase === 'DEALING' && (<div className="absolute inset-0 flex items-center justify-center z-20">{Array.from({ length: cardCount }).map((_, i) => (<motion.div key={i} initial={{ scale: 0, x: 0, y: 0 }} animate={{ scale: [0, 1, 0.5], x: [0, (Math.random() - 0.5) * 1200], y: [0, (Math.random() - 0.5) * 1000], rotate: Math.random() * 720 }} transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.03 }} className="absolute w-32 h-48 bg-gradient-to-br from-slate-800 to-black border border-slate-600 rounded-xl shadow-xl" />))}</div>)}
+        <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center overflow-hidden">
+            <style jsx>{`
+                @keyframes shake {
+                    0% { transform: translate(1px, 1px) rotate(0deg); }
+                    10% { transform: translate(-1px, -2px) rotate(-1deg); }
+                    20% { transform: translate(-3px, 0px) rotate(1deg); }
+                    30% { transform: translate(3px, 2px) rotate(0deg); }
+                    40% { transform: translate(1px, -1px) rotate(1deg); }
+                    50% { transform: translate(-1px, 2px) rotate(-1deg); }
+                    60% { transform: translate(-3px, 1px) rotate(0deg); }
+                    70% { transform: translate(3px, 1px) rotate(-1deg); }
+                    80% { transform: translate(-1px, -1px) rotate(1deg); }
+                    90% { transform: translate(1px, 2px) rotate(0deg); }
+                    100% { transform: translate(1px, -2px) rotate(-1deg); }
+                }
+                .shake-hard { animation: shake 0.1s infinite; }
+                
+                @keyframes electric-pulse {
+                    0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+                    50% { box-shadow: 0 0 50px 20px rgba(14, 165, 233, 0.7); }
+                    100% { box-shadow: 0 0 100px 50px rgba(52, 211, 153, 0); }
+                }
+                .electric-aura { animation: electric-pulse 0.3s infinite alternate; }
+            `}</style>
+
+            {/* 배경 효과 */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-black to-black opacity-80" />
+
+            {/* 카드 팩 */}
+            <AnimatePresence>
+                {phase !== 'DEALING' && (
+                    <motion.div 
+                        layoutId="pack" 
+                        onClick={handleClick}
+                        animate={
+                            phase === 'CHARGING' ? { 
+                                scale: [1, 1.05, 0.98, 1.02], 
+                                filter: "brightness(1.5)",
+                                y: [0, -5, 5, 0]
+                            } : 
+                            phase === 'CONTRACTING' ? { 
+                                scale: 0.2, // 더 강력하게 수축
+                                opacity: 1,
+                                rotate: [0, 10, -10, 0], // 수축하며 비틀기
+                                filter: "brightness(3) contrast(2)",
+                                transition: { duration: 0.4, ease: "backIn" }
+                            } :
+                            phase === 'EXPLODING' ? { 
+                                scale: 30, // 화면 전체 덮음
+                                opacity: 0, 
+                                filter: "brightness(5) blur(20px)",
+                                transition: { duration: 0.4, ease: "easeOut" }
+                            } : 
+                            { scale: 1, y: [0, -10, 0] }
+                        }
+                        transition={
+                            phase === 'IDLE' ? { y: { repeat: Infinity, duration: 2 } } : 
+                            phase === 'CHARGING' ? { duration: 0.1, repeat: Infinity } : 
+                            {}
+                        }
+                        className={`relative z-10 cursor-pointer ${phase !== 'IDLE' ? 'pointer-events-none' : ''} ${phase === 'CHARGING' ? 'shake-hard' : ''}`}
+                    >
+                        {/* 수축 시 형광 전기 오라 효과 */}
+                        {phase === 'CONTRACTING' && (
+                            <div className="absolute inset-0 -m-10 rounded-full electric-aura bg-white/20 blur-xl z-0" />
+                        )}
+
+                        <div className="w-64 h-96 md:w-80 md:h-[480px] bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-3xl border-4 border-white/30 shadow-[0_0_80px_rgba(6,182,212,0.5)] flex items-center justify-center relative overflow-hidden group z-10">
+                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
+                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent skew-x-12 translate-x-[-100%] group-hover:animate-[shimmer_2s_infinite]"></div>
+
+                            <div className="text-center z-10 scale-110">
+                                <div className={`text-8xl mb-6 drop-shadow-md ${phase === 'CHARGING' ? 'text-white' : 'animate-pulse'}`}>⚡</div>
+                                <div className="font-black text-white text-4xl italic tracking-tighter leading-none drop-shadow-lg">
+                                    PREMIUM<br/>PACK
+                                </div>
+                            </div>
+                            
+                            {phase === 'IDLE' && (
+                                <div className="absolute bottom-8 left-0 right-0 text-center">
+                                    <p className="text-sky-900 font-bold text-sm animate-bounce bg-white/90 py-1.5 px-4 rounded-full inline-block shadow-lg">CLICK TO OPEN</p>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* 터질 때 메인 컬러(형광) 그라데이션 폭발 */}
+            {phase === 'EXPLODING' && (
+                <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: [0, 1, 0] }} 
+                    transition={{ duration: 0.6, times: [0, 0.1, 1] }} 
+                    className="fixed inset-0 bg-gradient-to-br from-emerald-400 via-white to-sky-500 z-[100000] pointer-events-none mix-blend-screen" 
+                />
+            )}
+
+            {/* 🔥 [수정됨] 속도 2.0으로 4배 느리게 조정 */}
+            {phase === 'DEALING' && (
+                <div className="absolute inset-0 flex items-center bg-black/80 z-20 overflow-hidden">
+                    <motion.div 
+                        initial={{ x: "0%" }}
+                        animate={{ x: "-50%" }}
+                        transition={{ duration: 2.0, ease: "linear", repeat: Infinity }} // 속도 조절: 0.5 -> 2.0
+                        className="flex gap-6 pl-6 min-w-max blur-[1px]"
+                    >
+                        {Array.from({ length: 24 }).map((_, i) => (
+                            <div key={i} className="w-48 h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
+                                <div className="text-center z-10">
+                                    <div className="text-5xl mb-2 drop-shadow-md text-white/90">⚡</div>
+                                    <div className="font-black text-white text-lg italic tracking-tighter leading-none drop-shadow-lg opacity-80">
+                                        PREMIUM<br/>PACK
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };

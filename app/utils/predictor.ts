@@ -1,38 +1,40 @@
 import { Team, MasterTeam } from '../types';
 
 // =========================================================
-// 1. 가중치 설정: 상성(60%) + 오너(30%) = 90%
-// 팀 스펙은 10%로 사실상 무시 (리버풀 할아버지가 와도 안됨)
+// [설정] 점수 산정 기준표
 // =========================================================
-const WEIGHTS = {
-  OWNER_BASE: 0.3,    // 오너 기본 피지컬
-  HEAD_TO_HEAD: 0.6,  // 🔥 [핵심] 상대 전적 (절대적)
-  SQUAD_SPEC: 0.1     // 팀 스펙 (거의 영향 없음)
-};
 
-// =========================================================
-// 2. 팀 체급 점수 (변별력 삭제)
-// =========================================================
+// 1. 팀 체급 점수 (격차를 합리적인 수준으로 조정)
+// 기존 90, 80점 단위가 아니라, 최종 승률에 보정할 '가산점' 개념으로 변경
+// S급과 A급의 차이는 3점 (승률 약 3.6% 영향)
 const TIER_SCORES: Record<string, number> = {
-  'S': 85, 
-  'A': 84, // 1점 차이
-  'B': 82, 
-  'C': 78,
-  'D': 70
+  'S': 10, 
+  'A': 7, 
+  'B': 4, 
+  'C': 1,
+  'D': 0
 };
 
+// 2. 컨디션 보너스 (승률에 미세 조정)
 const CONDITION_BONUS: Record<string, number> = {
-  'A': 1, 'B': 0, 'C': 0, 'D': -1, 'E': -2
+  'A': 3,   // 최상: +3점
+  'B': 1,   // 좋음: +1점
+  'C': 0,   // 보통
+  'D': -1,  // 나쁨
+  'E': -3   // 최악
 };
 
 // =========================================================
-// 3. 헬퍼 함수들 (이름 매칭 강화)
+// [Helper] 데이터 추출 및 정규화 함수
 // =========================================================
 
-// 🔥 [중요] 이름 정규화 (띄어쓰기 제거)
-const normalize = (name: string) => name ? name.replace(/\s+/g, '').trim() : '';
+// 이름 정규화 (공백 제거, 소문자화) - 매칭 정확도 향상용
+const normalize = (name: string) => name ? name.replace(/\s+/g, '').trim().toLowerCase() : '';
 
-// (A) 상대 전적(Head-to-Head) - 띄어쓰기 무시하고 비교
+/**
+ * (A) 상대 전적(Head-to-Head) 계산
+ * @returns { rate: 승률(0~100), count: 맞대결 횟수 }
+ */
 const getHeadToHeadWinRate = (me: string, opponent: string, historyData: any): { rate: number, count: number } => {
   if (!historyData || !historyData.matches) return { rate: 50, count: 0 };
 
@@ -52,38 +54,52 @@ const getHeadToHeadWinRate = (me: string, opponent: string, historyData: any): {
   h2hMatches.forEach((m: any) => {
     const hOwner = normalize(m.homeOwner);
     const aOwner = normalize(m.awayOwner);
-    
-    // 내가 홈일 때 승리
-    if (hOwner === myName && Number(m.homeScore) > Number(m.awayScore)) wins++;
-    // 내가 어웨이일 때 승리
-    if (aOwner === myName && Number(m.awayScore) > Number(m.homeScore)) wins++;
+    const hScore = Number(m.homeScore);
+    const aScore = Number(m.awayScore);
+
+    if (hOwner === myName && hScore > aScore) wins++;
+    if (aOwner === myName && aScore > hScore) wins++;
   });
 
   return { rate: (wins / total) * 100, count: total };
 };
 
-// (B) 오너 기본 승률
+/**
+ * (B) 오너의 전체 승률 (General Win Rate)
+ * 데이터가 없으면 기본 50% 반환
+ */
 const getOwnerGeneralWinRate = (ownerName: string, historyData: any): number => {
   if (!historyData || !historyData.owners) return 50;
-  const target = normalize(ownerName);
-  const owner = historyData.owners.find((o: any) => normalize(o.nickname) === target);
-  if (!owner || owner.totalMatches < 5) return 50;
+  
+  const targetName = normalize(ownerName);
+  const owner = historyData.owners.find((o: any) => normalize(o.nickname) === targetName);
+  
+  if (!owner || owner.totalMatches < 1) return 50;
   return (owner.win / owner.totalMatches) * 100;
 };
 
-// (C) 팀 스펙
+/**
+ * (C) 팀 스펙 점수 계산 (티어 + 순위 + 컨디션)
+ * 이 점수는 나중에 '격차(Diff)'를 구하는 데 사용됨
+ */
 const getTeamSpecScore = (team: Team, masterTeams: MasterTeam[]): number => {
-  let baseScore = TIER_SCORES[team.tier] || 75;
+  let score = TIER_SCORES[team.tier] || 0;
   const master = masterTeams.find(m => m.name === team.name);
+  
   if (master) {
+    // 실축 순위 보정: (10 - 순위) * 0.5 (최대 5점)
+    if (master.real_rank && master.real_rank <= 20) {
+      score += Math.max(0, (10 - master.real_rank) * 0.5);
+    }
+    // 컨디션 보정
     const cond = master.condition || 'C';
-    baseScore += (CONDITION_BONUS[cond] || 0);
+    score += (CONDITION_BONUS[cond] || 0);
   }
-  return baseScore;
+  return score;
 };
 
 // =========================================================
-// 4. 메인 예측 로직
+// [Main] 최종 승률 예측 로직 (Sliding Weight Algorithm)
 // =========================================================
 export const getPrediction = (
   homeName: string, 
@@ -97,53 +113,54 @@ export const getPrediction = (
 
   if (!homeTeam || !awayTeam) return { hRate: 50, aRate: 50 };
 
-  const hBase = getOwnerGeneralWinRate(homeTeam.ownerName, historyData);
-  const aBase = getOwnerGeneralWinRate(awayTeam.ownerName, historyData);
+  // 1. 기본 데이터 수집
+  const hGen = getOwnerGeneralWinRate(homeTeam.ownerName, historyData);
+  const aGen = getOwnerGeneralWinRate(awayTeam.ownerName, historyData);
   
-  const hSpec = getTeamSpecScore(homeTeam, masterTeams);
-  const aSpec = getTeamSpecScore(awayTeam, masterTeams);
-
-  // 상성 조회
   const hHead = getHeadToHeadWinRate(homeTeam.ownerName, awayTeam.ownerName, historyData);
   const aHeadRate = hHead.count > 0 ? (100 - hHead.rate) : 50;
 
-  // 디버깅용 콘솔 (개발자 도구에서 확인 가능)
-  console.log(`[예측] ${homeTeam.ownerName} vs ${awayTeam.ownerName}`);
-  console.log(`- 전적: ${hHead.count}전 승률 ${hHead.rate}%`);
+  // 2. [알고리즘 핵심] 신뢰도 기반 가중치 (Sliding Weight)
+  // 맞대결 횟수(N)가 늘어날수록, 상대 전적(H2H)의 비중을 높임
+  // N=0 -> 가중치 0 (전체 승률 100%)
+  // N=1 -> 가중치 0.2 (전체 80% + 상대 20%)
+  // N=5 -> 가중치 1.0 (전체 0% + 상대 100%) -> 천적 관계 완전 반영
+  const weight = Math.min(1.0, hHead.count * 0.2);
 
-  let finalH, finalA;
+  // 3. 오너 실력 점수 계산 (Weighted Sum)
+  const hSkill = (hGen * (1 - weight)) + (hHead.rate * weight);
+  const aSkill = (aGen * (1 - weight)) + (aHeadRate * weight);
+
+  // 4. 팀 스펙 보너스 (Modifier)
+  // 팀 점수를 더하는게 아니라, "차이(Diff)"만큼 보너스로 줌
+  const hSpec = getTeamSpecScore(homeTeam, masterTeams);
+  const aSpec = getTeamSpecScore(awayTeam, masterTeams);
   
-  if (hHead.count > 0) {
-    // 🔥 전적 있으면 상성 60% 반영
-    finalH = (hBase * WEIGHTS.OWNER_BASE) + (hHead.rate * WEIGHTS.HEAD_TO_HEAD) + (hSpec * WEIGHTS.SQUAD_SPEC);
-    finalA = (aBase * WEIGHTS.OWNER_BASE) + (aHeadRate * WEIGHTS.HEAD_TO_HEAD) + (aSpec * WEIGHTS.SQUAD_SPEC);
-  } else {
-    finalH = (hBase * 0.7) + (hSpec * 0.3);
-    finalA = (aBase * 0.7) + (aSpec * 0.3);
-  }
+  // 팀 스펙 차이 1점당 승률 1.2% 변동
+  const teamBonus = (hSpec - aSpec) * 1.2;
 
-  const diff = finalH - finalA;
-  let hRatePrediction = 50 + (diff * 2.0);
+  // 5. 최종 승률 도출
+  // 기본 50% + (실력 차이 * 0.8) + 팀 보너스
+  const skillDiff = hSkill - aSkill;
+  let hRatePrediction = 50 + (skillDiff * 0.8) + teamBonus;
 
-  // =========================================================
-  // 🔥 [극약 처방] 1패라도 있는데 승리가 없다? -> 강제 너프
-  // =========================================================
-  if (hHead.count >= 1 && hHead.rate === 0) {
-     // 1전 전패, 2전 전패... -> 무조건 35% 미만으로 강제 설정
-     // 리버풀이고 나발이고 무조건 짐
-     hRatePrediction = Math.min(hRatePrediction, 35);
-     console.log("-> 천적 관계 발동: 강제 하향 조정 (Max 35%)");
-  } 
-  else if (hHead.count >= 1 && hHead.rate === 100) {
-     hRatePrediction = Math.max(hRatePrediction, 65);
-  }
+  // 디버깅 로그
+  console.log(`[분석] ${normalize(homeTeam.ownerName)} vs ${normalize(awayTeam.ownerName)}`);
+  console.log(`- 가중치(w): ${weight} (판수: ${hHead.count})`);
+  console.log(`- 실력점수: 홈(${hSkill.toFixed(1)}) vs 원정(${aSkill.toFixed(1)})`);
+  console.log(`- 팀보너스: ${teamBonus.toFixed(1)}% (홈스펙: ${hSpec} - 원정스펙: ${aSpec})`);
+  console.log(`- 최종예측: ${hRatePrediction.toFixed(1)}%`);
+
+  // 6. 범위 제한 (최소 5% ~ 최대 95%)
+  hRatePrediction = Math.max(5, Math.min(95, hRatePrediction));
 
   return { 
-    hRate: Math.round(Math.max(5, Math.min(95, hRatePrediction))), 
-    aRate: Math.round(100 - Math.max(5, Math.min(95, hRatePrediction))) 
+    hRate: Math.round(hRatePrediction), 
+    aRate: 100 - Math.round(hRatePrediction) 
   };
 };
 
+// DB 저장용 스냅샷 함수
 export const calculateMatchSnapshot = (
   homeName: string, awayName: string, activeRankingData: any, historyData: any, masterTeams: any[]
 ) => {
