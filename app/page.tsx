@@ -247,7 +247,8 @@ export default function FootballLeagueApp() {
                 seasons={seasons} 
                 viewSeasonId={viewSeasonId} 
                 setViewSeasonId={setViewSeasonId} 
-                activeRankingData={activeRankingData} 
+                activeRankingData={activeRankingData}
+                owners={owners} // 🔥 [수정완료] 이 부분이 추가되어야 이미지가 보입니다!
             />
         )}
 

@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from 'react';
-import { FALLBACK_IMG } from '../types'; 
+import { FALLBACK_IMG, Owner } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers'; 
 
 interface RankingViewProps {
@@ -8,9 +8,11 @@ interface RankingViewProps {
   viewSeasonId: number;
   setViewSeasonId: (id: number) => void;
   activeRankingData: any;
+  owners?: Owner[]; // 🔥 [수정] 있어도 되고 없어도 되도록 선택적(?.)으로 변경
 }
 
-export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData }: RankingViewProps) => {
+// 🔥 [핵심 수정] owners = [] : 데이터가 안 넘어오면 빈 배열로 처리해서 에러 방지
+export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
@@ -54,18 +56,51 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
                     <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                        <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr>
+                        <tr>
+                            <th className="p-4 w-8">#</th>
+                            <th className="p-4">Owner</th>
+                            <th className="p-4 text-center">Record</th> 
+                            <th className="p-4 text-center text-emerald-400">Pts</th>
+                            <th className="p-4 text-right">Prize</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        {activeRankingData.owners.map((o: any, i: number) => (
-                            <tr key={i} className="border-b border-slate-800/50">
-                                <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                <td className="p-4 font-bold text-white">{o.name}</td>
-                                <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
-                                <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
-                                <td className="p-4 text-right text-yellow-500 font-bold">₩ {o.prize.toLocaleString()}</td>
-                            </tr>
-                        ))}
+                        {activeRankingData.owners.map((o: any, i: number) => {
+                            // 🔥 [안전장치 추가] owners 배열이 있을 때만 find 실행
+                            const matchedOwner = (owners && owners.length > 0) 
+                                ? owners.find(owner => owner.nickname === o.name) 
+                                : null;
+                            const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+
+                            return (
+                                <tr key={i} className={`border-b border-slate-800/50 ${i<3 ? 'bg-purple-900/10' : ''}`}>
+                                    <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
+                                    
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0 shadow-lg">
+                                                <img 
+                                                    src={displayPhoto} 
+                                                    alt={o.name} 
+                                                    className="w-full h-full object-cover" 
+                                                    onError={(e:any) => e.target.src = FALLBACK_IMG} 
+                                                />
+                                            </div>
+                                            <div className="flex flex-col justify-center">
+                                                <span className="font-bold text-white text-sm whitespace-nowrap">{o.name}</span>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <td className="p-4 text-center text-slate-400 font-medium">
+                                        <span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span>
+                                    </td>
+
+                                    <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
+                                    <td className="p-4 text-right text-yellow-500 font-bold">₩ {o.prize.toLocaleString()}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -107,7 +142,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
                             </div>
                             <div className="p-3 flex items-center gap-3">
-                                {/* 🔥 [수정] 무승부일 경우 엠블럼 교차, 승자일 경우 승자만 */}
                                 {isDraw ? (
                                     <div className="relative w-8 h-8 flex-shrink-0">
                                         <img src={m.homeLogo} className="w-6 h-6 absolute top-0 left-0 rounded-full bg-white object-contain p-0.5 z-10 shadow-sm border border-slate-300" alt="" />
