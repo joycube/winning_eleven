@@ -111,6 +111,13 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         const owner = owners.find(o => String(o.id) === selectedOwnerId);
         const mTeam = masterTeams.find(t => (t.docId || String(t.id)) === selectedMasterTeamDocId);
         if (!owner || !mTeam) return;
+
+        // 🔥 [추가] 중복 팀 검사 (수동 추가 시)
+        const isDuplicate = targetSeason.teams?.some(t => t.name === mTeam.name);
+        if (isDuplicate) {
+            return alert(`🚫 이미 등록된 팀입니다: ${mTeam.name}\n다른 팀을 선택해주세요.`);
+        }
+
         const newTeam: Team = {
             id: Date.now(), seasonId: targetSeason.id, name: mTeam.name, logo: mTeam.logo, ownerName: owner.nickname,
             region: mTeam.region, tier: mTeam.tier, win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0
@@ -138,6 +145,14 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     // 🔥 [수정] 스케줄 생성 및 재생성(Re-GEN) 로직
     const handleGenerateSchedule = async (isRegen = false) => {
         if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
+        
+        // 🔥 [추가] 스케줄 생성 전 최종 중복 검사
+        const teamNames = targetSeason.teams.map(t => t.name);
+        const uniqueNames = new Set(teamNames);
+        if (teamNames.length !== uniqueNames.size) {
+            return alert("🚫 중복된 팀이 등록되어 있습니다!\n[Step 2] 목록에서 중복된 팀을 삭제한 후 다시 시도해주세요.");
+        }
+
         if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
 
         // 1. 팀 순서를 랜덤하게 섞어 새로운 대진이 나오도록 유도 (최신 정보 동기화 포함)
@@ -162,7 +177,17 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     };
 
     const handleDraftApply = async (newTeams: Team[]) => {
-        const teamsWithSeason = newTeams.map(t => ({ ...t, seasonId: targetSeason.id }));
+        // 🔥 [추가] 퀵 매칭 결과 적용 시 중복 필터링
+        const existingNames = new Set(targetSeason.teams?.map(t => t.name) || []);
+        const filteredNewTeams = newTeams.filter(t => !existingNames.has(t.name));
+
+        if (filteredNewTeams.length < newTeams.length) {
+            alert(`⚠️ 중복된 ${newTeams.length - filteredNewTeams.length}개 팀은 제외하고 추가합니다.`);
+        }
+
+        if (filteredNewTeams.length === 0) return;
+
+        const teamsWithSeason = filteredNewTeams.map(t => ({ ...t, seasonId: targetSeason.id }));
         const updatedTeams = [...(targetSeason.teams || []), ...teamsWithSeason];
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
     };
