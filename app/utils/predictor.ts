@@ -1,12 +1,12 @@
 import { Team, MasterTeam } from '../types';
 
 // ==========================================
-// 1. 가중치 설정 (기획안 반영)
+// 1. 가중치 재설정 (실력 위주로 변경)
 // ==========================================
 const WEIGHTS = {
-  OWNER: 0.5,   // 오너 실력 (50%)
-  SQUAD: 0.3,   // 팀 체급/티어 (30%)
-  REAL: 0.2     // 현실 반영 (20%) - 랭킹 + 컨디션
+  OWNER: 0.7,   // 🔥 오너 실력 비중 대폭 상향 (50% -> 70%)
+  SQUAD: 0.15,  // 팀 체급 비중 축소 (30% -> 15%)
+  REAL: 0.15    // 현실 반영 비중 축소 (20% -> 15%)
 };
 
 // 티어별 기본 점수
@@ -19,53 +19,46 @@ const TIER_SCORES: Record<string, number> = {
 
 // 컨디션별 가산점 (A~E)
 const CONDITION_SCORES: Record<string, number> = {
-  'A': 100, // 최상의 기세
+  'A': 100,
   'B': 90,
-  'C': 80,  // 보통
+  'C': 80,
   'D': 70,
-  'E': 60   // 최악의 기세
+  'E': 60
 };
 
 // ==========================================
 // 2. 헬퍼 함수들
 // ==========================================
 
-/**
- * 현실 점수 계산 (랭킹 점수 50% + 컨디션 점수 50%)
- */
 const getRealWorldScore = (teamName: string, masterTeams: MasterTeam[]): number => {
   const masterTeam = masterTeams.find(t => t.name === teamName);
-  
-  // 데이터가 없으면 기본점수(80) 리턴
   if (!masterTeam) return 80;
 
-  // 1. 랭킹 점수 계산 (1위=100점 ~ 20위=60점)
-  // 순위가 없으면(0) 중간인 10위로 가정
   const rank = masterTeam.real_rank && masterTeam.real_rank > 0 ? masterTeam.real_rank : 10;
-  const rankScore = Math.max(60, 102 - (rank * 2)); // 1위:100, 10위:82, 20위:62
+  const rankScore = Math.max(60, 102 - (rank * 2)); 
 
-  // 2. 컨디션 점수 계산
   const cond = masterTeam.condition || 'C';
   const conditionScore = CONDITION_SCORES[cond] || 80;
 
-  // 현실 점수 = (랭킹점수 + 컨디션점수) / 2
   return (rankScore + conditionScore) / 2;
 };
 
 /**
- * 오너의 역대 승률 계산
+ * 오너의 역대 승률 계산 (보정 로직 완화)
  */
 const getOwnerWinRate = (ownerName: string, historyData: any): number => {
   if (!historyData || !historyData.owners) return 50; 
 
   const ownerStat = historyData.owners.find((o: any) => o.nickname === ownerName);
   
-  if (!ownerStat || ownerStat.totalMatches < 5) return 50; // 데이터 부족 시 50점
+  // 데이터가 너무 적으면(5판 미만) 50점 처리
+  if (!ownerStat || ownerStat.totalMatches < 5) return 50;
 
   const winRate = (ownerStat.win / ownerStat.totalMatches) * 100;
   
-  // 승률 보정 (최소 30점 ~ 최대 90점)
-  return Math.max(30, Math.min(90, winRate));
+  // 🔥 [수정] 하한선을 30점에서 10점으로 낮춤 (못하면 가차없이 깎임)
+  // 잘하는 사람은 95점까지 인정
+  return Math.max(10, Math.min(95, winRate));
 };
 
 // ==========================================
@@ -75,11 +68,10 @@ const getOwnerWinRate = (ownerName: string, historyData: any): number => {
 export const getPrediction = (
   homeName: string, 
   awayName: string, 
-  activeRankingData: any, // 현재 시즌 팀 정보
-  historyData: any,       // 역대 전적 정보
-  masterTeams: MasterTeam[] = [] // 🔥 [추가] 실제 데이터 (기본값 빈배열)
+  activeRankingData: any,
+  historyData: any,
+  masterTeams: MasterTeam[] = []
 ) => {
-  // 1. 팀 정보 찾기
   const homeTeam = activeRankingData?.teams?.find((t: Team) => t.name === homeName);
   const awayTeam = activeRankingData?.teams?.find((t: Team) => t.name === awayName);
 
@@ -87,27 +79,19 @@ export const getPrediction = (
     return { hRate: 50, aRate: 50 };
   }
 
-  // ----------------------------------------------------
-  // A. 오너 점수 계산 (가중치 50%)
-  // ----------------------------------------------------
+  // A. 오너 점수 (가중치 70%)
   const homeOwnerScore = getOwnerWinRate(homeTeam.ownerName, historyData);
   const awayOwnerScore = getOwnerWinRate(awayTeam.ownerName, historyData);
 
-  // ----------------------------------------------------
-  // B. 스쿼드(티어) 점수 계산 (가중치 30%)
-  // ----------------------------------------------------
+  // B. 스쿼드 점수 (가중치 15%)
   const homeSquadScore = TIER_SCORES[homeTeam.tier] || 65;
   const awaySquadScore = TIER_SCORES[awayTeam.tier] || 65;
 
-  // ----------------------------------------------------
-  // C. 현실 반영 점수 계산 (가중치 20%) - 🔥 실데이터 연결
-  // ----------------------------------------------------
+  // C. 현실 점수 (가중치 15%)
   const homeRealScore = getRealWorldScore(homeTeam.name, masterTeams);
   const awayRealScore = getRealWorldScore(awayTeam.name, masterTeams);
 
-  // ----------------------------------------------------
-  // D. 최종 파워 스코어 합산 (가중치 적용)
-  // ----------------------------------------------------
+  // D. 총점 계산
   const calculateTotalPower = (owner: number, squad: number, real: number) => {
     return (owner * WEIGHTS.OWNER) + (squad * WEIGHTS.SQUAD) + (real * WEIGHTS.REAL);
   };
@@ -115,33 +99,24 @@ export const getPrediction = (
   const homePower = calculateTotalPower(homeOwnerScore, homeSquadScore, homeRealScore);
   const awayPower = calculateTotalPower(awayOwnerScore, awaySquadScore, awayRealScore);
 
-  // ----------------------------------------------------
-  // E. [수정됨] 승률 격차(Gap) 기반 계산 (엑셀 로직 반영)
-  // ----------------------------------------------------
-  // 기존 비율 방식(Ratio)은 격차가 너무 작게 나옵니다.
-  // 따라서 (홈팀 점수 - 원정팀 점수) 격차를 구한 뒤, 기본 50%에서 가감합니다.
-  
+  // E. 격차 기반 승률 계산 (Gap Logic)
+  // 점수 차이를 더 민감하게 반응하도록 계수 조정 (2.0 -> 2.5)
   const powerDiff = homePower - awayPower; 
-  // powerDiff가 양수면 홈 우세, 음수면 원정 우세
-  
-  // 🔥 격차 증폭 계수 (Sensitivity): 2.0
-  // 점수 차이가 1점 날 때마다 승률이 2%씩 변동되도록 설정
-  // (예: 전력차가 10점 나면 승률은 50+20 = 70%가 됨)
-  let hRate = 50 + (powerDiff * 2.0);
+  let hRate = 50 + (powerDiff * 2.5);
 
-  // 정수로 반올림
   hRate = Math.round(hRate);
-  let aRate = 100 - hRate;
+  
+  // 최소/최대 승률 제한 (5% ~ 95%로 범위를 넓혀서 압도적인 상황 표현)
+  if (hRate > 95) hRate = 95;
+  if (hRate < 5) hRate = 5;
 
-  // 극단값 보정 (15% ~ 85%) - 스포츠의 의외성 반영
-  if (hRate > 85) { hRate = 85; aRate = 15; }
-  if (hRate < 15) { hRate = 15; aRate = 85; }
+  let aRate = 100 - hRate;
 
   return { hRate, aRate };
 };
 
 /**
- * 🔥 [추가] DB 저장용 승률 스냅샷 생성 함수
+ * DB 저장용 스냅샷 함수
  */
 export const calculateMatchSnapshot = (
   homeName: string,
