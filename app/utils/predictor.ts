@@ -1,70 +1,81 @@
 import { Team, MasterTeam } from '../types';
 
 // =========================================================
-// 1. 가중치 설정: 상성(45%) + 오너(35%) = 80% (상성 깡패)
+// 1. 가중치 설정: 상성(60%) + 오너(30%) = 90%
+// 팀 스펙은 10%로 사실상 무시 (리버풀 할아버지가 와도 안됨)
 // =========================================================
 const WEIGHTS = {
-  OWNER_BASE: 0.35,   // 오너 기본 피지컬
-  HEAD_TO_HEAD: 0.45, // 🔥 [핵심] 상대 전적 (가장 높음)
-  SQUAD_SPEC: 0.20    // 팀 스펙 (아무리 좋아도 20%만 반영)
+  OWNER_BASE: 0.3,    // 오너 기본 피지컬
+  HEAD_TO_HEAD: 0.6,  // 🔥 [핵심] 상대 전적 (절대적)
+  SQUAD_SPEC: 0.1     // 팀 스펙 (거의 영향 없음)
 };
 
 // =========================================================
-// 2. 팀 체급 점수 (격차 극도로 축소)
-// S급과 A급의 차이를 거의 없애서 변별력 삭제
+// 2. 팀 체급 점수 (변별력 삭제)
 // =========================================================
 const TIER_SCORES: Record<string, number> = {
-  'S': 88, // 기존 90 -> 88
-  'A': 86, // 기존 87 -> 86 (격차 2점)
+  'S': 85, 
+  'A': 84, // 1점 차이
   'B': 82, 
-  'C': 75,
-  'D': 65
+  'C': 78,
+  'D': 70
 };
 
 const CONDITION_BONUS: Record<string, number> = {
-  'A': 2,   // 보너스 점수도 축소
-  'B': 1,
-  'C': 0,
-  'D': -2,
-  'E': -4
+  'A': 1, 'B': 0, 'C': 0, 'D': -1, 'E': -2
 };
 
 // =========================================================
-// 3. 헬퍼 함수들
+// 3. 헬퍼 함수들 (이름 매칭 강화)
 // =========================================================
 
+// 🔥 [중요] 이름 정규화 (띄어쓰기 제거)
+const normalize = (name: string) => name ? name.replace(/\s+/g, '').trim() : '';
+
+// (A) 상대 전적(Head-to-Head) - 띄어쓰기 무시하고 비교
 const getHeadToHeadWinRate = (me: string, opponent: string, historyData: any): { rate: number, count: number } => {
   if (!historyData || !historyData.matches) return { rate: 50, count: 0 };
 
-  const h2hMatches = historyData.matches.filter((m: any) => 
-    (m.homeOwner === me && m.awayOwner === opponent) || 
-    (m.homeOwner === opponent && m.awayOwner === me)
-  );
+  const myName = normalize(me);
+  const oppName = normalize(opponent);
+
+  const h2hMatches = historyData.matches.filter((m: any) => {
+    const hOwner = normalize(m.homeOwner);
+    const aOwner = normalize(m.awayOwner);
+    return (hOwner === myName && aOwner === oppName) || (hOwner === oppName && aOwner === myName);
+  });
 
   const total = h2hMatches.length;
   if (total === 0) return { rate: 50, count: 0 };
 
   let wins = 0;
   h2hMatches.forEach((m: any) => {
-    if (m.homeOwner === me && Number(m.homeScore) > Number(m.awayScore)) wins++;
-    if (m.awayOwner === me && Number(m.awayScore) > Number(m.homeScore)) wins++;
+    const hOwner = normalize(m.homeOwner);
+    const aOwner = normalize(m.awayOwner);
+    
+    // 내가 홈일 때 승리
+    if (hOwner === myName && Number(m.homeScore) > Number(m.awayScore)) wins++;
+    // 내가 어웨이일 때 승리
+    if (aOwner === myName && Number(m.awayScore) > Number(m.homeScore)) wins++;
   });
 
   return { rate: (wins / total) * 100, count: total };
 };
 
+// (B) 오너 기본 승률
 const getOwnerGeneralWinRate = (ownerName: string, historyData: any): number => {
   if (!historyData || !historyData.owners) return 50;
-  const owner = historyData.owners.find((o: any) => o.nickname === ownerName);
+  const target = normalize(ownerName);
+  const owner = historyData.owners.find((o: any) => normalize(o.nickname) === target);
   if (!owner || owner.totalMatches < 5) return 50;
   return (owner.win / owner.totalMatches) * 100;
 };
 
+// (C) 팀 스펙
 const getTeamSpecScore = (team: Team, masterTeams: MasterTeam[]): number => {
   let baseScore = TIER_SCORES[team.tier] || 75;
   const master = masterTeams.find(m => m.name === team.name);
   if (master) {
-    if (master.real_rank) baseScore += Math.max(0, (10 - master.real_rank) * 0.1); // 순위 영향력 최소화
     const cond = master.condition || 'C';
     baseScore += (CONDITION_BONUS[cond] || 0);
   }
@@ -92,43 +103,39 @@ export const getPrediction = (
   const hSpec = getTeamSpecScore(homeTeam, masterTeams);
   const aSpec = getTeamSpecScore(awayTeam, masterTeams);
 
+  // 상성 조회
   const hHead = getHeadToHeadWinRate(homeTeam.ownerName, awayTeam.ownerName, historyData);
   const aHeadRate = hHead.count > 0 ? (100 - hHead.rate) : 50;
+
+  // 디버깅용 콘솔 (개발자 도구에서 확인 가능)
+  console.log(`[예측] ${homeTeam.ownerName} vs ${awayTeam.ownerName}`);
+  console.log(`- 전적: ${hHead.count}전 승률 ${hHead.rate}%`);
 
   let finalH, finalA;
   
   if (hHead.count > 0) {
-    // 🔥 전적이 1판이라도 있으면 상성 비중 45% 즉시 적용
+    // 🔥 전적 있으면 상성 60% 반영
     finalH = (hBase * WEIGHTS.OWNER_BASE) + (hHead.rate * WEIGHTS.HEAD_TO_HEAD) + (hSpec * WEIGHTS.SQUAD_SPEC);
     finalA = (aBase * WEIGHTS.OWNER_BASE) + (aHeadRate * WEIGHTS.HEAD_TO_HEAD) + (aSpec * WEIGHTS.SQUAD_SPEC);
   } else {
-    // 전적이 아예 없으면 기본기 싸움
     finalH = (hBase * 0.7) + (hSpec * 0.3);
     finalA = (aBase * 0.7) + (aSpec * 0.3);
   }
 
-  // 예측 승률 계산
   const diff = finalH - finalA;
   let hRatePrediction = 50 + (diff * 2.0);
 
   // =========================================================
-  // 🔥 [천적 관계 절대 보정 (Absolute Nemesis Rule)]
-  // 조건: 상대 전적 1판 이상 & 승률 0% -> 무조건 패배 예측 (최대 42%)
-  // 조건: 상대 전적 3판 이상 & 승률 0% -> 압도적 패배 예측 (최대 30%)
+  // 🔥 [극약 처방] 1패라도 있는데 승리가 없다? -> 강제 너프
   // =========================================================
-  if (hHead.count >= 1) {
-      if (hHead.rate === 0) {
-          // 1패라도 있고 이긴 적 없으면 -> 팀이 아무리 좋아도 42%를 못 넘김 (열세 확정)
-          hRatePrediction = Math.min(hRatePrediction, 42); 
-          
-          // 3패 이상이고 이긴 적 없으면 -> 30% 못 넘김 (절대 열세)
-          if (hHead.count >= 3) hRatePrediction = Math.min(hRatePrediction, 30);
-      } 
-      else if (hHead.rate === 100) {
-          // 반대 경우 (전승 중)
-          hRatePrediction = Math.max(hRatePrediction, 58); // 최소 우세 보장
-          if (hHead.count >= 3) hRatePrediction = Math.max(hRatePrediction, 70);
-      }
+  if (hHead.count >= 1 && hHead.rate === 0) {
+     // 1전 전패, 2전 전패... -> 무조건 35% 미만으로 강제 설정
+     // 리버풀이고 나발이고 무조건 짐
+     hRatePrediction = Math.min(hRatePrediction, 35);
+     console.log("-> 천적 관계 발동: 강제 하향 조정 (Max 35%)");
+  } 
+  else if (hHead.count >= 1 && hHead.rate === 100) {
+     hRatePrediction = Math.max(hRatePrediction, 65);
   }
 
   return { 
