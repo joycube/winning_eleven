@@ -293,7 +293,6 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
                         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
                             {clubLeagues.map(l => (
                                 <div key={l.id} onClick={() => toggleLeague(l.name)} className={`relative p-3 md:p-6 rounded-2xl border-2 cursor-pointer transition-all hover:scale-[1.02] flex flex-col items-center gap-2 md:gap-4 ${selectedLeagueIds.includes(l.name) ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 border-slate-800 hover:border-slate-600'}`}>
-                                    {/* ✅ [수정] 리그 엠블럼 패딩 조정 (p-1 md:p-2 -> p-2 md:p-3.5) */}
                                     <div className="w-10 h-10 md:w-16 md:h-16 rounded-full bg-white p-2 md:p-3.5 flex items-center justify-center shadow-md"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
                                     <div className="text-center w-full"><span className="text-xs md:text-lg font-bold text-white block leading-tight mb-1 truncate">{l.name}</span><span className="text-[8px] md:text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">{leagueTeamCounts[l.name] || 0} Teams</span></div>
                                     {selectedLeagueIds.includes(l.name) && <div className="absolute top-1 right-1 md:top-3 md:right-3 w-4 h-4 md:w-6 md:h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg"><svg className="w-2.5 h-2.5 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
@@ -306,7 +305,6 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
                         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
                             {nationalLeagues.map(l => (
                                 <div key={l.id} onClick={() => toggleLeague(l.name)} className={`relative p-3 md:p-6 rounded-2xl border-2 cursor-pointer transition-all hover:scale-[1.02] flex flex-col items-center gap-2 md:gap-4 ${selectedLeagueIds.includes(l.name) ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 border-slate-800 hover:border-slate-600'}`}>
-                                    {/* ✅ [수정] 국가대표 엠블럼 패딩 조정 (p-1 md:p-2 -> p-2 md:p-3.5) */}
                                     <div className="w-10 h-10 md:w-16 md:h-16 rounded-full bg-white p-2 md:p-3.5 flex items-center justify-center shadow-md"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
                                     <div className="text-center w-full"><span className="text-xs md:text-lg font-bold text-white block leading-tight mb-1 truncate">{l.name}</span><span className="text-[8px] md:text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">{leagueTeamCounts[l.name] || 0} Teams</span></div>
                                     {selectedLeagueIds.includes(l.name) && <div className="absolute top-1 right-1 md:top-3 md:right-3 w-4 h-4 md:w-6 md:h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg"><svg className="w-2.5 h-2.5 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
@@ -368,48 +366,43 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
 
                 <div className="space-y-4">
                     <div className="bg-slate-950 rounded-xl border border-slate-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {editTeams.map((t) => (
-                                <div key={t.docId || t.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-sm hover:border-slate-700 transition-colors relative group">
-                                    {/* ✅ [수정 완료] onClick 핸들러: String()으로 타입을 명확히 변환하여 전달 */}
+                                <div key={t.docId || t.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-sm hover:border-slate-700 transition-colors relative group pr-10 sm:pr-4">
                                     <button 
                                         onClick={() => handleRemoveTeam(String(t.docId || t.id))}
-                                        className="absolute top-2 right-2 w-6 h-6 bg-slate-800 hover:bg-red-900 text-slate-400 hover:text-white rounded-full flex items-center justify-center transition-all z-10 text-xs font-bold"
+                                        className="absolute top-2 right-2 w-7 h-7 bg-slate-800/80 hover:bg-red-900 text-slate-400 hover:text-white rounded-full flex items-center justify-center transition-all z-10 text-xs font-bold backdrop-blur-sm"
                                         title="목록에서 제거"
                                     >
                                         ✕
                                     </button>
 
-                                    <div className="flex items-center gap-4 flex-1 w-full sm:w-auto">
-                                        {/* ✅ [수정] 개별 팀 엠블럼 패딩 조정 (p-2 -> p-3.5) */}
+                                    <div className="flex items-center gap-4 flex-1 w-full min-w-0">
                                         <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.1)] p-3.5 shrink-0"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/></div>
                                         <div className="flex flex-col gap-1 min-w-0 flex-1">
-                                            {/* 🔥 [수정] 리그 정보 하단으로 이동 및 가독성 확보 */}
-                                            <div className="flex flex-col gap-0.5">
-                                                <h3 className="text-lg font-black text-white tracking-tight truncate" title={t.name}>{t.name}</h3>
-                                                <span className="text-[10px] text-slate-500 font-bold bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 self-start">{t.region}</span>
+                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                <h3 className="text-base sm:text-lg font-black text-white tracking-tight truncate" title={t.name}>{t.name}</h3>
+                                                <span className="text-[10px] text-slate-500 font-bold bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 self-start truncate max-w-full">{t.region}</span>
                                             </div>
-                                            <span className="bg-white text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow-md self-start inline-flex items-center gap-1 mt-1"><span className={`w-1.5 h-1.5 rounded-full ${t.tier === 'S' ? 'bg-yellow-400' : t.tier === 'A' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>{t.tier} CLASS</span>
+                                            <span className="bg-white text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow-md self-start inline-flex items-center gap-1 mt-1 shrink-0"><span className={`w-1.5 h-1.5 rounded-full ${t.tier === 'S' ? 'bg-yellow-400' : t.tier === 'A' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>{t.tier} CLASS</span>
                                         </div>
                                     </div>
 
-                                    {/* 🔥 [수정] 컨트롤 영역 너비 확장 및 간격 조정 */}
-                                    <div className="flex flex-col gap-2 w-full sm:w-[240px] bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
-                                        <div className="flex items-center justify-between gap-2 border-b border-slate-800/50 pb-2 mb-1">
-                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Real Rank</span>
+                                    <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[240px] bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 shrink-0">
+                                        <div className="flex items-center justify-between gap-3 border-b border-slate-800/50 pb-2 mb-1">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Real Rank</span>
                                             <input type="number" value={t.real_rank || ''} onChange={(e) => handleRankChange(t, e.target.value)} placeholder="-" className="w-16 h-8 bg-slate-900 border border-slate-700 rounded-lg text-center text-white text-lg font-black focus:border-emerald-500 outline-none shadow-inner"/>
                                         </div>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Condition</span>
-                                            {/* 🔥 컨디션 버튼 영역 공간 확보 */}
-                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 gap-1.5 shadow-inner">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Condition</span>
+                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 gap-1 shadow-inner flex-1 justify-between max-w-[160px]">
                                                 {['A','B','C','D','E'].map(cond => (
-                                                    <button key={cond} onClick={() => handleConditionChange(t, cond)} className={`w-7 h-7 text-[11px] font-black rounded flex items-center justify-center transition-all duration-200 ${(t.condition || 'C') === cond ? cond === 'A' ? 'bg-emerald-500 text-black' : cond === 'B' ? 'bg-teal-500 text-black' : cond === 'D' ? 'bg-orange-500 text-black' : cond === 'E' ? 'bg-red-500 text-white' : 'bg-slate-500 text-white' : 'text-slate-600 hover:bg-slate-800'}`}>{cond}</button>
+                                                    <button key={cond} onClick={() => handleConditionChange(t, cond)} className={`w-6 h-6 sm:w-7 sm:h-7 text-[10px] sm:text-[11px] font-black rounded flex items-center justify-center transition-all duration-200 ${(t.condition || 'C') === cond ? cond === 'A' ? 'bg-emerald-500 text-black' : cond === 'B' ? 'bg-teal-500 text-black' : cond === 'D' ? 'bg-orange-500 text-black' : cond === 'E' ? 'bg-red-500 text-white' : 'bg-slate-500 text-white' : 'text-slate-600 hover:bg-slate-800'}`}>{cond}</button>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
-                                    {t.real_rank !== masterTeams.find(mt=>mt.id===t.id)?.real_rank && <div className="absolute top-0 right-0 w-full h-full border-2 border-emerald-500/30 rounded-2xl pointer-events-none animate-pulse"></div>}
+                                    {t.real_rank !== masterTeams.find(mt=>mt.id===t.id)?.real_rank && <div className="absolute top-0 left-0 w-full h-full border-2 border-emerald-500/30 rounded-2xl pointer-events-none animate-pulse"></div>}
                                 </div>
                             ))}
                         </div>
@@ -418,16 +411,16 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
 
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[95%] max-w-5xl z-50">
                     <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-600 p-4 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex items-center justify-between gap-4">
-                        <div className="text-white font-bold text-sm ml-2">
-                            <span className="text-emerald-400">{editTeams.filter(t => t.real_rank !== masterTeams.find(mt => mt.id === t.id)?.real_rank || t.condition !== masterTeams.find(mt => mt.id === t.id)?.condition).length}개 팀</span>의 정보가 수정되었습니다.
+                        <div className="text-white font-bold text-sm ml-2 hidden sm:block">
+                            <span className="text-emerald-400">{editTeams.filter(t => t.real_rank !== masterTeams.find(mt => mt.id === t.id)?.real_rank || t.condition !== masterTeams.find(mt => mt.id === t.id)?.condition).length}개 팀</span> 정보 수정 중
                         </div>
-                        <div className="flex gap-2">
-                             <label className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-xl border border-blue-500 shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 text-sm whitespace-nowrap group">
-                                <span className="group-hover:animate-bounce">🚀</span> 엑셀 추가 업로드
+                        <div className="flex gap-2 w-full sm:w-auto">
+                             <label className="flex-1 sm:flex-none bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-xl border border-blue-500 shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 text-sm whitespace-nowrap group">
+                                <span className="group-hover:animate-bounce">🚀</span> 엑셀 추가
                                 <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
                             </label>
-                            <button onClick={handleSaveAll} disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl border border-emerald-500 shadow-lg transition-all active:scale-95 flex items-center gap-2 text-sm whitespace-nowrap">
-                                {isSaving ? '저장 중...' : '💾 변경사항 저장'}
+                            <button onClick={handleSaveAll} disabled={isSaving} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl border border-emerald-500 shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 text-sm whitespace-nowrap">
+                                {isSaving ? '저장 중...' : '💾 저장하기'}
                             </button>
                         </div>
                     </div>
