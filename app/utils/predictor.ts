@@ -1,70 +1,79 @@
 import { Team, MasterTeam } from '../types';
 
-// ==========================================
-// 1. 가중치 재설정 (실력 위주로 변경)
-// ==========================================
+// =========================================================
+// 1. 가중치 설정: 상성(45%) + 오너(35%) = 80% (상성 깡패)
+// =========================================================
 const WEIGHTS = {
-  OWNER: 0.7,   // 🔥 오너 실력 비중 대폭 상향 (50% -> 70%)
-  SQUAD: 0.15,  // 팀 체급 비중 축소 (30% -> 15%)
-  REAL: 0.15    // 현실 반영 비중 축소 (20% -> 15%)
+  OWNER_BASE: 0.35,   // 오너 기본 피지컬
+  HEAD_TO_HEAD: 0.45, // 🔥 [핵심] 상대 전적 (가장 높음)
+  SQUAD_SPEC: 0.20    // 팀 스펙 (아무리 좋아도 20%만 반영)
 };
 
-// 티어별 기본 점수
+// =========================================================
+// 2. 팀 체급 점수 (격차 극도로 축소)
+// S급과 A급의 차이를 거의 없애서 변별력 삭제
+// =========================================================
 const TIER_SCORES: Record<string, number> = {
-  'S': 95, 
-  'A': 85, 
-  'B': 75, 
-  'C': 65
+  'S': 88, // 기존 90 -> 88
+  'A': 86, // 기존 87 -> 86 (격차 2점)
+  'B': 82, 
+  'C': 75,
+  'D': 65
 };
 
-// 컨디션별 가산점 (A~E)
-const CONDITION_SCORES: Record<string, number> = {
-  'A': 100,
-  'B': 90,
-  'C': 80,
-  'D': 70,
-  'E': 60
+const CONDITION_BONUS: Record<string, number> = {
+  'A': 2,   // 보너스 점수도 축소
+  'B': 1,
+  'C': 0,
+  'D': -2,
+  'E': -4
 };
 
-// ==========================================
-// 2. 헬퍼 함수들
-// ==========================================
+// =========================================================
+// 3. 헬퍼 함수들
+// =========================================================
 
-const getRealWorldScore = (teamName: string, masterTeams: MasterTeam[]): number => {
-  const masterTeam = masterTeams.find(t => t.name === teamName);
-  if (!masterTeam) return 80;
+const getHeadToHeadWinRate = (me: string, opponent: string, historyData: any): { rate: number, count: number } => {
+  if (!historyData || !historyData.matches) return { rate: 50, count: 0 };
 
-  const rank = masterTeam.real_rank && masterTeam.real_rank > 0 ? masterTeam.real_rank : 10;
-  const rankScore = Math.max(60, 102 - (rank * 2)); 
+  const h2hMatches = historyData.matches.filter((m: any) => 
+    (m.homeOwner === me && m.awayOwner === opponent) || 
+    (m.homeOwner === opponent && m.awayOwner === me)
+  );
 
-  const cond = masterTeam.condition || 'C';
-  const conditionScore = CONDITION_SCORES[cond] || 80;
+  const total = h2hMatches.length;
+  if (total === 0) return { rate: 50, count: 0 };
 
-  return (rankScore + conditionScore) / 2;
+  let wins = 0;
+  h2hMatches.forEach((m: any) => {
+    if (m.homeOwner === me && Number(m.homeScore) > Number(m.awayScore)) wins++;
+    if (m.awayOwner === me && Number(m.awayScore) > Number(m.homeScore)) wins++;
+  });
+
+  return { rate: (wins / total) * 100, count: total };
 };
 
-/**
- * 오너의 역대 승률 계산 (보정 로직 완화)
- */
-const getOwnerWinRate = (ownerName: string, historyData: any): number => {
-  if (!historyData || !historyData.owners) return 50; 
-
-  const ownerStat = historyData.owners.find((o: any) => o.nickname === ownerName);
-  
-  // 데이터가 너무 적으면(5판 미만) 50점 처리
-  if (!ownerStat || ownerStat.totalMatches < 5) return 50;
-
-  const winRate = (ownerStat.win / ownerStat.totalMatches) * 100;
-  
-  // 🔥 [수정] 하한선을 30점에서 10점으로 낮춤 (못하면 가차없이 깎임)
-  // 잘하는 사람은 95점까지 인정
-  return Math.max(10, Math.min(95, winRate));
+const getOwnerGeneralWinRate = (ownerName: string, historyData: any): number => {
+  if (!historyData || !historyData.owners) return 50;
+  const owner = historyData.owners.find((o: any) => o.nickname === ownerName);
+  if (!owner || owner.totalMatches < 5) return 50;
+  return (owner.win / owner.totalMatches) * 100;
 };
 
-// ==========================================
-// 3. 메인 예측 함수
-// ==========================================
+const getTeamSpecScore = (team: Team, masterTeams: MasterTeam[]): number => {
+  let baseScore = TIER_SCORES[team.tier] || 75;
+  const master = masterTeams.find(m => m.name === team.name);
+  if (master) {
+    if (master.real_rank) baseScore += Math.max(0, (10 - master.real_rank) * 0.1); // 순위 영향력 최소화
+    const cond = master.condition || 'C';
+    baseScore += (CONDITION_BONUS[cond] || 0);
+  }
+  return baseScore;
+};
 
+// =========================================================
+// 4. 메인 예측 로직
+// =========================================================
 export const getPrediction = (
   homeName: string, 
   awayName: string, 
@@ -75,78 +84,65 @@ export const getPrediction = (
   const homeTeam = activeRankingData?.teams?.find((t: Team) => t.name === homeName);
   const awayTeam = activeRankingData?.teams?.find((t: Team) => t.name === awayName);
 
-  if (!homeTeam || !awayTeam) {
-    return { hRate: 50, aRate: 50 };
+  if (!homeTeam || !awayTeam) return { hRate: 50, aRate: 50 };
+
+  const hBase = getOwnerGeneralWinRate(homeTeam.ownerName, historyData);
+  const aBase = getOwnerGeneralWinRate(awayTeam.ownerName, historyData);
+  
+  const hSpec = getTeamSpecScore(homeTeam, masterTeams);
+  const aSpec = getTeamSpecScore(awayTeam, masterTeams);
+
+  const hHead = getHeadToHeadWinRate(homeTeam.ownerName, awayTeam.ownerName, historyData);
+  const aHeadRate = hHead.count > 0 ? (100 - hHead.rate) : 50;
+
+  let finalH, finalA;
+  
+  if (hHead.count > 0) {
+    // 🔥 전적이 1판이라도 있으면 상성 비중 45% 즉시 적용
+    finalH = (hBase * WEIGHTS.OWNER_BASE) + (hHead.rate * WEIGHTS.HEAD_TO_HEAD) + (hSpec * WEIGHTS.SQUAD_SPEC);
+    finalA = (aBase * WEIGHTS.OWNER_BASE) + (aHeadRate * WEIGHTS.HEAD_TO_HEAD) + (aSpec * WEIGHTS.SQUAD_SPEC);
+  } else {
+    // 전적이 아예 없으면 기본기 싸움
+    finalH = (hBase * 0.7) + (hSpec * 0.3);
+    finalA = (aBase * 0.7) + (aSpec * 0.3);
   }
 
-  // A. 오너 점수 (가중치 70%)
-  const homeOwnerScore = getOwnerWinRate(homeTeam.ownerName, historyData);
-  const awayOwnerScore = getOwnerWinRate(awayTeam.ownerName, historyData);
+  // 예측 승률 계산
+  const diff = finalH - finalA;
+  let hRatePrediction = 50 + (diff * 2.0);
 
-  // B. 스쿼드 점수 (가중치 15%)
-  const homeSquadScore = TIER_SCORES[homeTeam.tier] || 65;
-  const awaySquadScore = TIER_SCORES[awayTeam.tier] || 65;
+  // =========================================================
+  // 🔥 [천적 관계 절대 보정 (Absolute Nemesis Rule)]
+  // 조건: 상대 전적 1판 이상 & 승률 0% -> 무조건 패배 예측 (최대 42%)
+  // 조건: 상대 전적 3판 이상 & 승률 0% -> 압도적 패배 예측 (최대 30%)
+  // =========================================================
+  if (hHead.count >= 1) {
+      if (hHead.rate === 0) {
+          // 1패라도 있고 이긴 적 없으면 -> 팀이 아무리 좋아도 42%를 못 넘김 (열세 확정)
+          hRatePrediction = Math.min(hRatePrediction, 42); 
+          
+          // 3패 이상이고 이긴 적 없으면 -> 30% 못 넘김 (절대 열세)
+          if (hHead.count >= 3) hRatePrediction = Math.min(hRatePrediction, 30);
+      } 
+      else if (hHead.rate === 100) {
+          // 반대 경우 (전승 중)
+          hRatePrediction = Math.max(hRatePrediction, 58); // 최소 우세 보장
+          if (hHead.count >= 3) hRatePrediction = Math.max(hRatePrediction, 70);
+      }
+  }
 
-  // C. 현실 점수 (가중치 15%)
-  const homeRealScore = getRealWorldScore(homeTeam.name, masterTeams);
-  const awayRealScore = getRealWorldScore(awayTeam.name, masterTeams);
-
-  // D. 총점 계산
-  const calculateTotalPower = (owner: number, squad: number, real: number) => {
-    return (owner * WEIGHTS.OWNER) + (squad * WEIGHTS.SQUAD) + (real * WEIGHTS.REAL);
+  return { 
+    hRate: Math.round(Math.max(5, Math.min(95, hRatePrediction))), 
+    aRate: Math.round(100 - Math.max(5, Math.min(95, hRatePrediction))) 
   };
-
-  const homePower = calculateTotalPower(homeOwnerScore, homeSquadScore, homeRealScore);
-  const awayPower = calculateTotalPower(awayOwnerScore, awaySquadScore, awayRealScore);
-
-  // E. 격차 기반 승률 계산 (Gap Logic)
-  // 점수 차이를 더 민감하게 반응하도록 계수 조정 (2.0 -> 2.5)
-  const powerDiff = homePower - awayPower; 
-  let hRate = 50 + (powerDiff * 2.5);
-
-  hRate = Math.round(hRate);
-  
-  // 최소/최대 승률 제한 (5% ~ 95%로 범위를 넓혀서 압도적인 상황 표현)
-  if (hRate > 95) hRate = 95;
-  if (hRate < 5) hRate = 5;
-
-  let aRate = 100 - hRate;
-
-  return { hRate, aRate };
 };
 
-/**
- * DB 저장용 스냅샷 함수
- */
 export const calculateMatchSnapshot = (
-  homeName: string,
-  awayName: string,
-  activeRankingData: any, 
-  historyData: any,
-  masterTeams: any[] 
+  homeName: string, awayName: string, activeRankingData: any, historyData: any, masterTeams: any[]
 ) => {
-  if (
-    homeName === 'BYE' || 
-    awayName === 'BYE' || 
-    homeName === 'TBD' || 
-    awayName === 'TBD'
-  ) {
-    return {
-      homePredictRate: 0,
-      awayPredictRate: 0
-    };
+  if (['BYE', 'TBD'].includes(homeName) || ['BYE', 'TBD'].includes(awayName)) {
+    return { homePredictRate: 0, awayPredictRate: 0 };
   }
-
-  const { hRate, aRate } = getPrediction(
-    homeName, 
-    awayName, 
-    activeRankingData, 
-    historyData, 
-    masterTeams
-  );
-
-  return {
-    homePredictRate: hRate,
-    awayPredictRate: aRate
-  };
+  const { hRate, aRate } = getPrediction(homeName, awayName, activeRankingData, historyData, masterTeams);
+  return { homePredictRate: hRate, awayPredictRate: aRate };
 };
