@@ -8,16 +8,36 @@ interface RankingViewProps {
   viewSeasonId: number;
   setViewSeasonId: (id: number) => void;
   activeRankingData: any;
-  owners?: Owner[]; // 🔥 [수정] 있어도 되고 없어도 되도록 선택적(?.)으로 변경
+  owners?: Owner[]; 
 }
 
-// 🔥 [핵심 수정] owners = [] : 데이터가 안 넘어오면 빈 배열로 처리해서 에러 방지
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
   return (
     <div className="space-y-6 animate-in fade-in">
+        {/* 스타일 정의: 쉬머 애니메이션 및 바운스 */}
+        {/* @ts-ignore : styled-jsx 타입 오류 방지 */}
+        <style jsx>{`
+            @keyframes shimmer {
+                0% { background-position: -200% 0; }
+                100% { background-position: 200% 0; }
+            }
+            @keyframes softBounce {
+                0%, 100% { transform: translateY(0) rotate(-10deg); }
+                50% { transform: translateY(-5px) rotate(-10deg); }
+            }
+            .rank-1-shimmer {
+                background: linear-gradient(120deg, rgba(234, 179, 8, 0.1) 30%, rgba(255, 255, 255, 0.2) 50%, rgba(234, 179, 8, 0.1) 70%);
+                background-size: 200% 100%;
+                animation: shimmer 3s infinite linear;
+            }
+            .crown-bounce {
+                animation: softBounce 3s infinite ease-in-out;
+            }
+        `}</style>
+
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
             <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700">
                 {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
@@ -53,56 +73,115 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         )}
         
         {rankingTab === 'OWNERS' && (
-            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-                <table className="w-full text-left text-xs uppercase border-collapse">
-                    <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                        <tr>
-                            <th className="p-4 w-8">#</th>
-                            <th className="p-4">Owner</th>
-                            <th className="p-4 text-center">Record</th> 
-                            <th className="p-4 text-center text-emerald-400">Pts</th>
-                            <th className="p-4 text-right">Prize</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {activeRankingData.owners.map((o: any, i: number) => {
-                            // 🔥 [안전장치 추가] owners 배열이 있을 때만 find 실행
-                            const matchedOwner = (owners && owners.length > 0) 
-                                ? owners.find(owner => owner.nickname === o.name) 
+            <div className="space-y-4">
+                {/* 1등 특별 카드 영역 */}
+                {activeRankingData.owners.length > 0 && (() => {
+                    const firstOwner = activeRankingData.owners[0];
+                    const matchedOwner = (owners && owners.length > 0) 
+                                ? owners.find(owner => owner.nickname === firstOwner.name) 
                                 : null;
-                            const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+                    const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                            return (
-                                <tr key={i} className={`border-b border-slate-800/50 ${i<3 ? 'bg-purple-900/10' : ''}`}>
-                                    <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                    
-                                    <td className="p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0 shadow-lg">
-                                                <img 
-                                                    src={displayPhoto} 
-                                                    alt={o.name} 
-                                                    className="w-full h-full object-cover" 
-                                                    onError={(e:any) => e.target.src = FALLBACK_IMG} 
-                                                />
-                                            </div>
-                                            <div className="flex flex-col justify-center">
-                                                <span className="font-bold text-white text-sm whitespace-nowrap">{o.name}</span>
-                                            </div>
+                    return (
+                        <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
+                            {/* 배경 쉬머 효과 */}
+                            <div className="absolute inset-0 rank-1-shimmer z-0"></div>
+                            
+                            {/* ✅ [수정] 전체 패딩 및 간격 축소 (p-6 gap-6 -> p-5 gap-4) */}
+                            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
+                                {/* 1등 프로필 이미지 & 왕관 */}
+                                {/* ✅ [수정] 상단 여백 축소 (pt-6 -> pt-3) */}
+                                <div className="relative pt-3"> 
+                                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
+                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-yellow-300 via-yellow-500 to-yellow-200 shadow-2xl relative z-10">
+                                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900">
+                                            <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover"/>
                                         </div>
-                                    </td>
+                                    </div>
+                                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
+                                        <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-xs font-black px-4 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">1st WINNER</span>
+                                    </div>
+                                </div>
 
-                                    <td className="p-4 text-center text-slate-400 font-medium">
-                                        <span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span>
-                                    </td>
+                                {/* 1등 정보 */}
+                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                                    {/* ✅ [수정] 텍스트 간격 축소 (mb-2 -> mb-0.5) */}
+                                    <h3 className="text-xs md:text-sm text-yellow-500 font-bold tracking-[0.2em] mb-0.5 uppercase">The Champion</h3>
+                                    {/* ✅ [수정] 이름 하단 여백 축소 (mb-6 -> mb-3) */}
+                                    <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
+                                    
+                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[80px]">
+                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span>
+                                            <span className="text-xl font-black text-emerald-400">{firstOwner.points}</span>
+                                        </div>
+                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[100px]">
+                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span>
+                                            <span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}<span className="text-sm">W</span> <span className="text-slate-500">{firstOwner.draw}<span className="text-xs">D</span></span> <span className="text-red-400">{firstOwner.loss}<span className="text-xs">L</span></span></span>
+                                        </div>
+                                        <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40">
+                                            <span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span>
+                                            <span className="text-xl font-black text-yellow-400">₩ {firstOwner.prize.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
-                                    <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
-                                    <td className="p-4 text-right text-yellow-500 font-bold">₩ {o.prize.toLocaleString()}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                {/* 2등부터 나머지 리스트 */}
+                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                    <table className="w-full text-left text-xs uppercase border-collapse">
+                        <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                            <tr>
+                                <th className="p-4 w-8">#</th>
+                                <th className="p-4">Owner</th>
+                                <th className="p-4 text-center">Record</th> 
+                                <th className="p-4 text-center text-emerald-400">Pts</th>
+                                <th className="p-4 text-right">Prize</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {activeRankingData.owners.slice(1).map((o: any, i: number) => { 
+                                const actualRank = i + 2; 
+                                const matchedOwner = (owners && owners.length > 0) 
+                                    ? owners.find(owner => owner.nickname === o.name) 
+                                    : null;
+                                const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+
+                                return (
+                                    <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
+                                        <td className={`p-4 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
+                                        
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-500' : 'border-slate-700'}`}>
+                                                    <img 
+                                                        src={displayPhoto} 
+                                                        alt={o.name} 
+                                                        className="w-full h-full object-cover" 
+                                                        onError={(e:any) => e.target.src = FALLBACK_IMG} 
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col justify-center">
+                                                    <span className={`font-bold text-sm whitespace-nowrap ${actualRank===2 ? 'text-slate-200' : actualRank===3 ? 'text-orange-200' : 'text-white'}`}>{o.name}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="p-4 text-center text-slate-400 font-medium">
+                                            <span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span>
+                                        </td>
+
+                                        <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
+                                        <td className="p-4 text-right text-yellow-500/80 font-bold">₩ {o.prize.toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         )}
 
