@@ -4,7 +4,7 @@ import { FALLBACK_IMG, Owner } from '../types';
 
 interface HistoryViewProps {
   historyData: any;
-  owners?: Owner[]; // 🔥 [확인] owners 데이터를 선택적으로 받음
+  owners?: Owner[]; 
 }
 
 export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
@@ -13,6 +13,56 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
   return (
     <div className="space-y-6 animate-in fade-in">
+        {/* 스타일 정의: 명예의 전당 전용 애니메이션 + 그린 형광 빛반사 효과 */}
+        {/* @ts-ignore */}
+        <style jsx>{`
+            /* 1. 빅이어 둥둥 효과 (정면, 비틀지 않음) */
+            @keyframes verticalFloat {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-12px); }
+            }
+            
+            /* 2. 그린 형광 빛반사 효과 (Light Sweep) */
+            @keyframes green-light-sweep {
+                0% { transform: translateX(-100%) skewX(-25deg); opacity: 0; }
+                50% { opacity: 0.5; }
+                100% { transform: translateX(200%) skewX(-25deg); opacity: 0; }
+            }
+
+            /* 3. 은은한 그린 오라 (Pulse) */
+            @keyframes green-glow-pulse {
+                0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.1); }
+                50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.3); }
+            }
+
+            .trophy-float-straight {
+                animation: verticalFloat 4s infinite ease-in-out;
+            }
+            
+            .silver-trophy {
+                filter: grayscale(100%) drop-shadow(0 4px 8px rgba(0,0,0,0.6));
+            }
+
+            /* 그린 형광 배경 (기본 베이스) */
+            .green-neon-bg {
+                background: linear-gradient(135deg, rgba(6, 78, 59, 0.4), rgba(15, 23, 42, 0.9), rgba(6, 78, 59, 0.4));
+                animation: green-glow-pulse 4s infinite ease-in-out;
+            }
+
+            /* 빛반사 빔 */
+            .green-sweep-beam {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 50%;
+                height: 100%;
+                background: linear-gradient(to right, transparent, rgba(52, 211, 153, 0.2), transparent); /* Emerald-400 */
+                filter: blur(10px);
+                animation: green-light-sweep 4s infinite ease-in-out;
+                pointer-events: none;
+            }
+        `}</style>
+
         <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 to-blue-900/20" />
             <h2 className="text-2xl font-black italic text-white mb-1 relative z-10">👑 HALL OF FAME 👑</h2>
@@ -46,69 +96,140 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 2. Owners History (수정됨) */}
+        {/* 2. Owners History (명예의 전당 카드 적용) */}
         {historyTab === 'OWNERS' && (
-            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
-                <table className="w-full text-left text-xs uppercase">
-                    <thead className="bg-slate-900 text-slate-500">
-                        <tr>
-                            {/* 🔥 [수정] 패딩을 p-3 -> px-2 py-3 로 조절하여 가로 공간 확보 */}
-                            <th className="px-2 py-3 w-8 text-center">#</th>
-                            <th className="px-2 py-3">Owner</th>
-                            <th className="px-2 py-3 text-center">Rec</th>
-                            <th className="px-2 py-3 text-center text-emerald-400">Pts</th>
-                            <th className="px-2 py-3 text-center">Awards</th>
-                            <th className="px-2 py-3 text-right">Prize</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {historyData.owners.map((o:any, i:number) => {
-                            // 🔥 [이미지 매칭 로직]
-                            const matchedOwner = (owners && owners.length > 0) 
-                                ? owners.find(owner => owner.nickname === o.name) 
+            <div className="space-y-4">
+                {/* 🏆 [NEW] 역대 1위 'THE LEGEND' 카드 */}
+                {historyData.owners.length > 0 && (() => {
+                    const legend = historyData.owners[0];
+                    const matchedOwner = (owners && owners.length > 0) 
+                                ? owners.find(owner => owner.nickname === legend.name) 
                                 : null;
-                            const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+                    const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                            return (
-                                <tr key={i} className="border-b border-slate-800/50">
-                                    <td className={`px-2 py-3 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
+                    return (
+                        <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 mb-6">
+                            {/* 🔥 [수정] 배경 이펙트: 그린 형광 빛반사 */}
+                            <div className="absolute inset-0 green-neon-bg z-0"></div>
+                            <div className="green-sweep-beam z-0"></div>
+                            
+                            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm">
+                                {/* 1. 트로피와 오너 이미지 */}
+                                {/* pl-10: 트로피 공간 확보 */}
+                                <div className="relative pt-4 pl-10">
                                     
-                                    {/* 🔥 [수정] 오너 프로필 + 이름 (작게) */}
-                                    <td className="px-2 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0">
-                                                <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                    {/* 🔥 [수정] 빅이어 트로피: 위치를 좀 더 아래로(-top-2) 내려서 전체 노출 */}
+                                    <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
+                                    
+                                    {/* 프로필 이미지 (그린 보더) */}
+                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
+                                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
+                                            <img src={displayPhoto} alt={legend.name} className="w-full h-full object-cover"/>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 뱃지 */}
+                                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
+                                        <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase">
+                                            All-Time Legend
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* 2. 레전드 정보 */}
+                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                                    <h3 className="text-[10px] text-emerald-400 font-bold tracking-[0.3em] mb-1 uppercase">Hall of Fame No.1</h3>
+                                    <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
+                                        {legend.name}
+                                    </h2>
+                                    
+                                    {/* 스탯 그리드 */}
+                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50 min-w-[70px]">
+                                            <span className="text-[9px] text-slate-500 block font-bold">POINTS</span>
+                                            <span className="text-lg font-black text-emerald-400">{legend.points}</span>
+                                        </div>
+                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50 min-w-[90px]">
+                                            <span className="text-[9px] text-slate-500 block font-bold">RECORD</span>
+                                            <span className="text-sm font-bold text-slate-200">{legend.win}W {legend.draw}D {legend.loss}L</span>
+                                        </div>
+                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50">
+                                            <span className="text-[9px] text-slate-500 block font-bold">TROPHIES</span>
+                                            <div className="flex gap-1 text-xs">
+                                                {legend.golds > 0 ? <span>🥇{legend.golds}</span> : <span className="text-slate-700">-</span>}
+                                                {legend.silvers > 0 && <span className="opacity-70">🥈{legend.silvers}</span>}
                                             </div>
-                                            <span className="font-bold text-white text-xs whitespace-nowrap">{o.name}</span>
                                         </div>
-                                    </td>
-
-                                    {/* 🔥 [수정] 레코드 영역: div.flex 제거, 폰트 크기 축소, 줄바꿈 방지 */}
-                                    <td className="px-2 py-3 text-center text-slate-400 text-[11px] font-medium whitespace-nowrap">
-                                        <span className="text-white">{o.win}</span>W <span className="mx-0.5"></span>
-                                        <span className="text-slate-500">{o.draw}D</span> <span className="mx-0.5"></span>
-                                        <span className="text-red-400">{o.loss}L</span>
-                                    </td>
-
-                                    {/* 🔥 [추가] 누적 승점 */}
-                                    <td className="px-2 py-3 text-center text-emerald-400 font-black text-sm">
-                                        {o.points}
-                                    </td>
-
-                                    <td className="px-2 py-3 text-center text-[10px]">
-                                        <div className="flex justify-center gap-1">
-                                            {o.golds>0 && <span>🥇{o.golds}</span>}
-                                            {o.silvers>0 && <span>🥈{o.silvers}</span>}
-                                            {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
-                                            {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
+                                        <div className="bg-gradient-to-r from-emerald-900/30 to-teal-900/30 rounded-lg px-4 py-2 border border-emerald-500/20">
+                                            <span className="text-[9px] text-emerald-400 block font-black">TOTAL PRIZE</span>
+                                            <span className="text-sm font-bold text-white">₩ {legend.prize.toLocaleString()}</span>
                                         </div>
-                                    </td>
-                                    <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap">₩ {o.prize.toLocaleString()}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* 2위부터 테이블 리스트 */}
+                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
+                    <table className="w-full text-left text-xs uppercase">
+                        <thead className="bg-slate-950 text-slate-500">
+                            <tr>
+                                <th className="px-2 py-3 w-8 text-center">#</th>
+                                <th className="px-2 py-3">Owner</th>
+                                <th className="px-2 py-3 text-center">Rec</th>
+                                <th className="px-2 py-3 text-center text-emerald-400">Pts</th>
+                                <th className="px-2 py-3 text-center">Awards</th>
+                                <th className="px-2 py-3 text-right">Prize</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {historyData.owners.slice(1).map((o:any, i:number) => {
+                                const actualRank = i + 2; 
+                                const matchedOwner = (owners && owners.length > 0) 
+                                    ? owners.find(owner => owner.nickname === o.name) 
+                                    : null;
+                                const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+
+                                return (
+                                    <tr key={i} className="border-b border-slate-800/50">
+                                        <td className={`px-2 py-3 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
+                                        
+                                        <td className="px-2 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-8 h-8 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-600' : 'border-slate-700'}`}>
+                                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                                </div>
+                                                <span className={`font-bold text-xs whitespace-nowrap ${actualRank===2 ? 'text-slate-200' : actualRank===3 ? 'text-orange-200' : 'text-white'}`}>{o.name}</span>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-2 py-3 text-center text-slate-400 text-[11px] font-medium whitespace-nowrap">
+                                            <span className="text-white">{o.win}</span>W <span className="mx-0.5"></span>
+                                            <span className="text-slate-500">{o.draw}D</span> <span className="mx-0.5"></span>
+                                            <span className="text-red-400">{o.loss}L</span>
+                                        </td>
+
+                                        <td className="px-2 py-3 text-center text-emerald-400 font-black text-sm">
+                                            {o.points}
+                                        </td>
+
+                                        <td className="px-2 py-3 text-center text-[10px]">
+                                            <div className="flex justify-center gap-1">
+                                                {o.golds>0 && <span>🥇{o.golds}</span>}
+                                                {o.silvers>0 && <span>🥈{o.silvers}</span>}
+                                                {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
+                                                {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap">₩ {o.prize.toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         )}
 
@@ -142,3 +263,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
     </div>
   );
 };
+
+// Default Export 호환성 유지
+export default HistoryView;
