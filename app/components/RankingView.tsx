@@ -15,13 +15,31 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
-  // 1️⃣ [추가] 현재 선택된 시즌의 상금 규칙(prizes)을 찾습니다.
+  // 1️⃣ 현재 선택된 시즌의 상금 규칙(prizes) 찾기
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
+  // 2️⃣ [핵심 수정] 팀 랭킹 기반 상금 매핑 로직
+  // - 팀 랭킹 1,2,3위 팀의 'ownerName'을 찾아서 상금을 누구에게 줄지 결정합니다.
+  const teamRankings = activeRankingData.teams || [];
+  
+  // 팀 1위, 2위, 3위 오너 이름 찾기
+  const firstPrizeOwnerName = teamRankings[0]?.ownerName;  // 예: "강원주" (아스날)
+  const secondPrizeOwnerName = teamRankings[1]?.ownerName; // 예: "정일수" (토트넘)
+  const thirdPrizeOwnerName = teamRankings[2]?.ownerName;  // 예: "정일수" (포르투)
+
+  // 오너 이름별 상금 계산 함수 (중복 수령 가능성을 고려해 합산)
+  const getOwnerPrize = (ownerName: string) => {
+    let totalPrize = 0;
+    if (ownerName === firstPrizeOwnerName) totalPrize += (prizeRule.first || 0);
+    if (ownerName === secondPrizeOwnerName) totalPrize += (prizeRule.second || 0);
+    if (ownerName === thirdPrizeOwnerName) totalPrize += (prizeRule.third || 0);
+    return totalPrize;
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in">
-        {/* 스타일 정의 생략 (기존 유지) */}
+        {/* 스타일 정의 생략 */}
         {/* @ts-ignore */}
         <style jsx>{`
             @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -30,7 +48,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             .crown-bounce { animation: softBounce 3s infinite ease-in-out; }
         `}</style>
 
-        {/* 상단 시즌 선택 및 탭 버튼 (기존 유지) */}
+        {/* 상단 시즌 선택 및 탭 버튼 */}
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
             <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700">
                 {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
@@ -42,7 +60,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         </div>
 
-        {/* STANDINGS 탭 (기존 유지) */}
+        {/* STANDINGS 탭 */}
         {rankingTab === 'STANDINGS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
@@ -66,10 +84,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* 🔥 [수정 핵심] OWNERS 탭 */}
+        {/* 🔥 OWNERS 탭 수정됨 */}
         {rankingTab === 'OWNERS' && (
             <div className="space-y-4">
-                {/* 1등 특별 카드 영역 */}
+                {/* 1등 오너 카드 (정일수) */}
                 {activeRankingData.owners.length > 0 && (() => {
                     const firstOwner = activeRankingData.owners[0];
                     const matchedOwner = (owners && owners.length > 0) 
@@ -77,8 +95,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 : null;
                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                    // 2️⃣ [수정] 사람(firstOwner.prize) 대신 시즌 규칙(prizeRule.first)을 사용
-                    const displayPrize = prizeRule.first || 0;
+                    // 3️⃣ [적용] 이 오너(firstOwner.name)가 받을 상금을 계산 (팀 랭킹 기준)
+                    const displayPrize = getOwnerPrize(firstOwner.name);
 
                     return (
                         <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
@@ -112,7 +130,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                         </div>
                                         <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40">
                                             <span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span>
-                                            {/* 🔥 수정됨: displayPrize 변수 사용 */}
                                             <span className="text-xl font-black text-yellow-400">₩ {displayPrize.toLocaleString()}</span>
                                         </div>
                                     </div>
@@ -142,11 +159,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                     : null;
                                 const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                                // 3️⃣ [수정] 2등, 3등에게 순위에 맞는 상금 할당
-                                let rankPrize = 0;
-                                if (actualRank === 2) rankPrize = prizeRule.second || 0;
-                                else if (actualRank === 3) rankPrize = prizeRule.third || 0;
-                                // 4등 이하는 0원 (필요하면 else if 추가)
+                                // 4️⃣ [적용] 리스트에 있는 각 오너(o.name)가 받을 상금 계산
+                                const rankPrize = getOwnerPrize(o.name);
 
                                 return (
                                     <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
@@ -168,7 +182,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                         </td>
 
                                         <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
-                                        {/* 🔥 수정됨: rankPrize 변수 사용 */}
                                         <td className={`p-4 text-right font-bold ${rankPrize > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>
                                             ₩ {rankPrize.toLocaleString()}
                                         </td>
