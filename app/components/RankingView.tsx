@@ -1,6 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState } from 'react';
-import { FALLBACK_IMG, Owner } from '../types'; 
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, query } from 'firebase/firestore'; 
+import { db } from '../firebase'; 
+import { FALLBACK_IMG, Owner, MasterTeam } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers'; 
 
 interface RankingViewProps {
@@ -14,19 +16,47 @@ interface RankingViewProps {
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
+  
+  // 🔥 [데이터 로드] 마스터 팀 데이터 가져오기 (매칭 실패 방지 로직 강화)
+  const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
 
-  // 1️⃣ 현재 선택된 시즌의 상금 규칙(prizes) 찾기
+  useEffect(() => {
+    const fetchMasterTeams = async () => {
+      try {
+        const q = query(collection(db, 'master_teams'));
+        const querySnapshot = await getDocs(q);
+        const teams = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            // 🔥 [중요] ID가 문서 ID(doc.id)일 수도 있고, 필드(data.id)일 수도 있어서 둘 다 확보
+            return {
+                id: doc.id, 
+                ...data,
+                // 검색 편의를 위해 필드 정리
+                teamName: data.team || data.name || doc.id 
+            };
+        }) as MasterTeam[];
+        
+        console.log("🔥 Loaded Master Teams:", teams); // 데이터 확인용 로그
+        setMasterTeams(teams); 
+      } catch (error) {
+        console.error("Error fetching master teams:", error);
+      }
+    };
+    fetchMasterTeams();
+  }, []); 
+
+  // 1️⃣ 현재 선택된 시즌의 상금 규칙
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
-  // 2️⃣ 팀 랭킹 정렬 로직 강화: 승점 > 득실 > 다득점
+  // 2️⃣ 팀 랭킹 정렬 로직
   const sortedTeams = [...(activeRankingData.teams || [])].sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points; // 1. 승점
-    if (b.gd !== a.gd) return b.gd - a.gd;                 // 2. 득실차
-    return (b.gf || 0) - (a.gf || 0);                      // 3. 다득점
+    if (b.points !== a.points) return b.points - a.points; 
+    if (b.gd !== a.gd) return b.gd - a.gd;                 
+    return (b.gf || 0) - (a.gf || 0);                      
   });
 
-  // 3️⃣ 팀 랭킹 기반 상금 매핑 (정렬된 팀 기준)
+  // 3️⃣ 팀 랭킹 기반 상금 매핑
   const firstPrizeOwnerName = sortedTeams[0]?.ownerName;  
   const secondPrizeOwnerName = sortedTeams[1]?.ownerName; 
   const thirdPrizeOwnerName = sortedTeams[2]?.ownerName; 
@@ -39,7 +69,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return totalPrize;
   };
 
-  // 4️⃣ 선수 랭킹 공동 순위 계산 함수
+  // 4️⃣ 선수 랭킹 공동 순위 계산
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = players
         .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -67,42 +97,31 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
 
-  // 🔥 [로직 이식] 컨디션(Form) 데이터에 따른 정확한 색상 및 아이콘 매핑
-  // (스케줄표와 동일한 디자인 로직 적용)
+  // 🔥 [디자인 로직] 컨디션(Form) 렌더링
   const renderCondition = (cond: string) => {
     const c = (cond || '').toUpperCase();
-    
-    // 공통 스타일: 검은 원형 배경 + 테두리 + 그림자
     const circleBase = "w-5 h-5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shadow-sm shrink-0";
     const iconBase = "text-[10px] font-bold leading-none";
 
     switch (c) {
-        case 'A': // 최상 (Green Up)
-            return <div className={`${circleBase} border-emerald-500/30`} title="최상(A)"><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
-        case 'B': // 우수 (Lime Diag-Up)
-            return <div className={`${circleBase} border-lime-500/30`} title="우수(B)"><span className={`${iconBase} text-lime-400`}>↗</span></div>;
-        case 'C': // 보통 (Yellow Right)
-            return <div className={`${circleBase} border-yellow-500/30`} title="보통(C)"><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
-        case 'D': // 나쁨 (Orange Diag-Down)
-            return <div className={`${circleBase} border-orange-500/30`} title="나쁨(D)"><span className={`${iconBase} text-orange-400`}>↘</span></div>;
-        case 'E': // 최악 (Red Down)
-            return <div className={`${circleBase} border-red-500/30`} title="최악(E)"><span className={`${iconBase} text-red-500`}>⬇</span></div>;
-        default:  // 데이터 없음
-            return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
+        case 'A': return <div className={`${circleBase} border-emerald-500/30`}><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
+        case 'B': return <div className={`${circleBase} border-lime-500/30`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
+        case 'C': return <div className={`${circleBase} border-yellow-500/30`}><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
+        case 'D': return <div className={`${circleBase} border-orange-500/30`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
+        case 'E': return <div className={`${circleBase} border-red-500/30`}><span className={`${iconBase} text-red-500`}>⬇</span></div>;
+        default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
     }
   };
 
-  // 🔥 [로직 이식] 리얼 랭킹(Real Rank) 데이터에 따른 배지 스타일 매핑
-  // (1,2,3위에 따른 금/은/동 색상 패턴 적용)
+  // 🔥 [디자인 로직] 리얼 랭킹 배지 렌더링
   const getRealRankBadge = (rank: number | undefined | null) => {
     if (!rank) return <div className="bg-slate-800 text-slate-600 text-[9px] font-bold px-1.5 py-[1px] rounded-[4px] shrink-0 border border-slate-700/50 leading-none">-</div>;
     
-    // 순위별 색상 패턴 적용
-    let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; // 기본 (4위 이하)
+    let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
     
-    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600"; // 1위 (노랑/검정)
-    else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400"; // 2위 (실버/검정)
-    else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500"; // 3위 (브론즈/검정)
+    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
+    else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
+    else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500";
 
     return (
         <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[4px] italic shadow-sm shrink-0 leading-none`}>
@@ -110,6 +129,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
     );
   };
+
+  // 🔥 [헬퍼] 이름 정규화 (공백제거, 소문자변환)
+  const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -150,45 +172,52 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         </tr>
                     </thead>
                     <tbody>
-                        {sortedTeams.map((t: any, i: number) => (
-                            <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
-                                <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                
-                                <td className="p-4 flex items-center gap-4">
-                                    {/* 🔥 [구조 변경] 엠블럼 + 하단 정보 배지 (2단 구조) */}
-                                    <div className="flex flex-col items-center gap-1.5 flex-shrink-0 w-12">
-                                        <img 
-                                            src={t.logo} 
-                                            // flex-shrink-0 으로 찌그러짐 방지
-                                            className="w-9 h-9 rounded-full bg-white object-contain p-0.5 shadow-md flex-shrink-0" 
-                                            alt="" 
-                                            onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}
-                                        />
-                                        
-                                        {/* 배지 컨테이너: 리얼 랭킹 + 폼 */}
-                                        <div className="flex items-center gap-1">
-                                            {/* 1. 리얼 랭킹 배지 (순위별 색상 로직 적용) */}
-                                            {getRealRankBadge(t.real_rank)}
-                                            
-                                            {/* 2. 컨디션 아이콘 (등급별 색상 로직 적용) */}
-                                            {renderCondition(t.condition)}
-                                        </div>
-                                    </div>
+                        {sortedTeams.map((t: any, i: number) => {
+                            // 🔥 [핵심 수정] 3중 매칭 로직 (ID, team, name 중 하나라도 맞으면 성공)
+                            const targetName = normalize(t.name);
+                            const realInfo = masterTeams.find(m => {
+                                return normalize(m.id) === targetName || 
+                                       normalize(m.team) === targetName || 
+                                       normalize(m.name) === targetName;
+                            });
 
-                                    {/* 팀 이름 및 오너 */}
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-sm tracking-tight">{t.name}</span>
-                                        <span className="text-[10px] text-slate-500 font-medium">{t.ownerName}</span>
-                                    </div>
-                                </td>
-                                
-                                <td className="p-2 text-center text-slate-400">{t.win}</td>
-                                <td className="p-2 text-center text-slate-400">{t.draw}</td>
-                                <td className="p-2 text-center text-slate-400">{t.loss}</td>
-                                <td className="p-2 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
-                                <td className="p-2 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
-                            </tr>
-                        ))}
+                            const realRank = realInfo?.real_rank;
+                            const realCondition = realInfo?.condition;
+
+                            return (
+                                <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
+                                    <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
+                                    
+                                    <td className="p-4 flex items-center gap-4">
+                                        <div className="flex flex-col items-center gap-1.5 flex-shrink-0 w-12">
+                                            <img 
+                                                src={t.logo} 
+                                                className="w-9 h-9 rounded-full bg-white object-contain p-0.5 shadow-md flex-shrink-0" 
+                                                alt="" 
+                                                onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}
+                                            />
+                                            
+                                            {/* 배지 컨테이너 */}
+                                            <div className="flex items-center gap-1">
+                                                {getRealRankBadge(realRank)}
+                                                {renderCondition(realCondition || '')}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-sm tracking-tight">{t.name}</span>
+                                            <span className="text-[10px] text-slate-500 font-medium">{t.ownerName}</span>
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="p-2 text-center text-slate-400">{t.win}</td>
+                                    <td className="p-2 text-center text-slate-400">{t.draw}</td>
+                                    <td className="p-2 text-center text-slate-400">{t.loss}</td>
+                                    <td className="p-2 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
+                                    <td className="p-2 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
