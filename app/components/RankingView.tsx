@@ -17,7 +17,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   
-  // 🔥 [데이터 로드] 마스터 팀 데이터 가져오기 (매칭 실패 방지 로직 강화)
+  // 🔥 [데이터 로드] 마스터 팀 데이터 가져오기
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
 
   useEffect(() => {
@@ -25,18 +25,18 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       try {
         const q = query(collection(db, 'master_teams'));
         const querySnapshot = await getDocs(q);
+        
+        // 🔥 [수정] 빌드 에러 해결을 위해 'as unknown as MasterTeam[]' 이중 변환 사용
         const teams = querySnapshot.docs.map(doc => {
             const data = doc.data();
-            // 🔥 [중요] ID가 문서 ID(doc.id)일 수도 있고, 필드(data.id)일 수도 있어서 둘 다 확보
             return {
                 id: doc.id, 
                 ...data,
-                // 검색 편의를 위해 필드 정리
+                // 검색 편의를 위해 필드 정리 (이 부분 때문에 타입 에러가 났었습니다)
                 teamName: data.team || data.name || doc.id 
             };
-        }) as MasterTeam[];
+        }) as unknown as MasterTeam[]; 
         
-        console.log("🔥 Loaded Master Teams:", teams); // 데이터 확인용 로그
         setMasterTeams(teams); 
       } catch (error) {
         console.error("Error fetching master teams:", error);
@@ -104,11 +104,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const iconBase = "text-[10px] font-bold leading-none";
 
     switch (c) {
-        case 'A': return <div className={`${circleBase} border-emerald-500/30`}><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
-        case 'B': return <div className={`${circleBase} border-lime-500/30`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
-        case 'C': return <div className={`${circleBase} border-yellow-500/30`}><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
-        case 'D': return <div className={`${circleBase} border-orange-500/30`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
-        case 'E': return <div className={`${circleBase} border-red-500/30`}><span className={`${iconBase} text-red-500`}>⬇</span></div>;
+        case 'A': return <div className={`${circleBase} border-emerald-500/30`} title="최상(A)"><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
+        case 'B': return <div className={`${circleBase} border-lime-500/30`} title="우수(B)"><span className={`${iconBase} text-lime-400`}>↗</span></div>;
+        case 'C': return <div className={`${circleBase} border-yellow-500/30`} title="보통(C)"><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
+        case 'D': return <div className={`${circleBase} border-orange-500/30`} title="나쁨(D)"><span className={`${iconBase} text-orange-400`}>↘</span></div>;
+        case 'E': return <div className={`${circleBase} border-red-500/30`} title="최악(E)"><span className={`${iconBase} text-red-500`}>⬇</span></div>;
         default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
     }
   };
@@ -130,7 +130,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
-  // 🔥 [헬퍼] 이름 정규화 (공백제거, 소문자변환)
+  // 🔥 [헬퍼] 이름 정규화
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   return (
@@ -174,8 +174,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <tbody>
                         {sortedTeams.map((t: any, i: number) => {
                             // 🔥 [핵심 수정] 3중 매칭 로직 (ID, team, name 중 하나라도 맞으면 성공)
+                            // 타입 에러 방지를 위해 (m: any)로 타입 단언
                             const targetName = normalize(t.name);
-                            const realInfo = masterTeams.find(m => {
+                            const realInfo = masterTeams.find((m: any) => {
                                 return normalize(m.id) === targetName || 
                                        normalize(m.team) === targetName || 
                                        normalize(m.name) === targetName;
