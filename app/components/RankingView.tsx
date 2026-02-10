@@ -12,6 +12,7 @@ interface RankingViewProps {
 }
 
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
+  // 🔹 여기가 핵심입니다. state가 선언되어야 rankingTab을 쓸 수 있습니다.
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
@@ -19,16 +20,18 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
-  // 2️⃣ [핵심 수정] 팀 랭킹 기반 상금 매핑 로직
-  // - 팀 랭킹 1,2,3위 팀의 'ownerName'을 찾아서 상금을 누구에게 줄지 결정합니다.
-  const teamRankings = activeRankingData.teams || [];
-  
-  // 팀 1위, 2위, 3위 오너 이름 찾기
-  const firstPrizeOwnerName = teamRankings[0]?.ownerName;  // 예: "강원주" (아스날)
-  const secondPrizeOwnerName = teamRankings[1]?.ownerName; // 예: "정일수" (토트넘)
-  const thirdPrizeOwnerName = teamRankings[2]?.ownerName;  // 예: "정일수" (포르투)
+  // 2️⃣ [수정] 팀 랭킹 정렬 로직 강화: 승점 > 득실 > 다득점
+  const sortedTeams = [...(activeRankingData.teams || [])].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points; // 1. 승점
+    if (b.gd !== a.gd) return b.gd - a.gd;                 // 2. 득실차
+    return (b.gf || 0) - (a.gf || 0);                      // 3. 다득점
+  });
 
-  // 오너 이름별 상금 계산 함수 (중복 수령 가능성을 고려해 합산)
+  // 3️⃣ [수정] 팀 랭킹 기반 상금 매핑 (정렬된 팀 기준)
+  const firstPrizeOwnerName = sortedTeams[0]?.ownerName;  
+  const secondPrizeOwnerName = sortedTeams[1]?.ownerName; 
+  const thirdPrizeOwnerName = sortedTeams[2]?.ownerName; 
+
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
     if (ownerName === firstPrizeOwnerName) totalPrize += (prizeRule.first || 0);
@@ -37,9 +40,37 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return totalPrize;
   };
 
+  // 4️⃣ [수정] 선수 랭킹 공동 순위 계산 함수
+  const getPlayerRanking = (players: any[]) => {
+    const sortedPlayers = players
+        .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
+        .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
+
+    let currentRank = 1;
+    let skip = 0; 
+
+    return sortedPlayers.map((player, index, array) => {
+        if (index > 0) {
+            const prevPlayer = array[index - 1];
+            const prevScore = rankPlayerMode === 'GOAL' ? prevPlayer.goals : prevPlayer.assists;
+            const currScore = rankPlayerMode === 'GOAL' ? player.goals : player.assists;
+
+            if (prevScore === currScore) {
+                skip++;
+            } else {
+                currentRank += 1 + skip;
+                skip = 0; 
+            }
+        }
+        return { ...player, rank: currentRank };
+    });
+  };
+
+  const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
+
   return (
     <div className="space-y-6 animate-in fade-in">
-        {/* 스타일 정의 생략 */}
+        {/* 스타일 정의 */}
         {/* @ts-ignore */}
         <style jsx>{`
             @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -60,7 +91,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         </div>
 
-        {/* STANDINGS 탭 */}
+        {/* STANDINGS 탭 (엠블럼 찌그러짐 수정됨) */}
         {rankingTab === 'STANDINGS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
@@ -68,11 +99,17 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         <tr><th className="p-4 w-8">#</th><th className="p-4">Club</th><th className="p-4 text-center">W</th><th className="p-4 text-center">D</th><th className="p-4 text-center">L</th><th className="p-4 text-center">GD</th><th className="p-4 text-center text-emerald-400">Pts</th></tr>
                     </thead>
                     <tbody>
-                        {activeRankingData.teams.map((t: any, i: number) => (
+                        {sortedTeams.map((t: any, i: number) => (
                             <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
                                 <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
                                 <td className="p-4 flex items-center gap-3">
-                                    <img src={t.logo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                    <img 
+                                        src={t.logo} 
+                                        // ✅ [수정] flex-shrink-0 추가: 이름이 길어져도 이미지 비율 유지
+                                        className="w-8 h-8 rounded-full bg-white object-contain p-0.5 flex-shrink-0" 
+                                        alt="" 
+                                        onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}
+                                    />
                                     <div className="flex flex-col"><span className="font-bold">{t.name}</span><span className="text-[9px] text-slate-500">{t.ownerName}</span></div>
                                 </td>
                                 <td className="p-4 text-center text-slate-400">{t.win}</td><td className="p-4 text-center text-slate-400">{t.draw}</td><td className="p-4 text-center text-slate-400">{t.loss}</td><td className="p-4 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
@@ -84,10 +121,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* 🔥 OWNERS 탭 수정됨 */}
+        {/* OWNERS 탭 */}
         {rankingTab === 'OWNERS' && (
             <div className="space-y-4">
-                {/* 1등 오너 카드 (정일수) */}
                 {activeRankingData.owners.length > 0 && (() => {
                     const firstOwner = activeRankingData.owners[0];
                     const matchedOwner = (owners && owners.length > 0) 
@@ -95,13 +131,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 : null;
                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                    // 3️⃣ [적용] 이 오너(firstOwner.name)가 받을 상금을 계산 (팀 랭킹 기준)
+                    // 팀 랭킹 기반 상금 계산
                     const displayPrize = getOwnerPrize(firstOwner.name);
 
                     return (
                         <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
                             <div className="absolute inset-0 rank-1-shimmer z-0"></div>
-                            
                             <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
                                 <div className="relative pt-3"> 
                                     <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
@@ -159,7 +194,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                     : null;
                                 const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
-                                // 4️⃣ [적용] 리스트에 있는 각 오너(o.name)가 받을 상금 계산
                                 const rankPrize = getOwnerPrize(o.name);
 
                                 return (
@@ -194,7 +228,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
 
-        {/* 나머지 탭들은 그대로 유지 */}
+        {/* PLAYERS 탭 */}
         {rankingTab === 'PLAYERS' && (
              <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
@@ -204,12 +238,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                 <table className="w-full text-left text-xs uppercase">
                     <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{rankPlayerMode}</th></tr></thead>
                     <tbody>
-                        {activeRankingData.players
-                            .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-                            .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                            .slice(0, 20).map((p:any,i:number)=>(
+                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
                             <tr key={i} className="border-b border-slate-800/50">
-                                <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
+                                <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
                                 <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                 <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                 <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
@@ -220,6 +251,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
 
+        {/* HIGHLIGHTS 탭 */}
         {rankingTab === 'HIGHLIGHTS' && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {activeRankingData.highlights.map((m:any, idx:number) => {

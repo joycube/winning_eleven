@@ -11,6 +11,42 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
+  // 1️⃣ [적용] 팀 순위 정렬 로직: 승점 > 득실 > 다득점
+  // (historyData.teams에 gd, gf가 없으면 0으로 처리하여 에러 방지)
+  const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
+    if (b.points !== a.points) return b.points - a.points;      // 1. 승점
+    if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); // 2. 득실차
+    return (b.gf || 0) - (a.gf || 0);                           // 3. 다득점
+  });
+
+  // 2️⃣ [적용] 선수 랭킹 공동 순위 계산 함수
+  const getPlayerRanking = (players: any[]) => {
+    const sortedPlayers = players
+        .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
+        .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
+
+    let currentRank = 1;
+    let skip = 0;
+
+    return sortedPlayers.map((player, index, array) => {
+        if (index > 0) {
+            const prevPlayer = array[index - 1];
+            const prevScore = histPlayerMode === 'GOAL' ? prevPlayer.goals : prevPlayer.assists;
+            const currScore = histPlayerMode === 'GOAL' ? player.goals : player.assists;
+
+            if (prevScore === currScore) {
+                skip++;
+            } else {
+                currentRank += 1 + skip;
+                skip = 0;
+            }
+        }
+        return { ...player, rank: currentRank };
+    });
+  };
+
+  const rankedPlayers = getPlayerRanking(historyData.players || []);
+
   return (
     <div className="space-y-6 animate-in fade-in">
         {/* 스타일 정의: 명예의 전당 전용 애니메이션 + 그린 형광 빛반사 효과 */}
@@ -75,17 +111,18 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             ))}
         </div>
 
-        {/* 1. Teams History */}
+        {/* 1. Teams History (수정됨: sortedTeams 사용) */}
         {historyTab === 'TEAMS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs uppercase">
                     <thead className="bg-slate-900 text-slate-500"><tr><th className="p-4 w-8">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
                     <tbody>
-                        {historyData.teams.slice(0, 20).map((t:any, i:number) => (
+                        {sortedTeams.slice(0, 20).map((t:any, i:number) => (
                             <tr key={i} className="border-b border-slate-800/50">
                                 <td className="p-4 text-center text-slate-600">{i+1}</td>
+                                {/* 👇 flex-shrink-0 추가로 이미지 찌그러짐 방지 */}
                                 <td className="p-4 font-bold text-white flex items-center gap-2">
-                                    <img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span>
+                                    <img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5 flex-shrink-0" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span>
                                 </td>
                                 <td className="p-4 text-center text-slate-400">{t.win}W {t.draw}D {t.loss}L</td>
                                 <td className="p-4 text-right text-emerald-400 font-bold">{t.points}</td>
@@ -96,7 +133,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 2. Owners History (명예의 전당 카드 적용) */}
+        {/* 2. Owners History (명예의 전당 카드 적용 - 기존 로직 유지) */}
         {historyTab === 'OWNERS' && (
             <div className="space-y-4">
                 {/* 🏆 [NEW] 역대 1위 'THE LEGEND' 카드 */}
@@ -233,7 +270,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 3. Players History */}
+        {/* 3. Players History (수정됨: rankedPlayers 사용) */}
         {historyTab === 'PLAYERS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
@@ -243,12 +280,10 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                 <table className="w-full text-left text-xs uppercase">
                     <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{histPlayerMode}</th></tr></thead>
                     <tbody>
-                        {historyData.players
-                            .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-                            .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                            .slice(0, 20).map((p:any, i:number) => (
+                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
                             <tr key={i} className="border-b border-slate-800/50">
-                                <td className="p-3 text-center text-slate-600">{i+1}</td>
+                                {/* 공동 순위(p.rank) 표시 */}
+                                <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
                                 <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                 <td className="p-3 text-slate-400 flex items-center gap-2">
                                     <img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span>
