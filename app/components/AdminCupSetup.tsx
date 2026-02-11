@@ -57,8 +57,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     });
     
     const [targetSlot, setTargetSlot] = useState<{ group: string, idx: number } | null>(null);
-    
-    // 🔥 [추가] 드래그 앤 드롭 상태 관리
     const [draggedEntry, setDraggedEntry] = useState<CupEntry | null>(null);
 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -139,19 +137,24 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }, 2500);
     };
 
+    // 🔥 매뉴얼 랜덤 매칭 확정 로직 (오너 선택 필수)
     const handleSignTeam = (master: MasterTeam | null) => {
         const target = master || randomResult;
         if (!target) return;
-        if (!selectedOwnerId) return alert("오너를 선택해주세요.");
 
-        const owner = owners.find(o => String(o.id) === selectedOwnerId);
+        // 1. 오너 선택 검증 (String 변환 비교 - 타입 오류 방지)
+        if (!selectedOwnerId) return alert("오너를 선택해주세요.");
+        const owner = owners.find(o => String(o.id) === String(selectedOwnerId));
         
+        if (!owner) return alert("유효하지 않은 오너입니다.");
+
+        // 2. 대기실로 이동
         const newEntry: CupEntry = {
             id: `entry_${Date.now()}`,
             masterId: target.id,
             name: target.name,
             logo: target.logo,
-            ownerName: owner ? owner.nickname : 'CPU',
+            ownerName: owner.nickname, // 찾은 오너 이름 할당
             region: target.region,
             tier: target.tier,
             realRankScore: target.realRankScore,
@@ -163,38 +166,39 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         setIsFlipping(false);
     };
 
+    // 🔥 [수정됨] 퀵 팀매칭 적용 로직 (오너 선택 무시하고 모달 데이터 신뢰)
     const handleDraftApply = async (newTeams: Team[]) => {
-        const newEntries: CupEntry[] = newTeams.map((t, idx) => ({
-            id: `draft_${Date.now()}_${idx}`,
-            masterId: t.id,
-            name: t.name,
-            logo: t.logo,
-            ownerName: t.ownerName,
-            region: t.region,
-            tier: t.tier,
-            realRankScore: t.realRankScore,
-            realFormScore: t.realFormScore
-        }));
+        // 기존: if (!selectedOwnerId) ... (이 부분을 삭제함)
+        // 퀵 매칭은 모달 안에서 이미 오너가 결정되어 있으므로 배경의 드롭다운은 무시합니다.
 
         const assignedNames = new Set<string>();
         unassignedPool.forEach(t => assignedNames.add(t.name));
         Object.values(groups).flat().forEach(t => { if(t) assignedNames.add(t.name); });
 
-        const filtered = newEntries.filter(e => !assignedNames.has(e.name));
-        if (filtered.length < newEntries.length) alert(`중복된 ${newEntries.length - filtered.length}개 팀은 제외되었습니다.`);
-        setUnassignedPool(prev => [...prev, ...filtered]);
+        // 데이터 변환 (모달에서 받은 t.ownerName 사용)
+        const newEntries: CupEntry[] = newTeams
+            .filter(t => !assignedNames.has(t.name))
+            .map((t, idx) => ({
+                id: `draft_${Date.now()}_${idx}_${Math.random()}`,
+                masterId: t.id,
+                name: t.name,
+                logo: t.logo,
+                ownerName: t.ownerName || 'CPU', // 모달에서 온 오너 이름 사용
+                region: t.region,
+                tier: t.tier,
+                realRankScore: t.realRankScore,
+                realFormScore: t.realFormScore
+            }));
+
+        if (newEntries.length < newTeams.length) {
+            // alert(`중복된 ${newTeams.length - newEntries.length}개 팀은 제외되었습니다.`);
+        }
+        
+        if (newEntries.length > 0) {
+            setUnassignedPool(prev => [...prev, ...newEntries]);
+        }
     };
 
-    // 공통 배정 로직 (클릭 & 드래그)
-    const assignTeamToGroup = (entry: CupEntry, gName: string, idx: number) => {
-        setGroups(prev => ({
-            ...prev,
-            [gName]: prev[gName].map((slot, i) => i === idx ? entry : slot)
-        }));
-        setUnassignedPool(prev => prev.filter(p => p.id !== entry.id));
-    };
-
-    // Slot Click (기존 모달 방식)
     const handleSlotClick = (gName: string, idx: number) => {
         const currentEntry = groups[gName][idx];
         if (currentEntry) {
@@ -208,35 +212,32 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
     const confirmSlotSelection = (entry: CupEntry) => {
         if (!targetSlot) return;
-        assignTeamToGroup(entry, targetSlot.group, targetSlot.idx);
+        
+        // 공통 배정 로직 (대기실 제거 -> 그룹 추가)
+        setGroups(prev => ({ ...prev, [targetSlot.group]: prev[targetSlot.group].map((slot, i) => i === targetSlot.idx ? entry : slot) }));
+        setUnassignedPool(prev => prev.filter(p => p.id !== entry.id));
         setTargetSlot(null);
     };
 
-    // 🔥 [추가] Drag & Drop Handlers
+    // Drag & Drop Handlers
     const handleDragStart = (e: React.DragEvent, entry: CupEntry) => {
         setDraggedEntry(entry);
-        // 드래그 시 반투명 효과용
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", entry.id);
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); // Drop 허용
+        e.preventDefault(); 
         e.dataTransfer.dropEffect = "move";
     };
 
     const handleDrop = (e: React.DragEvent, gName: string, idx: number) => {
         e.preventDefault();
         const currentEntry = groups[gName][idx];
-        
-        if (currentEntry) {
-            // 이미 팀이 있는 경우 교체는 복잡하므로 일단 막거나, 
-            // alert("빈 슬롯에만 넣을 수 있습니다."); 
-            return; 
-        }
-
+        if (currentEntry) return; 
         if (draggedEntry) {
-            assignTeamToGroup(draggedEntry, gName, idx);
+            setGroups(prev => ({ ...prev, [gName]: prev[gName].map((slot, i) => i === idx ? draggedEntry : slot) }));
+            setUnassignedPool(prev => prev.filter(p => p.id !== draggedEntry.id));
             setDraggedEntry(null);
         }
     };
@@ -341,16 +342,15 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 @keyframes blastOut { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; border-width: 10px; } 100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 0px; } }
                 .fc-card-reveal { animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; z-index: 55; }
                 @keyframes card-flip { 0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); } 100% { transform: rotateY(0deg) scale(1.1); filter: brightness(1); } }
-                
-                /* 🔥 드래그 중인 아이템 스타일 */
                 .is-dragging { opacity: 0.5; transform: scale(0.9); }
             `}</style>
 
+            {/* 🔥 [수정] 랜덤 결과창이 뜰 때(Flipping) z-index 55 유지 */}
             {(isRolling || isFlipping) && <div className="stage-overlay" />}
             {isFlipping && <div className="reveal-flash" />}
 
             {/* ================= STEP 1: TEAM SELECTION ================= */}
-            <div className={`bg-slate-900 p-5 rounded-3xl border border-slate-800 relative ${isRolling ? 'z-[55]' : ''}`}>
+            <div className={`bg-slate-900 p-5 rounded-3xl border border-slate-800 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
                 <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
                     <h3 className="text-white font-black italic uppercase tracking-tighter">Step 1. Team & Owner Matching</h3>
                     <div className="text-xs text-slate-400">Waiting Pool: <span className="text-emerald-400 font-bold text-lg">{unassignedPool.length}</span> Teams</div>
@@ -466,7 +466,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     </div>
                 </div>
 
-                {/* 🔥 [수정] 대기실: 가로 스크롤 -> 그리드 (줄바꿈 지원) & 드래그 가능 */}
+                {/* 대기실 (Waiting Pool - Grid & Drag) */}
                 <div className="mb-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
                     <div className="flex justify-between items-center mb-4">
                         <span className="text-xs font-bold text-slate-400">WAITING POOL ({unassignedPool.length})</span>
@@ -475,12 +475,10 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     {unassignedPool.length === 0 ? (
                         <div className="text-center py-4 text-slate-600 text-xs italic">Step 1에서 팀을 선발해주세요.</div>
                     ) : (
-                        // 🔥 가로 스크롤(overflow-x) 제거하고 Grid로 변경
                         <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar p-1">
                             {unassignedPool.map(t => (
                                 <div 
                                     key={t.id} 
-                                    // 🔥 드래그 이벤트 연결
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, t)}
                                     className={`
@@ -488,6 +486,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         ${draggedEntry?.id === t.id ? 'is-dragging' : ''}
                                     `}
                                 >
+                                    {/* 🔥 [수정] 대기실 엠블럼 배경을 흰색(bg-white)으로 변경 & 패딩(p-1.5) 적용 */}
                                     <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1.5 shadow-md border border-slate-700 group-hover:border-yellow-500 transition-colors relative">
                                         <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-slate-950 rounded-full flex items-center justify-center text-[8px] border border-slate-700 text-white font-bold">{t.tier}</div>
@@ -511,7 +510,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                 {groups[gName].map((slot, idx) => (
                                     <div 
                                         key={idx} 
-                                        // 🔥 드롭 이벤트 연결
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, gName, idx)}
                                         onClick={() => handleSlotClick(gName, idx)} 
