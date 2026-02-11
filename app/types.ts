@@ -27,6 +27,9 @@ export interface Match {
   // 토너먼트 로직용
   nextMatchId?: string | null;
   loserMatchId?: string | null;
+
+  // 🔥 [추가] 컵 모드 전용: 조별 예선 그룹 정보 (예: "A", "B")
+  group?: string; 
 }
 
 export interface Team {
@@ -65,6 +68,9 @@ export interface Prizes {
   assist: number;
 }
 
+// 🔥 [추가] 컵 모드의 현재 진행 상태 (조별리그 vs 토너먼트)
+export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE'; 
+
 export interface Season {
   id: number;
   name: string;
@@ -74,6 +80,20 @@ export interface Season {
   rounds?: Round[];
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
   prizes?: Prizes;
+
+  // 🔥 [추가] 컵 모드 전용 데이터
+  cupPhase?: CupPhase; // 현재 조별리그인지 토너먼트인지 상태값
+  
+  // 조 편성 데이터 (예: { "A": [101, 102], "B": [103, 104] } - Team ID 저장)
+  groups?: { 
+    [key: string]: number[]; 
+  };
+  
+  // 토너먼트 진출 규칙 설정
+  advancementRule?: {
+    fromGroup: number; // 조별 몇 위까지 진출? (보통 2)
+    method: 'CROSS' | 'RANDOM'; // 토너먼트 매칭 방식 (크로스: A1vsB2 / 랜덤: 추첨)
+  };
 }
 
 export interface Owner {

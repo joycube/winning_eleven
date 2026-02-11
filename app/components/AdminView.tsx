@@ -7,11 +7,11 @@ import { AdminBannerManager } from './AdminBannerManager';
 import { AdminSeasonCreate } from './AdminSeasonCreate';
 import { AdminOwnerManager } from './AdminOwnerManager';
 import { AdminTeamMatching } from './AdminTeamMatching';
-// 🔥 [추가] 현실 데이터 매니저 컴포넌트 import
+// 🔥 [추가] 컵 모드 전용 셋업 컴포넌트 import
+import { AdminCupSetup } from './AdminCupSetup';
 import { AdminRealWorldManager } from './AdminRealWorldManager';
 
 interface AdminViewProps {
-    // 🔥 [수정] 'REAL' 탭 타입 추가
     adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL';
     setAdminTab: (tab: any) => void;
     seasons: Season[];
@@ -19,7 +19,8 @@ interface AdminViewProps {
     leagues: League[];
     masterTeams: MasterTeam[];
     banners: Banner[];
-    onAdminLogin: (pw: string) => boolean;
+    // 🔥 비동기 처리를 위해 Promise<boolean> | boolean 으로 유연하게 타입 지정
+    onAdminLogin: (pw: string) => Promise<boolean> | boolean;
     onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void; 
     onSaveOwner: (name: string, photo: string, editId: string | null) => void; 
     onNavigateToSchedule: (seasonId: number) => void;
@@ -37,8 +38,10 @@ export const AdminView = ({
         if (loginTime && Date.now() - Number(loginTime) < 3 * 60 * 60 * 1000) setAdminUnlocked(true);
     }, []);
 
-    const handleLogin = () => {
-        if (onAdminLogin(adminPwInput)) {
+    const handleLogin = async () => {
+        // 비동기 로그인 지원을 위해 await 추가
+        const isSuccess = await onAdminLogin(adminPwInput);
+        if (isSuccess) {
             setAdminUnlocked(true);
             localStorage.setItem('adminLoginTime', String(Date.now()));
             setAdminPwInput('');
@@ -78,7 +81,6 @@ export const AdminView = ({
                 <option value="TEAMS">🛡️ Team Management</option>
                 <option value="OWNER">👤 Owner Management</option>
                 <option value="BANNER">🖼️ Banner Management</option>
-                {/* 🔥 [추가] 현실 데이터 관리 탭 옵션 */}
                 <option value="REAL">🌏 Real-World Data Patch</option>
                 <optgroup label="Select Season to Manage">
                     {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
@@ -91,7 +93,6 @@ export const AdminView = ({
             {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
             {adminTab === 'NEW' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
             
-            {/* 🔥 [추가] 현실 데이터 매니저 렌더링 */}
             {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
 
             {typeof adminTab === 'number' && (() => {
@@ -106,14 +107,26 @@ export const AdminView = ({
                                 <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-900/80 px-3 py-1 rounded text-xs font-bold hover:bg-red-700 text-red-200">Season Delete</button>
                             </div>
                         </div>
-                        <AdminTeamMatching 
-                            targetSeason={targetSeason}
-                            owners={owners}
-                            leagues={leagues}
-                            masterTeams={masterTeams}
-                            onNavigateToSchedule={onNavigateToSchedule}
-                            onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)}
-                        />
+                        
+                        {/* 🔥 [수정] 시즌 타입에 따라 다른 매니저 컴포넌트 렌더링 */}
+                        {targetSeason.type === 'CUP' ? (
+                            <AdminCupSetup 
+                                targetSeason={targetSeason}
+                                owners={owners}
+                                leagues={leagues}
+                                masterTeams={masterTeams}
+                                onNavigateToSchedule={onNavigateToSchedule}
+                            />
+                        ) : (
+                            <AdminTeamMatching 
+                                targetSeason={targetSeason}
+                                owners={owners}
+                                leagues={leagues}
+                                masterTeams={masterTeams}
+                                onNavigateToSchedule={onNavigateToSchedule}
+                                onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)}
+                            />
+                        )}
                     </div>
                 );
             })()}
