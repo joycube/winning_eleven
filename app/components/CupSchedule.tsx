@@ -1,291 +1,395 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState } from 'react';
-// 🔥 types.ts 파일 위치에 맞춰 경로 수정 필요. 없으면 아래 주석 해제 후 사용.
-// import { FALLBACK_IMG } from '../types'; 
+import React, { useState, useMemo } from 'react';
+import { MatchCard } from './MatchCard'; 
+import { Match, MasterTeam, Season } from '../types'; 
 
-// 임시 상수 (types.ts에 없다면 사용)
 const FALLBACK_IMG = "https://via.placeholder.com/50?text=?";
 
 // ------------------------------------------------------------------
-// 🧩 [Interface] 데이터 타입 정의
+// 🛠️ [Helper Functions]
 // ------------------------------------------------------------------
-interface Match {
-    id: string;
-    stage: 'GROUP' | 'QF' | 'SF' | 'FINAL';
-    group?: string; // 조별리그일 경우 A, B, C, D
-    home: string;
-    homeLogo: string;
-    homeScore: number | '';
-    away: string;
-    awayLogo: string;
-    awayScore: number | '';
-    status: 'UPCOMING' | 'FINISHED';
+const normalize = (str: string | number | undefined) => str ? String(str).replace(/\s+/g, '').toLowerCase() : "";
+
+const renderCondition = (cond: string) => {
+    const c = (cond || '').toUpperCase();
+    const circleBase = "w-4 h-4 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shadow-sm shrink-0";
+    const iconBase = "text-[8px] font-bold leading-none";
+
+    switch (c) {
+        case 'A': return <div className={`${circleBase} border-emerald-500/30`} title="최상(A)"><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
+        case 'B': return <div className={`${circleBase} border-lime-500/30`} title="우수(B)"><span className={`${iconBase} text-lime-400`}>↗</span></div>;
+        case 'C': return <div className={`${circleBase} border-yellow-500/30`} title="보통(C)"><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
+        case 'D': return <div className={`${circleBase} border-orange-500/30`} title="나쁨(D)"><span className={`${iconBase} text-orange-400`}>↘</span></div>;
+        case 'E': return <div className={`${circleBase} border-red-500/30`} title="최악(E)"><span className={`${iconBase} text-red-500`}>⬇</span></div>;
+        default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
+    }
+};
+
+const getRealRankBadge = (rank: number | undefined | null) => {
+    if (!rank) return null;
+    let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
+    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
+    else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
+    else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500";
+    return (
+        <div className={`${bgClass} border text-[8px] font-black px-1 py-[0.5px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>
+            R.{rank}
+        </div>
+    );
+};
+
+// ------------------------------------------------------------------
+// 🧩 [Interface] Props 정의
+// ------------------------------------------------------------------
+interface CupScheduleProps {
+    seasons: Season[];
+    viewSeasonId: number;
+    onMatchClick: (m: Match) => void;
+    masterTeams: MasterTeam[];      
+    activeRankingData: any;         
+    historyData: any;
+    owners: any[]; 
 }
 
 interface TeamStanding {
     rank: number;
     name: string;
     logo: string;
+    ownerName?: string; 
+    realRank?: number;  
+    condition?: string; 
     played: number;
+    win: number;
+    draw: number;
+    loss: number;
+    gf: number;
+    ga: number;
     gd: number;
     points: number;
 }
 
 // ------------------------------------------------------------------
-// 🧩 [Component] Group Match Card (경기 일정 카드)
+// 📊 [Component] Standings Table
 // ------------------------------------------------------------------
-const GroupMatchCard = ({ match, onEdit }: { match: Match; onEdit: (id: string) => void }) => {
-    const isPlayed = match.status === 'FINISHED';
-    
-    // 화면 표시용 점수 (빈 값일 경우 0 처리 안 함, UI 분기 처리)
-    const displayHomeScore = match.homeScore === '' ? '-' : match.homeScore;
-    const displayAwayScore = match.awayScore === '' ? '-' : match.awayScore;
-
-    // 승자 색상 처리를 위한 로직
-    const homeWin = isPlayed && (match.homeScore > match.awayScore);
-    const awayWin = isPlayed && (match.awayScore > match.homeScore);
-
+const StandingsTable = ({ standings }: { standings: TeamStanding[] }) => {
     return (
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between hover:border-emerald-500/50 transition-all group relative overflow-hidden">
-            {/* 배경 호버 효과 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-900/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-
-            {/* Home Team */}
-            <div className="flex items-center gap-2 w-1/3 overflow-hidden">
-                <img src={match.homeLogo || FALLBACK_IMG} className="w-8 h-8 object-contain" alt="Home" />
-                <span className={`text-xs font-bold truncate ${homeWin ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {match.home}
-                </span>
+        <div className="bg-[#0b101a] rounded-2xl border border-slate-800 overflow-hidden shadow-inner p-4">
+            <div className="grid grid-cols-12 gap-2 text-[10px] text-slate-500 font-bold uppercase border-b border-slate-800 pb-3 mb-2 px-3">
+                <div className="col-span-1 text-center">Rank</div>
+                <div className="col-span-5 pl-2">Team</div>
+                <div className="col-span-1 text-center">P</div>
+                <div className="col-span-1 text-center">W</div>
+                <div className="col-span-1 text-center">D</div>
+                <div className="col-span-1 text-center">L</div>
+                <div className="col-span-1 text-center">GD</div>
+                <div className="col-span-1 text-center text-white">PTS</div>
             </div>
 
-            {/* Score / VS */}
-            <div className="flex flex-col items-center justify-center w-1/3 shrink-0 z-10">
-                {isPlayed ? (
-                    <div className="flex gap-2 text-xl font-black italic tracking-tighter text-white">
-                        <span>{displayHomeScore}</span>
-                        <span className="text-slate-600">:</span>
-                        <span>{displayAwayScore}</span>
-                    </div>
-                ) : (
-                    <span className="text-xs font-black text-slate-600 bg-slate-900 px-2 py-1 rounded">VS</span>
-                )}
-                <button 
-                    onClick={() => onEdit(match.id)}
-                    className="mt-1 text-[10px] text-slate-500 hover:text-emerald-400 underline decoration-slate-700 underline-offset-2 flex items-center gap-1 transition-colors"
-                >
-                    {isPlayed ? '📝 Detail' : '✏️ Input'}
-                </button>
-            </div>
+            <div className="space-y-1">
+                {standings.map((team, i) => {
+                    const isPromoted = i < 2; 
+                    return (
+                        <div 
+                            key={i} 
+                            className={`
+                                relative grid grid-cols-12 gap-2 items-center py-3 px-3 rounded-xl transition-all overflow-hidden
+                                ${isPromoted ? 'bg-[#0f1923] border border-slate-800' : 'bg-transparent border border-transparent'}
+                            `}
+                        >
+                            {isPromoted && (
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_8px_#10b981]"></div>
+                            )}
 
-            {/* Away Team */}
-            <div className="flex items-center gap-2 w-1/3 justify-end overflow-hidden">
-                <span className={`text-xs font-bold truncate text-right ${awayWin ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {match.away}
-                </span>
-                <img src={match.awayLogo || FALLBACK_IMG} className="w-8 h-8 object-contain" alt="Away" />
-            </div>
-        </div>
-    );
-};
-
-// ------------------------------------------------------------------
-// 📊 [View] Group Stage View (조별리그 메인 뷰)
-// ------------------------------------------------------------------
-const GroupStageView = () => {
-    // 🔥 [MOCK DATA] 나중에 Firebase에서 가져온 데이터로 교체해야 함
-    const groups = ['A', 'B', 'C', 'D'];
-    
-    // 더미 매치 데이터
-    const mockMatches: Match[] = [
-        { id: '1', stage: 'GROUP', group: 'A', home: 'Real Madrid', homeLogo: '', homeScore: 2, away: 'Man City', awayLogo: '', awayScore: 1, status: 'FINISHED' },
-        { id: '2', stage: 'GROUP', group: 'A', home: 'Bayern', homeLogo: '', homeScore: '', away: 'Inter', awayLogo: '', awayScore: '', status: 'UPCOMING' },
-        { id: '3', stage: 'GROUP', group: 'A', home: 'Man City', homeLogo: '', homeScore: '', away: 'Bayern', awayLogo: '', awayScore: '', status: 'UPCOMING' },
-        { id: '4', stage: 'GROUP', group: 'B', home: 'Arsenal', homeLogo: '', homeScore: 3, away: 'PSG', awayLogo: '', awayScore: 3, status: 'FINISHED' },
-    ];
-
-    // 더미 순위 데이터 (자동 계산 로직 구현 전 임시용)
-    const mockStandings: TeamStanding[] = [
-        { rank: 1, name: 'Real Madrid', logo: '', played: 1, gd: 1, points: 3 },
-        { rank: 2, name: 'Man City', logo: '', played: 1, gd: -1, points: 0 },
-        { rank: 3, name: 'Bayern', logo: '', played: 0, gd: 0, points: 0 },
-        { rank: 4, name: 'Inter', logo: '', played: 0, gd: 0, points: 0 },
-    ];
-
-    // 점수 입력 모달 핸들러
-    const handleEditMatch = (id: string) => {
-        // TODO: 여기에 실제 점수 입력 모달(Modal)을 띄우는 로직 연결
-        console.log(`Open Edit Modal for Match ID: ${id}`);
-        alert("점수 입력 모달이 열립니다."); 
-    };
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
-            {groups.map(gName => {
-                // 해당 그룹의 경기만 필터링
-                const groupMatches = mockMatches.filter(m => m.group === gName);
-                
-                return (
-                    <div key={gName} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col gap-5 relative overflow-hidden">
-                        {/* 그룹 배경 데코레이션 */}
-                        <div className="absolute -right-10 -top-10 text-[100px] font-black text-white/5 pointer-events-none select-none italic">
-                            {gName}
-                        </div>
-
-                        {/* 1. Header */}
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-3 z-10">
-                            <div className="flex items-center gap-2">
-                                <span className="bg-emerald-600 text-white text-xs font-black px-2 py-0.5 rounded shadow-lg shadow-emerald-900/50">GR</span>
-                                <h3 className="text-white font-black italic text-xl tracking-tighter">GROUP {gName}</h3>
+                            <div className="col-span-1 flex justify-center z-10">
+                                <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-xs font-black ${isPromoted ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>
+                                    {team.rank}
+                                </span>
                             </div>
-                            <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/30 px-2 py-1 rounded border border-emerald-500/20">TOP 2 ADVANCE</span>
-                        </div>
 
-                        {/* 2. Standings Table (순위표) */}
-                        <div className="bg-black/40 rounded-xl border border-slate-800/50 overflow-hidden z-10">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-950 text-[10px] text-slate-500 font-bold uppercase">
-                                    <tr>
-                                        <th className="p-2 w-8 text-center">#</th>
-                                        <th className="p-2">Team</th>
-                                        <th className="p-2 text-center w-8">P</th>
-                                        <th className="p-2 text-center w-8">GD</th>
-                                        <th className="p-2 text-center w-8 text-white">Pts</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="text-xs font-bold text-slate-300 divide-y divide-slate-800/50">
-                                    {mockStandings.map((team, i) => (
-                                        <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${i < 2 ? 'bg-emerald-900/10' : ''}`}>
-                                            <td className="p-2 text-center">
-                                                <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[9px] ${i < 2 ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-500'}`}>
-                                                    {team.rank}
-                                                </span>
-                                            </td>
-                                            <td className="p-2 flex items-center gap-2">
-                                                <div className="w-5 h-5 bg-white rounded-full shrink-0 flex items-center justify-center">
-                                                    <img src={team.logo || FALLBACK_IMG} className="w-4 h-4 object-contain" alt=""/>
-                                                </div>
-                                                <span className={i < 2 ? 'text-white' : 'text-slate-400'}>{team.name}</span>
-                                            </td>
-                                            <td className="p-2 text-center text-slate-500">{team.played}</td>
-                                            <td className="p-2 text-center text-slate-500">{team.gd > 0 ? `+${team.gd}` : team.gd}</td>
-                                            <td className="p-2 text-center text-white font-black">{team.points}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* 3. Fixtures (경기 일정 - 카드형) */}
-                        <div className="flex flex-col gap-2 z-10">
-                            <div className="flex justify-between items-end px-1">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Match Schedule</span>
-                                <span className="text-[9px] text-slate-600">{groupMatches.length} Matches</span>
-                            </div>
-                            <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-                                {groupMatches.length > 0 ? (
-                                    groupMatches.map((match) => (
-                                        <GroupMatchCard key={match.id} match={match} onEdit={handleEditMatch} />
-                                    ))
-                                ) : (
-                                    <div className="text-center py-4 text-xs text-slate-600 italic border border-dashed border-slate-800 rounded-lg">
-                                        No matches scheduled yet.
+                            <div className="col-span-5 flex items-center gap-3 pl-2 z-10">
+                                <div className="flex flex-col items-center gap-1.5 shrink-0 w-10">
+                                    <div className="w-9 h-9 bg-white rounded-full p-0.5 shadow-sm">
+                                        <img src={team.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                     </div>
-                                )}
+                                    <div className="flex items-center gap-1">
+                                        {getRealRankBadge(team.realRank)}
+                                        {renderCondition(team.condition || '')}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col justify-center min-w-0">
+                                    <span className={`leading-tight text-sm truncate ${isPromoted ? 'text-white font-bold' : 'text-slate-400'}`}>
+                                        {team.name}
+                                    </span>
+                                    {/* 🔥 오너 이름 (값이 없으면 공백 처리 대신 - 표시) */}
+                                    <span className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                                        {team.ownerName && team.ownerName !== '-' ? team.ownerName : ''}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="col-span-1 text-center text-slate-500 font-bold text-xs">{team.played}</div>
+                            <div className="col-span-1 text-center text-slate-600 text-xs">{team.win}</div>
+                            <div className="col-span-1 text-center text-slate-600 text-xs">{team.draw}</div>
+                            <div className="col-span-1 text-center text-slate-600 text-xs">{team.loss}</div>
+                            <div className="col-span-1 text-center text-slate-400 font-bold text-xs">{team.gd > 0 ? `+${team.gd}` : team.gd}</div>
+                            
+                            <div className="col-span-1 flex justify-center">
+                                <span className={`w-8 py-0.5 rounded text-sm font-black text-center ${isPromoted ? 'text-emerald-400 bg-emerald-950/50 border border-emerald-500/30' : 'text-white'}`}>
+                                    {team.points}
+                                </span>
                             </div>
                         </div>
-
-                    </div>
-                );
-            })}
+                    );
+                })}
+            </div>
         </div>
     );
 };
 
 // ------------------------------------------------------------------
-// ⚔️ [View] Bracket View (토너먼트 뷰 - 시각화 전용)
+// 📊 [View] Group Stage View
 // ------------------------------------------------------------------
-const BracketView = () => (
-    <div className="flex flex-col items-center justify-center min-h-[600px] bg-slate-950 rounded-3xl border border-slate-800 p-8 animate-in zoom-in-95 duration-500 relative overflow-hidden">
-        {/* 은은한 배경 패턴 */}
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+const GroupStageView = ({ 
+    activeGroup, 
+    setActiveGroup, 
+    matches, 
+    onMatchClick,
+    masterTeams,
+    activeRankingData,
+    historyData,
+    owners 
+}: { 
+    activeGroup: string, 
+    setActiveGroup: (g: string) => void,
+    matches: Match[],
+    onMatchClick: (m: Match) => void,
+    masterTeams: MasterTeam[],
+    activeRankingData: any,
+    historyData: any,
+    owners: any[]
+}) => {
+    const groups = ['A', 'B', 'C', 'D'];
+
+    // 🔥 [순위 계산 로직] masterTeams 정보 매핑 개선
+    const standings = useMemo(() => {
+        const teamStats: { [key: string]: TeamStanding } = {};
+        const groupTeams = new Set<string>();
         
-        <div className="text-center space-y-6 z-10 max-w-lg">
-            <div className="flex justify-center">
-                <span className="text-6xl">🏆</span>
-            </div>
-            <div>
-                <h2 className="text-3xl font-black italic text-white tracking-tighter mb-2">KNOCKOUT STAGE</h2>
-                <p className="text-slate-400 text-sm">
-                    조별리그가 모두 종료되면<br/>
-                    <strong className="text-emerald-400">상위 2팀</strong>이 자동으로 토너먼트에 진출합니다.
-                </p>
-            </div>
+        matches.forEach(m => {
+            if (m.home) groupTeams.add(m.home);
+            if (m.away) groupTeams.add(m.away);
+        });
+
+        groupTeams.forEach(teamName => {
+            const targetName = normalize(teamName);
             
-            {/* 대진표 느낌을 내는 스켈레톤 UI */}
-            <div className="flex gap-2 justify-center mt-12 opacity-30 grayscale pointer-events-none select-none">
-                <div className="flex flex-col gap-8 justify-center">
-                    <div className="w-20 h-10 border border-slate-600 rounded bg-slate-900"></div>
-                    <div className="w-20 h-10 border border-slate-600 rounded bg-slate-900"></div>
-                </div>
-                <div className="w-6 border-t border-r border-b border-slate-600 h-16 self-center"></div>
-                <div className="w-24 h-14 border-2 border-yellow-600 rounded-xl bg-yellow-900/20 flex items-center justify-center text-yellow-500 font-bold self-center">
-                    FINAL
-                </div>
-                <div className="w-6 border-t border-l border-b border-slate-600 h-16 self-center"></div>
-                <div className="flex flex-col gap-8 justify-center">
-                    <div className="w-20 h-10 border border-slate-600 rounded bg-slate-900"></div>
-                    <div className="w-20 h-10 border border-slate-600 rounded bg-slate-900"></div>
-                </div>
+            // 1. Master Team 정보 찾기 (로고, 리얼랭킹, 컨디션용)
+            const master = (masterTeams as any[]).find(mt => 
+                normalize(mt.name) === targetName || 
+                normalize(mt.team) === targetName ||
+                normalize(String(mt.id)) === targetName 
+            );
+
+            // 🔥 [핵심 수정] 오너 이름 가져오기 우선순위 변경
+            // 1순위: 현재 경기 데이터(Match)에 있는 오너 이름 (가장 정확함)
+            // 2순위: MasterTeam에 있는 오너 이름
+            // 3순위: User DB에서 매칭된 이름
+            let foundOwnerName = '-';
+
+            // 1순위: Match 데이터에서 찾기 (해당 팀이 포함된 아무 경기나 하나 찾아서 오너명 추출)
+            const matchWithTeam = matches.find(m => m.home === teamName || m.away === teamName);
+            if (matchWithTeam) {
+                if (matchWithTeam.home === teamName && matchWithTeam.homeOwner) foundOwnerName = matchWithTeam.homeOwner;
+                else if (matchWithTeam.away === teamName && matchWithTeam.awayOwner) foundOwnerName = matchWithTeam.awayOwner;
+            }
+
+            // 2순위: Match 데이터에 없으면 MasterTeam이나 Users에서 찾기 (기존 로직 백업용)
+            if (foundOwnerName === '-' || !foundOwnerName) {
+                if (master?.owner) foundOwnerName = master.owner;
+                if (master?.ownerName) foundOwnerName = master.ownerName;
+                
+                if (master?.owner && owners.length > 0) {
+                    const matchedUser = owners.find(u => 
+                        String(u.id) === String(master.owner) || 
+                        u.nickname === master.owner
+                    );
+                    if (matchedUser) foundOwnerName = matchedUser.nickname;
+                }
+            }
+
+            teamStats[teamName] = {
+                rank: 0, 
+                name: teamName, 
+                logo: master?.logo || '',
+                ownerName: foundOwnerName, 
+                realRank: master?.real_rank,  
+                condition: master?.condition, 
+                played: 0, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0
+            };
+        });
+
+        matches.forEach(m => {
+            if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
+                const home = teamStats[m.home];
+                const away = teamStats[m.away];
+                if (!home || !away) return;
+
+                const hScore = Number(m.homeScore);
+                const aScore = Number(m.awayScore);
+
+                home.played++; away.played++;
+                home.gf += hScore; home.ga += aScore; home.gd = home.gf - home.ga;
+                away.gf += aScore; away.ga += hScore; away.gd = away.gf - away.ga;
+
+                if (hScore > aScore) {
+                    home.win++; home.points += 3;
+                    away.loss++;
+                } else if (hScore < aScore) {
+                    away.win++; away.points += 3;
+                    home.loss++;
+                } else {
+                    home.draw++; home.points += 1;
+                    away.draw++; away.points += 1;
+                }
+            }
+        });
+
+        return Object.values(teamStats).sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.gd !== a.gd) return b.gd - a.gd;
+            return b.gf - a.gf;
+        }).map((team, index) => ({ ...team, rank: index + 1 }));
+
+    }, [matches, masterTeams, owners]);
+
+    return (
+        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto custom-scrollbar">
+                {groups.map(gName => (
+                    <button 
+                        key={gName}
+                        onClick={() => setActiveGroup(gName)}
+                        className={`px-6 py-3 rounded-t-xl text-sm font-black italic transition-all relative whitespace-nowrap ${
+                            activeGroup === gName 
+                            ? 'bg-[#0f141e] text-emerald-400 border-t border-x border-slate-700 z-10' 
+                            : 'text-slate-500 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        GROUP {gName}
+                        {activeGroup === gName && <div className="absolute bottom-[-1px] left-0 w-full h-[1px] bg-[#0f141e]"></div>}
+                    </button>
+                ))}
             </div>
 
-            <button className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs transition-colors mt-4">
-                View Detailed Bracket (Locked)
-            </button>
+            <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px]">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-black italic text-white flex items-center gap-3">
+                        <span className="w-2 h-6 bg-emerald-500 rounded-sm shadow-[0_0_10px_#10b981]"></span>
+                        GROUP {activeGroup} STANDINGS
+                    </h3>
+                    <div className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 px-3 py-1.5 rounded-full border border-emerald-500/30 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                        Top 2 Teams Advance
+                    </div>
+                </div>
+
+                <div className="mb-8">
+                    {standings.length > 0 ? (
+                        <StandingsTable standings={standings} />
+                    ) : (
+                        <div className="p-8 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a]">
+                            No team data available for Group {activeGroup}.
+                        </div>
+                    )}
+                </div>
+
+                <div>
+                    <div className="flex items-center gap-2 mb-4 px-1 border-b border-slate-800 pb-2">
+                        <span className="text-xl">📅</span>
+                        <h4 className="text-lg font-black italic text-slate-300">MATCH FIXTURES</h4>
+                    </div>
+                    
+                    {matches.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {matches.map((match, idx) => (
+                                <div key={match.id} className="relative">
+                                    <MatchCard 
+                                        match={{ ...match, matchLabel: `GROUP ${activeGroup} / ${idx + 1}경기` }}
+                                        onClick={onMatchClick}
+                                        masterTeams={masterTeams}
+                                        activeRankingData={activeRankingData}
+                                        historyData={historyData}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="p-10 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a]">
+                            No matches scheduled for Group {activeGroup} yet.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const BracketView = () => (
+    <div className="flex flex-col items-center justify-center min-h-[600px] bg-[#0f141e] rounded-3xl border border-slate-800 p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+        <div className="text-center space-y-4 z-10">
+            <h2 className="text-3xl font-black italic text-white tracking-tighter">TOURNAMENT BRACKET</h2>
+            <p className="text-slate-400 text-sm">Knockout stage will be available after group stage.</p>
         </div>
     </div>
 );
 
-// ------------------------------------------------------------------
-// 🏆 [Main Page] Cup Schedule Container
-// ------------------------------------------------------------------
-export const CupSchedule = () => {
-    // 탭 상태 관리 (기본값: GROUP)
+export const CupSchedule = ({ 
+    seasons, 
+    viewSeasonId, 
+    onMatchClick, 
+    masterTeams,
+    activeRankingData,
+    historyData,
+    owners 
+}: CupScheduleProps) => {
     const [activeTab, setActiveTab] = useState<'GROUP' | 'KNOCKOUT'>('GROUP');
+    const [activeGroup, setActiveGroup] = useState('A');
+
+    const currentSeason = seasons.find(s => s.id === viewSeasonId);
+    
+    const groupMatches = React.useMemo(() => {
+        if (!currentSeason || !currentSeason.rounds) return [];
+        const allMatches = currentSeason.rounds.flatMap(r => r.matches);
+        return allMatches.filter(m => {
+            if (m.group) return m.group === activeGroup;
+            return true; 
+        });
+    }, [currentSeason, activeGroup]);
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
-            {/* 1. Header & Tab Controller */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-slate-800 pb-6">
-                <div>
-                    <h1 className="text-4xl font-black italic text-white tracking-tighter mb-1 flex items-center gap-3">
-                        <span className="text-yellow-500 text-5xl drop-shadow-lg">🏆</span> SEASON CUP
-                    </h1>
-                    <p className="text-slate-400 text-sm font-bold pl-1">
-                        Group Stage & Knockout Tournament
-                    </p>
-                </div>
-
-                {/* 탭 버튼 그룹 */}
-                <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
-                    <button 
-                        onClick={() => setActiveTab('GROUP')}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-black italic transition-all duration-300 flex items-center gap-2 ${activeTab === 'GROUP' ? 'bg-emerald-600 text-white shadow-lg scale-105' : 'text-slate-500 hover:text-white'}`}
-                    >
-                        <span>📊</span> GROUP STAGE
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('KNOCKOUT')}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-black italic transition-all duration-300 flex items-center gap-2 ${activeTab === 'KNOCKOUT' ? 'bg-yellow-600 text-black shadow-lg scale-105' : 'text-slate-500 hover:text-white'}`}
-                    >
-                        <span>⚔️</span> TOURNAMENT
-                    </button>
+        <div className="w-full max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in">
+            <div className="flex justify-center mb-6">
+                 <div className="flex bg-[#0f141e] p-1.5 rounded-2xl border border-slate-800 shadow-lg">
+                    <button onClick={() => setActiveTab('GROUP')} className={`px-8 py-3 rounded-xl text-sm font-black italic transition-all ${activeTab === 'GROUP' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>📊 GROUP STAGE</button>
+                    <button onClick={() => setActiveTab('KNOCKOUT')} className={`px-8 py-3 rounded-xl text-sm font-black italic transition-all ${activeTab === 'KNOCKOUT' ? 'bg-yellow-600 text-black shadow-lg' : 'text-slate-500 hover:text-white'}`}>⚔️ TOURNAMENT</button>
                 </div>
             </div>
 
-            {/* 2. Main Content Area */}
-            <div className="min-h-[600px]">
-                {activeTab === 'GROUP' ? <GroupStageView /> : <BracketView />}
-            </div>
+            {activeTab === 'GROUP' ? (
+                <GroupStageView 
+                    activeGroup={activeGroup} 
+                    setActiveGroup={setActiveGroup}
+                    matches={groupMatches} 
+                    onMatchClick={onMatchClick}
+                    masterTeams={masterTeams}
+                    activeRankingData={activeRankingData}
+                    historyData={historyData}
+                    owners={owners}
+                />
+            ) : (
+                <BracketView />
+            )}
         </div>
     );
 };
