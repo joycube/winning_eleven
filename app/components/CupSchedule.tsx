@@ -120,7 +120,6 @@ const StandingsTable = ({ standings }: { standings: TeamStanding[] }) => {
                                     <span className={`leading-tight text-sm truncate ${isPromoted ? 'text-white font-bold' : 'text-slate-400'}`}>
                                         {team.name}
                                     </span>
-                                    {/* 🔥 오너 이름 (값이 없으면 공백 처리 대신 - 표시) */}
                                     <span className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
                                         {team.ownerName && team.ownerName !== '-' ? team.ownerName : ''}
                                     </span>
@@ -170,7 +169,6 @@ const GroupStageView = ({
 }) => {
     const groups = ['A', 'B', 'C', 'D'];
 
-    // 🔥 [순위 계산 로직] masterTeams 정보 매핑 개선
     const standings = useMemo(() => {
         const teamStats: { [key: string]: TeamStanding } = {};
         const groupTeams = new Set<string>();
@@ -182,39 +180,17 @@ const GroupStageView = ({
 
         groupTeams.forEach(teamName => {
             const targetName = normalize(teamName);
-            
-            // 1. Master Team 정보 찾기 (로고, 리얼랭킹, 컨디션용)
             const master = (masterTeams as any[]).find(mt => 
                 normalize(mt.name) === targetName || 
                 normalize(mt.team) === targetName ||
                 normalize(String(mt.id)) === targetName 
             );
 
-            // 🔥 [핵심 수정] 오너 이름 가져오기 우선순위 변경
-            // 1순위: 현재 경기 데이터(Match)에 있는 오너 이름 (가장 정확함)
-            // 2순위: MasterTeam에 있는 오너 이름
-            // 3순위: User DB에서 매칭된 이름
             let foundOwnerName = '-';
-
-            // 1순위: Match 데이터에서 찾기 (해당 팀이 포함된 아무 경기나 하나 찾아서 오너명 추출)
             const matchWithTeam = matches.find(m => m.home === teamName || m.away === teamName);
             if (matchWithTeam) {
                 if (matchWithTeam.home === teamName && matchWithTeam.homeOwner) foundOwnerName = matchWithTeam.homeOwner;
                 else if (matchWithTeam.away === teamName && matchWithTeam.awayOwner) foundOwnerName = matchWithTeam.awayOwner;
-            }
-
-            // 2순위: Match 데이터에 없으면 MasterTeam이나 Users에서 찾기 (기존 로직 백업용)
-            if (foundOwnerName === '-' || !foundOwnerName) {
-                if (master?.owner) foundOwnerName = master.owner;
-                if (master?.ownerName) foundOwnerName = master.ownerName;
-                
-                if (master?.owner && owners.length > 0) {
-                    const matchedUser = owners.find(u => 
-                        String(u.id) === String(master.owner) || 
-                        u.nickname === master.owner
-                    );
-                    if (matchedUser) foundOwnerName = matchedUser.nickname;
-                }
             }
 
             teamStats[teamName] = {
@@ -229,6 +205,7 @@ const GroupStageView = ({
         });
 
         matches.forEach(m => {
+            // 🔥 [수정 반영] COMPLETED 상태일 때 무승부 로직 수행
             if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
                 const home = teamStats[m.home];
                 const away = teamStats[m.away];
@@ -248,6 +225,7 @@ const GroupStageView = ({
                     away.win++; away.points += 3;
                     home.loss++;
                 } else {
+                    // 🤝 무승부 승점 1점 및 draw 카운트 반영
                     home.draw++; home.points += 1;
                     away.draw++; away.points += 1;
                 }
@@ -260,7 +238,7 @@ const GroupStageView = ({
             return b.gf - a.gf;
         }).map((team, index) => ({ ...team, rank: index + 1 }));
 
-    }, [matches, masterTeams, owners]);
+    }, [matches, masterTeams]);
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4">

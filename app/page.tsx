@@ -84,16 +84,14 @@ export default function FootballLeagueApp() {
       // 1. 점수 및 기록 업데이트
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
-      let currentMatchIndex = -1; // 전체 배열에서의 절대 인덱스
+      let currentMatchIndex = -1; 
 
-      // 🔥 [추가] 승률 박제 로직 (DB 저장용 스냅샷 생성)
-      // 현재 랭킹, 전적, 마스터 팀 정보를 활용하여 "이 경기 시점의 예측 승률"을 계산합니다.
       const predictionSnapshot = calculateMatchSnapshot(
           editingMatch.home,
           editingMatch.away,
-          activeRankingData, // 현재 시즌 랭킹 데이터
-          historyData,       // 역대 전적 데이터
-          masterTeams        // 마스터 팀 정보
+          activeRankingData, 
+          historyData,       
+          masterTeams        
       );
 
       newRounds = newRounds.map((r, rIdx) => ({
@@ -107,8 +105,6 @@ export default function FootballLeagueApp() {
                       homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
                       homeScorers: records.homeScorers, awayScorers: records.awayScorers,
                       homeAssists: records.homeAssists, awayAssists: records.awayAssists,
-
-                      // 🔥 [추가] 계산된 승률을 DB에 영구 저장 (박제)
                       homePredictRate: predictionSnapshot.homePredictRate,
                       awayPredictRate: predictionSnapshot.awayPredictRate
                   };
@@ -124,53 +120,43 @@ export default function FootballLeagueApp() {
           const h = Number(hScore); 
           const a = Number(aScore);
           
+          // 🔥 [수정] 이 부분이 무승부를 허용하는 핵심 로직입니다.
+          // 조별리그(GROUP) 단계인지를 먼저 판단합니다.
+          const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
+
           // (A) 승자 판별 로직
-          // 1. 상대가 BYE(부전승)이면 무조건 Home 승리
           if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') {
               winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-              console.log("Auto-win by BYE:", winningTeam.name);
           }
-          // 2. 수동 승자 선택 (동점 승부차기 등)
           else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          // 3. 점수 비교
           else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else {
-              // 무승부이고 수동 선택도 안 함
-              return alert("⚠️ 무승부입니다! 'Home 승' 또는 'Away 승' 버튼을 눌러 승자를 선택해주세요.");
+              // 🤝 무승부 상황일 때
+              // 조별리그라면 승자 선택 없이 통과(저장), 토너먼트라면 승자 선택 강제
+              if (!isGroupStage) {
+                  return alert("⚠️ 무승부입니다! 'Home 승' 또는 'Away 승' 버튼을 눌러 승자를 선택해주세요.");
+              }
           }
 
-          // (B) 다음 라운드 진출 로직 (Flat Tree 구조 계산)
-          // newRounds[0].matches 안에 모든 경기가 다 들어있다고 가정
-          if (winningTeam && newRounds[0] && newRounds[0].matches) {
+          // (B) 다음 라운드 진출 로직 (조별리그가 아닌 토너먼트 본선일 때만 수행)
+          if (winningTeam && !isGroupStage && newRounds[0] && newRounds[0].matches) {
               const allMatches = newRounds[0].matches;
               const totalMatches = allMatches.length;
-              
-              // 현재 레벨(8강, 4강 등) 파악을 위한 초기값
-              // 예: 7경기면 첫 라운드는 4경기 (0~3 인덱스)
               let levelSize = (totalMatches + 1) / 2; 
               let startIndex = 0;
 
-              // 현재 매치 인덱스가 어느 레벨 구간에 있는지 찾기
               while (currentMatchIndex >= startIndex + levelSize) {
                   startIndex += levelSize;
                   levelSize /= 2;
-                  
-                  // 무한 루프 방지
                   if (levelSize < 1) break; 
               }
 
-              // 다음 매치 인덱스 계산 공식
               const nextMatchIndex = (startIndex + levelSize) + Math.floor((currentMatchIndex - startIndex) / 2);
 
-              console.log(`Advancing ${winningTeam.name} to Match Index: ${nextMatchIndex}`);
-
-              // 다음 경기가 존재하면 업데이트
               if (allMatches[nextMatchIndex]) {
                   const targetMatch = allMatches[nextMatchIndex];
-                  
-                  // 현재 위치가 짝수면 Home 슬롯, 홀수면 Away 슬롯
                   const isHomeSlot = (currentMatchIndex - startIndex) % 2 === 0;
 
                   if (isHomeSlot) {
@@ -183,7 +169,6 @@ export default function FootballLeagueApp() {
                       targetMatch.awayOwner = winningTeam.owner;
                   }
                   
-                  // 'TBD' 텍스트 제거 (UI 깔끔하게)
                   if (targetMatch.home !== 'TBD' && targetMatch.away !== 'TBD') {
                       targetMatch.matchLabel = targetMatch.matchLabel.replace(' (TBD)', '');
                   }
@@ -248,7 +233,7 @@ export default function FootballLeagueApp() {
                 viewSeasonId={viewSeasonId} 
                 setViewSeasonId={setViewSeasonId} 
                 activeRankingData={activeRankingData}
-                owners={owners} // 🔥 [수정] 오너 데이터 전달 추가
+                owners={owners} 
             />
         )}
 
@@ -266,7 +251,7 @@ export default function FootballLeagueApp() {
         {currentView === 'HISTORY' && (
             <HistoryView 
                 historyData={historyData} 
-                owners={owners} // 🔥 [수정] 오너 데이터 전달 추가
+                owners={owners} 
             />
         )}
 
@@ -298,7 +283,7 @@ export default function FootballLeagueApp() {
               match={editingMatch} 
               onClose={() => setEditingMatch(null)} 
               onSave={handleSaveMatchResult}
-              isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT'}
+              isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'}
               teamPlayers={getTeamPlayers}
           />
       )}
