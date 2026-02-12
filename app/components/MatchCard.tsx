@@ -25,23 +25,20 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   const isTbd = match.home === 'TBD' || match.away === 'TBD';
   const isCompleted = match.status === 'COMPLETED'; 
 
-  // 2. 승률 예측 로직
+  // 2. 승률 예측
   let prediction = { hRate: 0, aRate: 0 };
-
   if (!isBye && !isTbd) {
       const savedHome = Number(match.homePredictRate);
       const savedAway = Number(match.awayPredictRate);
-
       if (!isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0)) {
           prediction = { hRate: savedHome, aRate: savedAway };
       } else {
           prediction = getPrediction(match.home, match.away, activeRankingData, historyData, masterTeams);
       }
   }
-
   const showGraph = !isBye && !isTbd && (prediction.hRate > 0 || prediction.aRate > 0);
 
-  // 4. 팀 정보 찾기
+  // 3. 팀 정보 찾기
   const getTeamMasterInfo = (teamName: string) => {
     if (!masterTeams || masterTeams.length === 0) return undefined;
     let found = masterTeams.find(t => t.name === teamName);
@@ -51,11 +48,10 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     }
     return found;
   };
-
   const homeMaster = getTeamMasterInfo(match.home);
   const awayMaster = getTeamMasterInfo(match.away);
 
-  // 5. 랭킹 뱃지
+  // 4. UI 헬퍼
   const getRankBadge = (rank?: number) => {
     if (!rank || rank <= 0) return null;
     let colorClass = 'bg-slate-800 text-slate-400 border-slate-600';
@@ -69,7 +65,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 6. 컨디션 화살표
   const getConditionArrow = (condition?: string) => {
     if (!condition) return null;
     let arrow = '';
@@ -91,16 +86,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
   return (
     <div 
-      onClick={() => {
-          // 🔥 [수정 1] 무승부 허용을 위한 'LEAGUE' 위장술
-          // Admin 모달이 'GROUP'을 토너먼트로 오해해서 무승부를 막는 것 같음.
-          // 그래서 클릭할 때만 잠시 stage를 'LEAGUE'로 바꿔서 보내면 무승부가 풀릴 것임.
-          const label = (match.matchLabel || '').toUpperCase();
-          const isGroupMatch = label.includes('GROUP') || match.stage === 'GROUP';
-          
-          // 여기서 'LEAGUE'로 보내야 어드민이 "아, 리그구나 무승부 OK" 함
-          onClick(isGroupMatch ? { ...match, stage: 'LEAGUE' } : match);
-      }} 
+      onClick={() => onClick(match)} 
       className={`relative bg-slate-950 p-3 rounded-xl border ${isCompleted ? 'border-slate-800' : 'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}
     >
         <div className="flex justify-center items-center mb-2">
@@ -110,9 +96,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         <div className="flex justify-between items-center">
             {/* HOME TEAM */}
             <div className="flex flex-col items-center w-1/3 gap-1">
-                {/* 🔥 [수정 2] 흰색 원형 확실하게 만들기 */}
-                {/* w-full h-full 대신 w-[85%]를 써서 강제로 여백(흰색 테두리)을 만듦 */}
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0 shadow-md overflow-hidden relative z-10">
+                {/* 🔥 [수정] 엠블럼 배경 흰색 원형 (이미지 크기를 줄여서 흰색 노출) */}
+                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-md relative overflow-hidden shrink-0">
                     <img 
                         src={match.homeLogo} 
                         className="w-[85%] h-[85%] object-contain" 
@@ -144,8 +129,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
             {/* AWAY TEAM */}
             <div className="flex flex-col items-center w-1/3 gap-1">
-                {/* 🔥 [수정 2] 흰색 원형 확실하게 만들기 */}
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0 shadow-md overflow-hidden relative z-10">
+                {/* 🔥 [수정] 엠블럼 배경 흰색 원형 */}
+                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-md relative overflow-hidden shrink-0">
                     <img 
                         src={match.awayLogo} 
                         className="w-[85%] h-[85%] object-contain" 
@@ -162,7 +147,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         </div>
 
-        {/* 완료된 경기 스탯 */}
+        {/* 완료 경기 스탯 */}
         {isCompleted && (
             <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-[1fr_auto_1fr] gap-2 text-[9px] items-center">
                 <div className="text-right space-y-0.5">
@@ -187,7 +172,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 그래프 노출 */}
+        {/* 그래프 */}
         {showGraph && (
             <div className="w-full mt-3 mb-2 px-1">
                 <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
@@ -196,11 +181,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="relative flex-1 h-4 bg-slate-800 flex items-center justify-center overflow-hidden rounded-md border border-slate-700 shadow-inner">
                         <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-gradient-to-r from-emerald-900 to-emerald-400 transition-all duration-1000 ease-out absolute left-0 top-0 skew-x-[-12deg] origin-bottom-left -ml-2 w-[calc(100%+8px)]" />
                         <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-gradient-to-l from-blue-900 to-blue-400 transition-all duration-1000 ease-out absolute right-0 top-0 skew-x-[-12deg] origin-top-right -mr-2 w-[calc(100%+8px)]" />
-                        
-                        <div 
-                            style={{ left: isLoaded ? `${prediction.hRate}%` : '50%' }}
-                            className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center transition-all duration-1000 ease-out"
-                        >
+                        <div style={{ left: isLoaded ? `${prediction.hRate}%` : '50%' }} className="absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center transition-all duration-1000 ease-out">
                             <div className="w-5 h-5 bg-slate-900 border-2 border-slate-600 rounded-full flex items-center justify-center shadow-lg">
                                 <span className="text-[9px] text-yellow-400 font-bold animate-pulse">⚡</span>
                             </div>
@@ -211,7 +192,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 부전승일 경우 전용 멘트 노출 */}
+        {/* 멘트 */}
         {isCompleted && (
             <div className="bg-slate-900/50 p-2 mt-2 rounded text-center border border-slate-800/50">
                 <p className="text-[10px] text-emerald-300 italic">

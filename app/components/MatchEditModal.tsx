@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from 'react';
 import { Match, FALLBACK_IMG } from '../types';
-import { RecordInput } from './RecordInput'; // 기존 파일 재사용
+import { RecordInput } from './RecordInput'; 
 
 interface MatchEditModalProps {
   match: Match;
@@ -20,12 +20,20 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
   const [recordInput, setRecordInput] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
   const [manualWinner, setManualWinner] = useState<'HOME' | 'AWAY' | null>(null);
 
+  // 🔥 [핵심 수정] 조별리그(GROUP) 판단 로직
+  // 매치 라벨이나 스테이지 이름에 "GROUP"이 들어가면 -> 토너먼트 규정을 적용하지 않음 (무승부 허용)
+  const labelUpper = (match.matchLabel || '').toUpperCase();
+  const stageUpper = (match.stage || '').toUpperCase();
+  const isGroupStage = labelUpper.includes('GROUP') || stageUpper.includes('GROUP');
+
+  // 실제 적용될 토너먼트 여부 (조별리그면 false로 강제)
+  const effectiveIsTournament = isTournament && !isGroupStage;
+
   const handleRecordAdd = (type: keyof typeof recordInput, targetListKey: keyof typeof records) => {
       const name = recordInput[type].name.trim();
       const count = Number(recordInput[type].count);
       if(!name) return alert("이름을 입력하세요");
       
-      // Auto Score Update
       if(type==='homeScorer') setInputs(p=>({...p, homeScore:String(Number(p.homeScore)+count)}));
       if(type==='awayScorer') setInputs(p=>({...p, awayScore:String(Number(p.awayScore)+count)}));
 
@@ -55,7 +63,13 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
           <div className="grid md:grid-cols-3 gap-8">
               {/* Home */}
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <div className="flex flex-col items-center mb-4"><img src={match.homeLogo} className="w-12 h-12 mb-2 object-contain" alt="" /><span className="font-bold text-white">{match.home}</span></div>
+                  <div className="flex flex-col items-center mb-4">
+                      {/* 🔥 [수정] 모달 내 엠블럼 흰색 배경 */}
+                      <div className="w-16 h-16 mb-2 rounded-full bg-white flex items-center justify-center p-2 shadow-lg overflow-hidden shrink-0">
+                          <img src={match.homeLogo} className="w-full h-full object-contain" alt="" />
+                      </div>
+                      <span className="font-bold text-white">{match.home}</span>
+                  </div>
                   <datalist id="homeTeamPlayers">{teamPlayers(match.home).map((name, i) => <option key={i} value={name} />)}</datalist>
                   <div className="space-y-4">
                       <RecordInput type="homeScorer" inputValue={recordInput.homeScorer} onInputChange={(t,f,v)=>setRecordInput(p=>({...p,[t]:{...(p as any)[t],[f]:v}}))} onAdd={()=>handleRecordAdd('homeScorer','homeScorers')} onRemove={(t,id)=>handleRecordRemove('homeScorers',id,true)} records={records.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" datalistId="homeTeamPlayers" />
@@ -71,7 +85,8 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                       <input type="number" value={inputs.awayScore} onChange={e=>setInputs({...inputs, awayScore:e.target.value})} className="w-20 h-20 text-center text-4xl font-black bg-black rounded-2xl border border-slate-700 text-white focus:border-emerald-500 outline-none" />
                   </div>
                   
-                  {isTournament && Number(inputs.homeScore) === Number(inputs.awayScore) && inputs.homeScore !== '' && (
+                  {/* 🔥 [수정] effectiveIsTournament 값을 사용해서 조별리그일 때는 승자 선택창 숨김 */}
+                  {effectiveIsTournament && Number(inputs.homeScore) === Number(inputs.awayScore) && inputs.homeScore !== '' && (
                       <div className="bg-red-900/50 p-2 rounded-xl border border-red-500 text-center animate-pulse">
                           <p className="text-[10px] text-red-200 font-bold mb-1">⚠️ 동점: 다음 라운드 진출 팀 선택</p>
                           <div className="flex gap-2 justify-center">
@@ -85,12 +100,19 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                       <label className="text-xs text-slate-500 mb-1 block text-center">YouTube Highlights URL</label>
                       <input value={inputs.youtube} onChange={e=>setInputs({...inputs,youtube:e.target.value})} placeholder="https://youtube.com/..." className="w-full bg-black p-3 rounded-xl text-center text-xs border border-slate-700 text-white text-base"/>
                   </div>
+                  
                   <button onClick={() => onSave(match.id, inputs.homeScore, inputs.awayScore, inputs.youtube, records, manualWinner)} className="bg-emerald-600 w-full py-4 rounded-xl font-black text-lg hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">SAVE RESULT</button>
               </div>
 
               {/* Away */}
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <div className="flex flex-col items-center mb-4"><img src={match.awayLogo} className="w-12 h-12 mb-2 object-contain" alt="" /><span className="font-bold text-white">{match.away}</span></div>
+                  <div className="flex flex-col items-center mb-4">
+                      {/* 🔥 [수정] 모달 내 엠블럼 흰색 배경 */}
+                      <div className="w-16 h-16 mb-2 rounded-full bg-white flex items-center justify-center p-2 shadow-lg overflow-hidden shrink-0">
+                          <img src={match.awayLogo} className="w-full h-full object-contain" alt="" />
+                      </div>
+                      <span className="font-bold text-white">{match.away}</span>
+                  </div>
                   <datalist id="awayTeamPlayers">{teamPlayers(match.away).map((name, i) => <option key={i} value={name} />)}</datalist>
                   <div className="space-y-4">
                       <RecordInput type="awayScorer" inputValue={recordInput.awayScorer} onInputChange={(t,f,v)=>setRecordInput(p=>({...p,[t]:{...(p as any)[t],[f]:v}}))} onAdd={()=>handleRecordAdd('awayScorer','awayScorers')} onRemove={(t,id)=>handleRecordRemove('awayScorers',id,false)} records={records.awayScorers} label="⚽ Scorers" colorClass="text-emerald-400" datalistId="awayTeamPlayers" />
