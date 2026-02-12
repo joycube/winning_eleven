@@ -15,6 +15,9 @@ const LEAGUE_RANKING: { [key: string]: number } = {
     "EUROPE": 1, "SOUTH AMERICA": 2, "NORTH AMERICA": 3, "AFRICA": 4, "ASIA-OCEANIA": 5
 };
 
+// 동적 조 생성을 위한 알파벳 배열
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
+
 interface AdminCupSetupProps {
     targetSeason: Season;
     owners: Owner[];
@@ -49,12 +52,18 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     const [searchTeam, setSearchTeam] = useState('');
 
     const [unassignedPool, setUnassignedPool] = useState<CupEntry[]>([]); 
+    
+    // 초기값은 빈 객체로 시작 (useEffect에서 초기화) 또는 기본 4x4
     const [groups, setGroups] = useState<{ [key: string]: (CupEntry | null)[] }>({
         "A": [null, null, null, null],
         "B": [null, null, null, null],
         "C": [null, null, null, null],
         "D": [null, null, null, null]
     });
+
+    // 설정 모드 상태 관리
+    const [configMode, setConfigMode] = useState<'AUTO' | 'CUSTOM'>('AUTO');
+    const [customConfig, setCustomConfig] = useState({ groupCount: 4, teamCount: 4 });
     
     const [targetSlot, setTargetSlot] = useState<{ group: string, idx: number } | null>(null);
     const [draggedEntry, setDraggedEntry] = useState<CupEntry | null>(null);
@@ -103,6 +112,28 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     }, [masterTeams, unassignedPool, groups, filterCategory, filterLeague, filterTier, searchTeam]);
 
     // ================= ACTIONS =================
+    
+    // 보드 구조 변경 핸들러
+    const updateBoardStructure = (mode: 'AUTO' | 'CUSTOM', gCount: number, tCount: number) => {
+        if (!confirm("설정을 변경하면 현재 배정된 팀들이 모두 대기실로 이동합니다. 계속하시겠습니까?")) return;
+
+        // 1. 현재 조에 배정된 모든 팀 회수
+        const recoveredTeams = Object.values(groups).flat().filter(Boolean) as CupEntry[];
+        
+        // 2. 새로운 그룹 구조 생성
+        const newGroups: { [key: string]: (CupEntry | null)[] } = {};
+        for (let i = 0; i < gCount; i++) {
+            const groupName = ALPHABET[i];
+            newGroups[groupName] = Array(tCount).fill(null);
+        }
+
+        // 3. 상태 업데이트
+        setUnassignedPool(prev => [...prev, ...recoveredTeams]);
+        setGroups(newGroups);
+        setConfigMode(mode);
+        setCustomConfig({ groupCount: gCount, teamCount: tCount });
+    };
+
     const handleRandom = () => {
         if (!selectedOwnerId) return alert("오너를 먼저 선택해주세요.");
         if (availableTeams.length === 0) return alert("조건에 맞는 팀이 없습니다.");
@@ -137,24 +168,26 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }, 2500);
     };
 
-    // 🔥 매뉴얼 랜덤 매칭 확정 로직 (오너 선택 필수)
     const handleSignTeam = (master: MasterTeam | null) => {
         const target = master || randomResult;
         if (!target) return;
 
-        // 1. 오너 선택 검증 (String 변환 비교 - 타입 오류 방지)
         if (!selectedOwnerId) return alert("오너를 선택해주세요.");
         const owner = owners.find(o => String(o.id) === String(selectedOwnerId));
         
         if (!owner) return alert("유효하지 않은 오너입니다.");
 
-        // 2. 대기실로 이동
+        const isDuplicate = unassignedPool.some(p => p.masterId === target.id) || 
+                            Object.values(groups).flat().some(g => g && g.masterId === target.id);
+        
+        if (isDuplicate) return alert("이미 선발된 팀입니다.");
+
         const newEntry: CupEntry = {
             id: `entry_${Date.now()}`,
             masterId: target.id,
             name: target.name,
             logo: target.logo,
-            ownerName: owner.nickname, // 찾은 오너 이름 할당
+            ownerName: owner.nickname,
             region: target.region,
             tier: target.tier,
             realRankScore: target.realRankScore,
@@ -166,37 +199,49 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         setIsFlipping(false);
     };
 
-    // 🔥 [수정됨] 퀵 팀매칭 적용 로직 (오너 선택 무시하고 모달 데이터 신뢰)
     const handleDraftApply = async (newTeams: Team[]) => {
-        // 기존: if (!selectedOwnerId) ... (이 부분을 삭제함)
-        // 퀵 매칭은 모달 안에서 이미 오너가 결정되어 있으므로 배경의 드롭다운은 무시합니다.
+        const usedMasterIds = new Set<number>();
+        unassignedPool.forEach(t => usedMasterIds.add(t.masterId));
+        Object.values(groups).flat().forEach(t => { if(t) usedMasterIds.add(t.masterId); });
 
-        const assignedNames = new Set<string>();
-        unassignedPool.forEach(t => assignedNames.add(t.name));
-        Object.values(groups).flat().forEach(t => { if(t) assignedNames.add(t.name); });
-
-        // 데이터 변환 (모달에서 받은 t.ownerName 사용)
         const newEntries: CupEntry[] = newTeams
-            .filter(t => !assignedNames.has(t.name))
+            .filter(t => !usedMasterIds.has(t.id))
             .map((t, idx) => ({
                 id: `draft_${Date.now()}_${idx}_${Math.random()}`,
                 masterId: t.id,
                 name: t.name,
                 logo: t.logo,
-                ownerName: t.ownerName || 'CPU', // 모달에서 온 오너 이름 사용
+                ownerName: t.ownerName || 'CPU',
                 region: t.region,
                 tier: t.tier,
                 realRankScore: t.realRankScore,
                 realFormScore: t.realFormScore
             }));
 
-        if (newEntries.length < newTeams.length) {
-            // alert(`중복된 ${newTeams.length - newEntries.length}개 팀은 제외되었습니다.`);
+        const duplicateCount = newTeams.length - newEntries.length;
+        if (duplicateCount > 0) {
+            alert(`⚠️ 중복된 ${duplicateCount}개 팀은 제외하고 추가했습니다.`);
         }
         
         if (newEntries.length > 0) {
             setUnassignedPool(prev => [...prev, ...newEntries]);
         }
+    };
+
+    const assignTeamToGroup = (entry: CupEntry, gName: string, idx: number) => {
+        const targetGroup = groups[gName];
+        const hasSameOwner = targetGroup.some(slot => slot && slot.ownerName === entry.ownerName);
+        
+        if (hasSameOwner) {
+            alert(`🚫 [배정 불가]\nGroup ${gName}에는 이미 '${entry.ownerName}'님의 팀이 있습니다.\n공정한 대회를 위해 다른 조를 선택해주세요.`);
+            return;
+        }
+
+        setGroups(prev => ({
+            ...prev,
+            [gName]: prev[gName].map((slot, i) => i === idx ? entry : slot)
+        }));
+        setUnassignedPool(prev => prev.filter(p => p.id !== entry.id));
     };
 
     const handleSlotClick = (gName: string, idx: number) => {
@@ -212,14 +257,10 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
     const confirmSlotSelection = (entry: CupEntry) => {
         if (!targetSlot) return;
-        
-        // 공통 배정 로직 (대기실 제거 -> 그룹 추가)
-        setGroups(prev => ({ ...prev, [targetSlot.group]: prev[targetSlot.group].map((slot, i) => i === targetSlot.idx ? entry : slot) }));
-        setUnassignedPool(prev => prev.filter(p => p.id !== entry.id));
+        assignTeamToGroup(entry, targetSlot.group, targetSlot.idx);
         setTargetSlot(null);
     };
 
-    // Drag & Drop Handlers
     const handleDragStart = (e: React.DragEvent, entry: CupEntry) => {
         setDraggedEntry(entry);
         e.dataTransfer.effectAllowed = "move";
@@ -236,38 +277,78 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         const currentEntry = groups[gName][idx];
         if (currentEntry) return; 
         if (draggedEntry) {
-            setGroups(prev => ({ ...prev, [gName]: prev[gName].map((slot, i) => i === idx ? draggedEntry : slot) }));
-            setUnassignedPool(prev => prev.filter(p => p.id !== draggedEntry.id));
+            assignTeamToGroup(draggedEntry, gName, idx);
             setDraggedEntry(null);
         }
     };
 
     const handleAutoDraw = () => {
         if (unassignedPool.length === 0) return alert("대기실에 팀이 없습니다.");
-        const shuffled = [...unassignedPool].sort(() => 0.5 - Math.random());
-        const newGroups = { ...groups };
-        let poolIdx = 0;
-        Object.keys(newGroups).forEach(gName => {
-            newGroups[gName] = newGroups[gName].map(slot => {
-                if (slot === null && poolIdx < shuffled.length) return shuffled[poolIdx++];
-                return slot;
-            });
+        
+        const tempGroups: { [key: string]: (CupEntry | null)[] } = JSON.parse(JSON.stringify(groups));
+        const ownerCounts: Record<string, number> = {};
+        unassignedPool.forEach(p => ownerCounts[p.ownerName] = (ownerCounts[p.ownerName] || 0) + 1);
+        
+        const sortedPool = [...unassignedPool].sort((a, b) => {
+            const countDiff = ownerCounts[b.ownerName] - ownerCounts[a.ownerName];
+            return countDiff !== 0 ? countDiff : 0.5 - Math.random();
         });
-        setGroups(newGroups);
-        setUnassignedPool(shuffled.slice(poolIdx));
+
+        const remainingPool: CupEntry[] = [];
+        const groupKeys = Object.keys(tempGroups).sort();
+
+        sortedPool.forEach(team => {
+            let placed = false;
+            for (const gName of groupKeys) {
+                const group = tempGroups[gName];
+                const emptyIdx = group.indexOf(null);
+                const hasOwner = group.some(s => s?.ownerName === team.ownerName);
+
+                if (emptyIdx !== -1 && !hasOwner) {
+                    tempGroups[gName][emptyIdx] = team;
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                for (const gName of groupKeys) {
+                    const emptyIdx = tempGroups[gName].indexOf(null);
+                    if (emptyIdx !== -1) {
+                        tempGroups[gName][emptyIdx] = team;
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+            if (!placed) remainingPool.push(team);
+        });
+
+        setGroups(tempGroups);
+        setUnassignedPool(remainingPool);
     };
 
     const handleResetDraw = () => {
         if (!confirm("모든 조 편성을 초기화하고 대기실로 되돌리겠습니까?")) return;
         const allAssigned = Object.values(groups).flat().filter(Boolean) as CupEntry[];
         setUnassignedPool(prev => [...prev, ...allAssigned]);
-        setGroups({ "A": [null, null, null, null], "B": [null, null, null, null], "C": [null, null, null, null], "D": [null, null, null, null] });
+        
+        // 현재 설정 유지하면서 초기화
+        const newGroups: { [key: string]: (CupEntry | null)[] } = {};
+        Object.keys(groups).forEach(key => {
+            newGroups[key] = Array(groups[key].length).fill(null);
+        });
+        setGroups(newGroups);
     };
 
     const handleCreateSchedule = async () => {
+        const totalSlots = Object.values(groups).flat().length;
         const filledSlots = Object.values(groups).flat().filter(Boolean).length;
-        if (filledSlots < 4) return alert("최소 4개 이상의 팀이 편성되어야 합니다.");
-        if (!confirm("현재 조 편성으로 컵 대회를 시작하시겠습니까?\n스케줄이 생성됩니다.")) return;
+        
+        if (filledSlots < totalSlots) {
+            if (!confirm(`⚠️ 전체 ${totalSlots}자리 중 ${filledSlots}팀만 배정되었습니다.\n빈 자리는 무시하고 진행하시겠습니까?`)) return;
+        } else {
+            if (!confirm("현재 조 편성으로 컵 대회를 시작하시겠습니까?\n스케줄이 생성됩니다.")) return;
+        }
 
         const finalTeams: Team[] = [];
         const groupsForDB: { [key: string]: number[] } = {};
@@ -345,7 +426,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 .is-dragging { opacity: 0.5; transform: scale(0.9); }
             `}</style>
 
-            {/* 🔥 [수정] 랜덤 결과창이 뜰 때(Flipping) z-index 55 유지 */}
             {(isRolling || isFlipping) && <div className="stage-overlay" />}
             {isFlipping && <div className="reveal-flash" />}
 
@@ -458,15 +538,49 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
             {/* ================= STEP 2: GROUP DRAW BOARD ================= */}
             <div className="bg-black p-6 rounded-[2.5rem] border border-slate-800 relative">
-                <div className="flex flex-col gap-4 mb-6 border-b border-slate-800 pb-4">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
                     <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 2. Group Draw Board</h3>
-                    <div className="flex gap-2 justify-end">
+                    
+                    {/* 설정 컨트롤 패널 */}
+                    <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-700">
+                        <button 
+                            onClick={() => updateBoardStructure('AUTO', 4, 4)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black italic transition-all ${configMode === 'AUTO' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            AUTO (16강)
+                        </button>
+                        <div className="h-4 w-px bg-slate-700 mx-1"></div>
+                        <div className="flex gap-2 items-center px-1">
+                            <span className={`text-[10px] font-bold ${configMode === 'CUSTOM' ? 'text-white' : 'text-slate-500'}`}>CUSTOM:</span>
+                            <select 
+                                value={customConfig.groupCount}
+                                onChange={(e) => updateBoardStructure('CUSTOM', Number(e.target.value), customConfig.teamCount)}
+                                className="bg-slate-800 text-white text-[10px] p-1 rounded border border-slate-600 font-bold cursor-pointer hover:border-emerald-500"
+                            >
+                                <option value="2">2 Groups</option>
+                                <option value="4">4 Groups</option>
+                                <option value="8">8 Groups</option>
+                            </select>
+                            <span className="text-[10px] text-slate-600">x</span>
+                            <select 
+                                value={customConfig.teamCount}
+                                onChange={(e) => updateBoardStructure('CUSTOM', customConfig.groupCount, Number(e.target.value))}
+                                className="bg-slate-800 text-white text-[10px] p-1 rounded border border-slate-600 font-bold cursor-pointer hover:border-emerald-500"
+                            >
+                                <option value="2">2 Teams</option>
+                                <option value="3">3 Teams</option>
+                                <option value="4">4 Teams</option>
+                                <option value="5">5 Teams</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
                         <button onClick={handleResetDraw} className="px-4 py-2 bg-slate-800 text-slate-400 rounded-xl font-bold text-xs hover:bg-red-900 hover:text-white transition-colors">🔄 Reset</button>
                         <button onClick={handleAutoDraw} className="px-6 py-2 bg-yellow-600 text-black rounded-xl font-black italic text-xs shadow-lg shadow-yellow-900/40 hover:bg-yellow-500 active:scale-95 transition-all">⚡ AUTO FILL</button>
                     </div>
                 </div>
 
-                {/* 대기실 (Waiting Pool - Grid & Drag) */}
                 <div className="mb-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
                     <div className="flex justify-between items-center mb-4">
                         <span className="text-xs font-bold text-slate-400">WAITING POOL ({unassignedPool.length})</span>
@@ -486,7 +600,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         ${draggedEntry?.id === t.id ? 'is-dragging' : ''}
                                     `}
                                 >
-                                    {/* 🔥 [수정] 대기실 엠블럼 배경을 흰색(bg-white)으로 변경 & 패딩(p-1.5) 적용 */}
                                     <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1.5 shadow-md border border-slate-700 group-hover:border-yellow-500 transition-colors relative">
                                         <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-slate-950 rounded-full flex items-center justify-center text-[8px] border border-slate-700 text-white font-bold">{t.tier}</div>
@@ -504,9 +617,9 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                         <div key={gName} className="bg-slate-900/50 rounded-2xl border border-slate-800 overflow-hidden flex flex-col">
                             <div className="bg-slate-800/80 px-4 py-3 flex justify-between items-center border-b border-slate-700">
                                 <span className="text-sm font-black italic text-emerald-400">GROUP {gName}</span>
-                                <span className="text-[10px] text-slate-500 font-bold">{groups[gName].filter(Boolean).length}/4</span>
+                                <span className="text-[10px] text-slate-500 font-bold">{groups[gName].filter(Boolean).length}/{customConfig.teamCount}</span>
                             </div>
-                            <div className="p-3 grid grid-cols-2 gap-2">
+                            <div className={`p-3 grid gap-2 ${customConfig.teamCount > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                 {groups[gName].map((slot, idx) => (
                                     <div 
                                         key={idx} 
@@ -538,7 +651,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     ))}
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-800 flex justify-end">
+                {/* 🔥 [변경] 버튼을 중앙 정렬로 수정 */}
+                <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
                     <button onClick={handleCreateSchedule} className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl text-lg transition-transform active:scale-95 flex items-center gap-3"><span>💾</span> CREATE SCHEDULE</button>
                 </div>
             </div>
