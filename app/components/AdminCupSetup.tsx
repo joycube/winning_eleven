@@ -822,9 +822,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         {/* 상단 배경 데코 */}
                                         <div className="absolute top-0 left-0 w-full h-1/3 bg-white/5 skew-y-6 transform origin-top-left pointer-events-none"></div>
 
-                                        {/* 오너 이름 (좌측 상단) */}
+                                        {/* 오너 이름 (좌측 상단) - OWNER 텍스트 삭제됨 */}
                                         <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
                                             <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
                                         </div>
 
@@ -922,8 +921,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         onDragStart={() => setDraggedTournamentEntry(t)}
                                         className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 cursor-grab active:cursor-grabbing shadow-lg`}
                                     >
+                                        {/* 오너 이름 (좌측 상단) - OWNER 텍스트 삭제됨 */}
                                         <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
                                             <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
                                         </div>
                                         <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">

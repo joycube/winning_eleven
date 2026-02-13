@@ -426,9 +426,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                     <span className="text-[10px] font-bold">{hasSchedule ? '🔒' : '✕'}</span>
                                 </button>
 
-                                {/* 3. 오너 이름 (좌측 상단 - 유니폼 등번호 위치 느낌) */}
+                                {/* 3. 오너 이름 (좌측 상단 - OWNER 텍스트 삭제됨) */}
                                 <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
                                     <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
                                 </div>
 
