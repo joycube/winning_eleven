@@ -133,13 +133,15 @@ export default function FootballLeagueApp() {
           }
 
           // (B) [핵심] nextMatchId 기반 진출 로직
-          if (winningTeam && !isGroupStage && editingMatch.nextMatchId) {
+          // 🔥 [에러 수정] nextMatchId 및 nextMatchSide 접근을 위해 any로 타입 단언
+          const mAny = editingMatch as any;
+          if (winningTeam && !isGroupStage && mAny.nextMatchId) {
               // 현재 라운드 내에서 다음 경기 찾기 (R1: 조별리그, R2: 토너먼트인 경우 R2 내에서 검색)
               const tournamentRound = newRounds[currentRoundIndex];
-              const targetMatch = tournamentRound.matches.find(m => m.id === editingMatch.nextMatchId);
+              const targetMatch = tournamentRound.matches.find(m => m.id === mAny.nextMatchId);
 
               if (targetMatch) {
-                  if (editingMatch.nextMatchSide === 'HOME') {
+                  if (mAny.nextMatchSide === 'HOME') {
                       targetMatch.home = winningTeam.name;
                       targetMatch.homeLogo = winningTeam.logo;
                       targetMatch.homeOwner = winningTeam.owner;
@@ -153,7 +155,7 @@ export default function FootballLeagueApp() {
                   if (targetMatch.home !== 'TBD' && targetMatch.away !== 'TBD') {
                       targetMatch.matchLabel = targetMatch.matchLabel.replace(' (TBD)', '');
                   }
-                  console.log(`🚀 승자 진출 완료: ${targetMatch.id} [${editingMatch.nextMatchSide}]`);
+                  console.log(`🚀 승자 진출 완료: ${targetMatch.id} [${mAny.nextMatchSide}]`);
               }
           }
       }
@@ -194,9 +196,20 @@ export default function FootballLeagueApp() {
       return Array.from(players);
   };
 
+  // 🔥 [수정] 스케줄 이동 시 해당 시즌의 cupPhase에 따라 탭을 지정할 수 있도록 함
   const handleNavigateToSchedule = (seasonId: number) => {
+      const s = seasons.find(item => item.id === seasonId);
+      // 🔥 [에러 수정] CupPhase 비교 시 타입 충돌 방지를 위해 as any 사용
+      const isKnockout = (s?.cupPhase as any) === 'KNOCKOUT';
+      
       setCurrentView('SCHEDULE');
       setViewSeasonId(seasonId);
+      
+      const params = new URLSearchParams(window.location.search);
+      params.set('view', 'SCHEDULE');
+      params.set('season', String(seasonId));
+      if (isKnockout) params.set('phase', 'KNOCKOUT'); 
+      window.history.replaceState(null, '', `?${params.toString()}`);
   };
 
   return (
