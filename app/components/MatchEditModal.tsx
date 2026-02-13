@@ -21,12 +21,10 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
   const [manualWinner, setManualWinner] = useState<'HOME' | 'AWAY' | null>(null);
 
   // 🔥 [핵심 수정] 조별리그(GROUP) 판단 로직
-  // 매치 라벨이나 스테이지 이름에 "GROUP"이 들어가면 -> 토너먼트 규정을 적용하지 않음 (무승부 허용)
   const labelUpper = (match.matchLabel || '').toUpperCase();
   const stageUpper = (match.stage || '').toUpperCase();
   const isGroupStage = labelUpper.includes('GROUP') || stageUpper.includes('GROUP');
 
-  // 실제 적용될 토너먼트 여부 (조별리그면 false로 강제)
   const effectiveIsTournament = isTournament && !isGroupStage;
 
   const handleRecordAdd = (type: keyof typeof recordInput, targetListKey: keyof typeof records) => {
@@ -64,9 +62,9 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
               {/* Home */}
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
                   <div className="flex flex-col items-center mb-4">
-                      {/* 🔥 [수정] 모달 내 엠블럼 흰색 배경 */}
-                      <div className="w-16 h-16 mb-2 rounded-full bg-white flex items-center justify-center p-2 shadow-lg overflow-hidden shrink-0">
-                          <img src={match.homeLogo} className="w-full h-full object-contain" alt="" />
+                      {/* 🔥 [수정] 하얀 원형 배경 및 엠블럼 사이즈 밸런스 조정 */}
+                      <div className="w-20 h-20 mb-3 rounded-full bg-white flex items-center justify-center p-3 shadow-xl shrink-0">
+                          <img src={match.homeLogo} className="max-w-full max-h-full object-contain" alt="" />
                       </div>
                       <span className="font-bold text-white">{match.home}</span>
                   </div>
@@ -85,7 +83,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                       <input type="number" value={inputs.awayScore} onChange={e=>setInputs({...inputs, awayScore:e.target.value})} className="w-20 h-20 text-center text-4xl font-black bg-black rounded-2xl border border-slate-700 text-white focus:border-emerald-500 outline-none" />
                   </div>
                   
-                  {/* 🔥 [수정] effectiveIsTournament 값을 사용해서 조별리그일 때는 승자 선택창 숨김 */}
                   {effectiveIsTournament && Number(inputs.homeScore) === Number(inputs.awayScore) && inputs.homeScore !== '' && (
                       <div className="bg-red-900/50 p-2 rounded-xl border border-red-500 text-center animate-pulse">
                           <p className="text-[10px] text-red-200 font-bold mb-1">⚠️ 동점: 다음 라운드 진출 팀 선택</p>
@@ -107,9 +104,9 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
               {/* Away */}
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
                   <div className="flex flex-col items-center mb-4">
-                      {/* 🔥 [수정] 모달 내 엠블럼 흰색 배경 */}
-                      <div className="w-16 h-16 mb-2 rounded-full bg-white flex items-center justify-center p-2 shadow-lg overflow-hidden shrink-0">
-                          <img src={match.awayLogo} className="w-full h-full object-contain" alt="" />
+                      {/* 🔥 [수정] 하얀 원형 배경 및 엠블럼 사이즈 밸런스 조정 */}
+                      <div className="w-20 h-20 mb-3 rounded-full bg-white flex items-center justify-center p-3 shadow-xl shrink-0">
+                          <img src={match.awayLogo} className="max-w-full max-h-full object-contain" alt="" />
                       </div>
                       <span className="font-bold text-white">{match.away}</span>
                   </div>
