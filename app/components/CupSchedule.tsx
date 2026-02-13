@@ -73,7 +73,7 @@ interface TeamStanding {
 // ------------------------------------------------------------------
 const StandingsTable = ({ standings }: { standings: TeamStanding[] }) => {
     return (
-        <div className="bg-[#0b101a] rounded-2xl border border-slate-800 overflow-hidden shadow-inner p-4">
+        <div className="bg-[#0b101a] rounded-2xl border border-slate-800 overflow-hidden shadow-inner p-4 w-full">
             <div className="grid grid-cols-12 gap-2 text-[10px] text-slate-500 font-bold uppercase border-b border-slate-800 pb-3 mb-2 px-3">
                 <div className="col-span-1 text-center">Rank</div>
                 <div className="col-span-5 pl-2">Team</div>
@@ -240,8 +240,8 @@ const GroupStageView = ({
     }, [matches, masterTeams]);
 
     return (
-        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4">
-            <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto custom-scrollbar">
+        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 w-full items-center">
+            <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto custom-scrollbar w-full">
                 {availableGroups.map(gName => ( 
                     <button 
                         key={gName}
@@ -258,39 +258,40 @@ const GroupStageView = ({
                 ))}
             </div>
 
-            <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px]">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-black italic text-white flex items-center gap-3 uppercase tracking-tighter">
+            {/* 🔥 p-6에서 px-1 md:px-2로 수정하여 카드가 좌우로 꽉 차게 함 */}
+            <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl px-1 md:px-2 py-6 shadow-2xl min-h-[500px] mt-[-5px] w-full flex flex-col items-center">
+                <div className="flex justify-between items-center mb-6 w-full px-2">
+                    <h3 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-3 uppercase tracking-tighter">
                         <span className="w-2 h-6 bg-emerald-500 rounded-sm shadow-[0_0_10px_#10b981]"></span>
                         GROUP {activeGroup} STANDINGS
                     </h3>
-                    <div className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 px-3 py-1.5 rounded-full border border-emerald-500/30 flex items-center gap-2">
+                    <div className="hidden md:flex text-[10px] font-bold text-emerald-400 bg-emerald-950/40 px-3 py-1.5 rounded-full border border-emerald-500/30 items-center gap-2">
                         <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                        Top 2 Teams Advance
+                        Top 2 Advance
                     </div>
                 </div>
 
-                <div className="mb-8">
+                <div className="mb-8 w-full">
                     {standings.length > 0 ? (
                         <StandingsTable standings={standings} />
                     ) : (
-                        <div className="p-8 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a]">
-                            No team data available for Group {activeGroup}.
+                        <div className="p-8 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a] w-full">
+                            No team data available.
                         </div>
                     )}
                 </div>
 
-                <div>
-                    <div className="flex items-center gap-2 mb-4 px-1 border-b border-slate-800 pb-2">
+                <div className="w-full">
+                    <div className="flex items-center gap-2 mb-4 px-2 border-b border-slate-800 pb-2">
                         <span className="text-xl">📅</span>
                         <h4 className="text-lg font-black italic text-slate-300">MATCH FIXTURES</h4>
                     </div>
                     
-                    {/* 🔥 2열에서 1열로 수정하여 넓은 레이아웃 확보 */}
+                    {/* 🔥 flex flex-col items-center w-full을 사용하여 카드를 시원하게 넓히고 중앙 정렬함 */}
                     {matches.length > 0 ? (
-                        <div className="grid grid-cols-1 gap-4">
+                        <div className="flex flex-col gap-4 w-full items-center">
                             {matches.map((match, idx) => (
-                                <div key={match.id} className="relative">
+                                <div key={match.id} className="w-full">
                                     <MatchCard 
                                         match={{ ...match, matchLabel: `GROUP ${activeGroup} / ${idx + 1}경기` }}
                                         onClick={onMatchClick}
@@ -302,8 +303,8 @@ const GroupStageView = ({
                             ))}
                         </div>
                     ) : (
-                        <div className="p-10 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a]">
-                            No matches scheduled for Group {activeGroup} yet.
+                        <div className="p-10 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl bg-[#0b101a] w-full">
+                            No matches scheduled.
                         </div>
                     )}
                 </div>
@@ -323,16 +324,16 @@ const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[],
     const renderStageSection = (title: string, stageMatches: Match[], icon: string) => {
         if (stageMatches.length === 0) return null;
         return (
-            <div className="mb-10 last:mb-0">
-                <div className="flex items-center gap-2 mb-4 px-1 border-b border-slate-800 pb-2">
+            <div className="mb-10 last:mb-0 w-full flex flex-col items-center">
+                <div className="flex items-center gap-2 mb-4 px-2 border-b border-slate-800 pb-2 w-full">
                     <span className="text-xl">{icon}</span>
                     <h4 className="text-lg font-black italic text-slate-300 uppercase tracking-wider">{title}</h4>
                 </div>
                 
-                {/* 🔥 일반 토너먼트와 동일하게 1열 배치로 수정 */}
-                <div className="grid grid-cols-1 gap-4">
+                {/* 🔥 flex-col 및 w-full로 너비를 최대한 확보하고 중앙 정렬 */}
+                <div className="flex flex-col gap-4 w-full items-center">
                     {stageMatches.map((match) => (
-                        <div key={match.id} className="relative">
+                        <div key={match.id} className="w-full">
                             <MatchCard 
                                 match={match}
                                 onClick={onMatchClick}
@@ -349,21 +350,22 @@ const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[],
 
     if (matches.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[500px] bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl mt-[-5px]">
+            <div className="flex flex-col items-center justify-center min-h-[500px] bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl mt-[-5px] w-full">
                 <div className="text-center space-y-2">
                     <span className="text-4xl">🔒</span>
                     <h3 className="text-xl font-black italic text-slate-400 uppercase">TOURNAMENT LOCKED</h3>
-                    <p className="text-slate-500 text-sm">Group stage is still in progress or knockout schedule not created.</p>
+                    <p className="text-slate-500 text-sm">Group stage is still in progress.</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px] relative overflow-hidden">
+        /* 🔥 p-6에서 px-1 md:px-2로 수정하여 카드가 좌우로 꽉 차게 함 */
+        <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl px-1 md:px-2 py-6 shadow-2xl min-h-[500px] mt-[-5px] relative overflow-hidden flex flex-col items-center w-full">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
             
-            <div className="relative z-10">
+            <div className="relative z-10 w-full flex flex-col items-center">
                 {renderStageSection("Quarter Finals", roundOf8, "🏆")}
                 {renderStageSection("Semi Finals", roundOf4, "⚔️")}
                 {renderStageSection("Grand Final", final, "✨")}
@@ -414,8 +416,8 @@ export const CupSchedule = ({
     }, [currentSeason, activeGroup]);
 
     return (
-        <div className="w-full max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in">
-            <div className="flex justify-center mb-6">
+        <div className="w-full max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in flex flex-col items-center">
+            <div className="flex justify-center mb-6 w-full">
                  <div className="flex bg-[#0f141e] p-1.5 rounded-2xl border border-slate-800 shadow-lg">
                     <button onClick={() => setActiveTab('GROUP')} className={`px-8 py-3 rounded-xl text-sm font-black italic transition-all ${activeTab === 'GROUP' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>📊 GROUP STAGE</button>
                     <button onClick={() => setActiveTab('KNOCKOUT')} className={`px-8 py-3 rounded-xl text-sm font-black italic transition-all ${activeTab === 'KNOCKOUT' ? 'bg-yellow-600 text-black shadow-lg' : 'text-slate-500 hover:text-white'}`}>⚔️ TOURNAMENT</button>
