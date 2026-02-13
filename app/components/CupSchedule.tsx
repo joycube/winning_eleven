@@ -286,8 +286,9 @@ const GroupStageView = ({
                         <h4 className="text-lg font-black italic text-slate-300">MATCH FIXTURES</h4>
                     </div>
                     
+                    {/* 🔥 2열에서 1열로 수정하여 넓은 레이아웃 확보 */}
                     {matches.length > 0 ? (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4">
                             {matches.map((match, idx) => (
                                 <div key={match.id} className="relative">
                                     <MatchCard 
@@ -312,7 +313,7 @@ const GroupStageView = ({
 };
 
 // ------------------------------------------------------------------
-// ⚔️ [View] Tournament Bracket View (Updated to match Group Stage Layout)
+// ⚔️ [View] Tournament Bracket View
 // ------------------------------------------------------------------
 const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[], onMatchClick: (m: Match) => void, masterTeams: MasterTeam[] }) => {
     const roundOf8 = matches.filter(m => m.stage === 'ROUND_OF_8').sort((a, b) => a.matchLabel.localeCompare(b.matchLabel));
@@ -328,8 +329,8 @@ const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[],
                     <h4 className="text-lg font-black italic text-slate-300 uppercase tracking-wider">{title}</h4>
                 </div>
                 
-                {/* 🔥 조별리그와 동일한 grid 레이아웃 및 간격(gap-4) 적용 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 🔥 일반 토너먼트와 동일하게 1열 배치로 수정 */}
+                <div className="grid grid-cols-1 gap-4">
                     {stageMatches.map((match) => (
                         <div key={match.id} className="relative">
                             <MatchCard 
@@ -359,12 +360,10 @@ const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[],
     }
 
     return (
-        /* 🔥 부모 컨테이너 스타일(배경, 보더, 패딩, mt-[-5px])을 조별리그와 완벽히 통일 */
         <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px] relative overflow-hidden">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
             
             <div className="relative z-10">
-                {/* 8강, 4강, 결승을 각각의 섹션으로 조별리그 매치 리스트와 동일한 방식으로 나열 */}
                 {renderStageSection("Quarter Finals", roundOf8, "🏆")}
                 {renderStageSection("Semi Finals", roundOf4, "⚔️")}
                 {renderStageSection("Grand Final", final, "✨")}
