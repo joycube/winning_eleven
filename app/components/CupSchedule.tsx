@@ -151,7 +151,7 @@ const StandingsTable = ({ standings }: { standings: TeamStanding[] }) => {
 const GroupStageView = ({ 
     activeGroup, 
     setActiveGroup, 
-    availableGroups, // 🔥 [추가] 유효한 조 목록
+    availableGroups, 
     matches, 
     onMatchClick,
     masterTeams,
@@ -161,7 +161,7 @@ const GroupStageView = ({
 }: { 
     activeGroup: string, 
     setActiveGroup: (g: string) => void,
-    availableGroups: string[], // 🔥 [추가] 타입 정의
+    availableGroups: string[], 
     matches: Match[],
     onMatchClick: (m: Match) => void,
     masterTeams: MasterTeam[],
@@ -169,7 +169,6 @@ const GroupStageView = ({
     historyData: any,
     owners: any[]
 }) => {
-    // const groups = ['A', 'B', 'C', 'D']; // 👈 기존 고정값 삭제
 
     const standings = useMemo(() => {
         const teamStats: { [key: string]: TeamStanding } = {};
@@ -243,7 +242,7 @@ const GroupStageView = ({
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto custom-scrollbar">
-                {availableGroups.map(gName => ( // 🔥 [수정] availableGroups 기반 렌더링
+                {availableGroups.map(gName => ( 
                     <button 
                         key={gName}
                         onClick={() => setActiveGroup(gName)}
@@ -261,7 +260,7 @@ const GroupStageView = ({
 
             <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px]">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-black italic text-white flex items-center gap-3">
+                    <h3 className="text-2xl font-black italic text-white flex items-center gap-3 uppercase tracking-tighter">
                         <span className="w-2 h-6 bg-emerald-500 rounded-sm shadow-[0_0_10px_#10b981]"></span>
                         GROUP {activeGroup} STANDINGS
                     </h3>
@@ -312,16 +311,71 @@ const GroupStageView = ({
     );
 };
 
-const BracketView = () => (
-    <div className="flex flex-col items-center justify-center min-h-[600px] bg-[#0f141e] rounded-3xl border border-slate-800 p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
-        <div className="text-center space-y-4 z-10">
-            <h2 className="text-3xl font-black italic text-white tracking-tighter">TOURNAMENT BRACKET</h2>
-            <p className="text-slate-400 text-sm">Knockout stage will be available after group stage.</p>
-        </div>
-    </div>
-);
+// ------------------------------------------------------------------
+// ⚔️ [View] Tournament Bracket View (Updated to match Group Stage Layout)
+// ------------------------------------------------------------------
+const BracketView = ({ matches, onMatchClick, masterTeams }: { matches: Match[], onMatchClick: (m: Match) => void, masterTeams: MasterTeam[] }) => {
+    const roundOf8 = matches.filter(m => m.stage === 'ROUND_OF_8').sort((a, b) => a.matchLabel.localeCompare(b.matchLabel));
+    const roundOf4 = matches.filter(m => m.stage === 'ROUND_OF_4').sort((a, b) => a.matchLabel.localeCompare(b.matchLabel));
+    const final = matches.filter(m => m.stage === 'FINAL' || m.stage === 'KNOCKOUT');
 
+    const renderStageSection = (title: string, stageMatches: Match[], icon: string) => {
+        if (stageMatches.length === 0) return null;
+        return (
+            <div className="mb-10 last:mb-0">
+                <div className="flex items-center gap-2 mb-4 px-1 border-b border-slate-800 pb-2">
+                    <span className="text-xl">{icon}</span>
+                    <h4 className="text-lg font-black italic text-slate-300 uppercase tracking-wider">{title}</h4>
+                </div>
+                
+                {/* 🔥 조별리그와 동일한 grid 레이아웃 및 간격(gap-4) 적용 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {stageMatches.map((match) => (
+                        <div key={match.id} className="relative">
+                            <MatchCard 
+                                match={match}
+                                onClick={onMatchClick}
+                                masterTeams={masterTeams}
+                                activeRankingData={null}
+                                historyData={null}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    if (matches.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[500px] bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl mt-[-5px]">
+                <div className="text-center space-y-2">
+                    <span className="text-4xl">🔒</span>
+                    <h3 className="text-xl font-black italic text-slate-400 uppercase">TOURNAMENT LOCKED</h3>
+                    <p className="text-slate-500 text-sm">Group stage is still in progress or knockout schedule not created.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        /* 🔥 부모 컨테이너 스타일(배경, 보더, 패딩, mt-[-5px])을 조별리그와 완벽히 통일 */
+        <div className="bg-[#0f141e] border border-slate-800 rounded-b-2xl rounded-tr-2xl rounded-bl-2xl p-6 shadow-2xl min-h-[500px] mt-[-5px] relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+            
+            <div className="relative z-10">
+                {/* 8강, 4강, 결승을 각각의 섹션으로 조별리그 매치 리스트와 동일한 방식으로 나열 */}
+                {renderStageSection("Quarter Finals", roundOf8, "🏆")}
+                {renderStageSection("Semi Finals", roundOf4, "⚔️")}
+                {renderStageSection("Grand Final", final, "✨")}
+            </div>
+        </div>
+    );
+};
+
+// ------------------------------------------------------------------
+// 🚀 Main Component
+// ------------------------------------------------------------------
 export const CupSchedule = ({ 
     seasons, 
     viewSeasonId, 
@@ -334,39 +388,30 @@ export const CupSchedule = ({
     const [activeTab, setActiveTab] = useState<'GROUP' | 'KNOCKOUT'>('GROUP');
     const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
-    // 🔥 [추가] 실제 데이터가 있는 조만 추출하는 로직
     const availableGroups = useMemo(() => {
         if (!currentSeason || !currentSeason.rounds) return [];
         const allMatches = currentSeason.rounds.flatMap(r => r.matches);
         const groupSet = new Set<string>();
-        
-        allMatches.forEach(m => {
-            if (m.group) groupSet.add(m.group);
-        });
-        
+        allMatches.forEach(m => { if (m.group) groupSet.add(m.group); });
         return Array.from(groupSet).sort();
     }, [currentSeason]);
 
-    // 🔥 [수정] 초기값 설정 최적화
     const [activeGroup, setActiveGroup] = useState('A');
 
-    // 시즌이 바뀌거나 데이터가 로드될 때 유효한 조가 있다면 첫 번째 조로 변경
     useEffect(() => {
-        if (availableGroups.length > 0) {
-            // 현재 선택된 조가 유효하지 않다면 첫 번째 조로 강제 이동
-            if (!availableGroups.includes(activeGroup)) {
-                setActiveGroup(availableGroups[0]);
-            }
+        if (availableGroups.length > 0 && !availableGroups.includes(activeGroup)) {
+            setActiveGroup(availableGroups[0]);
         }
     }, [availableGroups, activeGroup]);
 
-    const groupMatches = useMemo(() => {
-        if (!currentSeason || !currentSeason.rounds) return [];
+    const { groupMatches, knockoutMatches } = useMemo(() => {
+        if (!currentSeason || !currentSeason.rounds) return { groupMatches: [], knockoutMatches: [] };
         const allMatches = currentSeason.rounds.flatMap(r => r.matches);
-        return allMatches.filter(m => {
-            if (m.group) return m.group === activeGroup;
-            return false; // 조별리그 탭에서는 조 정보가 없는 경기는 노출하지 않음
-        });
+        const gMatches = allMatches.filter(m => m.group === activeGroup);
+        const kMatches = allMatches.filter(m => 
+            !m.group && (m.stage === 'ROUND_OF_8' || m.stage === 'ROUND_OF_4' || m.stage === 'FINAL' || m.stage === 'KNOCKOUT')
+        );
+        return { groupMatches: gMatches, knockoutMatches: kMatches };
     }, [currentSeason, activeGroup]);
 
     return (
@@ -382,7 +427,7 @@ export const CupSchedule = ({
                 <GroupStageView 
                     activeGroup={activeGroup} 
                     setActiveGroup={setActiveGroup}
-                    availableGroups={availableGroups} // 🔥 진입 경로 추가
+                    availableGroups={availableGroups}
                     matches={groupMatches} 
                     onMatchClick={onMatchClick}
                     masterTeams={masterTeams}
@@ -391,7 +436,11 @@ export const CupSchedule = ({
                     owners={owners}
                 />
             ) : (
-                <BracketView />
+                <BracketView 
+                    matches={knockoutMatches} 
+                    onMatchClick={onMatchClick} 
+                    masterTeams={masterTeams} 
+                />
             )}
         </div>
     );

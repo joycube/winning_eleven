@@ -5,7 +5,8 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG } from '../types';
 import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
-import { QuickDraftModal } from './QuickDraftModal'; // 🔥 모달 import
+import { QuickDraftModal } from './QuickDraftModal';
+import { TeamCard } from './TeamCard'; // 🔥 분리된 컴포넌트 import
 
 interface Props {
     targetSeason: Season;
@@ -274,7 +275,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                             setIsDraftOpen(true);
                         }}
                         disabled={hasSchedule}
-                        // 🔥 [버튼 규격화] h-10, px-6, text-xs, font-black italic
                         className={`h-10 px-6 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all flex items-center justify-center gap-2 ${hasSchedule ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}
                     >
                         <span>⚡</span> 퀵 매칭 시작
@@ -292,11 +292,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
                     <div className="flex justify-between items-center">
                         <label className="text-[10px] text-slate-500 font-bold">2. Search Options (Manual)</label>
-                        {/* 🔥 [수정됨] 랜덤 매칭 버튼 규격화 */}
                         <button 
                             onClick={handleRandom} 
                             disabled={isRolling || hasSchedule}
-                            // 🔥 [버튼 규격화] h-10, px-6, text-xs, font-black italic (퀵매칭 버튼과 동일)
                             className={`h-10 px-6 rounded-lg text-xs font-black italic tracking-tighter text-white shadow-lg border border-purple-500 flex items-center justify-center gap-2 transition-all ${isRolling || hasSchedule ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95 hover:shadow-purple-500/50'}`}
                         >
                             {isRolling ? <span className="animate-spin text-lg">🎰</span> : <span className="text-lg">🎲</span>} 
@@ -319,9 +317,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
                     {randomResult ? (
                         <div className="flex justify-center py-8 relative" style={{ perspective: '1000px' }}>
-                            {/* 🔥 형광 에너지 분출 (카드 뒤에서 발생) */}
                             {isFlipping && <div className="blast-circle" />}
-
                             <div className={`relative p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 transition-all duration-500 min-w-[240px] 
                                 ${isFlipping ? 'fc-card-reveal' : ''} 
                                 ${randomResult.tier === 'S' ? 'bg-gradient-to-b from-yellow-600/30 to-slate-900 border-yellow-500 fc-gold-glow' : 'bg-slate-900 border-emerald-500'}
@@ -330,13 +326,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                 <div className={`absolute -top-4 text-white text-xs font-black italic tracking-tighter px-4 py-1.5 rounded-full shadow-2xl transition-all ${isRolling ? 'bg-purple-600 animate-pulse' : 'bg-gradient-to-r from-emerald-600 to-teal-600'}`}>
                                     {isRolling ? '🎰 SHUFFLING PACK...' : '🏆 PACK OPENED!'}
                                 </div>
-                                
-                                <div className={`w-32 h-32 bg-white rounded-full flex items-center justify-center p-4 shadow-2xl relative z-10 
-                                    ${randomResult.tier === 'S' ? 'ring-4 ring-yellow-400/50' : 'ring-4 ring-emerald-400/30'}
-                                `}>
+                                <div className={`w-32 h-32 bg-white rounded-full flex items-center justify-center p-4 shadow-2xl relative z-10 ${randomResult.tier === 'S' ? 'ring-4 ring-yellow-400/50' : 'ring-4 ring-emerald-400/30'}`}>
                                     <img src={randomResult.logo} className={`w-full h-full object-contain ${isRolling ? 'animate-bounce' : ''}`} alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} />
                                 </div>
-                                
                                 <div className="text-center relative z-10">
                                     <p className="text-2xl font-black italic tracking-tighter text-white uppercase leading-none">{randomResult.name}</p>
                                     <div className="flex items-center justify-center gap-2 mt-2">
@@ -344,8 +336,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                         <span className={`text-xs px-3 py-0.5 rounded-full font-black italic ${getTierBadgeColor(randomResult.tier)} shadow-lg`}>{randomResult.tier} TIER</span>
                                     </div>
                                 </div>
-
-                                {/* 배경 광채 (S등급 전용) */}
                                 {randomResult.tier === 'S' && !isRolling && (
                                     <div className="absolute inset-0 bg-yellow-400/10 blur-[60px] rounded-full -z-10 animate-pulse"></div>
                                 )}
@@ -399,63 +389,31 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     <h3 className="text-white font-black italic tracking-tighter uppercase">Step 2. Season Members ({targetSeason.teams?.length || 0})</h3>
                     <div className="flex gap-2">{hasSchedule ? (<><button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button><button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button></>) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}</div>
                 </div>
-                {/* 🔥 [디자인 수정] 최소 3개 ~ 화면 넓이에 따라 확장 */}
+                
+                {/* 🔥 [디자인 수정] TeamCard 컴포넌트 적용 + 반응형 그리드 */}
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                     {targetSeason.teams?.map(t => {
-                        // 최신 정보 동기화 (기존 로직 유지)
+                        // 최신 정보 동기화
                         const master = masterTeams.find(m => m.name === t.name);
-                        const displayLogo = master ? master.logo : t.logo;
-                        const displayTier = master ? master.tier : t.tier;
-                        const displayRegion = master ? master.region : t.region;
-                        
-                        const isS = displayTier === 'S'; // S급 여부
+                        const displayTeam = {
+                            ...t,
+                            logo: master ? master.logo : t.logo,
+                            tier: master ? master.tier : t.tier,
+                            region: master ? master.region : t.region
+                        };
 
                         return (
-                            <div 
-                                key={t.id} 
-                                className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 shadow-lg`}
-                            >
-                                {/* 1. 상단 배경 데코 (사선 효과) */}
-                                <div className="absolute top-0 left-0 w-full h-1/3 bg-white/5 skew-y-6 transform origin-top-left pointer-events-none"></div>
-
-                                {/* 2. 삭제/잠금 버튼 (우측 상단) */}
+                            <div key={t.id} className="relative group">
+                                {/* TeamCard 컴포넌트 사용 */}
+                                <TeamCard team={displayTeam} />
+                                
+                                {/* 삭제 버튼 오버레이 */}
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} 
                                     className={`absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 text-white transition-colors ${hasSchedule ? 'cursor-not-allowed opacity-50' : ''}`}
                                 >
                                     <span className="text-[10px] font-bold">{hasSchedule ? '🔒' : '✕'}</span>
                                 </button>
-
-                                {/* 3. 오너 이름 (좌측 상단 - OWNER 텍스트 삭제됨) */}
-                                <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                    <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
-                                </div>
-
-                                {/* 4. 메인 컨텐츠 (로고 & 이름) */}
-                                <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
-                                    {/* 로고 이미지 */}
-                                    <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
-                                        <img 
-                                            src={displayLogo} 
-                                            className="w-full h-full object-contain" 
-                                            alt={t.name} 
-                                            onError={(e: any) => e.target.src = FALLBACK_IMG} 
-                                        />
-                                    </div>
-                                    
-                                    {/* 팀 이름 */}
-                                    <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">
-                                        {t.name}
-                                    </p>
-                                    
-                                    {/* 하단 정보 (지역/티어) */}
-                                    <div className="flex items-center gap-1 mt-1 opacity-80">
-                                        <span className="text-[8px] text-slate-400 font-bold uppercase mr-1 truncate max-w-[50px]">{displayRegion}</span>
-                                        <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(displayTier)}`}>
-                                            {displayTier} CLASS
-                                        </span>
-                                    </div>
-                                </div>
                             </div>
                         );
                     })}

@@ -140,4 +140,19 @@ export interface Banner {
   description?: string;
 }
 
+// 🔥 [추가] 컵 모드 드래그&드롭 및 대기실용 타입 (CupEntry)
+export interface CupEntry {
+  id: string;
+  masterId: number;
+  name: string;
+  logo: string;
+  ownerName: string;
+  region: string;
+  tier: string;
+  rank?: number; // 조 순위 저장용
+  group?: string; // 소속 조 저장용
+  realRankScore?: number;
+  realFormScore?: number;
+}
+
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";

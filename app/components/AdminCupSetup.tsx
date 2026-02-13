@@ -2,9 +2,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc } from 'firebase/firestore';
-import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match } from '../types';
+// 🔥 [수정 1] CupEntry 추가 (types.ts에서 불러옴)
+import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match, CupEntry } from '../types';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
 import { QuickDraftModal } from './QuickDraftModal';
+
+// 🔥 [수정 2] 경로 수정 (./components/ 제거 -> 현재 폴더 ./)
+import { TeamCard } from './TeamCard'; 
+import { AdminCupStep2 } from './AdminCupStep2';
+import { AdminCupStep3 } from './AdminCupStep3';
 
 // 🔥 리그 인지도 정렬 순서
 const LEAGUE_RANKING: { [key: string]: number } = {
@@ -26,19 +32,7 @@ interface AdminCupSetupProps {
     onNavigateToSchedule: (seasonId: number) => void;
 }
 
-interface CupEntry {
-    id: string;
-    masterId: number;
-    name: string;
-    logo: string;
-    ownerName: string;
-    region: string;
-    tier: string;
-    rank?: number; // 조 순위 저장용
-    group?: string; // 소속 조 저장용
-    realRankScore?: number;
-    realFormScore?: number;
-}
+// ✂️ [삭제됨] interface CupEntry ... (types.ts로 이동)
 
 export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule }: AdminCupSetupProps) => {
     // ================= STATE =================
@@ -517,6 +511,15 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }
     };
 
+    // 🔥 [신규] 토너먼트 슬롯 클릭 시 삭제 (인라인 로직 추출)
+    const handleTournamentSlotClick = (idx: number) => {
+        if (tournamentBracket[idx]) {
+            const newBracket = [...tournamentBracket];
+            newBracket[idx] = null;
+            setTournamentBracket(newBracket);
+        }
+    };
+
     const handleCreateTournamentSchedule = async () => {
         if (tournamentBracket.includes(null)) {
             if (!confirm("⚠️ 대진표에 빈 자리가 있습니다. 그대로 진행하시겠습니까?")) return;
@@ -692,6 +695,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 {/* 3. Pack Result / List */}
                 {randomResult ? (
                     <div className="flex justify-center py-8 relative" style={{ perspective: '1000px' }}>
+                        {/* 랜덤 결과 애니메이션 (기존 유지) */}
                         {isFlipping && <div className="blast-circle" />}
                         <div className={`relative p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 transition-all duration-500 min-w-[240px] bg-slate-900 ${isFlipping ? 'fc-card-reveal' : ''} ${randomResult.tier === 'S' ? 'border-yellow-500 fc-gold-glow' : 'border-emerald-500'}`}>
                             <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">NEW SIGNING</div>
@@ -706,7 +710,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 ) : (
                     !filterLeague && !searchTeam ? (
                         <div className="space-y-8 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
-                            {/* 1. Club Leagues */}
+                            {/* 리그 목록 (기존 유지) */}
                             {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (
                                 <div>
                                     <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 bg-emerald-500 rounded-full"></div><h4 className="text-emerald-500 font-black italic text-xs uppercase tracking-widest">Club Leagues</h4></div>
@@ -714,7 +718,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         {clubLeagues.map(l => {
                                             const count = masterTeams.filter(t => t.region === l.name).length;
                                             return (
-                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-3 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
+                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
                                                     <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center p-2.5 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
                                                     <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div>
                                                 </div>
@@ -723,7 +727,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                     </div>
                                 </div>
                             )}
-                            {/* 2. National Teams */}
                             {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (
                                 <div>
                                     <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 bg-blue-500 rounded-full"></div><h4 className="text-blue-500 font-black italic text-xs uppercase tracking-widest">National Teams</h4></div>
@@ -731,7 +734,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         {nationalLeagues.map(l => {
                                             const count = masterTeams.filter(t => t.region === l.name).length;
                                             return (
-                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-3 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
+                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
                                                     <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center p-2.5 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
                                                     <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div>
                                                 </div>
@@ -742,13 +745,15 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                             )}
                         </div>
                     ) : (
-                        // 🔥 [수정됨] 검색 결과 리스트 (Step 1)
+                        // 🔥 [수정됨] 검색 결과 리스트 (Step 1) - TeamCard 컴포넌트 적용!
                         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
                             {availableTeams.length > 0 ? availableTeams.slice(0, 30).map(t => (
-                                <div key={t.id} onClick={() => handleSignTeam(t)} className="bg-slate-900 p-2 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500 hover:bg-slate-800 transition-all flex flex-col items-center gap-1 group">
-                                    <div className="w-10 h-10 bg-white rounded-full p-1.5 shadow-md"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
-                                    <span className="text-[9px] text-slate-300 font-bold truncate w-full text-center group-hover:text-white">{t.name}</span>
-                                </div>
+                                <TeamCard 
+                                    key={t.id} 
+                                    team={t} 
+                                    onClick={() => handleSignTeam(t)} 
+                                    className="cursor-pointer"
+                                />
                             )) : <div className="col-span-3 text-center py-10 text-slate-500">No teams found.</div>}
                         </div>
                     )
@@ -756,246 +761,37 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
             </div>
 
             {/* ================= STEP 2: GROUP DRAW BOARD ================= */}
-            <div className="bg-black p-6 rounded-[2.5rem] border border-slate-800 relative">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
-                    <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 2. Group Draw Board</h3>
-                    
-                    {/* 설정 컨트롤 패널 */}
-                    <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-700">
-                        <button 
-                            onClick={() => updateBoardStructure('AUTO', 4, 4)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black italic transition-all ${configMode === 'AUTO' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            AUTO (16강)
-                        </button>
-                        <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                        <div className="flex gap-2 items-center px-1">
-                            <span className={`text-[10px] font-bold ${configMode === 'CUSTOM' ? 'text-white' : 'text-slate-500'}`}>CUSTOM:</span>
-                            <select 
-                                value={customConfig.groupCount}
-                                onChange={(e) => updateBoardStructure('CUSTOM', Number(e.target.value), customConfig.teamCount)}
-                                className="bg-slate-800 text-white text-[10px] p-1 rounded border border-slate-600 font-bold cursor-pointer hover:border-emerald-500"
-                            >
-                                <option value="2">2 Groups</option>
-                                <option value="4">4 Groups</option>
-                                <option value="8">8 Groups</option>
-                            </select>
-                            <span className="text-[10px] text-slate-600">x</span>
-                            <select 
-                                value={customConfig.teamCount}
-                                onChange={(e) => updateBoardStructure('CUSTOM', customConfig.groupCount, Number(e.target.value))}
-                                className="bg-slate-800 text-white text-[10px] p-1 rounded border border-slate-600 font-bold cursor-pointer hover:border-emerald-500"
-                            >
-                                <option value="2">2 Teams</option>
-                                <option value="3">3 Teams</option>
-                                <option value="4">4 Teams</option>
-                                <option value="5">5 Teams</option>
-                            </select>
-                        </div>
-                    </div>
+            {/* ✨ 여기가 교체 포인트! AdminCupStep2 컴포넌트로 대체 */}
+            <AdminCupStep2 
+                unassignedPool={unassignedPool}
+                groups={groups}
+                customConfig={customConfig}
+                configMode={configMode}
+                onDragStart={handleDragStart}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onSlotClick={handleSlotClick}
+                onUpdateStructure={updateBoardStructure}
+                onAutoDraw={handleAutoDraw}
+                onResetDraw={handleResetDraw}
+                onCreateSchedule={handleCreateSchedule}
+            />
 
-                    <div className="flex gap-2">
-                        <button onClick={handleResetDraw} className="px-4 py-2 bg-slate-800 text-slate-400 rounded-xl font-bold text-xs hover:bg-red-900 hover:text-white transition-colors">🔄 Reset</button>
-                        <button onClick={handleAutoDraw} className="px-6 py-2 bg-yellow-600 text-black rounded-xl font-black italic text-xs shadow-lg shadow-yellow-900/40 hover:bg-yellow-500 active:scale-95 transition-all">⚡ AUTO FILL</button>
-                    </div>
-                </div>
+            {/* ================= STEP 3: TOURNAMENT BRACKET SETUP ================= */}
+            {/* ✨ 여기가 교체 포인트! AdminCupStep3 컴포넌트로 대체 */}
+            <AdminCupStep3 
+                waitingPool={tournamentWaitingPool}
+                bracket={tournamentBracket}
+                onDragStart={handleDragStart} // 기존 handleDragStart 재사용 (Step 1, 2, 3 모두 공유)
+                onDragOver={handleDragOver}
+                onDrop={handleTournamentDrop}
+                onSlotClick={handleTournamentSlotClick} // 🔥 새로 만든 핸들러
+                onAutoMatch={handleTournamentAutoMatch}
+                onRandomMatch={handleTournamentRandomMatch}
+                onCreateSchedule={handleCreateTournamentSchedule}
+            />
 
-                <div className="mb-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="text-xs font-bold text-slate-400">WAITING POOL ({unassignedPool.length})</span>
-                        <span className="text-[10px] text-slate-600">Drag team to group slot or Click</span>
-                    </div>
-                    {unassignedPool.length === 0 ? (
-                        <div className="text-center py-4 text-slate-600 text-xs italic">Step 1에서 팀을 선발해주세요.</div>
-                    ) : (
-                        // 🔥 [수정됨] 대기실 리스트 (Step 2)
-                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
-                            {unassignedPool.map(t => {
-                                const isS = t.tier === 'S';
-                                return (
-                                    <div 
-                                        key={t.id} 
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, t)}
-                                        className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 cursor-grab active:cursor-grabbing shadow-lg`}
-                                    >
-                                        {/* 상단 배경 데코 */}
-                                        <div className="absolute top-0 left-0 w-full h-1/3 bg-white/5 skew-y-6 transform origin-top-left pointer-events-none"></div>
-
-                                        {/* 오너 이름 (좌측 상단) - OWNER 텍스트 삭제됨 */}
-                                        <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                            <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
-                                        </div>
-
-                                        {/* 메인 컨텐츠 */}
-                                        <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
-                                            <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
-                                                <img src={t.logo} className="w-full h-full object-contain" alt={t.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                            </div>
-                                            <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">{t.name}</p>
-                                            <div className="flex items-center gap-1 mt-1 opacity-80">
-                                                <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(t.tier)}`}>{t.tier} CLASS</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                {/* 그룹 보드 (드롭존) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* 🔥 설정된 그룹 수만큼만 노출됨 (빈 그룹 제거됨) */}
-                    {Object.keys(groups).sort().slice(0, customConfig.groupCount).map(gName => (
-                        <div key={gName} className="bg-slate-900/50 rounded-2xl border border-slate-800 overflow-hidden flex flex-col">
-                            <div className="bg-slate-800/80 px-4 py-3 flex justify-between items-center border-b border-slate-700">
-                                <span className="text-sm font-black italic text-emerald-400">GROUP {gName}</span>
-                                <span className="text-[10px] text-slate-500 font-bold">{groups[gName].filter(Boolean).length}/{customConfig.teamCount}</span>
-                            </div>
-                            <div className={`p-3 grid gap-2 ${customConfig.teamCount > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                {groups[gName].slice(0, customConfig.teamCount).map((slot, idx) => (
-                                    <div 
-                                        key={idx} 
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => handleDrop(e, gName, idx)}
-                                        onClick={() => handleSlotClick(gName, idx)} 
-                                        className={`
-                                            relative aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all group 
-                                            ${slot 
-                                                ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10' 
-                                                : 'border-slate-700 bg-slate-900/30 hover:border-yellow-500/50 hover:bg-slate-800'
-                                            }
-                                        `}
-                                    >
-                                        {slot ? (
-                                            <>
-                                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center p-1 shadow-md mb-1"><img src={slot.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
-                                                <span className="text-[10px] font-bold text-white truncate w-full text-center px-1">{slot.name}</span>
-                                                <span className="text-[8px] text-emerald-400 font-bold">{slot.ownerName}</span>
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl backdrop-blur-sm"><span className="text-red-400 font-black text-xs">REMOVE ✕</span></div>
-                                            </>
-                                        ) : (
-                                            <div className="text-slate-600 group-hover:text-yellow-500 transition-colors flex flex-col items-center"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
-                    <button onClick={handleCreateSchedule} className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl text-lg transition-transform active:scale-95 flex items-center gap-3"><span>💾</span> CREATE SCHEDULE</button>
-                </div>
-            </div>
-
-            {/* 🔥 STEP 3: TOURNAMENT BRACKET SETUP */}
-            <div className="bg-[#0b0e14] p-6 rounded-[2.5rem] border border-slate-800 relative">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
-                    <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Tournament Bracket Setup</h3>
-                    
-                    <div className="flex gap-2">
-                        <button onClick={handleTournamentAutoMatch} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black italic text-xs shadow-lg hover:bg-indigo-500 transition-all">⚡ AUTO (A1 vs B2)</button>
-                        <button onClick={handleTournamentRandomMatch} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-black italic text-xs shadow-lg hover:bg-purple-500 transition-all">🎲 RANDOM SHUFFLE</button>
-                    </div>
-                </div>
-
-                <div className="mb-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Qualified Teams Inventory ({tournamentWaitingPool.length})</span>
-                        <span className="text-[10px] text-slate-500 italic">Drag team to bracket slot</span>
-                    </div>
-                    
-                    {tournamentWaitingPool.length === 0 ? (
-                        <div className="text-center py-4 text-slate-600 text-xs italic">조별리그 통과팀이 대기실에 없습니다.</div>
-                    ) : (
-                        // 🔥 [수정됨] 토너먼트 대기실 리스트 (Step 3)
-                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                            {tournamentWaitingPool.map(t => {
-                                const isS = t.tier === 'S';
-                                return (
-                                    <div 
-                                        key={t.id} 
-                                        draggable
-                                        onDragStart={() => setDraggedTournamentEntry(t)}
-                                        className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 cursor-grab active:cursor-grabbing shadow-lg`}
-                                    >
-                                        {/* 오너 이름 (좌측 상단) - OWNER 텍스트 삭제됨 */}
-                                        <div className="absolute top-2 left-2 flex flex-col items-start z-10">
-                                            <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
-                                        </div>
-                                        <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
-                                            <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
-                                                <img src={t.logo} className="w-full h-full object-contain" alt={t.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                            </div>
-                                            <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">{t.name}</p>
-                                            <div className="flex items-center gap-1 mt-1 opacity-80">
-                                                <span className="text-[8px] text-slate-400 font-bold uppercase mr-1">{t.group}조 {t.rank}위</span>
-                                                <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(t.tier)}`}>{t.tier} CLASS</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                {/* 토너먼트 대진표 드롭존 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
-                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800 hidden md:block opacity-20"></div>
-                    {Array.from({ length: tournamentBracket.length / 2 }).map((_, mIdx) => (
-                        <div key={mIdx} className="space-y-4 bg-slate-900/20 p-5 rounded-3xl border border-slate-800/50">
-                            <div className="text-[9px] text-slate-600 font-black mb-1 italic tracking-widest uppercase">
-                                {tournamentBracket.length === 8 ? 'Quarter-Final' : 'Semi-Final'} Match {mIdx + 1}
-                            </div>
-                            {[mIdx * 2, mIdx * 2 + 1].map((slotIdx) => (
-                                <div 
-                                    key={slotIdx} 
-                                    onDragOver={handleDragOver}
-                                    onDrop={(e) => handleTournamentDrop(e, slotIdx)}
-                                    onClick={() => {
-                                        if (tournamentBracket[slotIdx]) {
-                                            const newBracket = [...tournamentBracket];
-                                            newBracket[slotIdx] = null;
-                                            setTournamentBracket(newBracket);
-                                        }
-                                    }}
-                                    className={`
-                                        relative h-16 rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer transition-all group 
-                                        ${tournamentBracket[slotIdx] 
-                                            ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-950/20' 
-                                            : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800'
-                                        }
-                                    `}
-                                >
-                                    {tournamentBracket[slotIdx] ? (
-                                        <div className="flex items-center gap-4 w-full px-5">
-                                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1.5 shadow-md"><img src={tournamentBracket[slotIdx]?.logo} className="w-full h-full object-contain" alt="" /></div>
-                                            <div className="flex flex-col flex-1">
-                                                <span className="text-xs font-black text-white italic">{tournamentBracket[slotIdx]?.name}</span>
-                                                <span className="text-[9px] text-emerald-400 font-bold uppercase">{tournamentBracket[slotIdx]?.ownerName}</span>
-                                            </div>
-                                            <span className="text-[8px] text-slate-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">REMOVE ✕</span>
-                                        </div>
-                                    ) : (
-                                        <div className="text-slate-700 group-hover:text-indigo-500 transition-colors flex items-center gap-2"><span className="text-lg font-black">+</span><span className="text-[9px] font-black italic">DROP TEAM HERE</span></div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
-                    <button onClick={handleCreateTournamentSchedule} className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black italic rounded-2xl shadow-2xl text-lg transition-transform active:scale-95 flex items-center gap-3">
-                        <span>⚔️</span> GENERATE TOURNAMENT BRACKET
-                    </button>
-                </div>
-            </div>
-
-            {/* Modal */}
+            {/* Modal (기존 코드 유지) */}
             {targetSlot && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setTargetSlot(null)} />
@@ -1015,7 +811,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 </div>
             )}
 
-            {/* Quick Draft Modal */}
+            {/* Quick Draft Modal (기존 코드 유지) */}
             <QuickDraftModal 
                 isOpen={isDraftOpen}
                 onClose={() => setIsDraftOpen(false)}
