@@ -113,32 +113,27 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
             });
 
             // 2. 설정값 자동 계산
-            // 팀 수: 최소 2팀, 최대 팀 수에 맞춤 (기본 4)
             const detectedTeamCount = maxTeamsInGroup < 2 ? 4 : maxTeamsInGroup;
             
-            // 그룹 수: 실제로 팀이 존재하는 마지막 그룹까지만 카운트 (불필요한 빈 그룹 제거)
             let calculatedGroupCount = 0;
-            const sortedKeys = Object.keys(loadedGroups).sort(); // A, B, C, D...
+            const sortedKeys = Object.keys(loadedGroups).sort();
             
-            // 뒤에서부터 확인하여 팀이 있는 마지막 그룹을 찾음
             for (let i = sortedKeys.length - 1; i >= 0; i--) {
                 const gName = sortedKeys[i];
                 const hasTeam = loadedGroups[gName].some(t => t !== null);
                 if (hasTeam) {
-                    calculatedGroupCount = i + 1; // 인덱스 + 1 = 개수
+                    calculatedGroupCount = i + 1;
                     break;
                 }
             }
-            // 최소 2개 그룹(A, B)은 강제 보장 (너무 적으면 안되니까)
             calculatedGroupCount = Math.max(2, calculatedGroupCount);
 
-            // 3. 최종 그룹 데이터 생성 (계산된 그룹 수만큼만 생성)
+            // 3. 최종 그룹 데이터 생성
             const finalGroups: { [key: string]: (CupEntry | null)[] } = {};
             
             for(let i=0; i<calculatedGroupCount; i++) {
                 const gName = ALPHABET[i];
                 const currentSlots = loadedGroups[gName] || [];
-                // 모자란 슬롯 채우기 (detectedTeamCount 만큼)
                 const filledSlots = [...currentSlots, ...Array(Math.max(0, detectedTeamCount - currentSlots.length)).fill(null)];
                 finalGroups[gName] = filledSlots;
             }
@@ -747,7 +742,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                             )}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-3 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                        // 🔥 [수정됨] 검색 결과 리스트 (Step 1)
+                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
                             {availableTeams.length > 0 ? availableTeams.slice(0, 30).map(t => (
                                 <div key={t.id} onClick={() => handleSignTeam(t)} className="bg-slate-900 p-2 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500 hover:bg-slate-800 transition-all flex flex-col items-center gap-1 group">
                                     <div className="w-10 h-10 bg-white rounded-full p-1.5 shadow-md"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
@@ -812,7 +808,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     {unassignedPool.length === 0 ? (
                         <div className="text-center py-4 text-slate-600 text-xs italic">Step 1에서 팀을 선발해주세요.</div>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                        // 🔥 [수정됨] 대기실 리스트 (Step 2)
+                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
                             {unassignedPool.map(t => {
                                 const isS = t.tier === 'S';
                                 return (
@@ -914,7 +911,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     {tournamentWaitingPool.length === 0 ? (
                         <div className="text-center py-4 text-slate-600 text-xs italic">조별리그 통과팀이 대기실에 없습니다.</div>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        // 🔥 [수정됨] 토너먼트 대기실 리스트 (Step 3)
+                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                             {tournamentWaitingPool.map(t => {
                                 const isS = t.tier === 'S';
                                 return (

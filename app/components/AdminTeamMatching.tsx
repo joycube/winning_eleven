@@ -399,33 +399,64 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     <h3 className="text-white font-black italic tracking-tighter uppercase">Step 2. Season Members ({targetSeason.teams?.length || 0})</h3>
                     <div className="flex gap-2">{hasSchedule ? (<><button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button><button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button></>) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}</div>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                {/* 🔥 [디자인 수정] 최소 3개 ~ 화면 넓이에 따라 확장 */}
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                     {targetSeason.teams?.map(t => {
-                        // 🔥 [수정] masterTeams에서 최신 정보를 조회
+                        // 최신 정보 동기화 (기존 로직 유지)
                         const master = masterTeams.find(m => m.name === t.name);
                         const displayLogo = master ? master.logo : t.logo;
                         const displayTier = master ? master.tier : t.tier;
                         const displayRegion = master ? master.region : t.region;
+                        
+                        const isS = displayTier === 'S'; // S급 여부
 
                         return (
-                            <div key={t.id} className="flex flex-col items-center bg-slate-900/50 p-3 rounded-2xl border border-slate-800 relative group transition-all hover:bg-slate-800">
-                                {/* 🔥 [수정] 최신 로고 표시 */}
-                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 p-2 mb-2 shadow-xl"><img src={displayLogo} className="w-full h-full object-contain" alt="" /></div>
-                                <div className="w-full text-center">
-                                    <p className="text-[10px] font-black italic tracking-tighter text-white truncate w-full uppercase">{t.name}</p>
-                                    <div className="flex flex-col items-center gap-0.5 mt-1">
-                                        <span className="text-[9px] text-emerald-400 font-black italic tracking-tighter uppercase">{t.ownerName}</span>
-                                        <div className="flex items-center gap-1">
-                                            {/* 🔥 [수정] 최신 Region 표시 */}
-                                            <span className="text-[8px] text-slate-500 font-black italic uppercase tracking-tighter truncate max-w-[50px]">{displayRegion}</span>
-                                            {/* 🔥 [수정] 최신 Tier 및 색상 표시 */}
-                                            <span className={`text-[8px] px-1.5 rounded-full font-black italic ${getTierBadgeColor(displayTier)}`}>{displayTier}</span>
-                                        </div>
+                            <div 
+                                key={t.id} 
+                                className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 shadow-lg`}
+                            >
+                                {/* 1. 상단 배경 데코 (사선 효과) */}
+                                <div className="absolute top-0 left-0 w-full h-1/3 bg-white/5 skew-y-6 transform origin-top-left pointer-events-none"></div>
+
+                                {/* 2. 삭제/잠금 버튼 (우측 상단) */}
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} 
+                                    className={`absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 text-white transition-colors ${hasSchedule ? 'cursor-not-allowed opacity-50' : ''}`}
+                                >
+                                    <span className="text-[10px] font-bold">{hasSchedule ? '🔒' : '✕'}</span>
+                                </button>
+
+                                {/* 3. 오너 이름 (좌측 상단 - 유니폼 등번호 위치 느낌) */}
+                                <div className="absolute top-2 left-2 flex flex-col items-start z-10">
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
+                                    <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
+                                </div>
+
+                                {/* 4. 메인 컨텐츠 (로고 & 이름) */}
+                                <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
+                                    {/* 로고 이미지 */}
+                                    <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                                        <img 
+                                            src={displayLogo} 
+                                            className="w-full h-full object-contain" 
+                                            alt={t.name} 
+                                            onError={(e: any) => e.target.src = FALLBACK_IMG} 
+                                        />
+                                    </div>
+                                    
+                                    {/* 팀 이름 */}
+                                    <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">
+                                        {t.name}
+                                    </p>
+                                    
+                                    {/* 하단 정보 (지역/티어) */}
+                                    <div className="flex items-center gap-1 mt-1 opacity-80">
+                                        <span className="text-[8px] text-slate-400 font-bold uppercase mr-1 truncate max-w-[50px]">{displayRegion}</span>
+                                        <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(displayTier)}`}>
+                                            {displayTier} CLASS
+                                        </span>
                                     </div>
                                 </div>
-                                <button onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} className={`absolute top-2 right-2 font-bold p-1 transition-colors ${hasSchedule ? 'text-slate-800 cursor-not-allowed' : 'text-slate-600 hover:text-red-500'}`}>
-                                    {hasSchedule ? '🔒' : '✕'}
-                                </button>
                             </div>
                         );
                     })}
