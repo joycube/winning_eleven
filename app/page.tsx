@@ -72,19 +72,16 @@ export default function FootballLeagueApp() {
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
   // ==================================================================================
-  // 🔥 [핵심 수정] 경기 결과 저장 및 토너먼트 자동 진출 (부전승 포함)
+  // 🔥 [핵심 수정] 경기 결과 저장 및 토너먼트 자동 진출 (nextMatchId 기반)
   // ==================================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
-      console.log("Saving Match:", matchId, "Type:", s.type);
-
       // 1. 점수 및 기록 업데이트
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
-      let currentMatchIndex = -1; 
 
       const predictionSnapshot = calculateMatchSnapshot(
           editingMatch.home,
@@ -96,10 +93,9 @@ export default function FootballLeagueApp() {
 
       newRounds = newRounds.map((r, rIdx) => ({
           ...r,
-          matches: r.matches.map((m, mIdx) => {
+          matches: r.matches.map((m) => {
               if (m.id === matchId) {
                   currentRoundIndex = rIdx;
-                  currentMatchIndex = mIdx;
                   return { 
                       ...m, 
                       homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -114,14 +110,12 @@ export default function FootballLeagueApp() {
       }));
 
       // 2. 토너먼트 승자 자동 진출 로직 (TOURNAMENT 또는 CUP)
-      if ((s.type === 'TOURNAMENT' || s.type === 'CUP') && currentRoundIndex !== -1 && currentMatchIndex !== -1) {
+      if ((s.type === 'TOURNAMENT' || s.type === 'CUP') && currentRoundIndex !== -1) {
           
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); 
           const a = Number(aScore);
           
-          // 🔥 [수정] 이 부분이 무승부를 허용하는 핵심 로직입니다.
-          // 조별리그(GROUP) 단계인지를 먼저 판단합니다.
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
 
           // (A) 승자 판별 로직
@@ -133,33 +127,19 @@ export default function FootballLeagueApp() {
           else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else {
-              // 🤝 무승부 상황일 때
-              // 조별리그라면 승자 선택 없이 통과(저장), 토너먼트라면 승자 선택 강제
               if (!isGroupStage) {
                   return alert("⚠️ 무승부입니다! 'Home 승' 또는 'Away 승' 버튼을 눌러 승자를 선택해주세요.");
               }
           }
 
-          // (B) 다음 라운드 진출 로직 (조별리그가 아닌 토너먼트 본선일 때만 수행)
-          if (winningTeam && !isGroupStage && newRounds[0] && newRounds[0].matches) {
-              const allMatches = newRounds[0].matches;
-              const totalMatches = allMatches.length;
-              let levelSize = (totalMatches + 1) / 2; 
-              let startIndex = 0;
+          // (B) [핵심] nextMatchId 기반 진출 로직
+          if (winningTeam && !isGroupStage && editingMatch.nextMatchId) {
+              // 현재 라운드 내에서 다음 경기 찾기 (R1: 조별리그, R2: 토너먼트인 경우 R2 내에서 검색)
+              const tournamentRound = newRounds[currentRoundIndex];
+              const targetMatch = tournamentRound.matches.find(m => m.id === editingMatch.nextMatchId);
 
-              while (currentMatchIndex >= startIndex + levelSize) {
-                  startIndex += levelSize;
-                  levelSize /= 2;
-                  if (levelSize < 1) break; 
-              }
-
-              const nextMatchIndex = (startIndex + levelSize) + Math.floor((currentMatchIndex - startIndex) / 2);
-
-              if (allMatches[nextMatchIndex]) {
-                  const targetMatch = allMatches[nextMatchIndex];
-                  const isHomeSlot = (currentMatchIndex - startIndex) % 2 === 0;
-
-                  if (isHomeSlot) {
+              if (targetMatch) {
+                  if (editingMatch.nextMatchSide === 'HOME') {
                       targetMatch.home = winningTeam.name;
                       targetMatch.homeLogo = winningTeam.logo;
                       targetMatch.homeOwner = winningTeam.owner;
@@ -169,9 +149,11 @@ export default function FootballLeagueApp() {
                       targetMatch.awayOwner = winningTeam.owner;
                   }
                   
+                  // TBD 라벨 제거
                   if (targetMatch.home !== 'TBD' && targetMatch.away !== 'TBD') {
                       targetMatch.matchLabel = targetMatch.matchLabel.replace(' (TBD)', '');
                   }
+                  console.log(`🚀 승자 진출 완료: ${targetMatch.id} [${editingMatch.nextMatchSide}]`);
               }
           }
       }

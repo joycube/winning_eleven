@@ -520,6 +520,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }
     };
 
+    // 🔥 [디벨롭] 토너먼트 스케줄 생성 로직 (연결 고리 데이터 추가)
     const handleCreateTournamentSchedule = async () => {
         if (tournamentBracket.includes(null)) {
             if (!confirm("⚠️ 대진표에 빈 자리가 있습니다. 그대로 진행하시겠습니까?")) return;
@@ -528,36 +529,96 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }
 
         const knockoutMatches: any[] = [];
-        const matchCount = tournamentBracket.length / 2;
+        const totalSlots = tournamentBracket.length; // 8강이면 8, 4강이면 4
+        const matchCount = totalSlots / 2; // 8강이면 4경기, 4강이면 2경기
+        
+        // 1. 단계별 설정값 정의
         const stageName = matchCount === 4 ? 'ROUND_OF_8' : matchCount === 2 ? 'ROUND_OF_4' : 'KNOCKOUT';
         const labelPrefix = matchCount === 4 ? '8강' : matchCount === 2 ? '4강' : '토너먼트';
+        const nextStageIdPrefix = matchCount === 4 ? 'ko_4' : 'ko_final'; // 다음 단계 ID 접두사
 
-        for (let i = 0; i < tournamentBracket.length; i += 2) {
+        // 2. 현재 라운드 매치 생성
+        for (let i = 0; i < totalSlots; i += 2) {
+            const matchIndex = i / 2; // 0, 1, 2, 3...
             const h = tournamentBracket[i];
             const a = tournamentBracket[i+1];
-            if (!h && !a) continue;
+            
+            // 🔥 승자가 갈 다음 경기 정보 계산
+            // 예: 8강 1경기(index 0)와 2경기(index 1) 승자는 4강 1경기로 모임
+            const nextMatchIndex = Math.floor(matchIndex / 2); 
+            const nextMatchId = matchCount > 1 ? `${nextStageIdPrefix}_${nextMatchIndex}` : null;
+            const nextMatchSide = matchIndex % 2 === 0 ? 'HOME' : 'AWAY';
 
             knockoutMatches.push({
-                id: `ko_${matchCount}_${Date.now()}_${i}`,
+                id: `ko_${matchCount}_${matchIndex}`, // 고정형 ID 부여 (추적이 쉬움)
                 seasonId: targetSeason.id,
                 stage: stageName,
-                matchLabel: `${labelPrefix} ${Math.floor(i/2) + 1}경기`,
-                home: h?.name || 'TBD', homeLogo: h?.logo || FALLBACK_IMG, homeOwner: h?.ownerName || 'TBD',
-                away: a?.name || 'TBD', awayLogo: a?.logo || FALLBACK_IMG, awayOwner: a?.ownerName || 'TBD',
-                homeScore: '', awayScore: '', status: 'UPCOMING',
-                homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+                matchLabel: `${labelPrefix} ${matchIndex + 1}경기`,
+                home: h?.name || 'TBD', 
+                homeLogo: h?.logo || FALLBACK_IMG, 
+                homeOwner: h?.ownerName || 'TBD',
+                away: a?.name || 'TBD', 
+                awayLogo: a?.logo || FALLBACK_IMG, 
+                awayOwner: a?.ownerName || 'TBD',
+                homeScore: '', 
+                awayScore: '', 
+                status: 'UPCOMING',
+                homeScorers: [], 
+                awayScorers: [], 
+                homeAssists: [], 
+                awayAssists: [],
+                // ✨ [핵심 추가 데이터]
+                nextMatchId: nextMatchId,
+                nextMatchSide: nextMatchSide
+            });
+        }
+
+        // 3. 다음 라운드(4강/결승) 빈 매치 미리 생성 (TBD 상태)
+        if (matchCount === 4) { // 8강을 만들었다면 4강 2경기 미리 생성
+            for (let j = 0; j < 2; j++) {
+                knockoutMatches.push({
+                    id: `ko_4_${j}`,
+                    seasonId: targetSeason.id,
+                    stage: 'ROUND_OF_4',
+                    matchLabel: `4강 ${j + 1}경기 (TBD)`,
+                    home: 'TBD', homeLogo: FALLBACK_IMG, homeOwner: 'TBD',
+                    away: 'TBD', awayLogo: FALLBACK_IMG, awayOwner: 'TBD',
+                    status: 'UPCOMING', nextMatchId: `ko_final_0`, nextMatchSide: j === 0 ? 'HOME' : 'AWAY'
+                });
+            }
+            // 결승전 미리 생성
+            knockoutMatches.push({
+                id: `ko_final_0`,
+                seasonId: targetSeason.id,
+                stage: 'FINAL',
+                matchLabel: `결승전 (TBD)`,
+                home: 'TBD', homeLogo: FALLBACK_IMG, homeOwner: 'TBD',
+                away: 'TBD', awayLogo: FALLBACK_IMG, awayOwner: 'TBD',
+                status: 'UPCOMING', nextMatchId: null
+            });
+        } else if (matchCount === 2) { // 4강을 만들었다면 결승 1경기 미리 생성
+            knockoutMatches.push({
+                id: `ko_final_0`,
+                seasonId: targetSeason.id,
+                stage: 'FINAL',
+                matchLabel: `결승전 (TBD)`,
+                home: 'TBD', homeLogo: FALLBACK_IMG, homeOwner: 'TBD',
+                away: 'TBD', awayLogo: FALLBACK_IMG, awayOwner: 'TBD',
+                status: 'UPCOMING', nextMatchId: null
             });
         }
 
         const existingRounds = targetSeason.rounds || [];
-        const updatedRounds = [...existingRounds, { round: 2, name: "Knockout Stage", matches: knockoutMatches }];
+        // 라운드 2(토너먼트)를 완전히 새로 생성하거나 업데이트
+        const updatedRounds = [...existingRounds];
+        updatedRounds[1] = { round: 2, name: "Knockout Stage", matches: knockoutMatches };
 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), {
             rounds: updatedRounds,
             cupPhase: 'KNOCKOUT'
         });
 
-        alert("⚔️ 토너먼트 대진이 생성되었습니다!");
+        alert("⚔️ 토너먼트 대진 및 자동 진출 경로가 생성되었습니다!");
         onNavigateToSchedule(targetSeason.id);
     };
 
@@ -718,7 +779,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                                         {clubLeagues.map(l => {
                                             const count = masterTeams.filter(t => t.region === l.name).length;
                                             return (
-                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
+                                                <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-3 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
                                                     <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center p-2.5 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
                                                     <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div>
                                                 </div>
