@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MatchCard } from './MatchCard'; 
 import { Match, MasterTeam, Season } from '../types'; 
 
@@ -151,6 +151,7 @@ const StandingsTable = ({ standings }: { standings: TeamStanding[] }) => {
 const GroupStageView = ({ 
     activeGroup, 
     setActiveGroup, 
+    availableGroups, // 🔥 [추가] 유효한 조 목록
     matches, 
     onMatchClick,
     masterTeams,
@@ -160,6 +161,7 @@ const GroupStageView = ({
 }: { 
     activeGroup: string, 
     setActiveGroup: (g: string) => void,
+    availableGroups: string[], // 🔥 [추가] 타입 정의
     matches: Match[],
     onMatchClick: (m: Match) => void,
     masterTeams: MasterTeam[],
@@ -167,7 +169,7 @@ const GroupStageView = ({
     historyData: any,
     owners: any[]
 }) => {
-    const groups = ['A', 'B', 'C', 'D'];
+    // const groups = ['A', 'B', 'C', 'D']; // 👈 기존 고정값 삭제
 
     const standings = useMemo(() => {
         const teamStats: { [key: string]: TeamStanding } = {};
@@ -205,7 +207,6 @@ const GroupStageView = ({
         });
 
         matches.forEach(m => {
-            // 🔥 [수정 반영] COMPLETED 상태일 때 무승부 로직 수행
             if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
                 const home = teamStats[m.home];
                 const away = teamStats[m.away];
@@ -225,7 +226,6 @@ const GroupStageView = ({
                     away.win++; away.points += 3;
                     home.loss++;
                 } else {
-                    // 🤝 무승부 승점 1점 및 draw 카운트 반영
                     home.draw++; home.points += 1;
                     away.draw++; away.points += 1;
                 }
@@ -243,7 +243,7 @@ const GroupStageView = ({
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto custom-scrollbar">
-                {groups.map(gName => (
+                {availableGroups.map(gName => ( // 🔥 [수정] availableGroups 기반 렌더링
                     <button 
                         key={gName}
                         onClick={() => setActiveGroup(gName)}
@@ -332,16 +332,40 @@ export const CupSchedule = ({
     owners 
 }: CupScheduleProps) => {
     const [activeTab, setActiveTab] = useState<'GROUP' | 'KNOCKOUT'>('GROUP');
+    const currentSeason = seasons.find(s => s.id === viewSeasonId);
+
+    // 🔥 [추가] 실제 데이터가 있는 조만 추출하는 로직
+    const availableGroups = useMemo(() => {
+        if (!currentSeason || !currentSeason.rounds) return [];
+        const allMatches = currentSeason.rounds.flatMap(r => r.matches);
+        const groupSet = new Set<string>();
+        
+        allMatches.forEach(m => {
+            if (m.group) groupSet.add(m.group);
+        });
+        
+        return Array.from(groupSet).sort();
+    }, [currentSeason]);
+
+    // 🔥 [수정] 초기값 설정 최적화
     const [activeGroup, setActiveGroup] = useState('A');
 
-    const currentSeason = seasons.find(s => s.id === viewSeasonId);
-    
-    const groupMatches = React.useMemo(() => {
+    // 시즌이 바뀌거나 데이터가 로드될 때 유효한 조가 있다면 첫 번째 조로 변경
+    useEffect(() => {
+        if (availableGroups.length > 0) {
+            // 현재 선택된 조가 유효하지 않다면 첫 번째 조로 강제 이동
+            if (!availableGroups.includes(activeGroup)) {
+                setActiveGroup(availableGroups[0]);
+            }
+        }
+    }, [availableGroups, activeGroup]);
+
+    const groupMatches = useMemo(() => {
         if (!currentSeason || !currentSeason.rounds) return [];
         const allMatches = currentSeason.rounds.flatMap(r => r.matches);
         return allMatches.filter(m => {
             if (m.group) return m.group === activeGroup;
-            return true; 
+            return false; // 조별리그 탭에서는 조 정보가 없는 경기는 노출하지 않음
         });
     }, [currentSeason, activeGroup]);
 
@@ -358,6 +382,7 @@ export const CupSchedule = ({
                 <GroupStageView 
                     activeGroup={activeGroup} 
                     setActiveGroup={setActiveGroup}
+                    availableGroups={availableGroups} // 🔥 진입 경로 추가
                     matches={groupMatches} 
                     onMatchClick={onMatchClick}
                     masterTeams={masterTeams}

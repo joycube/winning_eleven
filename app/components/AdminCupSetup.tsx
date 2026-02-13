@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc } from 'firebase/firestore';
-import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG } from '../types';
+import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match } from '../types';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
 import { QuickDraftModal } from './QuickDraftModal';
 
@@ -34,6 +34,8 @@ interface CupEntry {
     ownerName: string;
     region: string;
     tier: string;
+    rank?: number; // 조 순위 저장용
+    group?: string; // 소속 조 저장용
     realRankScore?: number;
     realFormScore?: number;
 }
@@ -53,7 +55,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
     const [unassignedPool, setUnassignedPool] = useState<CupEntry[]>([]); 
     
-    // 초기값은 빈 객체로 시작 (useEffect에서 초기화) 또는 기본 4x4
+    // 초기값은 빈 객체로 시작
     const [groups, setGroups] = useState<{ [key: string]: (CupEntry | null)[] }>({
         "A": [null, null, null, null],
         "B": [null, null, null, null],
@@ -68,11 +70,90 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     const [targetSlot, setTargetSlot] = useState<{ group: string, idx: number } | null>(null);
     const [draggedEntry, setDraggedEntry] = useState<CupEntry | null>(null);
 
+    // 🔥 토너먼트 관련 상태
+    const [tournamentBracket, setTournamentBracket] = useState<(CupEntry | null)[]>([]); 
+    const [draggedTournamentEntry, setDraggedTournamentEntry] = useState<CupEntry | null>(null);
+
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
     }, []);
+
+    // 🔥 [수정됨] 기존 조편성 데이터 불러오기 + 빈 그룹 자동 삭제 로직 적용
+    useEffect(() => {
+        if (targetSeason.groups && Object.keys(targetSeason.groups).length > 0) {
+            const loadedGroups: { [key: string]: (CupEntry | null)[] } = {};
+            const dbGroups = targetSeason.groups as { [key: string]: number[] }; // teamId list
+            
+            // 1. 데이터 로드 및 최대 팀 수 감지
+            let maxTeamsInGroup = 0;
+
+            Object.keys(dbGroups).forEach(gName => {
+                const teamIds = dbGroups[gName];
+                maxTeamsInGroup = Math.max(maxTeamsInGroup, teamIds.length);
+
+                const entries = teamIds.map(tid => {
+                    const teamData = targetSeason.teams?.find(t => t.id === tid);
+                    if (!teamData) return null;
+                    return {
+                        id: `loaded_${tid}`,
+                        masterId: tid,
+                        name: teamData.name,
+                        logo: teamData.logo,
+                        ownerName: teamData.ownerName || 'CPU',
+                        region: teamData.region,
+                        tier: teamData.tier,
+                        realRankScore: teamData.realRankScore,
+                        realFormScore: teamData.realFormScore
+                    } as CupEntry;
+                });
+                
+                loadedGroups[gName] = entries;
+            });
+
+            // 2. 설정값 자동 계산
+            // 팀 수: 최소 2팀, 최대 팀 수에 맞춤 (기본 4)
+            const detectedTeamCount = maxTeamsInGroup < 2 ? 4 : maxTeamsInGroup;
+            
+            // 그룹 수: 실제로 팀이 존재하는 마지막 그룹까지만 카운트 (불필요한 빈 그룹 제거)
+            let calculatedGroupCount = 0;
+            const sortedKeys = Object.keys(loadedGroups).sort(); // A, B, C, D...
+            
+            // 뒤에서부터 확인하여 팀이 있는 마지막 그룹을 찾음
+            for (let i = sortedKeys.length - 1; i >= 0; i--) {
+                const gName = sortedKeys[i];
+                const hasTeam = loadedGroups[gName].some(t => t !== null);
+                if (hasTeam) {
+                    calculatedGroupCount = i + 1; // 인덱스 + 1 = 개수
+                    break;
+                }
+            }
+            // 최소 2개 그룹(A, B)은 강제 보장 (너무 적으면 안되니까)
+            calculatedGroupCount = Math.max(2, calculatedGroupCount);
+
+            // 3. 최종 그룹 데이터 생성 (계산된 그룹 수만큼만 생성)
+            const finalGroups: { [key: string]: (CupEntry | null)[] } = {};
+            
+            for(let i=0; i<calculatedGroupCount; i++) {
+                const gName = ALPHABET[i];
+                const currentSlots = loadedGroups[gName] || [];
+                // 모자란 슬롯 채우기 (detectedTeamCount 만큼)
+                const filledSlots = [...currentSlots, ...Array(Math.max(0, detectedTeamCount - currentSlots.length)).fill(null)];
+                finalGroups[gName] = filledSlots;
+            }
+
+            // 4. 상태 일괄 업데이트
+            setGroups(finalGroups);
+            setCustomConfig({ 
+                groupCount: calculatedGroupCount, 
+                teamCount: detectedTeamCount 
+            });
+            
+            setConfigMode('CUSTOM');
+        }
+    }, [targetSeason]);
+
 
     // 🔥 리그 정렬 로직
     const { clubLeagues, nationalLeagues, allSortedLeagues } = useMemo(() => {
@@ -110,6 +191,68 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         
         return getSortedTeamsLogic(teams, '');
     }, [masterTeams, unassignedPool, groups, filterCategory, filterLeague, filterTier, searchTeam]);
+
+    // 🔥 조별리그 결과 분석하여 진출팀(1,2위) 선별 로직
+    const qualifiedTeams = useMemo(() => {
+        if (!targetSeason.rounds || !targetSeason.rounds[0]) return [];
+        
+        const matches = targetSeason.rounds[0].matches;
+        const stats: { [key: string]: any } = {};
+
+        matches.forEach((m: Match) => {
+            if (m.status !== 'COMPLETED') return;
+            [m.home, m.away].forEach(t => {
+                if (!stats[t]) {
+                    const isHome = t === m.home;
+                    stats[t] = { 
+                        name: t, points: 0, gd: 0, gf: 0, 
+                        group: m.group, 
+                        logo: (isHome ? m.homeLogo : m.awayLogo), 
+                        ownerName: (isHome ? m.homeOwner : m.awayOwner) 
+                    };
+                }
+            });
+
+            const h = Number(m.homeScore);
+            const a = Number(m.awayScore);
+            stats[m.home].gf += h; stats[m.home].gd += (h - a);
+            stats[m.away].gf += a; stats[m.away].gd += (a - h);
+
+            if (h > a) stats[m.home].points += 3;
+            else if (a > h) stats[m.away].points += 3;
+            else { stats[m.home].points += 1; stats[m.away].points += 1; }
+        });
+
+        const groupsList = Array.from(new Set(matches.map(m => m.group))).sort();
+        const winners: CupEntry[] = [];
+
+        groupsList.forEach(g => {
+            if (!g) return;
+            const groupTeams = Object.values(stats)
+                .filter((t: any) => t.group === g)
+                .sort((a: any, b: any) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+            
+            if (groupTeams[0]) winners.push({ ...groupTeams[0], masterId: 0, id: `q_${g}_1`, tier: 'S', region: '', rank: 1 });
+            if (groupTeams[1]) winners.push({ ...groupTeams[1], masterId: 0, id: `q_${g}_2`, tier: 'A', region: '', rank: 2 });
+        });
+
+        return winners;
+    }, [targetSeason]);
+
+    // 🔥 진출 팀 수에 맞춰 대진표 슬롯 생성
+    useEffect(() => {
+        if (qualifiedTeams.length > 0) {
+            if (tournamentBracket.length !== qualifiedTeams.length) {
+                setTournamentBracket(Array(qualifiedTeams.length).fill(null));
+            }
+        }
+    }, [qualifiedTeams]);
+
+    // 🔥 토너먼트 대기 풀
+    const tournamentWaitingPool = useMemo(() => {
+        const assignedNames = new Set(tournamentBracket.filter(Boolean).map(t => t?.name));
+        return qualifiedTeams.filter(t => !assignedNames.has(t.name));
+    }, [qualifiedTeams, tournamentBracket]);
 
     // ================= ACTIONS =================
     
@@ -338,6 +481,86 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
             newGroups[key] = Array(groups[key].length).fill(null);
         });
         setGroups(newGroups);
+    };
+
+    // 🔥 토너먼트 매칭 함수들
+    const handleTournamentAutoMatch = () => {
+        const newBracket = Array(tournamentBracket.length).fill(null);
+        const find = (g: string, r: number) => qualifiedTeams.find(t => t.group === g && t.rank === r);
+
+        if (qualifiedTeams.length === 8) {
+            newBracket[0] = find('A', 1) || null; newBracket[1] = find('B', 2) || null;
+            newBracket[2] = find('C', 1) || null; newBracket[3] = find('D', 2) || null;
+            newBracket[4] = find('B', 1) || null; newBracket[5] = find('A', 2) || null;
+            newBracket[6] = find('D', 1) || null; newBracket[7] = find('C', 2) || null;
+        } 
+        else if (qualifiedTeams.length === 4) {
+            newBracket[0] = find('A', 1) || null; newBracket[1] = find('B', 2) || null;
+            newBracket[2] = find('B', 1) || null; newBracket[3] = find('A', 2) || null;
+        }
+        else {
+            qualifiedTeams.forEach((t, i) => { if(i < newBracket.length) newBracket[i] = t; });
+        }
+
+        setTournamentBracket(newBracket);
+    };
+
+    const handleTournamentRandomMatch = () => {
+        const shuffled = [...qualifiedTeams].sort(() => Math.random() - 0.5);
+        const newBracket = Array(tournamentBracket.length).fill(null);
+        shuffled.slice(0, newBracket.length).forEach((t, i) => newBracket[i] = t);
+        setTournamentBracket(newBracket);
+    };
+
+    const handleTournamentDrop = (e: React.DragEvent, idx: number) => {
+        e.preventDefault();
+        if (draggedTournamentEntry) {
+            const newBracket = [...tournamentBracket];
+            newBracket[idx] = draggedTournamentEntry;
+            setTournamentBracket(newBracket);
+            setDraggedTournamentEntry(null);
+        }
+    };
+
+    const handleCreateTournamentSchedule = async () => {
+        if (tournamentBracket.includes(null)) {
+            if (!confirm("⚠️ 대진표에 빈 자리가 있습니다. 그대로 진행하시겠습니까?")) return;
+        } else {
+            if (!confirm("⚔️ 토너먼트 대진을 확정하고 스케줄을 생성하시겠습니까?")) return;
+        }
+
+        const knockoutMatches: any[] = [];
+        const matchCount = tournamentBracket.length / 2;
+        const stageName = matchCount === 4 ? 'ROUND_OF_8' : matchCount === 2 ? 'ROUND_OF_4' : 'KNOCKOUT';
+        const labelPrefix = matchCount === 4 ? '8강' : matchCount === 2 ? '4강' : '토너먼트';
+
+        for (let i = 0; i < tournamentBracket.length; i += 2) {
+            const h = tournamentBracket[i];
+            const a = tournamentBracket[i+1];
+            if (!h && !a) continue;
+
+            knockoutMatches.push({
+                id: `ko_${matchCount}_${Date.now()}_${i}`,
+                seasonId: targetSeason.id,
+                stage: stageName,
+                matchLabel: `${labelPrefix} ${Math.floor(i/2) + 1}경기`,
+                home: h?.name || 'TBD', homeLogo: h?.logo || FALLBACK_IMG, homeOwner: h?.ownerName || 'TBD',
+                away: a?.name || 'TBD', awayLogo: a?.logo || FALLBACK_IMG, awayOwner: a?.ownerName || 'TBD',
+                homeScore: '', awayScore: '', status: 'UPCOMING',
+                homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+            });
+        }
+
+        const existingRounds = targetSeason.rounds || [];
+        const updatedRounds = [...existingRounds, { round: 2, name: "Knockout Stage", matches: knockoutMatches }];
+
+        await updateDoc(doc(db, "seasons", String(targetSeason.id)), {
+            rounds: updatedRounds,
+            cupPhase: 'KNOCKOUT'
+        });
+
+        alert("⚔️ 토너먼트 대진이 생성되었습니다!");
+        onNavigateToSchedule(targetSeason.id);
     };
 
     const handleCreateSchedule = async () => {
@@ -589,38 +812,53 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     {unassignedPool.length === 0 ? (
                         <div className="text-center py-4 text-slate-600 text-xs italic">Step 1에서 팀을 선발해주세요.</div>
                     ) : (
-                        <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {unassignedPool.map(t => (
-                                <div 
-                                    key={t.id} 
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, t)}
-                                    className={`
-                                        flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing hover:scale-105 transition-transform
-                                        ${draggedEntry?.id === t.id ? 'is-dragging' : ''}
-                                    `}
-                                >
-                                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1.5 shadow-md border border-slate-700 group-hover:border-yellow-500 transition-colors relative">
-                                        <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-slate-950 rounded-full flex items-center justify-center text-[8px] border border-slate-700 text-white font-bold">{t.tier}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                            {unassignedPool.map(t => {
+                                const isS = t.tier === 'S';
+                                return (
+                                    <div 
+                                        key={t.id} 
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, t)}
+                                        className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 cursor-grab active:cursor-grabbing shadow-lg`}
+                                    >
+                                        {/* 상단 배경 데코 */}
+                                        <div className="absolute top-0 left-0 w-full h-1/3 bg-white/5 skew-y-6 transform origin-top-left pointer-events-none"></div>
+
+                                        {/* 오너 이름 (좌측 상단) */}
+                                        <div className="absolute top-2 left-2 flex flex-col items-start z-10">
+                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
+                                            <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
+                                        </div>
+
+                                        {/* 메인 컨텐츠 */}
+                                        <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
+                                            <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                                                <img src={t.logo} className="w-full h-full object-contain" alt={t.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            </div>
+                                            <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">{t.name}</p>
+                                            <div className="flex items-center gap-1 mt-1 opacity-80">
+                                                <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(t.tier)}`}>{t.tier} CLASS</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <span className="text-[8px] text-slate-400 truncate w-full text-center group-hover:text-white font-bold">{t.name}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
 
                 {/* 그룹 보드 (드롭존) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {Object.keys(groups).sort().map(gName => (
+                    {/* 🔥 설정된 그룹 수만큼만 노출됨 (빈 그룹 제거됨) */}
+                    {Object.keys(groups).sort().slice(0, customConfig.groupCount).map(gName => (
                         <div key={gName} className="bg-slate-900/50 rounded-2xl border border-slate-800 overflow-hidden flex flex-col">
                             <div className="bg-slate-800/80 px-4 py-3 flex justify-between items-center border-b border-slate-700">
                                 <span className="text-sm font-black italic text-emerald-400">GROUP {gName}</span>
                                 <span className="text-[10px] text-slate-500 font-bold">{groups[gName].filter(Boolean).length}/{customConfig.teamCount}</span>
                             </div>
                             <div className={`p-3 grid gap-2 ${customConfig.teamCount > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                {groups[gName].map((slot, idx) => (
+                                {groups[gName].slice(0, customConfig.teamCount).map((slot, idx) => (
                                     <div 
                                         key={idx} 
                                         onDragOver={handleDragOver}
@@ -651,9 +889,112 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                     ))}
                 </div>
 
-                {/* 🔥 [변경] 버튼을 중앙 정렬로 수정 */}
                 <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
                     <button onClick={handleCreateSchedule} className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl text-lg transition-transform active:scale-95 flex items-center gap-3"><span>💾</span> CREATE SCHEDULE</button>
+                </div>
+            </div>
+
+            {/* 🔥 STEP 3: TOURNAMENT BRACKET SETUP */}
+            <div className="bg-[#0b0e14] p-6 rounded-[2.5rem] border border-slate-800 relative">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
+                    <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Tournament Bracket Setup</h3>
+                    
+                    <div className="flex gap-2">
+                        <button onClick={handleTournamentAutoMatch} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black italic text-xs shadow-lg hover:bg-indigo-500 transition-all">⚡ AUTO (A1 vs B2)</button>
+                        <button onClick={handleTournamentRandomMatch} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-black italic text-xs shadow-lg hover:bg-purple-500 transition-all">🎲 RANDOM SHUFFLE</button>
+                    </div>
+                </div>
+
+                <div className="mb-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Qualified Teams Inventory ({tournamentWaitingPool.length})</span>
+                        <span className="text-[10px] text-slate-500 italic">Drag team to bracket slot</span>
+                    </div>
+                    
+                    {tournamentWaitingPool.length === 0 ? (
+                        <div className="text-center py-4 text-slate-600 text-xs italic">조별리그 통과팀이 대기실에 없습니다.</div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            {tournamentWaitingPool.map(t => {
+                                const isS = t.tier === 'S';
+                                return (
+                                    <div 
+                                        key={t.id} 
+                                        draggable
+                                        onDragStart={() => setDraggedTournamentEntry(t)}
+                                        className={`relative group ${isS ? 'bg-gradient-to-b from-slate-800 to-slate-950 border-yellow-500' : 'bg-slate-900 border-slate-600'} border-2 rounded-xl overflow-hidden transition-all hover:scale-105 hover:z-10 cursor-grab active:cursor-grabbing shadow-lg`}
+                                    >
+                                        <div className="absolute top-2 left-2 flex flex-col items-start z-10">
+                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">OWNER</span>
+                                            <span className="text-[9px] text-emerald-400 font-black italic uppercase tracking-tighter drop-shadow-md">{t.ownerName}</span>
+                                        </div>
+                                        <div className="flex flex-col items-center justify-center pt-6 pb-2 px-2">
+                                            <div className={`w-12 h-12 rounded-full bg-white flex items-center justify-center p-1.5 mb-1.5 shadow-lg z-10 ${isS ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                                                <img src={t.logo} className="w-full h-full object-contain" alt={t.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            </div>
+                                            <p className="text-xs font-black italic tracking-tighter text-white uppercase text-center leading-none w-full truncate px-1 z-10 drop-shadow-md">{t.name}</p>
+                                            <div className="flex items-center gap-1 mt-1 opacity-80">
+                                                <span className="text-[8px] text-slate-400 font-bold uppercase mr-1">{t.group}조 {t.rank}위</span>
+                                                <span className={`text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black italic border ${getTierBadgeColor(t.tier)}`}>{t.tier} CLASS</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* 토너먼트 대진표 드롭존 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800 hidden md:block opacity-20"></div>
+                    {Array.from({ length: tournamentBracket.length / 2 }).map((_, mIdx) => (
+                        <div key={mIdx} className="space-y-4 bg-slate-900/20 p-5 rounded-3xl border border-slate-800/50">
+                            <div className="text-[9px] text-slate-600 font-black mb-1 italic tracking-widest uppercase">
+                                {tournamentBracket.length === 8 ? 'Quarter-Final' : 'Semi-Final'} Match {mIdx + 1}
+                            </div>
+                            {[mIdx * 2, mIdx * 2 + 1].map((slotIdx) => (
+                                <div 
+                                    key={slotIdx} 
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleTournamentDrop(e, slotIdx)}
+                                    onClick={() => {
+                                        if (tournamentBracket[slotIdx]) {
+                                            const newBracket = [...tournamentBracket];
+                                            newBracket[slotIdx] = null;
+                                            setTournamentBracket(newBracket);
+                                        }
+                                    }}
+                                    className={`
+                                        relative h-16 rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer transition-all group 
+                                        ${tournamentBracket[slotIdx] 
+                                            ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-950/20' 
+                                            : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800'
+                                        }
+                                    `}
+                                >
+                                    {tournamentBracket[slotIdx] ? (
+                                        <div className="flex items-center gap-4 w-full px-5">
+                                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1.5 shadow-md"><img src={tournamentBracket[slotIdx]?.logo} className="w-full h-full object-contain" alt="" /></div>
+                                            <div className="flex flex-col flex-1">
+                                                <span className="text-xs font-black text-white italic">{tournamentBracket[slotIdx]?.name}</span>
+                                                <span className="text-[9px] text-emerald-400 font-bold uppercase">{tournamentBracket[slotIdx]?.ownerName}</span>
+                                            </div>
+                                            <span className="text-[8px] text-slate-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">REMOVE ✕</span>
+                                        </div>
+                                    ) : (
+                                        <div className="text-slate-700 group-hover:text-indigo-500 transition-colors flex items-center gap-2"><span className="text-lg font-black">+</span><span className="text-[9px] font-black italic">DROP TEAM HERE</span></div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
+                    <button onClick={handleCreateTournamentSchedule} className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black italic rounded-2xl shadow-2xl text-lg transition-transform active:scale-95 flex items-center gap-3">
+                        <span>⚔️</span> GENERATE TOURNAMENT BRACKET
+                    </button>
                 </div>
             </div>
 
