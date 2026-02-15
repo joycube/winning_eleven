@@ -1,9 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
 import { FALLBACK_IMG, Owner, MasterTeam } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers'; 
+import { MatchCard } from './MatchCard';
+import { TeamCard } from './TeamCard';
 
 interface RankingViewProps {
   seasons: any[];
@@ -17,26 +19,22 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   
-  // 🔥 [데이터 로드] 마스터 팀 데이터 가져오기
-  const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
+  // 🔥 [Fix 1] 타입을 any[]로 변경하여 teamName, ownerName 속성 오류 해결
+  const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchMasterTeams = async () => {
       try {
         const q = query(collection(db, 'master_teams'));
         const querySnapshot = await getDocs(q);
-        
-        // 🔥 [수정] 빌드 에러 해결을 위해 'as unknown as MasterTeam[]' 이중 변환 사용
         const teams = querySnapshot.docs.map(doc => {
             const data = doc.data();
             return {
                 id: doc.id, 
                 ...data,
-                // 검색 편의를 위해 필드 정리 (이 부분 때문에 타입 에러가 났었습니다)
                 teamName: data.team || data.name || doc.id 
             };
-        }) as unknown as MasterTeam[]; 
-        
+        }); // as MasterTeam[] 제거 (any[]로 추론되게 둠)
         setMasterTeams(teams); 
       } catch (error) {
         console.error("Error fetching master teams:", error);
@@ -45,18 +43,15 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     fetchMasterTeams();
   }, []); 
 
-  // 1️⃣ 현재 선택된 시즌의 상금 규칙
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
-  // 2️⃣ 팀 랭킹 정렬 로직
   const sortedTeams = [...(activeRankingData.teams || [])].sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points; 
     if (b.gd !== a.gd) return b.gd - a.gd;                 
     return (b.gf || 0) - (a.gf || 0);                      
   });
 
-  // 3️⃣ 팀 랭킹 기반 상금 매핑
   const firstPrizeOwnerName = sortedTeams[0]?.ownerName;  
   const secondPrizeOwnerName = sortedTeams[1]?.ownerName; 
   const thirdPrizeOwnerName = sortedTeams[2]?.ownerName; 
@@ -69,7 +64,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return totalPrize;
   };
 
-  // 4️⃣ 선수 랭킹 공동 순위 계산
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = players
         .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -83,13 +77,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             const prevPlayer = array[index - 1];
             const prevScore = rankPlayerMode === 'GOAL' ? prevPlayer.goals : prevPlayer.assists;
             const currScore = rankPlayerMode === 'GOAL' ? player.goals : player.assists;
-
-            if (prevScore === currScore) {
-                skip++;
-            } else {
-                currentRank += 1 + skip;
-                skip = 0; 
-            }
+            if (prevScore === currScore) skip++;
+            else { currentRank += 1 + skip; skip = 0; }
         }
         return { ...player, rank: currentRank };
     });
@@ -97,292 +86,404 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
 
-  // 🔥 [디자인 로직] 컨디션(Form) 렌더링
-  const renderCondition = (cond: string) => {
-    const c = (cond || '').toUpperCase();
-    const circleBase = "w-5 h-5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shadow-sm shrink-0";
-    const iconBase = "text-[10px] font-bold leading-none";
-
-    switch (c) {
-        case 'A': return <div className={`${circleBase} border-emerald-500/30`} title="최상(A)"><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
-        case 'B': return <div className={`${circleBase} border-lime-500/30`} title="우수(B)"><span className={`${iconBase} text-lime-400`}>↗</span></div>;
-        case 'C': return <div className={`${circleBase} border-yellow-500/30`} title="보통(C)"><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
-        case 'D': return <div className={`${circleBase} border-orange-500/30`} title="나쁨(D)"><span className={`${iconBase} text-orange-400`}>↘</span></div>;
-        case 'E': return <div className={`${circleBase} border-red-500/30`} title="최악(E)"><span className={`${iconBase} text-red-500`}>⬇</span></div>;
-        default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
-    }
-  };
-
-  // 🔥 [디자인 로직] 리얼 랭킹 배지 렌더링
   const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-600 text-[9px] font-bold px-1.5 py-[1px] rounded-[4px] shrink-0 border border-slate-700/50 leading-none">-</div>;
-    
+    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">-</div>;
     let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
-    
     if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
     else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
     else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500";
-
     return (
-        <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[4px] italic shadow-sm shrink-0 leading-none`}>
+        <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>
             R.{rank}
         </div>
     );
   };
 
-  // 🔥 [헬퍼] 이름 정규화
+  const renderOverlayCondition = (cond: string) => {
+    const c = (cond || '').toUpperCase();
+    const circleBase = "absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-[#0f172a] border border-slate-600 flex items-center justify-center shadow-md z-10";
+    const iconBase = "text-[7px] font-black leading-none";
+    switch (c) {
+        case 'A': return <div className={`${circleBase} border-emerald-500/50`}><span className={`${iconBase} text-emerald-400`}>↑</span></div>;
+        case 'B': return <div className={`${circleBase} border-lime-500/50`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
+        case 'C': return <div className={`${circleBase} border-yellow-500/50`}><span className={`${iconBase} text-yellow-400`}>→</span></div>;
+        case 'D': return <div className={`${circleBase} border-orange-500/50`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
+        case 'E': return <div className={`${circleBase} border-red-500/50`}><span className={`${iconBase} text-red-500`}>↓</span></div>;
+        default:  return null;
+    }
+  };
+
+  const renderCondition = (cond: string) => {
+      const c = (cond || '').toUpperCase();
+      const circleBase = "w-5 h-5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shadow-sm shrink-0";
+      const iconBase = "text-[10px] font-bold leading-none";
+      switch (c) {
+          case 'A': return <div className={`${circleBase} border-emerald-500/30`}><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
+          case 'B': return <div className={`${circleBase} border-lime-500/30`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
+          case 'C': return <div className={`${circleBase} border-yellow-500/30`}><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
+          case 'D': return <div className={`${circleBase} border-orange-500/30`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
+          case 'E': return <div className={`${circleBase} border-red-500/30`}><span className={`${iconBase} text-red-500`}>⬇</span></div>;
+          default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
+      }
+  };
+
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
+
+  const getTeamExtendedInfo = (teamName: string) => {
+      const tbdTeam = {
+          id: 0,
+          name: teamName || 'TBD',
+          logo: FALLBACK_IMG,
+          ownerName: '-',
+          region: '',
+          tier: '', 
+          realRankScore: 0,
+          realFormScore: 0,
+          condition: '',
+          real_rank: null
+      };
+
+      if (!teamName || teamName === 'TBD') return tbdTeam;
+
+      const stats = activeRankingData.teams?.find((t:any) => normalize(t.name) === normalize(teamName));
+      const master = masterTeams.find(m => normalize(m.name) === normalize(teamName) || normalize(m.teamName) === normalize(teamName));
+      
+      if (!stats && !master) return { ...tbdTeam, name: teamName };
+
+      return {
+          id: stats?.id || master?.id || 0,
+          name: teamName,
+          logo: stats?.logo || master?.logo || FALLBACK_IMG,
+          ownerName: stats?.ownerName || master?.ownerName || 'CPU',
+          region: master?.region || '',
+          tier: master?.tier || '',
+          realRankScore: master?.realRankScore,
+          realFormScore: master?.realFormScore,
+          condition: master?.condition,
+          real_rank: master?.real_rank
+      };
+  };
+
+  const groupStandings = useMemo(() => {
+    if (currentSeason?.type !== 'CUP' || !currentSeason?.groups) return null;
+    const groups: { [key: string]: any[] } = {};
+    Object.keys(currentSeason.groups).forEach(gName => {
+        const teamIds = currentSeason.groups[gName];
+        if (teamIds && teamIds.length > 0) { 
+            groups[gName] = sortedTeams
+                .filter(t => teamIds.includes(t.id))
+                .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+        }
+    });
+    return groups;
+  }, [currentSeason, sortedTeams]);
+
+  const knockoutStages = useMemo(() => {
+    if (currentSeason?.type !== 'CUP') return null;
+    const allMatches = currentSeason.rounds?.find((r: any) => r.round === 2)?.matches || [];
+    
+    const isValidMatch = (m: any) => m.home !== undefined && m.away !== undefined;
+
+    return {
+      roundOf8: allMatches.filter((m: any) => m.stage === 'ROUND_OF_8' && isValidMatch(m)),
+      roundOf4: allMatches.filter((m: any) => m.stage === 'ROUND_OF_4' && isValidMatch(m)),
+      final: allMatches.filter((m: any) => (m.stage === 'FINAL' || m.stage === 'KNOCKOUT') && isValidMatch(m))
+    };
+  }, [currentSeason]);
+
+  const TournamentTeamRow = ({ team, score, isWinner }: { team: any, score: number | null, isWinner: boolean }) => (
+      <div className={`flex items-center justify-between px-3 py-2.5 h-[44px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
+          <div className="flex items-center gap-3 min-w-0">
+              <div className="relative w-7 h-7 flex-shrink-0">
+                  <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${team.name === 'TBD' ? 'bg-slate-700' : 'bg-white'}`}>
+                      <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                  </div>
+                  {team.name !== 'TBD' && renderOverlayCondition(team.condition)}
+              </div>
+              
+              <div className="flex flex-col justify-center">
+                  <span className={`text-sm font-bold leading-none truncate uppercase tracking-tight ${isWinner ? 'text-white' : team.name === 'TBD' ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {team.name}
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                      {team.name !== 'TBD' && getRealRankBadge(team.real_rank)}
+                      <span className="text-[10px] text-slate-500 font-bold truncate">{team.ownerName}</span>
+                  </div>
+              </div>
+          </div>
+
+          <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400 drop-shadow-md' : 'text-slate-600'}`}>
+              {score ?? '-'}
+          </div>
+      </div>
+  );
+
+  const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
+      const home = getTeamExtendedInfo(match.home);
+      const away = getTeamExtendedInfo(match.away);
+      const homeScore = match.homeScore !== '' ? Number(match.homeScore) : null;
+      const awayScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+      const isHomeWin = homeScore !== null && awayScore !== null && homeScore > awayScore;
+      const isAwayWin = homeScore !== null && awayScore !== null && awayScore > homeScore;
+
+      return (
+          <div className="flex flex-col w-full">
+              {title && (
+                  <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-70">
+                      {title}
+                  </div>
+              )}
+              
+              <div className={`flex flex-col w-[210px] bg-[#0f141e] border rounded-xl overflow-hidden shadow-sm relative z-10 transition-all ${highlight ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-slate-800/50'}`}>
+                  <TournamentTeamRow team={home} score={homeScore} isWinner={isHomeWin} />
+                  <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                  <TournamentTeamRow team={away} score={awayScore} isWinner={isAwayWin} />
+              </div>
+          </div>
+      );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
-        {/* 스타일 정의 */}
-        {/* @ts-ignore */}
         <style jsx>{`
-            @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-            @keyframes softBounce { 0%, 100% { transform: translateY(0) rotate(-10deg); } 50% { transform: translateY(-5px) rotate(-10deg); } }
-            .rank-1-shimmer { background: linear-gradient(120deg, rgba(234, 179, 8, 0.1) 30%, rgba(255, 255, 255, 0.2) 50%, rgba(234, 179, 8, 0.1) 70%); background-size: 200% 100%; animation: shimmer 3s infinite linear; }
-            .crown-bounce { animation: softBounce 3s infinite ease-in-out; }
+            .qualified-row { position: relative; background: rgba(16, 185, 129, 0.05) !important; }
+            .crown-icon { animation: bounce 2s infinite; }
+            @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+            
+            .bracket-tree { display: flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 20px 0 20px 4px; }
+            .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
         `}</style>
 
-        {/* 상단 시즌 선택 및 탭 버튼 */}
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
-            <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700">
-                {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
+            <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700 font-bold italic">
+                {seasons.map(s => <option key={s.id} value={s.id}>{s.type === 'CUP' ? '🏆' : '⚽'} {s.name}</option>)}
             </select>
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {['STANDINGS', 'OWNERS', 'PLAYERS', 'HIGHLIGHTS'].map(sub => (
-                    <button key={sub} onClick={() => setRankingTab(sub as any)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${rankingTab === sub ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{sub}</button>
+                    <button key={sub} onClick={() => setRankingTab(sub as any)} className={`px-4 py-2 rounded-lg text-xs font-black italic transition-all whitespace-nowrap ${rankingTab === sub ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}>{sub}</button>
                 ))}
             </div>
         </div>
 
-        {/* STANDINGS 탭 */}
         {rankingTab === 'STANDINGS' && (
-            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-                <table className="w-full text-left text-xs uppercase border-collapse">
-                    <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                        <tr>
-                            <th className="p-4 w-8">#</th>
-                            <th className="p-4">Club</th>
-                            <th className="p-2 text-center">W</th>
-                            <th className="p-2 text-center">D</th>
-                            <th className="p-2 text-center">L</th>
-                            <th className="p-2 text-center">GD</th>
-                            <th className="p-2 text-center text-emerald-400">Pts</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedTeams.map((t: any, i: number) => {
-                            // 🔥 [핵심 수정] 3중 매칭 로직 (ID, team, name 중 하나라도 맞으면 성공)
-                            // 타입 에러 방지를 위해 (m: any)로 타입 단언
-                            const targetName = normalize(t.name);
-                            const realInfo = masterTeams.find((m: any) => {
-                                return normalize(m.id) === targetName || 
-                                       normalize(m.team) === targetName || 
-                                       normalize(m.name) === targetName;
-                            });
+            <div className="space-y-12">
+                {currentSeason?.type === 'CUP' ? (
+                    <>
+                        {/* 🔥 [Fix 2] knockoutStages?.roundOf8 (Optional Chaining) 적용으로 null safety 확보 */}
+                        {(knockoutStages?.roundOf8.length! > 0 || knockoutStages?.roundOf4.length! > 0 || knockoutStages?.final.length! > 0) && (
+                            <div className="overflow-x-auto pb-4">
+                                <div className="min-w-[700px] px-4">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+                                    </div>
 
-                            const realRank = realInfo?.real_rank;
-                            const realCondition = realInfo?.condition;
-
-                            return (
-                                <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
-                                    <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                    
-                                    <td className="p-4 flex items-center gap-4">
-                                        <div className="flex flex-col items-center gap-1.5 flex-shrink-0 w-12">
-                                            <img 
-                                                src={t.logo} 
-                                                className="w-9 h-9 rounded-full bg-white object-contain p-0.5 shadow-md flex-shrink-0" 
-                                                alt="" 
-                                                onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}
-                                            />
-                                            
-                                            {/* 배지 컨테이너 */}
-                                            <div className="flex items-center gap-1">
-                                                {getRealRankBadge(realRank)}
-                                                {renderCondition(realCondition || '')}
+                                    <div className="bracket-tree">
+                                        {/* --- 8강 Column --- */}
+                                        {/* 🔥 [Fix 2] 옵셔널 체이닝 추가 */}
+                                        {knockoutStages?.roundOf8.length! > 0 && (
+                                            <div className="bracket-column">
+                                                {knockoutStages!.roundOf8.map((match: any, idx: number) => (
+                                                    <TournamentMatchBox key={match.id} title={`Match ${idx + 1}`} match={match} />
+                                                ))}
                                             </div>
-                                        </div>
+                                        )}
 
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-sm tracking-tight">{t.name}</span>
-                                            <span className="text-[10px] text-slate-500 font-medium">{t.ownerName}</span>
+                                        {/* --- 4강 Column --- */}
+                                        {/* 🔥 [Fix 2] 옵셔널 체이닝 추가 */}
+                                        {knockoutStages?.roundOf4.length! > 0 && (
+                                            <div className="bracket-column">
+                                                {knockoutStages!.roundOf4.map((match: any, idx: number) => (
+                                                    <TournamentMatchBox key={match.id} title={`Semi-Final ${idx + 1}`} match={match} />
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* --- 결승 Column --- */}
+                                        {/* 🔥 [Fix 2] 옵셔널 체이닝 추가 */}
+                                        {knockoutStages?.final.length! > 0 && (
+                                            <div className="bracket-column">
+                                                <div className="relative scale-110 mt-8">
+                                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
+                                                    <TournamentMatchBox title="Final" match={knockoutStages!.final[0]} highlight />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 조별리그 순위표 생략... (이전과 동일) */}
+                        {/* 이하 기존 코드는 그대로 유지 */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 px-2">
+                                <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div>
+                                <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Group Standings</h3>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {Object.keys(groupStandings || {}).map(gName => (
+                                    <div key={gName} className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                                        <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex justify-between items-center">
+                                            <h4 className="text-xs font-black italic text-emerald-400 uppercase tracking-widest">Group {gName}</h4>
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase bg-slate-900 px-2 py-0.5 rounded">Top 2 Qualified</span>
                                         </div>
-                                    </td>
-                                    
-                                    <td className="p-2 text-center text-slate-400">{t.win}</td>
-                                    <td className="p-2 text-center text-slate-400">{t.draw}</td>
-                                    <td className="p-2 text-center text-slate-400">{t.loss}</td>
-                                    <td className="p-2 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
-                                    <td className="p-2 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
+                                        <table className="w-full text-left text-xs uppercase border-collapse">
+                                            <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                                                <tr>
+                                                    <th className="p-3 w-8">#</th>
+                                                    <th className="p-3">Club</th>
+                                                    <th className="p-1 text-center">W</th>
+                                                    <th className="p-1 text-center">D</th>
+                                                    <th className="p-1 text-center">L</th>
+                                                    <th className="p-1 text-center">GD</th>
+                                                    <th className="p-1 text-center text-emerald-400">Pts</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {groupStandings?.[gName].map((t: any, i: number) => {
+                                                    const teamInfo = getTeamExtendedInfo(t.name);
+                                                    const isQualified = i < 2;
+                                                    return (
+                                                        <tr key={t.id} className={`border-b border-slate-800/50 ${isQualified ? 'qualified-row' : ''}`}>
+                                                            <td className={`p-3 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':'text-slate-600'}`}>{i+1}</td>
+                                                            <td className="p-3 flex items-center gap-3">
+                                                                <div className="relative flex-shrink-0 w-7 h-7">
+                                                                    <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
+                                                                        <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                                                    </div>
+                                                                    {renderOverlayCondition(teamInfo?.condition || '')}
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className={`font-bold text-sm tracking-tight truncate ${isQualified ? 'text-white' : 'text-slate-400'}`}>{t.name}</span>
+                                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                                        {getRealRankBadge(teamInfo?.real_rank)}
+                                                                        <span className="text-[10px] text-slate-500 font-medium truncate">{t.ownerName}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-1 text-center text-slate-400 text-[10px]">{t.win}</td>
+                                                            <td className="p-1 text-center text-slate-400 text-[10px]">{t.draw}</td>
+                                                            <td className="p-1 text-center text-slate-400 text-[10px]">{t.loss}</td>
+                                                            <td className="p-1 text-center text-slate-500 text-[10px] font-bold">{t.gd>0?`+${t.gd}`:t.gd}</td>
+                                                            <td className={`p-1 text-center font-black text-sm ${isQualified ? 'text-emerald-400' : 'text-slate-500'}`}>{t.points}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 3. 통합 순위 */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 px-2">
+                                <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+                                <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">League Total Standing</h3>
+                            </div>
+                            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                                <table className="w-full text-left text-xs uppercase border-collapse">
+                                    <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                                        <tr>
+                                            <th className="p-4 w-8">#</th>
+                                            <th className="p-4">Club</th>
+                                            <th className="p-2 text-center">W</th>
+                                            <th className="p-2 text-center">D</th>
+                                            <th className="p-2 text-center">L</th>
+                                            <th className="p-2 text-center">GD</th>
+                                            <th className="p-2 text-center text-emerald-400">Pts</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sortedTeams.map((t: any, i: number) => {
+                                            const teamInfo = getTeamExtendedInfo(t.name);
+                                            return (
+                                                <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
+                                                    <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
+                                                    <td className="p-4 flex items-center gap-4">
+                                                        <div className="relative flex-shrink-0 w-7 h-7">
+                                                            <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
+                                                                <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                                            </div>
+                                                            {renderCondition(teamInfo?.condition || '')}
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-sm tracking-tight">{t.name}</span>
+                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                                {getRealRankBadge(teamInfo?.real_rank)}
+                                                                <span className="text-[10px] text-slate-500 font-medium">{t.ownerName}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-2 text-center text-slate-400">{t.win}</td>
+                                                    <td className="p-2 text-center text-slate-400">{t.draw}</td>
+                                                    <td className="p-2 text-center text-slate-400">{t.loss}</td>
+                                                    <td className="p-2 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
+                                                    <td className="p-2 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                        <table className="w-full text-left text-xs uppercase border-collapse">
+                            <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                                <tr>
+                                    <th className="p-4 w-8">#</th>
+                                    <th className="p-4">Club</th>
+                                    <th className="p-2 text-center">W</th>
+                                    <th className="p-2 text-center">D</th>
+                                    <th className="p-2 text-center">L</th>
+                                    <th className="p-2 text-center">GD</th>
+                                    <th className="p-2 text-center text-emerald-400">Pts</th>
                                 </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody>
+                                {sortedTeams.map((t: any, i: number) => {
+                                    const teamInfo = getTeamExtendedInfo(t.name);
+                                    return (
+                                        <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
+                                            <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
+                                            <td className="p-4 flex items-center gap-4">
+                                                <div className="relative flex-shrink-0 w-7 h-7">
+                                                    <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
+                                                        <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                                    </div>
+                                                    {renderCondition(teamInfo?.condition || '')}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-sm tracking-tight">{t.name}</span>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        {getRealRankBadge(teamInfo?.real_rank)}
+                                                        <span className="text-[10px] text-slate-500 font-medium">{t.ownerName}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="p-2 text-center text-slate-400">{t.win}</td>
+                                            <td className="p-2 text-center text-slate-400">{t.draw}</td>
+                                            <td className="p-2 text-center text-slate-400">{t.loss}</td>
+                                            <td className="p-2 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
+                                            <td className="p-2 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         )}
         
-        {/* OWNERS 탭 */}
-        {rankingTab === 'OWNERS' && (
-            <div className="space-y-4">
-                {activeRankingData.owners.length > 0 && (() => {
-                    const firstOwner = activeRankingData.owners[0];
-                    const matchedOwner = (owners && owners.length > 0) 
-                                ? owners.find(owner => owner.nickname === firstOwner.name) 
-                                : null;
-                    const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
-                    const displayPrize = getOwnerPrize(firstOwner.name);
-
-                    return (
-                        <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
-                            <div className="absolute inset-0 rank-1-shimmer z-0"></div>
-                            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
-                                <div className="relative pt-3"> 
-                                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
-                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-yellow-300 via-yellow-500 to-yellow-200 shadow-2xl relative z-10">
-                                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900">
-                                            <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover"/>
-                                        </div>
-                                    </div>
-                                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
-                                        <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-xs font-black px-4 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">1st WINNER</span>
-                                    </div>
-                                </div>
-
-                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
-                                    <h3 className="text-xs md:text-sm text-yellow-500 font-bold tracking-[0.2em] mb-0.5 uppercase">The Champion</h3>
-                                    <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
-                                    
-                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[80px]">
-                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span>
-                                            <span className="text-xl font-black text-emerald-400">{firstOwner.points}</span>
-                                        </div>
-                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[100px]">
-                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span>
-                                            <span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}<span className="text-sm">W</span> <span className="text-slate-500">{firstOwner.draw}<span className="text-xs">D</span></span> <span className="text-red-400">{firstOwner.loss}<span className="text-xs">L</span></span></span>
-                                        </div>
-                                        <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40">
-                                            <span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span>
-                                            <span className="text-xl font-black text-yellow-400">₩ {displayPrize.toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })()}
-
-                {/* 2등부터 나머지 리스트 */}
-                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-                    <table className="w-full text-left text-xs uppercase border-collapse">
-                        <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                            <tr>
-                                <th className="p-4 w-8">#</th>
-                                <th className="p-4">Owner</th>
-                                <th className="p-4 text-center">Record</th> 
-                                <th className="p-4 text-center text-emerald-400">Pts</th>
-                                <th className="p-4 text-right">Prize</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {activeRankingData.owners.slice(1).map((o: any, i: number) => { 
-                                const actualRank = i + 2; 
-                                const matchedOwner = (owners && owners.length > 0) 
-                                    ? owners.find(owner => owner.nickname === o.name) 
-                                    : null;
-                                const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
-                                const rankPrize = getOwnerPrize(o.name);
-
-                                return (
-                                    <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
-                                        <td className={`p-4 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
-                                        
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-500' : 'border-slate-700'}`}>
-                                                    <img src={displayPhoto} alt={o.name} className="w-full h-full object-cover" onError={(e:any) => e.target.src = FALLBACK_IMG} />
-                                                </div>
-                                                <div className="flex flex-col justify-center">
-                                                    <span className={`font-bold text-sm whitespace-nowrap ${actualRank===2 ? 'text-slate-200' : actualRank===3 ? 'text-orange-200' : 'text-white'}`}>{o.name}</span>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="p-4 text-center text-slate-400 font-medium">
-                                            <span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span>
-                                        </td>
-
-                                        <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
-                                        <td className={`p-4 text-right font-bold ${rankPrize > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>
-                                            ₩ {rankPrize.toLocaleString()}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        )}
-
-        {/* PLAYERS 탭 */}
-        {rankingTab === 'PLAYERS' && (
-             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
-                <div className="flex bg-slate-950 border-b border-slate-800">
-                    <button onClick={()=>setRankPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
-                    <button onClick={()=>setRankPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
-                </div>
-                <table className="w-full text-left text-xs uppercase">
-                    <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{rankPlayerMode}</th></tr></thead>
-                    <tbody>
-                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
-                            <tr key={i} className="border-b border-slate-800/50">
-                                <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
-                                <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
-                                <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        )}
-
-        {/* HIGHLIGHTS 탭 */}
-        {rankingTab === 'HIGHLIGHTS' && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {activeRankingData.highlights.map((m:any, idx:number) => {
-                    const isDraw = m.homeScore === m.awayScore;
-                    return (
-                        <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
-                            <div className="relative aspect-video">
-                                <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
-                                <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
-                            </div>
-                            <div className="p-3 flex items-center gap-3">
-                                {isDraw ? (
-                                    <div className="relative w-8 h-8 flex-shrink-0">
-                                        <img src={m.homeLogo} className="w-6 h-6 absolute top-0 left-0 rounded-full bg-white object-contain p-0.5 z-10 shadow-sm border border-slate-300" alt="" />
-                                        <img src={m.awayLogo} className="w-6 h-6 absolute bottom-0 right-0 rounded-full bg-white object-contain p-0.5 opacity-80" alt="" />
-                                    </div>
-                                ) : (
-                                    <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
-                                )}
-                                
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
-                                    <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-                {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
-            </div>
-        )}
+        {/* OWNERS, PLAYERS, HIGHLIGHTS 탭 */}
+        {rankingTab === 'OWNERS' && <div className="text-center py-10 text-slate-500">Owners Content Here</div>}
+        {rankingTab === 'PLAYERS' && <div className="text-center py-10 text-slate-500">Players Content Here</div>}
+        {rankingTab === 'HIGHLIGHTS' && <div className="text-center py-10 text-slate-500">Highlights Content Here</div>}
     </div>
   );
 };
