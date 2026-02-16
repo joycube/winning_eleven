@@ -12,7 +12,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
   // 1️⃣ [적용] 팀 순위 정렬 로직: 승점 > 득실 > 다득점
-  // (historyData.teams에 gd, gf가 없으면 0으로 처리하여 에러 방지)
   const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
     if (b.points !== a.points) return b.points - a.points;      // 1. 승점
     if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); // 2. 득실차
@@ -49,53 +48,32 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-        {/* 스타일 정의: 명예의 전당 전용 애니메이션 + 그린 형광 빛반사 효과 */}
+        {/* 스타일 정의 */}
         {/* @ts-ignore */}
         <style jsx>{`
-            /* 1. 빅이어 둥둥 효과 (정면, 비틀지 않음) */
             @keyframes verticalFloat {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-12px); }
             }
-            
-            /* 2. 그린 형광 빛반사 효과 (Light Sweep) */
             @keyframes green-light-sweep {
                 0% { transform: translateX(-100%) skewX(-25deg); opacity: 0; }
                 50% { opacity: 0.5; }
                 100% { transform: translateX(200%) skewX(-25deg); opacity: 0; }
             }
-
-            /* 3. 은은한 그린 오라 (Pulse) */
             @keyframes green-glow-pulse {
                 0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.1); }
                 50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.3); }
             }
-
-            .trophy-float-straight {
-                animation: verticalFloat 4s infinite ease-in-out;
-            }
-            
-            .silver-trophy {
-                filter: grayscale(100%) drop-shadow(0 4px 8px rgba(0,0,0,0.6));
-            }
-
-            /* 그린 형광 배경 (기본 베이스) */
+            .trophy-float-straight { animation: verticalFloat 4s infinite ease-in-out; }
+            .silver-trophy { filter: grayscale(100%) drop-shadow(0 4px 8px rgba(0,0,0,0.6)); }
             .green-neon-bg {
                 background: linear-gradient(135deg, rgba(6, 78, 59, 0.4), rgba(15, 23, 42, 0.9), rgba(6, 78, 59, 0.4));
                 animation: green-glow-pulse 4s infinite ease-in-out;
             }
-
-            /* 빛반사 빔 */
             .green-sweep-beam {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 50%;
-                height: 100%;
-                background: linear-gradient(to right, transparent, rgba(52, 211, 153, 0.2), transparent); /* Emerald-400 */
-                filter: blur(10px);
-                animation: green-light-sweep 4s infinite ease-in-out;
-                pointer-events: none;
+                position: absolute; top: 0; left: 0; width: 50%; height: 100%;
+                background: linear-gradient(to right, transparent, rgba(52, 211, 153, 0.2), transparent);
+                filter: blur(10px); animation: green-light-sweep 4s infinite ease-in-out; pointer-events: none;
             }
         `}</style>
 
@@ -111,7 +89,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             ))}
         </div>
 
-        {/* 1. Teams History (수정됨: sortedTeams 사용) */}
+        {/* 1. Teams History */}
         {historyTab === 'TEAMS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs uppercase">
@@ -120,7 +98,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                         {sortedTeams.slice(0, 20).map((t:any, i:number) => (
                             <tr key={i} className="border-b border-slate-800/50">
                                 <td className="p-4 text-center text-slate-600">{i+1}</td>
-                                {/* 👇 flex-shrink-0 추가로 이미지 찌그러짐 방지 */}
                                 <td className="p-4 font-bold text-white flex items-center gap-2">
                                     <img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5 flex-shrink-0" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span>
                                 </td>
@@ -133,10 +110,10 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 2. Owners History (명예의 전당 카드 적용 - 기존 로직 유지) */}
+        {/* 2. Owners History */}
         {historyTab === 'OWNERS' && (
             <div className="space-y-4">
-                {/* 🏆 [NEW] 역대 1위 'THE LEGEND' 카드 */}
+                {/* 🏆 역대 1위 'THE LEGEND' 카드 */}
                 {historyData.owners.length > 0 && (() => {
                     const legend = historyData.owners[0];
                     const matchedOwner = (owners && owners.length > 0) 
@@ -146,26 +123,19 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
                     return (
                         <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 mb-6">
-                            {/* 🔥 [수정] 배경 이펙트: 그린 형광 빛반사 */}
+                            {/* 배경 이펙트 */}
                             <div className="absolute inset-0 green-neon-bg z-0"></div>
                             <div className="green-sweep-beam z-0"></div>
                             
                             <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm">
                                 {/* 1. 트로피와 오너 이미지 */}
-                                {/* pl-10: 트로피 공간 확보 */}
                                 <div className="relative pt-4 pl-10">
-                                    
-                                    {/* 🔥 [수정] 빅이어 트로피: 위치를 좀 더 아래로(-top-2) 내려서 전체 노출 */}
                                     <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
-                                    
-                                    {/* 프로필 이미지 (그린 보더) */}
                                     <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
                                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
                                             <img src={displayPhoto} alt={legend.name} className="w-full h-full object-cover"/>
                                         </div>
                                     </div>
-                                    
-                                    {/* 뱃지 */}
                                     <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
                                         <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase">
                                             All-Time Legend
@@ -174,32 +144,37 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                 </div>
 
                                 {/* 2. 레전드 정보 */}
-                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0 w-full">
                                     <h3 className="text-[10px] text-emerald-400 font-bold tracking-[0.3em] mb-1 uppercase">Hall of Fame No.1</h3>
                                     <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
                                         {legend.name}
                                     </h2>
                                     
-                                    {/* 스탯 그리드 */}
-                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50 min-w-[70px]">
-                                            <span className="text-[9px] text-slate-500 block font-bold">POINTS</span>
-                                            <span className="text-lg font-black text-emerald-400">{legend.points}</span>
-                                        </div>
-                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50 min-w-[90px]">
-                                            <span className="text-[9px] text-slate-500 block font-bold">RECORD</span>
-                                            <span className="text-sm font-bold text-slate-200">{legend.win}W {legend.draw}D {legend.loss}L</span>
-                                        </div>
-                                        <div className="bg-slate-900/80 rounded-lg px-3 py-2 border border-slate-700/50">
-                                            <span className="text-[9px] text-slate-500 block font-bold">TROPHIES</span>
-                                            <div className="flex gap-1 text-xs">
-                                                {legend.golds > 0 ? <span>🥇{legend.golds}</span> : <span className="text-slate-700">-</span>}
-                                                {legend.silvers > 0 && <span className="opacity-70">🥈{legend.silvers}</span>}
+                                    {/* 스탯 그리드 (1열 3개 / 2열 1개) */}
+                                    <div className="flex flex-col gap-2 w-full">
+                                        {/* 1열: Points, Record, Trophies (균등 배분) */}
+                                        <div className="grid grid-cols-3 gap-2 w-full">
+                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">POINTS</span>
+                                                <span className="text-lg font-black text-emerald-400 leading-none">{legend.points}</span>
+                                            </div>
+                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">RECORD</span>
+                                                <span className="text-sm font-bold text-slate-200 leading-none">{legend.win}W {legend.draw}D {legend.loss}L</span>
+                                            </div>
+                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">TROPHIES</span>
+                                                <div className="flex gap-1 text-xs leading-none">
+                                                    {legend.golds > 0 ? <span>🥇{legend.golds}</span> : <span className="text-slate-700">-</span>}
+                                                    {legend.silvers > 0 && <span className="opacity-70">🥈{legend.silvers}</span>}
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="bg-gradient-to-r from-emerald-900/30 to-teal-900/30 rounded-lg px-4 py-2 border border-emerald-500/20">
-                                            <span className="text-[9px] text-emerald-400 block font-black">TOTAL PRIZE</span>
-                                            <span className="text-sm font-bold text-white">₩ {legend.prize.toLocaleString()}</span>
+
+                                        {/* 2열: Total Prize (전체 너비) */}
+                                        <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
+                                            <span className="text-[9px] text-emerald-400 block font-black mb-0.5">TOTAL PRIZE</span>
+                                            <span className="text-base font-bold text-white leading-none">₩ {legend.prize.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -208,7 +183,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                     );
                 })()}
 
-                {/* 2위부터 테이블 리스트 */}
+                {/* 2위부터 테이블 리스트 (기존 유지) */}
                 <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
                     <table className="w-full text-left text-xs uppercase">
                         <thead className="bg-slate-950 text-slate-500">
@@ -270,7 +245,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 3. Players History (수정됨: rankedPlayers 사용) */}
+        {/* 3. Players History */}
         {historyTab === 'PLAYERS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
@@ -282,7 +257,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                     <tbody>
                         {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
                             <tr key={i} className="border-b border-slate-800/50">
-                                {/* 공동 순위(p.rank) 표시 */}
                                 <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
                                 <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                 <td className="p-3 text-slate-400 flex items-center gap-2">
@@ -299,5 +273,4 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   );
 };
 
-// Default Export 호환성 유지
 export default HistoryView;
