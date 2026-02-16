@@ -24,6 +24,7 @@ export const CupSchedule = ({
   // ─────────────────────────────────────────────────────────────
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
+  // 🔥 승자 이름 추출 헬퍼 (status와 score 기반)
   const getWinnerName = (match: Match | null): string => {
       if (!match || match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore);
@@ -94,10 +95,11 @@ export const CupSchedule = ({
     );
   };
 
-  // 🔥 [핵심 디벨롭] 승자 진출 및 슬롯 강제 매핑 로직
+  // 🔥 [핵심 업데이트] 승자 진출 및 슬롯 강제 매핑 로직
   const knockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
     
+    // 그룹 스테이지 제외
     const allMatches: Match[] = currentSeason.rounds.flatMap((r: any) => r.matches || [])
             .filter((m: any) => m && m.stage && !m.stage.toUpperCase().includes('GROUP'));
 
@@ -107,23 +109,26 @@ export const CupSchedule = ({
         final: Array(1).fill(null)
     };
 
+    // 1차: DB 데이터 배치 (참조 오염 방지를 위해 클론 생성)
     allMatches.forEach((m: any) => {
         const label = m.matchLabel || '';
         const stage = m.stage || '';
         const matchNumMatch = label.match(/(\d+)경기/) || label.match(/Match (\d+)/);
         const matchNum = matchNumMatch ? parseInt(matchNumMatch[1]) : 0; 
 
+        const mClone = { ...m };
+
         if (stage === 'ROUND_OF_8' || label.includes('8강') || label.includes('토너먼트')) {
-            if (matchNum >= 1 && matchNum <= 4) slots.roundOf8[matchNum - 1] = m;
+            if (matchNum >= 1 && matchNum <= 4) slots.roundOf8[matchNum - 1] = mClone;
         } else if (stage === 'ROUND_OF_4' || label.includes('4강') || label.toUpperCase().includes('SEMI')) {
-            if (matchNum >= 1 && matchNum <= 2) slots.roundOf4[matchNum - 1] = m;
+            if (matchNum >= 1 && matchNum <= 2) slots.roundOf4[matchNum - 1] = mClone;
         } else if (stage === 'FINAL' || label.includes('결승')) {
-            slots.final[0] = m;
+            slots.final[0] = mClone;
         }
     });
 
-    // 🔥 승자 진출 로직 주입 (TBD 자리 채우기)
-    // 8강 -> 4강
+    // 2차 🔥 [승자 진출 로직] TBD 자리를 실시간 스코어 기반 승자로 덮어쓰기
+    // 8강 승자 -> 4강 진입
     if (slots.roundOf4[0]) {
         if (slots.roundOf4[0].home === 'TBD') slots.roundOf4[0].home = getWinnerName(slots.roundOf8[0]);
         if (slots.roundOf4[0].away === 'TBD') slots.roundOf4[0].away = getWinnerName(slots.roundOf8[1]);
@@ -132,7 +137,7 @@ export const CupSchedule = ({
         if (slots.roundOf4[1].home === 'TBD') slots.roundOf4[1].home = getWinnerName(slots.roundOf8[2]);
         if (slots.roundOf4[1].away === 'TBD') slots.roundOf4[1].away = getWinnerName(slots.roundOf8[3]);
     }
-    // 4강 -> 결승
+    // 4강 승자 -> 결승 진입
     if (slots.final[0]) {
         if (slots.final[0].home === 'TBD') slots.final[0].home = getWinnerName(slots.roundOf4[0]);
         if (slots.final[0].away === 'TBD') slots.final[0].away = getWinnerName(slots.roundOf4[1]);
@@ -151,7 +156,7 @@ export const CupSchedule = ({
                   </span>
                   <div className="flex items-center gap-1.5 mt-0.5">
                       {team.name !== 'TBD' && getRealRankBadge(team.real_rank)}
-                      <span className="text-[9px] text-slate-500 font-bold truncate">{team.ownerName}</span>
+                      <span className="text-[10px] text-slate-500 font-bold truncate">{team.ownerName}</span>
                   </div>
               </div>
           </div>
@@ -185,13 +190,14 @@ export const CupSchedule = ({
   return (
     <div className="space-y-10">
         <style jsx>{`
-            .bracket-tree { display: flex; align-items: center; justify-content: flex-start; gap: 30px; padding: 10px 0 20px 4px; overflow-x: auto; }
+            .bracket-tree { display: flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; overflow-x: auto; }
             .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
             .no-scrollbar::-webkit-scrollbar { display: none; }
         `}</style>
 
+        {/* 🏆 토너먼트 대진표 섹션 */}
         {knockoutStages && (
-            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50">
+            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-[760px] px-2">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
@@ -217,21 +223,25 @@ export const CupSchedule = ({
             </div>
         )}
 
-        {/* 🗓️ 하단 매치 리스트 레이아웃 정리 */}
-        <div className="space-y-8 max-w-[1400px] mx-auto">
+        {/* 🗓️ 매치 리스트 섹션 (레이아웃 최적화) */}
+        <div className="space-y-8 max-w-[1500px] mx-auto overflow-hidden px-1">
             {currentSeason?.rounds?.map((r, rIdx) => {
                 const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
                 return (
                     <div key={rIdx} className="space-y-8">
                          {uniqueStages.map((stageName) => {
                             let displayTitle = stageName.includes('GROUP') ? 'Group Stage' : stageName;
+                            if (stageName === 'ROUND_OF_8') displayTitle = 'Quarter-Finals (8강)';
+                            else if (stageName === 'ROUND_OF_4') displayTitle = 'Semi-Finals (4강)';
+                            else if (stageName === 'FINAL') displayTitle = '🏆 Grand Final (결승전)';
+
                             return (
-                                <div key={stageName} className="space-y-4">
+                                <div key={stageName} className="space-y-6">
                                     <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
-                                        <h3 className="text-md font-black italic text-white uppercase tracking-tight">{displayTitle}</h3>
+                                        <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{displayTitle}</h3>
                                     </div>
-                                    {/* 🔥 레이아웃 붕괴 방지: grid 속성 및 gap 최적화 */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+                                    {/* 🔥 [Fix] 레이아웃 최적화: 3개 이상일 때 찌그러짐 방지 그리드 */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                         {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                             let detailLabel = m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기`;
                                             return (
