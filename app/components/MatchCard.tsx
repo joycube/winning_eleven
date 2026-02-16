@@ -52,7 +52,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                    rank === 3 ? 'bg-amber-600 text-white border-amber-400' : 
                    'bg-slate-800 text-slate-400 border-slate-600';
     return (
-      <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border shadow-sm ${colors}`}>
+      <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border shadow-sm ${colors}`}>
         R.{rank}
       </span>
     );
@@ -69,8 +69,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     };
     const c = config[condition.toUpperCase()] || config['C'];
     return (
-      <div className={`w-5 h-5 flex items-center justify-center bg-slate-900 rounded-full border border-slate-700 ${c.glow}`}>
-        <span className={`text-[11px] font-bold ${c.color}`}>{c.icon}</span>
+      <div className={`w-6 h-6 flex items-center justify-center bg-slate-900 rounded-full border border-slate-700 ${c.glow}`}>
+        <span className={`text-[12px] font-bold ${c.color}`}>{c.icon}</span>
       </div>
     );
   };
@@ -78,39 +78,43 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   return (
     <div 
       onClick={() => onClick(match)} 
-      className={`group relative bg-slate-950 p-5 rounded-2xl border transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl cursor-pointer ${
+      className={`group relative bg-slate-950 p-6 rounded-3xl border transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl cursor-pointer ${
         isCompleted ? 'border-slate-800' : 'border-slate-700 hover:border-emerald-500/50'
       }`}
     >
-        <div className="flex justify-center mb-4">
-            <span className="px-3 py-1 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-emerald-400 transition-colors">
+        <div className="flex justify-center mb-6">
+            <span className="px-4 py-1.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-400 transition-colors">
                 {match.matchLabel || 'Match Fixture'}
             </span>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-            <div className="flex flex-col items-center text-center space-y-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 md:gap-4">
+            {/* HOME TEAM */}
+            <div className="flex flex-col items-center text-center space-y-3 min-w-0">
                 <div className="relative">
-                  <div className="w-16 h-16 rounded-full bg-white p-2 shadow-xl ring-4 ring-slate-900 group-hover:ring-emerald-500/20 transition-all">
+                  {/* 🔥 로고 사이즈 업 (w-20) */}
+                  <div className="w-20 h-20 rounded-full bg-white p-2.5 shadow-xl ring-4 ring-slate-900 group-hover:ring-emerald-500/20 transition-all overflow-hidden flex items-center justify-center">
                       <img src={match.homeLogo} className="w-full h-full object-contain" alt="" onError={(e)=>e.currentTarget.src=FALLBACK_IMG} />
                   </div>
                   <div className="absolute -bottom-1 -right-1 flex items-center">
                       {getConditionArrow(homeMaster?.condition)}
                   </div>
                 </div>
-                <div className="space-y-1">
-                    <div className="flex items-center justify-center gap-1">
-                      <span className="text-sm font-black text-white uppercase tracking-tighter truncate max-w-[100px]">{match.home}</span>
+                <div className="space-y-1 w-full px-1">
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      {/* 🔥 팀명 사이즈 업 (text-base) 및 가로폭 최적화 */}
+                      <span className="text-base font-black text-white uppercase tracking-tighter truncate max-w-[140px] leading-tight">{match.home}</span>
                       {getRankBadge(homeMaster?.real_rank)}
                     </div>
-                    <p className="text-[10px] font-bold text-slate-500 italic">{match.homeOwner}</p>
+                    <p className="text-[11px] font-bold text-slate-500 italic truncate">{match.homeOwner}</p>
                 </div>
             </div>
 
-            <div className="flex flex-col items-center px-4">
+            {/* VS / SCORE */}
+            <div className="flex flex-col items-center px-2 md:px-4">
                 {isCompleted ? (
                     <div className="flex flex-col items-center">
-                      <div className="flex items-center gap-3 text-4xl font-black italic tracking-tighter">
+                      <div className="flex items-center gap-3 text-4xl font-black italic tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
                           <span className={Number(match.homeScore) > Number(match.awayScore) ? 'text-emerald-400' : 'text-white'}>{match.homeScore}</span>
                           <span className="text-slate-800">:</span>
                           <span className={Number(match.awayScore) > Number(match.homeScore) ? 'text-emerald-400' : 'text-white'}>{match.awayScore}</span>
@@ -126,65 +130,67 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                 )}
             </div>
 
-            <div className="flex flex-col items-center text-center space-y-2">
+            {/* AWAY TEAM */}
+            <div className="flex flex-col items-center text-center space-y-3 min-w-0">
                 <div className="relative">
-                  <div className="w-16 h-16 rounded-full bg-white p-2 shadow-xl ring-4 ring-slate-900 group-hover:ring-emerald-500/20 transition-all">
+                  {/* 🔥 로고 사이즈 업 (w-20) */}
+                  <div className="w-20 h-20 rounded-full bg-white p-2.5 shadow-xl ring-4 ring-slate-900 group-hover:ring-emerald-500/20 transition-all overflow-hidden flex items-center justify-center">
                       <img src={match.awayLogo} className="w-full h-full object-contain" alt="" onError={(e)=>e.currentTarget.src=FALLBACK_IMG} />
                   </div>
                   <div className="absolute -bottom-1 -left-1 flex items-center">
                       {getConditionArrow(awayMaster?.condition)}
                   </div>
                 </div>
-                <div className="space-y-1">
-                    <div className="flex items-center justify-center gap-1">
+                <div className="space-y-1 w-full px-1">
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
                       {getRankBadge(awayMaster?.real_rank)}
-                      <span className="text-sm font-black text-white uppercase tracking-tighter truncate max-w-[100px]">{match.away}</span>
+                      {/* 🔥 팀명 사이즈 업 (text-base) 및 가로폭 최적화 */}
+                      <span className="text-base font-black text-white uppercase tracking-tighter truncate max-w-[140px] leading-tight">{match.away}</span>
                     </div>
-                    <p className="text-[10px] font-bold text-slate-500 italic">{match.awayOwner}</p>
+                    <p className="text-[11px] font-bold text-slate-500 italic truncate">{match.awayOwner}</p>
                 </div>
             </div>
         </div>
 
         {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || match.youtubeUrl) && (
-            <div className="mt-4 pt-4 border-t border-slate-900">
+            <div className="mt-6 pt-5 border-t border-slate-900/50">
                 <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4">
                     <div className="space-y-1 text-right">
-                        {match.homeScorers.map((s, idx)=><div key={`h-${idx}`} className="text-[10px] text-slate-300 font-medium">{s.name} ⚽ <span className="text-slate-500 ml-1">{s.count > 1 && `x${s.count}`}</span></div>)}
+                        {match.homeScorers.map((s, idx)=><div key={`h-${idx}`} className="text-[10px] text-slate-400 font-medium">{s.name} ⚽ <span className="text-slate-600 ml-1">{s.count > 1 && `x${s.count}`}</span></div>)}
                     </div>
                     
                     <div className="flex flex-col items-center px-2">
                       {match.youtubeUrl ? (
                           <div 
-                              className="bg-red-900/20 border border-red-900/50 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt"
+                              className="bg-red-950/30 border border-red-900/40 p-2 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg"
                               onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }}
                               title="Watch Highlight"
                           >
                               <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-4 h-4 group-hover/yt:scale-110 transition-transform" alt="YT"/>
                           </div>
-                      ) : <div className="w-[1px] h-4 bg-slate-800"></div>}
+                      ) : <div className="w-[1px] h-4 bg-slate-900"></div>}
                     </div>
 
                     <div className="space-y-1 text-left">
-                        {match.awayScorers.map((s, idx)=><div key={`a-${idx}`} className="text-[10px] text-slate-300 font-medium">⚽ {s.name} <span className="text-slate-500 ml-1">{s.count > 1 && `x${s.count}`}</span></div>)}
+                        {match.awayScorers.map((s, idx)=><div key={`a-${idx}`} className="text-[10px] text-slate-400 font-medium">⚽ {s.name} <span className="text-slate-600 ml-1">{s.count > 1 && `x${s.count}`}</span></div>)}
                     </div>
                 </div>
             </div>
         )}
 
         {showGraph && (
-            <div className="mt-6 space-y-2">
+            <div className="mt-8 space-y-2">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[11px] font-black text-emerald-400">{prediction.hRate}%</span>
-                  <span className="text-[8px] font-bold text-slate-600 tracking-tighter uppercase italic">Win Probability</span>
+                  <span className="text-[9px] font-bold text-slate-600 tracking-tighter uppercase italic">Win Probability</span>
                   <span className="text-[11px] font-black text-blue-400">{prediction.aRate}%</span>
                 </div>
-                <div className="relative h-4 bg-slate-900 rounded-md overflow-hidden flex border border-slate-800 shadow-inner">
+                <div className="relative h-4 bg-slate-900 rounded-lg overflow-hidden flex border border-slate-800/50 shadow-inner">
                     <div 
                       style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} 
                       className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-out"
                     />
                     
-                    {/* 🔥 [수정] translateX(-50%)를 적용하여 중심을 경계선에 정확히 고정 */}
                     <div 
                       className="absolute top-0 bottom-0 z-20 flex items-center justify-center transition-all duration-1000 ease-out"
                       style={{ 
@@ -208,14 +214,14 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         )}
 
         {isCompleted && (
-            <div className="mt-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800">
-                <p className="text-[10px] text-emerald-400/80 italic text-center leading-relaxed font-medium">
+            <div className="mt-5 p-3.5 bg-slate-900/30 rounded-2xl border border-slate-800/50">
+                <p className="text-[11px] text-emerald-400/80 italic text-center leading-relaxed font-bold">
                     &quot;{isBye ? "부전승으로 경기가 마무리되었습니다." : getMatchCommentary(match)}&quot;
                 </p>
             </div>
         )}
 
-        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
         </div>
     </div>
