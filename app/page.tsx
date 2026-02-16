@@ -81,12 +81,23 @@ export default function FootballLeagueApp() {
         final: [createPlaceholder('v-final')]
     };
 
+    let hasActualRoundOf8 = false; // 🔥 8강 실제 데이터 유무 체크
+
     currentSeason.rounds.forEach((round, rIdx) => {
         if (!round.matches) return;
         round.matches.forEach((m, mIdx) => {
-            if (rIdx === 0 && mIdx < 4) slots.roundOf8[mIdx] = { ...m }; 
-            else if (rIdx === 1 && mIdx < 2) slots.roundOf4[mIdx] = { ...m }; 
-            else if (rIdx === 2 && mIdx < 1) slots.final[mIdx] = { ...m }; 
+            const stage = m.stage?.toUpperCase() || "";
+            // 조별리그 경기는 무시
+            if (stage.includes("GROUP")) return;
+
+            if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+                slots.final[0] = { ...m };
+            } else if (stage.includes("SEMI") || (rIdx === 1 && mIdx < 2)) {
+                slots.roundOf4[mIdx] = { ...m };
+            } else if (stage.includes("ROUND_OF_8") || (rIdx === 0 && mIdx < 4)) {
+                slots.roundOf8[mIdx] = { ...m };
+                hasActualRoundOf8 = true; // 🔥 실제 8강 데이터가 있으면 true
+            }
         });
     });
 
@@ -108,7 +119,10 @@ export default function FootballLeagueApp() {
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
-    return slots;
+    return {
+        ...slots,
+        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null // 🔥 8강 데이터 없으면 null 반환
+    };
   }, [seasons, viewSeasonId, activeRankingData, masterTeams]);
 
   useEffect(() => {
@@ -132,6 +146,7 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // ... (이하 기존 handleSaveMatchResult 등 로직 유지) ...
   // ==================================================================================
   // 🔥 [픽스 완료] 경기 결과 저장 및 가상 매치 실제 DB화 로직
   // ==================================================================================
@@ -143,7 +158,6 @@ export default function FootballLeagueApp() {
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
 
-      // 1. 가상 ID 판별 및 타겟 라운드 설정
       const isVirtual = matchId.startsWith('v-');
       let vTargetRIdx = -1;
       let vTargetMIdx = 0;
@@ -153,7 +167,6 @@ export default function FootballLeagueApp() {
           else if (matchId.includes('r4')) { vTargetRIdx = 1; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
           else if (matchId.includes('r8')) { vTargetRIdx = 0; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
 
-          // 🔥 에러 수정: Round 형식의 필수 속성(round, name, seasonId)을 모두 포함하여 생성
           while (newRounds.length <= vTargetRIdx) {
               const nextRnd = newRounds.length + 1;
               newRounds.push({ 
@@ -167,7 +180,6 @@ export default function FootballLeagueApp() {
 
       const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData, masterTeams);
 
-      // 2. 실제 라운드 데이터 업데이트
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
           let found = false;
@@ -204,7 +216,6 @@ export default function FootballLeagueApp() {
           return { ...r, matches };
       });
 
-      // 3. 승자 자동 진출 로직
       if ((s.type === 'TOURNAMENT' || s.type === 'CUP') && currentRoundIndex !== -1) {
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); const a = Number(aScore);

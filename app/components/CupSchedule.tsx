@@ -67,7 +67,7 @@ export const CupSchedule = ({
 
   const getTierBadge = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
-    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-600';
+    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
     return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full border border-slate-950 font-black text-[7px] z-20 shadow-sm ${colors}`}>{t}</div>;
   };
 
@@ -95,14 +95,13 @@ export const CupSchedule = ({
   const internalKnockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
 
-    // 🔥 [픽스] Ln 104 TypeScript 에러 해결: Match 타입의 모든 필수 속성 주입
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: TBD_LOGO, awayLogo: TBD_LOGO, homeOwner: '-', awayOwner: '-',
         homePredictRate: 0, awayPredictRate: 0, 
         stage: stageName, 
         matchLabel: 'TBD', youtubeUrl: '',
-        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] // 🔥 필수 배열 추가
+        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
     } as Match);
 
     const slots = {
@@ -111,16 +110,21 @@ export const CupSchedule = ({
         final: [createPlaceholder('v-final', 'FINAL')]
     };
 
-    let hasRoundOf8 = false;
+    let hasActualRoundOf8 = false;
     currentSeason.rounds.forEach((round, rIdx) => {
         if (!round.matches) return;
         round.matches.forEach((m, mIdx) => {
             const stage = m.stage?.toUpperCase() || "";
-            if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) slots.final[0] = { ...m };
-            else if (stage.includes("SEMI") || (rIdx === 1 && mIdx < 2)) slots.roundOf4[mIdx] = { ...m };
-            else if (stage.includes("ROUND_OF_8") || (rIdx === 0 && mIdx < 4)) {
+            // 🔥 [픽스] 조별리그 경기는 브라켓 연산에서 완전히 제외
+            if (stage.includes("GROUP")) return;
+
+            if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+                slots.final[0] = { ...m };
+            } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+                slots.roundOf4[mIdx] = { ...m };
+            } else if (stage.includes("ROUND_OF_8")) {
                 slots.roundOf8[mIdx] = { ...m };
-                hasRoundOf8 = true; // 🔥 8강 경기 존재 여부 체크
+                hasActualRoundOf8 = true; // 🔥 실제 8강 단계가 존재함을 증명
             }
         });
     });
@@ -144,10 +148,10 @@ export const CupSchedule = ({
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
-    // 🔥 [오류 픽스] 실제 경기가 있는 단계만 반환하여 8강 토너먼트 강제 노출 방지
+    // 🔥 [픽스] 실제 경기가 있는 단계만 반환 (8강 노출 방지)
     return {
         ...slots,
-        roundOf8: hasRoundOf8 ? slots.roundOf8 : null
+        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
     };
   }, [currentSeason, viewSeasonId, activeRankingData]);
 
@@ -215,7 +219,7 @@ export const CupSchedule = ({
                         <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                     </div>
                     <div className="bracket-tree no-scrollbar">
-                        {/* 🔥 8강 필터링 노출 */}
+                        {/* 🔥 [픽스] 8강 데이터가 있을 때만 해당 열 노출 */}
                         {displayStages.roundOf8 && (
                             <div className="bracket-column">
                                 {displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Match ${i+1}`} match={m} />)}
@@ -238,16 +242,16 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
-                    {/* 🔥 [개선사항] 조별리그 스케줄 조별 그루핑(A, B, C...) 노출 */}
+                    {/* 🔥 [개선] 조별리그 스케줄 조별 그루핑(A, B, C...) 노출 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
                         
-                        // 조별 이름(A, B, C...) 중복 제거 및 정렬
-                        const groups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
+                        // 현재 라운드에서 사용된 모든 그룹 이름 추출 및 정렬
+                        const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
 
-                        return groups.map(gName => (
-                            <div key={`group-${gName}`} className="space-y-6">
+                        return uniqueGroups.map(gName => (
+                            <div key={`group-${rIdx}-${gName}`} className="space-y-6">
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
                                     <h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3>
                                 </div>
@@ -290,7 +294,7 @@ export const CupSchedule = ({
                     ))}
                 </>
             ) : (
-                /* 2. 리그 모드일 때 (기존 방식 유지) */
+                /* 기존 리그 모드 로직 */
                 currentSeason?.rounds?.map((r, rIdx) => (
                     <div key={rIdx} className="space-y-8">
                          {Array.from(new Set(r.matches.map(m => m.stage))).map((stageName) => (

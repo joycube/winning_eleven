@@ -5,6 +5,14 @@ import { db } from '../firebase';
 import { FALLBACK_IMG, Owner } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers'; 
 
+// 🔥 [TS Error Fix] styled-jsx의 jsx 속성을 인식하도록 타입 확장
+declare module 'react' {
+  interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
+    jsx?: boolean;
+    global?: boolean;
+  }
+}
+
 // TBD 로고
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
@@ -14,7 +22,7 @@ interface RankingViewProps {
   setViewSeasonId: (id: number) => void;
   activeRankingData: any;
   owners?: Owner[]; 
-  knockoutStages: any; // 🔥 부모로부터 전달받은 공통 대진표 데이터
+  knockoutStages: any; 
 }
 
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [], knockoutStages }: RankingViewProps) => {
@@ -151,9 +159,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  // 🔥 [수정] 부모가 준 knockoutStages 데이터로 우승자 판별
   const tournamentChampion = useMemo(() => {
-    const final = knockoutStages?.final[0];
+    const final = knockoutStages?.final?.[0];
     if (!final || final.status !== 'COMPLETED') return null;
     const h = Number(final.homeScore || 0);
     const a = Number(final.awayScore || 0);
@@ -256,17 +263,21 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                 {/* 🏆 토너먼트 트리 (중앙 제어 데이터 knockoutStages 사용) */}
                 {currentSeason?.type === 'CUP' && knockoutStages && (
                     <div className="overflow-x-auto pb-4 no-scrollbar">
-                        <div className="min-w-[700px] px-4">
+                        {/* 🔥 8강 유무에 따라 컨테이너 너비 유동적으로 조정 */}
+                        <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                                 <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                             </div>
                             <div className="flex items-center gap-10">
-                                <div className="flex flex-col gap-5">
-                                    {knockoutStages.roundOf8.map((m: any, idx: number) => 
-                                        <TournamentMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />
-                                    )}
-                                </div>
+                                {/* 🔥 8강 데이터가 실제로 존재할 때만 컬럼을 그림 (부모에서 null로 넘겨줌) */}
+                                {knockoutStages.roundOf8 && (
+                                    <div className="flex flex-col gap-5">
+                                        {knockoutStages.roundOf8.map((m: any, idx: number) => 
+                                            <TournamentMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />
+                                        )}
+                                    </div>
+                                )}
                                 <div className="flex flex-col gap-12">
                                     {knockoutStages.roundOf4.map((m: any, idx: number) => 
                                         <TournamentMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />
@@ -274,13 +285,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 </div>
                                 <div className="relative pt-8">
                                     <div className="absolute -top-0 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
-                                    <TournamentMatchBox title="Final" match={knockoutStages.final[0]} isFinal highlight />
+                                    <TournamentMatchBox title="Final" match={knockoutStages.final?.[0]} isFinal highlight />
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
                 
+                {/* 조별리그 및 나머지 순위표 (변경 없음) */}
                 {currentSeason?.type === 'CUP' && (
                     <div className="space-y-4">
                         <div className="flex items-center gap-3 px-2">
@@ -338,6 +350,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
+        {/* OWNERS, PLAYERS, HIGHLIGHTS 탭 (변경 없음) */}
         {rankingTab === 'OWNERS' && (
             <div className="space-y-6">
                 {currentSeason?.type === 'CUP' && tournamentChampion && (
