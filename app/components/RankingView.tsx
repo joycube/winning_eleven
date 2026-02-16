@@ -14,9 +14,10 @@ interface RankingViewProps {
   setViewSeasonId: (id: number) => void;
   activeRankingData: any;
   owners?: Owner[]; 
+  knockoutStages: any; // 🔥 부모로부터 전달받은 공통 대진표 데이터
 }
 
-export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
+export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [], knockoutStages }: RankingViewProps) => {
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
@@ -54,70 +55,22 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return totalPrize;
   };
 
-  // 🔥 [승자 확인]
-  const getWinnerName = (match: any): string => {
-      if (!match || !match.status || match.status !== 'COMPLETED') return 'TBD';
-      const h = Number(match.homeScore);
-      const a = Number(match.awayScore);
-      if (h > a) return match.home;
-      if (a > h) return match.away;
-      return 'TBD';
-  };
-
-  // --- UI Helper Functions ---
-  const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
-    let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
-    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
-    else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
-    else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500";
-    return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
-  };
-
-  const getTierBadge = (tier?: string) => {
-    const t = (tier || 'C').toUpperCase();
-    let colors = 'bg-slate-800 text-slate-400 border-slate-700';
-    if (t === 'S') colors = 'bg-yellow-500 text-black border-yellow-200';
-    else if (t === 'A') colors = 'bg-slate-300 text-black border-white';
-    else if (t === 'B') colors = 'bg-amber-600 text-white border-amber-400';
-    return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#0f172a] font-black text-[8px] z-20 shadow-md ${colors}`}>{t}</div>;
-  };
-
-  const getConditionBadge = (condition?: string) => {
-    if (!condition) return null;
-    const config: any = {
-      'A': { icon: '↑', color: 'text-emerald-400', glow: 'shadow-[0_0_5px_rgba(52,211,153,0.4)]' },
-      'B': { icon: '↗', color: 'text-teal-400', glow: '' },
-      'C': { icon: '→', color: 'text-slate-400', glow: '' },
-      'D': { icon: '↘', color: 'text-orange-400', glow: '' },
-      'E': { icon: '⬇', color: 'text-red-500', glow: 'shadow-[0_0_5px_rgba(239,68,68,0.4)]' },
-    };
-    const c = config[condition.toUpperCase()] || config['C'];
-    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5 ${c.glow}`}><span className={`text-[10px] font-black ${c.color}`}>{c.icon}</span></div>;
-  };
-
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
 
   // 🔥 [팀 정보 매핑]
   const getTeamExtendedInfo = (teamIdentifier: string) => {
       const tbdTeam = {
           id: 0, name: teamIdentifier || 'TBD', logo: TBD_LOGO, ownerName: '-',
-          region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: '', real_rank: null
+          region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null
       };
 
       if (!teamIdentifier || teamIdentifier === 'TBD') return tbdTeam;
 
       const normId = normalize(teamIdentifier);
-
       let stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normId);
       let master = masterTeams.find((m:any) => 
-          m.name === teamIdentifier || 
-          normalize(m.name) === normId || 
-          normalize(m.teamName) === normId || 
-          m.id === teamIdentifier
+          m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier
       );
-
-      if (!stats && !master) return { ...tbdTeam, name: teamIdentifier };
 
       return {
           id: stats?.id || master?.id || 0,
@@ -128,28 +81,51 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           tier: master?.tier || 'C',
           realRankScore: master?.realRankScore,
           realFormScore: master?.realFormScore,
-          condition: master?.condition,
+          condition: master?.condition || 'C',
           real_rank: master?.real_rank
       };
   };
 
+  // --- UI Helper Functions ---
+  const getRealRankBadge = (rank: number | undefined | null) => {
+    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
+    let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
+    return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
+  };
+
+  const getTierBadge = (tier?: string) => {
+    const t = (tier || 'C').toUpperCase();
+    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
+    return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#0f172a] font-black text-[8px] z-20 shadow-md ${colors}`}>{t}</div>;
+  };
+
+  const getConditionBadge = (condition?: string) => {
+    const icons: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
+    const colors: any = { 'A': 'text-emerald-400', 'B': 'text-teal-400', 'C': 'text-slate-400', 'D': 'text-orange-400', 'E': 'text-red-500' };
+    const c = (condition || 'C').toUpperCase();
+    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
+  };
+
   const renderBroadcastTeamCell = (team: any) => {
       const info = getTeamExtendedInfo(team.name);
+      const isTbd = team.name === 'TBD';
       return (
           <div className="flex items-center gap-4">
               <div className="relative w-10 h-10 flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full p-[2px] bg-white shadow-md flex items-center justify-center overflow-hidden">
-                      <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
+                      <img src={info.logo || team.logo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                   </div>
-                  {getTierBadge(info.tier)}
+                  {!isTbd && getTierBadge(info.tier)}
               </div>
               <div className="flex flex-col min-w-0">
                   <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight">{team.name}</span>
-                  <div className="flex items-center gap-1.5 mt-1">
-                      {getRealRankBadge(info.real_rank)}
-                      {getConditionBadge(info.condition)}
-                      <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
-                  </div>
+                  {!isTbd && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                          {getRealRankBadge(info.real_rank)}
+                          {getConditionBadge(info.condition)}
+                          <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
+                      </div>
+                  )}
               </div>
           </div>
       );
@@ -169,136 +145,68 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return groups;
   }, [currentSeason, sortedTeams]);
 
-  const sortedGroupKeys = useMemo(() => {
-      if (!groupStandings) return [];
-      return Object.keys(groupStandings).sort();
-  }, [groupStandings]);
+  const sortedGroupKeys = useMemo(() => groupStandings ? Object.keys(groupStandings).sort() : [], [groupStandings]);
 
   useEffect(() => {
-      if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) {
-          setSelectedGroupTab(sortedGroupKeys[0]);
-      }
+      if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  // 🔥 [핵심 기능] 데이터 강제 할당 및 승자 계산 (Bucket Fill Logic)
-  const bracketData = useMemo(() => {
-    if (!currentSeason || currentSeason.type !== 'CUP' || !currentSeason.rounds) return null;
-    
-    // 1. 그룹 스테이지가 아닌 모든 매치를 긁어옵니다.
-    const rawMatches = Array.isArray(currentSeason.rounds) 
-        ? currentSeason.rounds.flatMap((r: any) => r.matches || [])
-        : [];
-    
-    // 2. 'GROUP' 단어가 없는 것만 필터링 (토너먼트 매치)
-    const tournamentMatches = rawMatches.filter((m: any) => 
-        m && m.stage && !m.stage.toString().toUpperCase().includes('GROUP')
-    );
-
-    // console.log("🔥 Tournament Matches Found:", tournamentMatches);
-
-    // 3. 슬롯 초기화 (8강:4개, 4강:2개, 결승:1개)
-    const qf = Array(4).fill(null);
-    const sf = Array(2).fill(null);
-    const fn = Array(1).fill(null);
-
-    // 4. 데이터 강제 주입 (이름표 상관없이 순서대로 넣음)
-    // - 컵스케줄에서 1,2,3,4번째로 만든 경기는 무조건 8강
-    // - 5,6번째는 4강, 7번째는 결승이라고 가정
-    tournamentMatches.forEach((m: any, i: number) => {
-        if (i < 4) qf[i] = m;
-        else if (i < 6) sf[i - 4] = m;
-        else if (i < 7) fn[i - 6] = m;
-    });
-
-    // Helper: 빈 슬롯 생성기
-    const createPlaceholder = (h: string, a: string) => ({ home: h, away: a, homeScore: '', awayScore: '', status: 'SCHEDULED' });
-
-    // 5. 8강 -> 4강 승자 진출 계산 (데이터가 없으면 가상으로 만듦)
-    // 4강 1경기: 8강 1경기 승자 vs 8강 2경기 승자
-    const sf1_home = getWinnerName(qf[0]);
-    const sf1_away = getWinnerName(qf[1]);
-    if (!sf[0]) sf[0] = createPlaceholder(sf1_home, sf1_away); // 데이터 없으면 생성
-    else {
-        // 데이터가 있어도 아직 TBD라면 승자로 교체 (Visual Update)
-        if (sf[0].home === 'TBD' && sf1_home !== 'TBD') sf[0].home = sf1_home;
-        if (sf[0].away === 'TBD' && sf1_away !== 'TBD') sf[0].away = sf1_away;
-    }
-
-    // 4강 2경기: 8강 3경기 승자 vs 8강 4경기 승자
-    const sf2_home = getWinnerName(qf[2]);
-    const sf2_away = getWinnerName(qf[3]);
-    if (!sf[1]) sf[1] = createPlaceholder(sf2_home, sf2_away);
-    else {
-        if (sf[1].home === 'TBD' && sf2_home !== 'TBD') sf[1].home = sf2_home;
-        if (sf[1].away === 'TBD' && sf2_away !== 'TBD') sf[1].away = sf2_away;
-    }
-
-    // 6. 4강 -> 결승 승자 진출 계산
-    const fn_home = getWinnerName(sf[0]);
-    const fn_away = getWinnerName(sf[1]);
-    if (!fn[0]) fn[0] = createPlaceholder(fn_home, fn_away);
-    else {
-        if (fn[0].home === 'TBD' && fn_home !== 'TBD') fn[0].home = fn_home;
-        if (fn[0].away === 'TBD' && fn_away !== 'TBD') fn[0].away = fn_away;
-    }
-
-    return { qf, sf, fn };
-  }, [currentSeason, activeRankingData]);
-
+  // 🔥 [수정] 부모가 준 knockoutStages 데이터로 우승자 판별
   const tournamentChampion = useMemo(() => {
-    const final = bracketData?.fn[0];
-    if (!final || getWinnerName(final) === 'TBD') return null;
-    const winnerName = getWinnerName(final);
+    const final = knockoutStages?.final[0];
+    if (!final || final.status !== 'COMPLETED') return null;
+    const h = Number(final.homeScore || 0);
+    const a = Number(final.awayScore || 0);
+    const winnerName = h > a ? final.home : a > h ? final.away : 'TBD';
+    if (winnerName === 'TBD') return null;
     const teamInfo = activeRankingData?.teams?.find((t: any) => t.name === winnerName);
     const ownerName = teamInfo?.ownerName;
-    if (!ownerName) return null;
     return (owners && owners.length > 0) ? owners.find(o => o.nickname === ownerName) : { nickname: ownerName, photo: FALLBACK_IMG };
-  }, [bracketData, activeRankingData, owners]);
+  }, [knockoutStages, activeRankingData, owners]);
 
-  // UI 컴포넌트: 대진표 매치 박스
+  // UI 컴포넌트: 대진표 매치 박스 (읽기 전용)
   const TournamentMatchBox = ({ match, title, highlight = false, isFinal = false }: { match: any, title?: string, highlight?: boolean, isFinal?: boolean }) => {
       const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
-      
       const home = getTeamExtendedInfo(safeMatch.home);
       const away = getTeamExtendedInfo(safeMatch.away);
-      
-      const homeScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : null;
-      const awayScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : null;
-      
-      // 승자 하이라이트 조건
-      const isHomeWin = homeScore !== null && awayScore !== null && homeScore > awayScore;
-      const isAwayWin = homeScore !== null && awayScore !== null && awayScore > homeScore;
+      const hScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : null;
+      const aScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : null;
+      const isHomeWin = hScore !== null && aScore !== null && hScore > aScore;
+      const isAwayWin = hScore !== null && aScore !== null && aScore > hScore;
 
-      const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => (
-          <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
-              <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative w-7 h-7 flex-shrink-0">
-                      <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${team.name === 'TBD' ? 'bg-slate-700' : 'bg-white'}`}>
-                          <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                      </div>
-                      {team.name !== 'TBD' && getTierBadge(team.tier)}
-                  </div>
-                  <div className="flex flex-col justify-center min-w-0">
-                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : team.name === 'TBD' ? 'text-slate-500' : 'text-slate-400'}`}>{team.name}</span>
-                      {team.name !== 'TBD' && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                              {getRealRankBadge(team.real_rank)}
-                              <span className="text-[9px] text-slate-500 font-bold italic truncate">{team.ownerName}</span>
-                          </div>
-                      )}
-                  </div>
-              </div>
-              <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>{score ?? '-'}</div>
-          </div>
-      );
+      const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => {
+          const isTbd = team.name === 'TBD';
+          return (
+            <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-7 h-7 flex-shrink-0">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white shadow-sm'}`}>
+                            <img src={team.logo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" />
+                        </div>
+                        {!isTbd && getTierBadge(team.tier)}
+                    </div>
+                    <div className="flex flex-col justify-center min-w-0">
+                        <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd ? 'text-slate-500' : 'text-slate-400'}`}>{team.name}</span>
+                        {!isTbd && (
+                            <div className="flex items-center gap-1.5 mt-0.5 scale-[0.85] origin-left">
+                                {getRealRankBadge(team.real_rank)}
+                                <span className="text-[9px] text-slate-500 font-bold italic truncate">{team.ownerName}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>{score ?? '-'}</div>
+            </div>
+          );
+      };
 
       return (
           <div className={`flex flex-col w-full ${isFinal ? 'scale-110 origin-top' : ''}`}>
               {title && <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-70">{title}</div>}
               <div className={`flex flex-col w-[210px] bg-[#0f141e] border rounded-xl overflow-hidden shadow-sm relative z-10 transition-all ${highlight || isFinal ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-slate-800/50'}`}>
-                  <Row team={home} score={homeScore} isWinner={isHomeWin} />
+                  <Row team={home} score={hScore} isWinner={isHomeWin} />
                   <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                  <Row team={away} score={awayScore} isWinner={isAwayWin} />
+                  <Row team={away} score={aScore} isWinner={isAwayWin} />
               </div>
           </div>
       );
@@ -345,8 +253,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
         {rankingTab === 'STANDINGS' && (
             <div className="space-y-12">
-                {/* 1. 토너먼트 트리 (강제 렌더링) */}
-                {currentSeason?.type === 'CUP' && bracketData && (
+                {/* 🏆 토너먼트 트리 (중앙 제어 데이터 knockoutStages 사용) */}
+                {currentSeason?.type === 'CUP' && knockoutStages && (
                     <div className="overflow-x-auto pb-4 no-scrollbar">
                         <div className="min-w-[700px] px-4">
                             <div className="flex items-center gap-3 mb-6">
@@ -354,29 +262,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                             </div>
                             <div className="flex items-center gap-10">
-                                {/* 8강 */}
                                 <div className="flex flex-col gap-5">
-                                    {bracketData.qf.map((m: any, idx: number) => 
+                                    {knockoutStages.roundOf8.map((m: any, idx: number) => 
                                         <TournamentMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />
                                     )}
                                 </div>
-                                {/* 4강 */}
                                 <div className="flex flex-col gap-12">
-                                    {bracketData.sf.map((m: any, idx: number) => 
+                                    {knockoutStages.roundOf4.map((m: any, idx: number) => 
                                         <TournamentMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />
                                     )}
                                 </div>
-                                {/* 결승 */}
                                 <div className="relative pt-8">
                                     <div className="absolute -top-0 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
-                                    <TournamentMatchBox title="Final" match={bracketData.fn[0]} isFinal highlight />
+                                    <TournamentMatchBox title="Final" match={knockoutStages.final[0]} isFinal highlight />
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
-
-                {/* 2. 조별리그 순위표 (CUP일 때만) */}
+                
                 {currentSeason?.type === 'CUP' && (
                     <div className="space-y-4">
                         <div className="flex items-center gap-3 px-2">
@@ -408,7 +312,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     </div>
                 )}
 
-                {/* 3. 누적 팀 순위 섹션 */}
                 <div className="space-y-4">
                     <div className="flex items-center gap-3 px-2">
                         <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
@@ -435,7 +338,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* OWNERS, PLAYERS, HIGHLIGHTS 탭 유지 */}
         {rankingTab === 'OWNERS' && (
             <div className="space-y-6">
                 {currentSeason?.type === 'CUP' && tournamentChampion && (
