@@ -3,6 +3,14 @@ import React, { useMemo } from 'react';
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 
+// 🔥 [TS Error Fix] styled-jsx 속성 인식
+declare module 'react' {
+  interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
+    jsx?: boolean;
+    global?: boolean;
+  }
+}
+
 // 🔥 TBD 전용 플레이스홀더 이미지
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
@@ -25,8 +33,17 @@ export const CupSchedule = ({
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
+  // 🔥 [디벨롭] BYE 로직이 포함된 승자 판별
   const getWinnerName = (match: Match | null): string => {
-      if (!match || match.status !== 'COMPLETED') return 'TBD';
+      if (!match) return 'TBD';
+      
+      // 1. 부전승(BYE) 처리: 한쪽이 BYE면 반대쪽이 무조건 승자
+      if (match.home === 'BYE' && match.away !== 'BYE') return match.away;
+      if (match.away === 'BYE' && match.home !== 'BYE') return match.home;
+      if (match.home === 'BYE' && match.away === 'BYE') return 'BYE';
+
+      // 2. 일반 경기 결과 확인
+      if (match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore || 0);
       const a = Number(match.awayScore || 0);
       if (h > a) return match.home;
@@ -40,6 +57,7 @@ export const CupSchedule = ({
           region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null
       };
       if (!teamName || teamName === 'TBD') return tbdTeam;
+      if (teamName === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
 
       const normTarget = normalize(teamName);
       const stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normTarget);
@@ -111,28 +129,32 @@ export const CupSchedule = ({
     };
 
     let hasActualRoundOf8 = false;
-    currentSeason.rounds.forEach((round, rIdx) => {
+    currentSeason.rounds.forEach((round) => {
         if (!round.matches) return;
-        round.matches.forEach((m, mIdx) => {
+        round.matches.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
-            // 🔥 [픽스] 조별리그 경기는 브라켓 연산에서 완전히 제외
             if (stage.includes("GROUP")) return;
+
+            // 🔥 [디벨롭] ID 끝자리 숫자로 슬롯 인덱스 추출 (정확한 위치 고정)
+            const idMatch = m.id.match(/_(\d+)$/);
+            const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                slots.roundOf4[mIdx] = { ...m };
+                if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m };
             } else if (stage.includes("ROUND_OF_8")) {
-                slots.roundOf8[mIdx] = { ...m };
-                hasActualRoundOf8 = true; // 🔥 실제 8강 단계가 존재함을 증명
+                if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m };
+                hasActualRoundOf8 = true;
             }
         });
     });
 
+    // 🔥 [디벨롭] 승자 전파 로직 (BYE 우선순위 적용)
     const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side])) {
+        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const info = getTeamExtendedInfo(winner);
             target[`${side}Logo`] = info.logo;
@@ -148,48 +170,51 @@ export const CupSchedule = ({
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
-    // 🔥 [픽스] 실제 경기가 있는 단계만 반환 (8강 노출 방지)
     return {
         ...slots,
         roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
     };
-  }, [currentSeason, viewSeasonId, activeRankingData]);
+  }, [currentSeason, viewSeasonId, activeRankingData, masterTeams]);
 
   const displayStages = knockoutStages || internalKnockoutStages;
 
   const TournamentTeamRow = ({ teamName, score, isWinner }: { teamName: string, score: number | null, isWinner: boolean }) => {
       const info = getTeamExtendedInfo(teamName);
       const isTbd = teamName === 'TBD';
+      const isBye = teamName === 'BYE';
 
       return (
           <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
               <div className="flex items-center gap-3 min-w-0">
-                  {renderLogoWithTier(info.logo, info.tier, isTbd)}
+                  {renderLogoWithTier(info.logo, info.tier, isTbd || isBye)}
                   <div className="flex flex-col justify-center min-w-0">
-                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd ? 'text-slate-500' : 'text-slate-400'}`}>
+                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
                           {teamName}
                       </span>
-                      {!isTbd && (
+                      {!isTbd && !isBye && (
                           <div className="flex items-center gap-1.5 mt-0.5 scale-[0.9] origin-left">
                               {getRealRankBadge(info.real_rank)}
                               {getConditionBadge(info.condition)}
                               <span className="text-[9px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
                           </div>
                       )}
+                      {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned Slot</span>}
                   </div>
               </div>
               <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
-                  {score ?? '-'}
+                  {isBye ? '0' : (score ?? '-')}
               </div>
           </div>
       );
   };
 
   const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
-      const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
-      const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
-      const isHomeWin = hScore !== null && aScore !== null && hScore > aScore;
-      const isAwayWin = hScore !== null && aScore !== null && aScore > hScore;
+      const hScore = match.homeScore !== '' ? Number(match.homeScore) : (match.home === 'BYE' ? 0 : null);
+      const aScore = match.awayScore !== '' ? Number(match.awayScore) : (match.away === 'BYE' ? 0 : null);
+      
+      const winner = getWinnerName(match);
+      const isHomeWin = winner !== 'TBD' && winner === match.home;
+      const isAwayWin = winner !== 'TBD' && winner === match.away;
 
       return (
           <div className="flex flex-col w-full"> 
@@ -219,7 +244,6 @@ export const CupSchedule = ({
                         <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                     </div>
                     <div className="bracket-tree no-scrollbar">
-                        {/* 🔥 [픽스] 8강 데이터가 있을 때만 해당 열 노출 */}
                         {displayStages.roundOf8 && (
                             <div className="bracket-column">
                                 {displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Match ${i+1}`} match={m} />)}
@@ -242,12 +266,9 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
-                    {/* 🔥 [개선] 조별리그 스케줄 조별 그루핑(A, B, C...) 노출 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
-                        
-                        // 현재 라운드에서 사용된 모든 그룹 이름 추출 및 정렬
                         const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
 
                         return uniqueGroups.map(gName => (
@@ -285,7 +306,13 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => (
                                         <div key={m.id || `${section.id}-${mIdx}`} className="w-full min-w-0">
-                                            <MatchCard match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                            <MatchCard 
+                                                match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
+                                                onClick={onMatchClick} 
+                                                activeRankingData={activeRankingData} 
+                                                historyData={historyData} 
+                                                masterTeams={masterTeams} 
+                                            />
                                         </div>
                                     ))}
                                 </div>
@@ -294,7 +321,6 @@ export const CupSchedule = ({
                     ))}
                 </>
             ) : (
-                /* 기존 리그 모드 로직 */
                 currentSeason?.rounds?.map((r, rIdx) => (
                     <div key={rIdx} className="space-y-8">
                          {Array.from(new Set(r.matches.map(m => m.stage))).map((stageName) => (
@@ -305,7 +331,13 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => (
                                         <div key={m.id} className="w-full min-w-0">
-                                            <MatchCard match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                            <MatchCard 
+                                                match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
+                                                onClick={onMatchClick} 
+                                                activeRankingData={activeRankingData} 
+                                                historyData={historyData} 
+                                                masterTeams={masterTeams} 
+                                            />
                                         </div>
                                     ))}
                                 </div>

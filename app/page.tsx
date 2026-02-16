@@ -44,14 +44,18 @@ export default function FootballLeagueApp() {
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
   // ==================================================================================
-  // 🔥 [중앙 제어] 구조 기반 대진표 연산 (RankingView와 ScheduleView 공유용)
+  // 🔥 [중앙 제어] 마스터 대진표 연산 (RankingView와 ScheduleView가 100% 동일하게 사용)
   // ==================================================================================
   const knockoutStages = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === viewSeasonId);
     if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) return null;
 
+    // 1. 승자 판별 로직 (BYE 처리 포함)
     const getWinnerName = (match: Match | null): string => {
-        if (!match || match.status !== 'COMPLETED') return 'TBD';
+        if (!match) return 'TBD';
+        if (match.home === 'BYE' && match.away !== 'BYE') return match.away;
+        if (match.away === 'BYE' && match.home !== 'BYE') return match.home;
+        if (match.status !== 'COMPLETED') return 'TBD';
         const h = Number(match.homeScore || 0);
         const a = Number(match.awayScore || 0);
         return h > a ? match.home : a > h ? match.away : 'TBD';
@@ -59,6 +63,7 @@ export default function FootballLeagueApp() {
 
     const getTeamMeta = (name: string) => {
         if (!name || name === 'TBD') return { logo: TBD_LOGO, owner: '-' };
+        if (name === 'BYE') return { logo: TBD_LOGO, owner: 'SYSTEM' };
         const normName = name.toLowerCase().trim();
         const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
         const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
@@ -68,43 +73,47 @@ export default function FootballLeagueApp() {
         };
     };
 
-    const createPlaceholder = (vId: string): Match => ({ 
+    const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: TBD_LOGO, awayLogo: TBD_LOGO, homeOwner: '-', awayOwner: '-',
-        homePredictRate: 0, awayPredictRate: 0, stage: 'TOURNAMENT', matchLabel: 'TBD', youtubeUrl: '',
+        homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
         homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
     } as Match);
 
     const slots = {
-        roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`)),
-        roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`)),
-        final: [createPlaceholder('v-final')]
+        roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
+        roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
+        final: [createPlaceholder('v-final', 'FINAL')]
     };
 
-    let hasActualRoundOf8 = false; // 🔥 8강 실제 데이터 유무 체크
+    let hasActualRoundOf8 = false;
 
-    currentSeason.rounds.forEach((round, rIdx) => {
-        if (!round.matches) return;
-        round.matches.forEach((m, mIdx) => {
+    // 2. 실제 데이터를 ID 기반으로 슬롯에 정확히 배치
+    currentSeason.rounds.forEach((round) => {
+        round.matches?.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
-            // 조별리그 경기는 무시
             if (stage.includes("GROUP")) return;
+
+            // 매치 ID 끝자리 숫자 파싱 (예: ko_4_0 -> 0)
+            const idMatch = m.id.match(/_(\d+)$/);
+            const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m };
-            } else if (stage.includes("SEMI") || (rIdx === 1 && mIdx < 2)) {
-                slots.roundOf4[mIdx] = { ...m };
-            } else if (stage.includes("ROUND_OF_8") || (rIdx === 0 && mIdx < 4)) {
-                slots.roundOf8[mIdx] = { ...m };
-                hasActualRoundOf8 = true; // 🔥 실제 8강 데이터가 있으면 true
+            } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+                if (idx < 2) slots.roundOf4[idx] = { ...m };
+            } else if (stage.includes("ROUND_OF_8")) {
+                if (idx < 4) slots.roundOf8[idx] = { ...m };
+                hasActualRoundOf8 = true;
             }
         });
     });
 
-    const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
+    // 3. 승자 데이터 전파 (하위 라운드 빈칸 채우기)
+    const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side])) {
+        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const meta = getTeamMeta(winner);
             target[`${side}Logo`] = meta.logo;
@@ -112,16 +121,16 @@ export default function FootballLeagueApp() {
         }
     };
 
-    syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
-    syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
-    syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
-    syncWinner(slots.roundOf4[1], 'away', slots.roundOf8[3]);
-    syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
-    syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
+    sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+    sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+    sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+    sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+    sync(slots.final[0], 'home', slots.roundOf4[0]);
+    sync(slots.final[0], 'away', slots.roundOf4[1]);
 
     return {
         ...slots,
-        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null // 🔥 8강 데이터 없으면 null 반환
+        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
     };
   }, [seasons, viewSeasonId, activeRankingData, masterTeams]);
 
@@ -146,10 +155,6 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // ... (이하 기존 handleSaveMatchResult 등 로직 유지) ...
-  // ==================================================================================
-  // 🔥 [픽스 완료] 경기 결과 저장 및 가상 매치 실제 DB화 로직
-  // ==================================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -283,7 +288,6 @@ export default function FootballLeagueApp() {
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         {currentView === 'RANKING' && <RankingView seasons={seasons} viewSeasonId={viewSeasonId} setViewSeasonId={setViewSeasonId} activeRankingData={activeRankingData} owners={owners} knockoutStages={knockoutStages} />}
-        {/* 🔥 에러 수정: props 전체를 any로 캐스팅하여 속성 누락 체크 방지 */}
         {currentView === 'SCHEDULE' && (
           <ScheduleView 
             {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData, knockoutStages } as any)} 
