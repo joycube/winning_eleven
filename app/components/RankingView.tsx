@@ -249,7 +249,18 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
             <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700 font-bold italic">
-                {seasons.map(s => <option key={s.id} value={s.id}>{s.type === 'CUP' ? '🏆' : '⚽'} {s.name}</option>)}
+                {/* 🔥 [수정] 시즌 타입에 따른 아이콘 통일 및 중복 아이콘 제거 로직 적용 */}
+                {seasons.map(s => (
+                    <option key={s.id} value={s.id}>
+                        {(() => {
+                            const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
+                            let icon = '🏳️'; // LEAGUE
+                            if (s.type === 'CUP') icon = '🏆';
+                            if (s.type === 'TOURNAMENT') icon = '⚔️';
+                            return `${icon} ${pureName}`;
+                        })()}
+                    </option>
+                ))}
             </select>
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {['STANDINGS', 'OWNERS', 'PLAYERS', 'HIGHLIGHTS'].map(sub => (

@@ -83,7 +83,18 @@ export const AdminView = ({
                 <option value="BANNER">🖼️ Banner Management</option>
                 <option value="REAL">🌏 Real-World Data Patch</option>
                 <optgroup label="Select Season to Manage">
-                    {seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}
+                    {/* 🔥 [수정] 타입별 아이콘 동적 부여 및 기존 아이콘 중복 제거 로직 적용 */}
+                    {seasons.map(s => (
+                        <option key={s.id} value={s.id}>
+                            {(() => {
+                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️)\s*/, '');
+                                let icon = '🏳️'; // LEAGUE
+                                if (s.type === 'CUP') icon = '🏆';
+                                if (s.type === 'TOURNAMENT') icon = '⚔️';
+                                return `${icon} ${pureName}`;
+                            })()}
+                        </option>
+                    ))}
                 </optgroup>
             </select>
 

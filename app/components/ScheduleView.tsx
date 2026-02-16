@@ -86,9 +86,16 @@ export const ScheduleView = ({
                     onChange={(e) => setViewSeasonId(Number(e.target.value))} 
                     className="w-full bg-slate-950 text-white text-sm font-bold p-3 rounded-xl border border-slate-700 focus:border-emerald-500 outline-none cursor-pointer transition-colors hover:border-slate-500"
                 >
+                    {/* 🔥 [수정] 시즌 타입에 따른 아이콘 통일 및 중복 아이콘 제거 로직 적용 */}
                     {seasons.map(s => (
                         <option key={s.id} value={s.id}>
-                            {s.type === 'CUP' ? '🏆' : '🗓️'} {s.name}
+                            {(() => {
+                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
+                                let icon = '🏳️'; // LEAGUE
+                                if (s.type === 'CUP') icon = '🏆';
+                                if (s.type === 'TOURNAMENT') icon = '⚔️';
+                                return `${icon} ${pureName}`;
+                            })()}
                         </option>
                     ))}
                 </select>
