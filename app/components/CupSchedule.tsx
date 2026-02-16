@@ -3,6 +3,9 @@ import React, { useMemo } from 'react';
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 
+// 🔥 TBD 전용 플레이스홀더 이미지
+const TBD_LOGO = "https://cdn-icons-png.flaticon.com/512/3616/3616230.png";
+
 interface CupScheduleProps {
   seasons: Season[];
   viewSeasonId: number;
@@ -24,7 +27,6 @@ export const CupSchedule = ({
   // ─────────────────────────────────────────────────────────────
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🔥 승자 이름 추출 헬퍼 (status와 score 기반)
   const getWinnerName = (match: Match | null): string => {
       if (!match || match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore);
@@ -36,7 +38,7 @@ export const CupSchedule = ({
 
   const getTeamExtendedInfo = (teamName: string) => {
       const tbdTeam = {
-          id: 0, name: teamName || 'TBD', logo: FALLBACK_IMG, ownerName: '-',
+          id: 0, name: teamName || 'TBD', logo: TBD_LOGO, ownerName: '-',
           region: '', tier: '', realRankScore: 0, realFormScore: 0, condition: '', real_rank: null
       };
       if (!teamName || teamName === 'TBD') return tbdTeam;
@@ -49,7 +51,8 @@ export const CupSchedule = ({
       return {
           id: stats?.id || master?.id || 0,
           name: teamName,
-          logo: stats?.logo || master?.logo || FALLBACK_IMG,
+          // 🔥 데이터가 없을 경우 TBD_LOGO로 대체
+          logo: stats?.logo || master?.logo || TBD_LOGO,
           ownerName: stats?.ownerName || master?.ownerName || 'CPU',
           region: master?.region || '',
           tier: master?.tier || '',
@@ -88,18 +91,18 @@ export const CupSchedule = ({
     return (
         <div className="relative w-7 h-7 flex-shrink-0">
             <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                <img src={logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                {/* 🔥 로고 에러 시 TBD_LOGO로 한 번 더 방어 */}
+                <img src={logo || TBD_LOGO} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=TBD_LOGO}}/>
             </div>
             {formIcon}
         </div>
     );
   };
 
-  // 🔥 [핵심 업데이트] 승자 진출 및 슬롯 강제 매핑 로직
+  // 🔥 [핵심 업데이트] 참조 분리(Clone) 및 자동 승자 주입
   const knockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
     
-    // 그룹 스테이지 제외
     const allMatches: Match[] = currentSeason.rounds.flatMap((r: any) => r.matches || [])
             .filter((m: any) => m && m.stage && !m.stage.toUpperCase().includes('GROUP'));
 
@@ -109,38 +112,44 @@ export const CupSchedule = ({
         final: Array(1).fill(null)
     };
 
-    // 1차: DB 데이터 배치 (참조 오염 방지를 위해 클론 생성)
+    // 1차: DB 데이터 배치 (🔥 중요: 딥 클론을 사용하여 객체 간 중복 참조 및 유령 데이터 전이 방지)
     allMatches.forEach((m: any) => {
         const label = m.matchLabel || '';
         const stage = m.stage || '';
         const matchNumMatch = label.match(/(\d+)경기/) || label.match(/Match (\d+)/);
         const matchNum = matchNumMatch ? parseInt(matchNumMatch[1]) : 0; 
 
-        const mClone = { ...m };
+        const matchClone = JSON.parse(JSON.stringify(m));
 
         if (stage === 'ROUND_OF_8' || label.includes('8강') || label.includes('토너먼트')) {
-            if (matchNum >= 1 && matchNum <= 4) slots.roundOf8[matchNum - 1] = mClone;
+            if (matchNum >= 1 && matchNum <= 4) slots.roundOf8[matchNum - 1] = matchClone;
         } else if (stage === 'ROUND_OF_4' || label.includes('4강') || label.toUpperCase().includes('SEMI')) {
-            if (matchNum >= 1 && matchNum <= 2) slots.roundOf4[matchNum - 1] = mClone;
+            if (matchNum >= 1 && matchNum <= 2) slots.roundOf4[matchNum - 1] = matchClone;
         } else if (stage === 'FINAL' || label.includes('결승')) {
-            slots.final[0] = mClone;
+            slots.final[0] = matchClone;
         }
     });
 
-    // 2차 🔥 [승자 진출 로직] TBD 자리를 실시간 스코어 기반 승자로 덮어쓰기
-    // 8강 승자 -> 4강 진입
+    // 2차 🔥 [승자 진출 로직] 상위 라운드 승자를 하위 라운드 TBD 자리에 주입
+    // 8강 -> 4강
     if (slots.roundOf4[0]) {
-        if (slots.roundOf4[0].home === 'TBD') slots.roundOf4[0].home = getWinnerName(slots.roundOf8[0]);
-        if (slots.roundOf4[0].away === 'TBD') slots.roundOf4[0].away = getWinnerName(slots.roundOf8[1]);
+        const winner1 = getWinnerName(slots.roundOf8[0]);
+        const winner2 = getWinnerName(slots.roundOf8[1]);
+        if (winner1 !== 'TBD') slots.roundOf4[0].home = winner1;
+        if (winner2 !== 'TBD') slots.roundOf4[0].away = winner2;
     }
     if (slots.roundOf4[1]) {
-        if (slots.roundOf4[1].home === 'TBD') slots.roundOf4[1].home = getWinnerName(slots.roundOf8[2]);
-        if (slots.roundOf4[1].away === 'TBD') slots.roundOf4[1].away = getWinnerName(slots.roundOf8[3]);
+        const winner3 = getWinnerName(slots.roundOf8[2]);
+        const winner4 = getWinnerName(slots.roundOf8[3]);
+        if (winner3 !== 'TBD') slots.roundOf4[1].home = winner3;
+        if (winner4 !== 'TBD') slots.roundOf4[1].away = winner4;
     }
-    // 4강 승자 -> 결승 진입
+    // 4강 -> 결승
     if (slots.final[0]) {
-        if (slots.final[0].home === 'TBD') slots.final[0].home = getWinnerName(slots.roundOf4[0]);
-        if (slots.final[0].away === 'TBD') slots.final[0].away = getWinnerName(slots.roundOf4[1]);
+        const semiWinner1 = getWinnerName(slots.roundOf4[0]);
+        const semiWinner2 = getWinnerName(slots.roundOf4[1]);
+        if (semiWinner1 !== 'TBD') slots.final[0].home = semiWinner1;
+        if (semiWinner2 !== 'TBD') slots.final[0].away = semiWinner2;
     }
 
     return slots;
@@ -180,7 +189,7 @@ export const CupSchedule = ({
               {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1 pl-1 tracking-widest opacity-60">{title}</div>}
               <div className={`flex flex-col w-[210px] bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
                   <TournamentTeamRow team={home} score={homeScore} isWinner={isHomeWin} />
-                  <div className="h-[1px] bg-slate-800/40 w-full"></div>
+                  <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
                   <TournamentTeamRow team={away} score={awayScore} isWinner={isAwayWin} />
               </div>
           </div>
@@ -195,7 +204,6 @@ export const CupSchedule = ({
             .no-scrollbar::-webkit-scrollbar { display: none; }
         `}</style>
 
-        {/* 🏆 토너먼트 대진표 섹션 */}
         {knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-[760px] px-2">
@@ -240,7 +248,6 @@ export const CupSchedule = ({
                                     <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
                                         <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{displayTitle}</h3>
                                     </div>
-                                    {/* 🔥 [Fix] 레이아웃 최적화: 3개 이상일 때 찌그러짐 방지 그리드 */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                         {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                             let detailLabel = m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기`;
