@@ -19,7 +19,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   
-  // 조별리그 탭 상태 (기본값 A)
+  // 조별리그 탭 상태
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
 
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
@@ -183,13 +183,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   // 🔥 [NEW] 조별리그 키 정렬 (A, B, C, D...)
   const sortedGroupKeys = useMemo(() => {
       if (!groupStandings) return [];
-      return Object.keys(groupStandings).sort(); // 알파벳 순 정렬
+      return Object.keys(groupStandings).sort();
   }, [groupStandings]);
 
-  // 🔥 [Fix] 그룹 탭 자동 초기화 로직 수정 (강제 리셋 방지)
+  // 🔥 [Fix] 그룹 탭 자동 초기화 로직
   useEffect(() => {
       if (sortedGroupKeys.length > 0) {
-          // 현재 선택된 탭이 유효하지 않은 경우에만 첫 번째 그룹으로 설정
           if (!sortedGroupKeys.includes(selectedGroupTab)) {
               setSelectedGroupTab(sortedGroupKeys[0]);
           }
@@ -200,6 +199,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (currentSeason?.type !== 'CUP') return null;
     const allMatches = currentSeason.rounds?.find((r: any) => r.round === 2)?.matches || [];
     
+    // TBD도 포함, 데이터가 아예 없으면 제외
     const isValidMatch = (m: any) => m.home !== undefined && m.away !== undefined;
 
     return {
@@ -210,7 +210,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   }, [currentSeason]);
 
   const TournamentTeamRow = ({ team, score, isWinner }: { team: any, score: number | null, isWinner: boolean }) => (
-      <div className={`flex items-center justify-between px-3 py-2.5 h-[44px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
+      <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
           <div className="flex items-center gap-3 min-w-0">
               <div className="relative w-7 h-7 flex-shrink-0">
                   <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${team.name === 'TBD' ? 'bg-slate-700' : 'bg-white'}`}>
@@ -268,7 +268,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             .bracket-tree { display: flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 20px 0 20px 4px; }
             .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
             
-            /* 가로 스크롤바 숨김 */
             .no-scrollbar::-webkit-scrollbar { display: none; }
             .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         `}</style>
@@ -298,7 +297,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                     </div>
 
                                     <div className="bracket-tree">
-                                        {/* --- 8강 Column --- */}
                                         {knockoutStages?.roundOf8.length! > 0 && (
                                             <div className="bracket-column">
                                                 {knockoutStages!.roundOf8.map((match: any, idx: number) => (
@@ -306,8 +304,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                 ))}
                                             </div>
                                         )}
-
-                                        {/* --- 4강 Column --- */}
                                         {knockoutStages?.roundOf4.length! > 0 && (
                                             <div className="bracket-column">
                                                 {knockoutStages!.roundOf4.map((match: any, idx: number) => (
@@ -315,8 +311,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                 ))}
                                             </div>
                                         )}
-
-                                        {/* --- 결승 Column --- */}
                                         {knockoutStages?.final.length! > 0 && (
                                             <div className="bracket-column">
                                                 <div className="relative scale-110 mt-8">
@@ -330,15 +324,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                             </div>
                         )}
 
-                        {/* 2. 조별리그 순위표 (탭 UI 적용) */}
+                        {/* 2. 조별리그 순위표 */}
                         <div className="space-y-4">
                             <div className="flex flex-col gap-3 px-2">
                                 <div className="flex items-center gap-3">
                                     <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div>
                                     <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Group Standings</h3>
                                 </div>
-                                
-                                {/* 🔥 [NEW] 정렬된 탭 버튼들 */}
                                 <div className="flex w-full gap-2 overflow-x-auto no-scrollbar pb-1">
                                     {sortedGroupKeys.map((gName, idx, arr) => (
                                         <button 
@@ -356,7 +348,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 </div>
                             </div>
 
-                            {/* 🔥 선택된 탭의 그룹만 노출 */}
                             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                                 <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex justify-between items-center">
                                     <h4 className="text-xs font-black italic text-emerald-400 uppercase tracking-widest">Group {selectedGroupTab}</h4>
@@ -463,7 +454,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         </div>
                     </>
                 ) : (
-                    /* 일반 모드 (기존 유지) */
+                    /* 일반 모드 */
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                         <table className="w-full text-left text-xs uppercase border-collapse">
                             <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
@@ -513,10 +504,130 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* OWNERS, PLAYERS, HIGHLIGHTS 탭 (기존 유지) */}
-        {rankingTab === 'OWNERS' && <div className="text-center py-10 text-slate-500">Owners Content Here</div>}
-        {rankingTab === 'PLAYERS' && <div className="text-center py-10 text-slate-500">Players Content Here</div>}
-        {rankingTab === 'HIGHLIGHTS' && <div className="text-center py-10 text-slate-500">Highlights Content Here</div>}
+        {/* OWNERS TAB: 복구 완료 */}
+        {rankingTab === 'OWNERS' && (
+            <div className="space-y-4">
+                {activeRankingData.owners.length > 0 && (() => {
+                    const firstOwner = activeRankingData.owners[0];
+                    const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === firstOwner.name) : null;
+                    const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+                    const displayPrize = getOwnerPrize(firstOwner.name);
+                    return (
+                        <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
+                            <div className="absolute inset-0 rank-1-shimmer z-0"></div>
+                            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
+                                <div className="relative pt-3"> 
+                                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
+                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-yellow-300 via-yellow-500 to-yellow-200 shadow-2xl relative z-10">
+                                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900">
+                                            <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover"/>
+                                        </div>
+                                    </div>
+                                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
+                                        <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-xs font-black px-4 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">1st WINNER</span>
+                                    </div>
+                                </div>
+                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                                    <h3 className="text-xs md:text-sm text-yellow-500 font-bold tracking-[0.2em] mb-0.5 uppercase">The Champion</h3>
+                                    <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
+                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[80px]">
+                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span>
+                                            <span className="text-xl font-black text-emerald-400">{firstOwner.points}</span>
+                                        </div>
+                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[100px]">
+                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span>
+                                            <span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}<span className="text-sm">W</span> <span className="text-slate-500">{firstOwner.draw}<span className="text-xs">D</span></span> <span className="text-red-400">{firstOwner.loss}<span className="text-xs">L</span></span></span>
+                                        </div>
+                                        <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40">
+                                            <span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span>
+                                            <span className="text-xl font-black text-yellow-400">₩ {displayPrize.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                    <table className="w-full text-left text-xs uppercase border-collapse">
+                        <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                            <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr>
+                        </thead>
+                        <tbody>
+                            {activeRankingData.owners.slice(1).map((o: any, i: number) => { 
+                                const actualRank = i + 2; 
+                                const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === o.name) : null;
+                                return (
+                                    <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
+                                        <td className={`p-4 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
+                                        <td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-500' : 'border-slate-700'}`}><img src={matchedOwner?.photo || FALLBACK_IMG} alt={o.name} className="w-full h-full object-cover" onError={(e:any) => e.target.src = FALLBACK_IMG} /></div><span className="font-bold text-sm whitespace-nowrap">{o.name}</span></div></td>
+                                        <td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td>
+                                        <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
+                                        <td className={`p-4 text-right font-bold ${getOwnerPrize(o.name) > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>₩ {getOwnerPrize(o.name).toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+
+        {/* PLAYERS TAB: 복구 완료 */}
+        {rankingTab === 'PLAYERS' && (
+             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                <div className="flex bg-slate-950 border-b border-slate-800">
+                    <button onClick={()=>setRankPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
+                    <button onClick={()=>setRankPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
+                </div>
+                <table className="w-full text-left text-xs uppercase">
+                    <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{rankPlayerMode}</th></tr></thead>
+                    <tbody>
+                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
+                            <tr key={i} className="border-b border-slate-800/50">
+                                <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
+                                <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
+                                <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )}
+
+        {/* HIGHLIGHTS TAB: 복구 완료 */}
+        {rankingTab === 'HIGHLIGHTS' && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {activeRankingData.highlights.map((m:any, idx:number) => {
+                    const isDraw = m.homeScore === m.awayScore;
+                    return (
+                        <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
+                            <div className="relative aspect-video">
+                                <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                                <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
+                            </div>
+                            <div className="p-3 flex items-center gap-3">
+                                {isDraw ? (
+                                    <div className="relative w-8 h-8 flex-shrink-0">
+                                        <img src={m.homeLogo} className="w-6 h-6 absolute top-0 left-0 rounded-full bg-white object-contain p-0.5 z-10 shadow-sm border border-slate-300" alt="" />
+                                        <img src={m.awayLogo} className="w-6 h-6 absolute bottom-0 right-0 rounded-full bg-white object-contain p-0.5 opacity-80" alt="" />
+                                    </div>
+                                ) : (
+                                    <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
+                                    <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+                {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
+            </div>
+        )}
     </div>
   );
 };
