@@ -728,17 +728,18 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
           </div>
         ) : (
           !filterLeague && !searchTeam ? (
-            <div className="space-y-8 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
+            <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar p-1">
               {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (
                 <div>
-                  <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 bg-emerald-500 rounded-full"></div><h4 className="text-emerald-500 font-black italic text-xs uppercase tracking-widest">Club Leagues</h4></div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="flex items-center gap-2 mb-2"><div className="w-1 h-3 bg-emerald-500 rounded-full"></div><h4 className="text-emerald-500 font-black italic text-[10px] uppercase tracking-widest">Club Leagues</h4></div>
+                  {/* 🔥 [픽스] 리그 리스트 그리드 최적화 (열 개수 증가, 간격 축소) */}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                     {clubLeagues.map(l => {
                       const count = masterTeams.filter(t => t.region === l.name).length;
                       return (
-                        <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-3 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
-                          <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center p-2.5 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
-                          <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div>
+                        <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-2 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-1.5 group transition-all hover:bg-slate-900 shadow-lg aspect-square justify-center relative overflow-hidden">
+                          <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center p-2 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
+                          <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase leading-tight">{l.name}</p><p className="text-[8px] text-slate-500 font-bold">{count} Teams</p></div>
                         </div>
                       );
                     })}
@@ -746,15 +747,16 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                 </div>
               )}
               {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 bg-blue-500 rounded-full"></div><h4 className="text-blue-500 font-black italic text-xs uppercase tracking-widest">National Teams</h4></div>
-                  <div className="grid grid-cols-3 gap-3">
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 mb-2"><div className="w-1 h-3 bg-blue-500 rounded-full"></div><h4 className="text-blue-500 font-black italic text-[10px] uppercase tracking-widest">National Teams</h4></div>
+                  {/* 🔥 [픽스] 국가대표 리스트 그리드 최적화 (열 개수 증가, 간격 축소) */}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                     {nationalLeagues.map(l => {
                       const count = masterTeams.filter(t => t.region === l.name).length;
                       return (
-                        <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-3 group transition-all hover:bg-slate-900 shadow-lg aspect-[4/5] justify-center relative overflow-hidden">
-                          <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center p-2.5 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
-                          <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div>
+                        <div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-2 rounded-xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-1.5 group transition-all hover:bg-slate-900 shadow-lg aspect-square justify-center relative overflow-hidden">
+                          <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center p-2 shadow-inner shrink-0 z-10"><img src={l.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /></div>
+                          <div className="text-center w-full z-10"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase leading-tight">{l.name}</p><p className="text-[8px] text-slate-500 font-bold">{count} Teams</p></div>
                         </div>
                       );
                     })}
@@ -763,7 +765,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               )}
             </div>
           ) : (
-            // 🔥 [수정 1] 카드 Grid 너비 조정: grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5
             <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
               {availableTeams.length > 0 ? availableTeams.slice(0, 30).map(t => (
                 <TeamCard
