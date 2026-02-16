@@ -22,7 +22,7 @@ import { MatchEditModal } from './components/MatchEditModal';
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 
-// 🔥 [핵심 추가] 승률 박제 도우미 함수 import
+// 🔥 승률 박제 도우미 함수 import
 import { calculateMatchSnapshot } from './utils/predictor';
 
 // TBD 로고 정의
@@ -50,15 +50,24 @@ export default function FootballLeagueApp() {
     const currentSeason = seasons.find(s => s.id === viewSeasonId);
     if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) return null;
 
-    // 1. 승자 판별 로직 (BYE 처리 포함)
+    // 1. 승자 판별 로직 (BYE 처리 강화)
     const getWinnerName = (match: Match | null): string => {
         if (!match) return 'TBD';
-        if (match.home === 'BYE' && match.away !== 'BYE') return match.away;
-        if (match.away === 'BYE' && match.home !== 'BYE') return match.home;
+        const home = match.home?.trim();
+        const away = match.away?.trim();
+
+        // 부전승 처리: 한쪽이 BYE면 반대쪽이 무조건 승자 (TBD 제외)
+        if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+        if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+        
+        // 경기 미완료이거나 양쪽 다 BYE/TBD면 승자 없음
         if (match.status !== 'COMPLETED') return 'TBD';
+        
         const h = Number(match.homeScore || 0);
         const a = Number(match.awayScore || 0);
-        return h > a ? match.home : a > h ? match.away : 'TBD';
+        if (h > a) return match.home;
+        if (a > h) return match.away;
+        return 'TBD';
     };
 
     const getTeamMeta = (name: string) => {
@@ -88,7 +97,7 @@ export default function FootballLeagueApp() {
 
     let hasActualRoundOf8 = false;
 
-    // 2. 실제 데이터를 ID 기반으로 슬롯에 정확히 배치
+    // 2. 실제 데이터를 ID 기반으로 슬롯에 정확히 배치 (인덱스 꼬임 방지)
     currentSeason.rounds.forEach((round) => {
         round.matches?.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
@@ -109,15 +118,19 @@ export default function FootballLeagueApp() {
         });
     });
 
-    // 3. 승자 데이터 전파 (하위 라운드 빈칸 채우기)
+    // 3. 승자 데이터 전파 (이전 라운드 점수 이월 방지 및 BYE 필터링)
     const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+        
+        // 승자가 실제 팀이고, 다음 라운드 슬롯이 비어있거나 BYE/TBD일 때만 전파
+        if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const meta = getTeamMeta(winner);
             target[`${side}Logo`] = meta.logo;
             target[`${side}Owner`] = meta.owner;
+            // 🔥 [중요] 미래 매치의 점수는 항상 초기화 (빈 상태)
+            target[`${side}Score`] = '';
         }
     };
 
@@ -155,6 +168,9 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // ==================================================================================
+  // 🔥 [픽스 완료] 경기 결과 저장 및 승자 전파 시 데이터 오염(점수 이월) 방지
+  // ==================================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -234,14 +250,27 @@ export default function FootballLeagueApp() {
           else if (!isGroupStage) return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
           const mAny = editingMatch as any;
+          // 🔥 [중요] 다음 매치 업데이트 시, 점수 필드를 명시적으로 비우고 상태를 'UPCOMING'으로 변경하여 데이터 오염 차단
           if (winningTeam && !isGroupStage && mAny.nextMatchId) {
-              const tournamentRound = newRounds[currentRoundIndex];
-              const targetMatch = tournamentRound.matches.find(m => m.id === mAny.nextMatchId);
-              if (targetMatch) {
-                  if (mAny.nextMatchSide === 'HOME') { targetMatch.home = winningTeam.name; targetMatch.homeLogo = winningTeam.logo; targetMatch.homeOwner = winningTeam.owner; }
-                  else { targetMatch.away = winningTeam.name; targetMatch.awayLogo = winningTeam.logo; targetMatch.awayOwner = winningTeam.owner; }
-                  if (targetMatch.home !== 'TBD' && targetMatch.away !== 'TBD') targetMatch.matchLabel = targetMatch.matchLabel.replace(' (TBD)', '');
-              }
+              newRounds = newRounds.map(round => ({
+                  ...round,
+                  matches: round.matches.map(m => {
+                      if (m.id === mAny.nextMatchId) {
+                          const update = mAny.nextMatchSide === 'HOME' 
+                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner }
+                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner };
+                          
+                          return { 
+                              ...m, 
+                              ...update,
+                              homeScore: '', // 🔥 다음 경기의 점수 초기화
+                              awayScore: '', // 🔥 다음 경기의 점수 초기화
+                              status: 'UPCOMING' // 🔥 상태 초기화
+                          };
+                      }
+                      return m;
+                  })
+              }));
           }
       }
 
@@ -287,7 +316,16 @@ export default function FootballLeagueApp() {
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
-        {currentView === 'RANKING' && <RankingView seasons={seasons} viewSeasonId={viewSeasonId} setViewSeasonId={setViewSeasonId} activeRankingData={activeRankingData} owners={owners} knockoutStages={knockoutStages} />}
+        {currentView === 'RANKING' && (
+            <RankingView 
+                seasons={seasons} 
+                viewSeasonId={viewSeasonId} 
+                setViewSeasonId={setViewSeasonId} 
+                activeRankingData={activeRankingData} 
+                owners={owners} 
+                knockoutStages={knockoutStages} 
+            />
+        )}
         {currentView === 'SCHEDULE' && (
           <ScheduleView 
             {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData, knockoutStages } as any)} 

@@ -33,21 +33,26 @@ export const CupSchedule = ({
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🔥 [디벨롭] BYE 로직이 포함된 승자 판별
+  // 🔥 [디벨롭] BYE 로직이 포함된 승자 판별 (실제 팀 우선 순위)
   const getWinnerName = (match: Match | null): string => {
       if (!match) return 'TBD';
       
-      // 1. 부전승(BYE) 처리: 한쪽이 BYE면 반대쪽이 무조건 승자
-      if (match.home === 'BYE' && match.away !== 'BYE') return match.away;
-      if (match.away === 'BYE' && match.home !== 'BYE') return match.home;
-      if (match.home === 'BYE' && match.away === 'BYE') return 'BYE';
+      const home = match.home?.trim();
+      const away = match.away?.trim();
 
-      // 2. 일반 경기 결과 확인
+      // 1. 부전승 처리: 한쪽만 BYE인 경우 실제 팀이 무조건 승자
+      if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+      if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+      
+      // 2. 양쪽이 BYE이거나 TBD면 다음 라운드로 전파하지 않음 (TBD 반환)
+      if (home === 'BYE' || away === 'BYE' || home === 'TBD' || away === 'TBD') return 'TBD';
+
+      // 3. 일반 경기 결과 확인 (완료된 경기만)
       if (match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore || 0);
       const a = Number(match.awayScore || 0);
-      if (h > a) return match.home;
-      if (a > h) return match.away;
+      if (h > a) return home;
+      if (a > h) return away;
       return 'TBD';
   };
 
@@ -135,13 +140,14 @@ export const CupSchedule = ({
             const stage = m.stage?.toUpperCase() || "";
             if (stage.includes("GROUP")) return;
 
-            // 🔥 [디벨롭] ID 끝자리 숫자로 슬롯 인덱스 추출 (정확한 위치 고정)
+            // ID 끝자리 숫자로 슬롯 인덱스 추출 (안전한 정수 파싱)
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+                // 슬롯 범위 내에 있을 때만 데이터 삽입
                 if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m };
             } else if (stage.includes("ROUND_OF_8")) {
                 if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m };
@@ -150,11 +156,12 @@ export const CupSchedule = ({
         });
     });
 
-    // 🔥 [디벨롭] 승자 전파 로직 (BYE 우선순위 적용)
+    // 🔥 [승자 동기화] BYE가 아닌 실제 팀 승리 시에만 전달
     const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        if (winner !== 'TBD' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+        // 승자가 TBD나 BYE가 아닌 실제 팀일 때만 다음 라운드에 반영
+        if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const info = getTeamExtendedInfo(winner);
             target[`${side}Logo`] = info.logo;
@@ -163,6 +170,7 @@ export const CupSchedule = ({
         }
     };
 
+    // 8강 -> 4강 -> 결승 전파
     syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
     syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
     syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
@@ -184,7 +192,7 @@ export const CupSchedule = ({
       const isBye = teamName === 'BYE';
 
       return (
-          <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
+          <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
               <div className="flex items-center gap-3 min-w-0">
                   {renderLogoWithTier(info.logo, info.tier, isTbd || isBye)}
                   <div className="flex flex-col justify-center min-w-0">
