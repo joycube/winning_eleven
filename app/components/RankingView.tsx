@@ -4,6 +4,8 @@ import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase'; 
 import { FALLBACK_IMG, Owner, MasterTeam } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers'; 
+import { MatchCard } from './MatchCard';
+import { TeamCard } from './TeamCard';
 
 interface RankingViewProps {
   seasons: any[];
@@ -16,7 +18,10 @@ interface RankingViewProps {
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [] }: RankingViewProps) => {
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
+  
+  // 조별리그 탭 상태
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
+
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
   useEffect(() => {
@@ -24,11 +29,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       try {
         const q = query(collection(db, 'master_teams'));
         const querySnapshot = await getDocs(q);
-        const teams = querySnapshot.docs.map(doc => ({
-            id: doc.id, 
-            ...doc.data(),
-            teamName: doc.data().team || doc.data().name || doc.id 
-        }));
+        const teams = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id, 
+                ...data,
+                teamName: data.team || data.name || doc.id 
+            };
+        });
         setMasterTeams(teams); 
       } catch (error) {
         console.error("Error fetching master teams:", error);
@@ -46,19 +54,44 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return (b.gf || 0) - (a.gf || 0);                      
   });
 
+  const firstPrizeOwnerName = sortedTeams[0]?.ownerName;  
+  const secondPrizeOwnerName = sortedTeams[1]?.ownerName; 
+  const thirdPrizeOwnerName = sortedTeams[2]?.ownerName; 
+
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
-    if (ownerName === sortedTeams[0]?.ownerName) totalPrize += (prizeRule.first || 0);
-    if (ownerName === sortedTeams[1]?.ownerName) totalPrize += (prizeRule.second || 0);
-    if (ownerName === sortedTeams[2]?.ownerName) totalPrize += (prizeRule.third || 0);
+    if (ownerName === firstPrizeOwnerName) totalPrize += (prizeRule.first || 0);
+    if (ownerName === secondPrizeOwnerName) totalPrize += (prizeRule.second || 0);
+    if (ownerName === thirdPrizeOwnerName) totalPrize += (prizeRule.third || 0);
     return totalPrize;
   };
 
-  // 🔥 [리얼순위] 메탈릭 배지 스타일 정의
+  const getPlayerRanking = (players: any[]) => {
+    const sortedPlayers = players
+        .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
+        .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
+
+    let currentRank = 1;
+    let skip = 0; 
+
+    return sortedPlayers.map((player, index, array) => {
+        if (index > 0) {
+            const prevPlayer = array[index - 1];
+            const prevScore = rankPlayerMode === 'GOAL' ? prevPlayer.goals : prevPlayer.assists;
+            const currScore = rankPlayerMode === 'GOAL' ? player.goals : player.assists;
+            if (prevScore === currScore) skip++;
+            else { currentRank += 1 + skip; skip = 0; }
+        }
+        return { ...player, rank: currentRank };
+    });
+  };
+
+  const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
+
   const getRealRankBadge = (rank: number | undefined | null) => {
     if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
     let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
-    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600 shadow-[0_0_8px_rgba(234,179,8,0.3)]";
+    if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
     else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
     else if (rank === 3) bgClass = "bg-orange-400 text-black border-orange-500";
     return (
@@ -68,7 +101,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
-  // 🔥 [팀 등급] 엠블럼 우측 하단 오버레이 정의
   const getTierBadge = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
     let colors = 'bg-slate-800 text-slate-400 border-slate-700';
@@ -82,7 +114,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
-  // 🔥 [폼 화살표] 한 줄 배지 스타일 정의
   const getConditionBadge = (condition?: string) => {
     if (!condition) return null;
     const config: any = {
@@ -114,32 +145,22 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       };
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // 🔥 [디벨롭] Broadcast 스타일 팀 정보 셀
-  // ─────────────────────────────────────────────────────────────
   const renderBroadcastTeamCell = (team: any) => {
       const info = getTeamExtendedInfo(team.name);
       return (
           <div className="flex items-center gap-4">
-              {/* 1. 엠블럼 + 등급 오버레이 */}
               <div className="relative w-10 h-10 flex-shrink-0">
                   <div className="w-10 h-10 rounded-full p-[2px] bg-white shadow-md flex items-center justify-center overflow-hidden">
                       <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                   </div>
                   {getTierBadge(info.tier)}
               </div>
-
-              {/* 2. 팀 정보 텍스트 영역 */}
               <div className="flex flex-col min-w-0">
-                  <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight">
-                      {team.name}
-                  </span>
+                  <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight">{team.name}</span>
                   <div className="flex items-center gap-1.5 mt-1">
                       {getRealRankBadge(info.real_rank)}
                       {getConditionBadge(info.condition)}
-                      <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">
-                          {info.ownerName}
-                      </span>
+                      <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
                   </div>
               </div>
           </div>
@@ -193,24 +214,61 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return slots;
   }, [currentSeason]);
 
-  const getPlayerRanking = (players: any[]) => {
-    const sortedPlayers = players
-        .filter((p:any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-        .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
-    let currentRank = 1;
-    let skip = 0; 
-    return sortedPlayers.map((player, index, array) => {
-        if (index > 0) {
-            const prevScore = rankPlayerMode === 'GOAL' ? array[index - 1].goals : array[index - 1].assists;
-            const currScore = rankPlayerMode === 'GOAL' ? player.goals : player.assists;
-            if (prevScore === currScore) skip++;
-            else { currentRank += 1 + skip; skip = 0; }
-        }
-        return { ...player, rank: currentRank };
-    });
-  };
+  const tournamentChampion = useMemo(() => {
+    const final = knockoutStages?.final?.[0];
+    if (!final || final.status !== 'COMPLETED') return null;
+    const h = Number(final.homeScore);
+    const a = Number(final.awayScore);
+    const winnerTeamName = h > a ? final.home : final.away;
+    const teamInfo = activeRankingData?.teams?.find((t: any) => t.name === winnerTeamName);
+    const ownerName = teamInfo?.ownerName;
+    if (!ownerName) return null;
+    return (owners && owners.length > 0) ? owners.find(o => o.nickname === ownerName) : { nickname: ownerName, photo: FALLBACK_IMG };
+  }, [knockoutStages, activeRankingData, owners]);
 
-  const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
+  const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
+      const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
+      const home = getTeamExtendedInfo(safeMatch.home);
+      const away = getTeamExtendedInfo(safeMatch.away);
+      const homeScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : null;
+      const awayScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : null;
+      const isHomeWin = homeScore !== null && awayScore !== null && homeScore > awayScore;
+      const isAwayWin = homeScore !== null && awayScore !== null && awayScore > homeScore;
+
+      const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => (
+          <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative w-7 h-7 flex-shrink-0">
+                      <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${team.name === 'TBD' ? 'bg-slate-700' : 'bg-white'}`}>
+                          <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                      </div>
+                      {team.name !== 'TBD' && getTierBadge(team.tier)}
+                  </div>
+                  <div className="flex flex-col justify-center min-w-0">
+                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : team.name === 'TBD' ? 'text-slate-500' : 'text-slate-400'}`}>{team.name}</span>
+                      {team.name !== 'TBD' && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                              {getRealRankBadge(team.real_rank)}
+                              <span className="text-[9px] text-slate-500 font-bold italic truncate">{team.ownerName}</span>
+                          </div>
+                      )}
+                  </div>
+              </div>
+              <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>{score ?? '-'}</div>
+          </div>
+      );
+
+      return (
+          <div className="flex flex-col w-full">
+              {title && <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-70">{title}</div>}
+              <div className={`flex flex-col w-[210px] bg-[#0f141e] border rounded-xl overflow-hidden shadow-sm relative z-10 transition-all ${highlight ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-slate-800/50'}`}>
+                  <Row team={home} score={homeScore} isWinner={isHomeWin} />
+                  <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                  <Row team={away} score={awayScore} isWinner={isAwayWin} />
+              </div>
+          </div>
+      );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -218,6 +276,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             .crown-icon { animation: bounce 2s infinite; }
             @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
             .no-scrollbar::-webkit-scrollbar { display: none; }
+            .champion-glow { box-shadow: 0 0 50px rgba(234, 179, 8, 0.4); }
         `}</style>
 
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
@@ -235,7 +294,32 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <div className="space-y-12">
                 {currentSeason?.type === 'CUP' ? (
                     <div className="space-y-12">
-                        {/* 1. 조별리그 순위표 */}
+                        {/* 1. 토너먼트 트리 */}
+                        {(knockoutStages?.roundOf8?.length! > 0 || knockoutStages?.roundOf4.some(m => m !== null) || knockoutStages?.final.some(m => m !== null)) && (
+                            <div className="overflow-x-auto pb-4">
+                                <div className="min-w-[700px] px-4">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+                                    </div>
+                                    <div className="flex items-center gap-10">
+                                        {knockoutStages?.roundOf8 && knockoutStages.roundOf8.length > 0 && (
+                                            <div className="flex flex-col gap-5">
+                                                {knockoutStages.roundOf8.map((m: any, idx: number) => <TournamentMatchBox key={idx} title={`Match ${idx + 1}`} match={m} />)}
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col gap-5">
+                                            {knockoutStages!.roundOf4.map((m: any, idx: number) => <TournamentMatchBox key={idx} title={`Semi-Final ${idx + 1}`} match={m} />)}
+                                        </div>
+                                        <div className="relative scale-110 mt-8">
+                                            <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
+                                            <TournamentMatchBox title="Final" match={knockoutStages!.final[0]} highlight />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {/* 2. 조별리그 & 통합 순위표 */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 px-2">
                                 <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div>
@@ -264,8 +348,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 </table>
                             </div>
                         </div>
-
-                        {/* 2. 전체 통합 순위표 */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 px-2">
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
@@ -291,7 +373,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         </div>
                     </div>
                 ) : (
-                    /* 3. 일반 리그 모드 순위표 */
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                         <table className="w-full text-left text-xs uppercase border-collapse">
                             <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
@@ -313,9 +394,32 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* ... (나머지 OWNERS, PLAYERS, HIGHLIGHTS 탭 기존 로직 유지) ... */}
         {rankingTab === 'OWNERS' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+                {currentSeason?.type === 'CUP' && tournamentChampion && (
+                    <div className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform hover:scale-[1.03] transition-all duration-500 mb-10 group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
+                        <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
+                            <span className="text-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]">🏆</span>
+                        </div>
+                        <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm">
+                            <div className="relative pt-3"> 
+                                <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
+                                <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
+                                    <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950">
+                                        <img src={tournamentChampion.photo || FALLBACK_IMG} alt={tournamentChampion.nickname} className="w-full h-full object-cover"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex-1 text-center md:text-left">
+                                <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>🏆</span> GRAND CHAMPION</div>
+                                <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{tournamentChampion.nickname}</h2>
+                                <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic">The Ultimate Winner of {currentSeason.name}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeRankingData.owners.length > 0 && (() => {
                     const firstOwner = activeRankingData.owners[0];
                     const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === firstOwner.name) : null;
@@ -326,7 +430,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                             <div className="absolute inset-0 z-0 bg-gradient-to-tr from-yellow-500/10 via-transparent to-transparent"></div>
                             <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
                                 <div className="relative pt-3"> 
-                                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-icon origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
+                                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
                                     <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-yellow-300 via-yellow-500 to-yellow-200 shadow-2xl relative z-10">
                                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900">
                                             <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover"/>
@@ -344,6 +448,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                             <span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span>
                                             <span className="text-xl font-black text-emerald-400">{firstOwner.points}</span>
                                         </div>
+                                        {/* 🔥 [복구] 승무패 기록 */}
+                                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[100px]">
+                                            <span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span>
+                                            <span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}<span className="text-sm">W</span> <span className="text-slate-500">{firstOwner.draw}<span className="text-xs">D</span></span> <span className="text-red-400">{firstOwner.loss}<span className="text-xs">L</span></span></span>
+                                        </div>
+                                        {/* 🔥 [복구] 상금 내역 */}
                                         <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40">
                                             <span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span>
                                             <span className="text-xl font-black text-yellow-400">₩ {displayPrize.toLocaleString()}</span>
@@ -354,10 +464,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         </div>
                     );
                 })()}
+
                 <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                     <table className="w-full text-left text-xs uppercase border-collapse">
                         <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                            <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr>
+                            {/* 🔥 [복구] 테이블 헤더: Record 및 Prize 추가 */}
+                            <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr>
                         </thead>
                         <tbody>
                             {activeRankingData.owners.slice(1).map((o: any, i: number) => { 
@@ -367,7 +479,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                     <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
                                         <td className={`p-4 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
                                         <td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-500' : 'border-slate-700'}`}><img src={matchedOwner?.photo || FALLBACK_IMG} alt={o.name} className="w-full h-full object-cover" onError={(e:any) => e.target.src = FALLBACK_IMG} /></div><span className="font-bold text-sm whitespace-nowrap">{o.name}</span></div></td>
+                                        {/* 🔥 [복구] 테이블 바디: 승무패 기록 셀 */}
+                                        <td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td>
                                         <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
+                                        {/* 🔥 [복구] 테이블 바디: 상금 내역 셀 */}
                                         <td className={`p-4 text-right font-bold ${getOwnerPrize(o.name) > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>₩ {getOwnerPrize(o.name).toLocaleString()}</td>
                                     </tr>
                                 );
