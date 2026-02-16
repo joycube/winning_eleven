@@ -4,7 +4,7 @@ import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 
 // 🔥 TBD 전용 플레이스홀더 이미지
-const TBD_LOGO = "https://cdn-icons-png.flaticon.com/512/3616/3616230.png";
+const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
 interface CupScheduleProps {
   seasons: Season[];

@@ -6,7 +6,7 @@ import { FALLBACK_IMG, Owner } from '../types';
 import { getYouTubeThumbnail } from '../utils/helpers'; 
 
 // TBD 로고
-const TBD_LOGO = "https://cdn-icons-png.flaticon.com/512/3616/3616230.png";
+const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
 interface RankingViewProps {
   seasons: any[];
