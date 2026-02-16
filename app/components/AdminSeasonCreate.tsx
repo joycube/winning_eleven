@@ -45,11 +45,21 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
     const handleCreate = async () => {
         if (!name) return alert("시즌 이름을 입력하세요.");
         const id = Date.now();
+
+        // 🔥 [제목 생성 디벨롭] 타입별 아이콘 자동 부여
+        let iconPrefix = '';
+        switch (type) {
+            case 'LEAGUE': iconPrefix = '🏳️'; break;
+            case 'TOURNAMENT': iconPrefix = '⚔️'; break;
+            case 'CUP': iconPrefix = '🏆'; break;
+            default: iconPrefix = '';
+        }
+        const finalName = `${iconPrefix} ${name}`;
         
         // 공통 데이터
         const newSeason: any = {
             id, 
-            name, 
+            name: finalName, // 🔥 아이콘이 붙은 최종 이름 저장
             type, 
             status: 'ACTIVE', 
             teams: [], 

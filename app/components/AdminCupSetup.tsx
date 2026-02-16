@@ -479,40 +479,43 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     }
   };
 
-  // 🔥 [핵심 디벨롭] 6팀 등 애매한 숫자일 때 'BYE(부전승)'를 자동 추가하여 8강/4강 구조 강제 맞춤
+  // 🔥 [핵심 디벨롭] 빈 슬롯(null)을 찾아 자동으로 'BYE(부전승)'로 변환하여 8강/4강 구조 강제 맞춤
   const handleCreateTournamentSchedule = async () => {
-    if (tournamentBracket.includes(null)) {
-      if (!confirm("⚠️ 대진표에 빈 자리가 있습니다. 그대로 진행하시겠습니까? (빈 자리는 BYE 처리됩니다)")) return;
+    // 1. 대진표 데이터 정규화 (null -> BYE 변환, 배열 길이 8 또는 4로 맞춤)
+    let tempBracket = [...tournamentBracket];
+    const originalLength = tempBracket.length;
+    const targetSize = originalLength > 4 ? 8 : 4; // 6팀 등은 8강으로 확장
+
+    // (1) 배열 길이가 targetSize보다 작으면 null로 채워서 늘림
+    if (originalLength < targetSize) {
+        tempBracket = [...tempBracket, ...Array(targetSize - originalLength).fill(null)];
+    }
+
+    const hasEmptySlots = tempBracket.some(t => t === null);
+    if (hasEmptySlots) {
+      if (!confirm("⚠️ 대진표에 빈 자리 또는 부족한 팀이 있습니다.\n빈 자리는 자동으로 'BYE (부전승)' 처리되어 진행됩니다.\n계속하시겠습니까?")) return;
     } else {
       if (!confirm("⚔️ 토너먼트 대진을 확정하고 스케줄을 생성하시겠습니까?")) return;
     }
 
-    // 1. 대진표 데이터 정규화 (BYE 자동 채우기)
-    let processingBracket = [...tournamentBracket];
-    let currentLength = processingBracket.length;
-    let targetSize = 4;
-    if (currentLength > 4) targetSize = 8; // 6팀 -> 8팀(8강)으로 확장
-
-    // 부족한 슬롯만큼 BYE 팀 추가
-    if (currentLength < targetSize) {
-        const needed = targetSize - currentLength;
-        for(let i=0; i<needed; i++) {
-            processingBracket.push({
-                id: `bye_${Date.now()}_${i}`,
-                masterId: -1,
-                name: 'BYE',
-                logo: FALLBACK_IMG,
-                ownerName: 'SYSTEM',
-                region: '',
-                tier: '',
-                realRankScore: 0,
-                realFormScore: 0
-            });
-        }
-    }
+    // (2) 모든 null 슬롯을 BYE 객체로 교체
+    const processingBracket: CupEntry[] = tempBracket.map((team, i) => {
+        if (team) return team;
+        return {
+            id: `bye_${Date.now()}_${i}`,
+            masterId: -1,
+            name: 'BYE',
+            logo: FALLBACK_IMG,
+            ownerName: 'SYSTEM',
+            region: '',
+            tier: '',
+            realRankScore: 0,
+            realFormScore: 0
+        } as CupEntry;
+    });
 
     const knockoutMatches: any[] = [];
-    const totalSlots = processingBracket.length; // 이제 4 또는 8로 고정됨
+    const totalSlots = processingBracket.length; // 4 또는 8
     const matchCount = totalSlots / 2; 
     const stageName = matchCount === 4 ? 'ROUND_OF_8' : matchCount === 2 ? 'ROUND_OF_4' : 'KNOCKOUT';
     const labelPrefix = matchCount === 4 ? '8강' : matchCount === 2 ? '4강' : '토너먼트';
@@ -526,18 +529,19 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       const nextMatchId = matchCount > 1 ? `${nextStageIdPrefix}_${nextMatchIndex}` : null;
       const nextMatchSide = matchIndex % 2 === 0 ? 'HOME' : 'AWAY';
 
-      // BYE 처리 로직: 둘 중 하나가 BYE면 자동 승자 처리 필요 (여기서는 일단 매치 생성 후 결과 입력에서 처리 권장)
+      // BYE 처리: 둘 중 하나라도 BYE면, Match 생성은 하되 결과 입력 시 자동 승리 처리 권장
+      // (혹은 여기서 status='COMPLETED'로 바로 승자를 다음 단계로 넘기는 것도 가능하나, 일관성을 위해 UPCOMING 생성)
       knockoutMatches.push({
         id: `ko_${matchCount}_${matchIndex}`,
         seasonId: targetSeason.id,
         stage: stageName,
         matchLabel: `${labelPrefix} ${matchIndex + 1}경기`,
-        home: h?.name || 'TBD',
-        homeLogo: h?.logo || FALLBACK_IMG,
-        homeOwner: h?.ownerName || 'TBD',
-        away: a?.name || 'TBD',
-        awayLogo: a?.logo || FALLBACK_IMG,
-        awayOwner: a?.ownerName || 'TBD',
+        home: h.name,
+        homeLogo: h.logo,
+        homeOwner: h.ownerName,
+        away: a.name,
+        awayLogo: a.logo,
+        awayOwner: a.ownerName,
         homeScore: '',
         awayScore: '',
         status: 'UPCOMING',
@@ -591,6 +595,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
     const existingRounds = targetSeason.rounds || [];
     const updatedRounds = [...existingRounds];
+    
     updatedRounds[1] = {
       round: 2,
       name: "Knockout Stage",
@@ -758,6 +763,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (
                 <div>
                   <div className="flex items-center gap-2 mb-2"><div className="w-1 h-3 bg-emerald-500 rounded-full"></div><h4 className="text-emerald-500 font-black italic text-[10px] uppercase tracking-widest">Club Leagues</h4></div>
+                  {/* 🔥 [픽스] 리그 리스트 그리드 최적화 (열 개수 증가, 간격 축소) */}
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                     {clubLeagues.map(l => {
                       const count = masterTeams.filter(t => t.region === l.name).length;
@@ -774,6 +780,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (
                 <div className="mt-4">
                   <div className="flex items-center gap-2 mb-2"><div className="w-1 h-3 bg-blue-500 rounded-full"></div><h4 className="text-blue-500 font-black italic text-[10px] uppercase tracking-widest">National Teams</h4></div>
+                  {/* 🔥 [픽스] 국가대표 리스트 그리드 최적화 (열 개수 증가, 간격 축소) */}
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                     {nationalLeagues.map(l => {
                       const count = masterTeams.filter(t => t.region === l.name).length;
