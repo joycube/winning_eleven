@@ -54,16 +54,17 @@ export const CupSchedule = ({
           logo: stats?.logo || master?.logo || TBD_LOGO,
           ownerName: stats?.ownerName || master?.ownerName || 'CPU',
           region: master?.region || '',
-          tier: master?.tier || '',
+          tier: master?.tier || 'C',
           realRankScore: master?.realRankScore,
           realFormScore: master?.realFormScore,
-          condition: master?.condition,
+          condition: master?.condition || 'C',
           real_rank: master?.real_rank
       };
   };
 
+  // 🔥 [리얼순위] 메탈릭 배지 정의
   const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">-</div>;
+    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
     let bgClass = "bg-slate-800 text-slate-400 border-slate-700"; 
     if (rank === 1) bgClass = "bg-yellow-500 text-black border-yellow-600";
     else if (rank === 2) bgClass = "bg-slate-300 text-black border-slate-400";
@@ -73,26 +74,45 @@ export const CupSchedule = ({
     );
   };
 
-  const renderLogoWithForm = (logo: string, condition: string, isTbd: boolean = false) => {
-    const c = (condition || '').toUpperCase();
-    const circleBase = "absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-[#0f172a] border border-slate-600 flex items-center justify-center shadow-md z-10";
-    let formIcon = null;
-    if (!isTbd) {
-        switch (c) {
-            case 'A': formIcon = <div className={`${circleBase} border-emerald-500/50`}><span className="text-[7px] font-black leading-none text-emerald-400">↑</span></div>; break;
-            case 'B': formIcon = <div className={`${circleBase} border-lime-500/50`}><span className="text-[7px] font-black leading-none text-lime-400">↗</span></div>; break;
-            case 'C': formIcon = <div className={`${circleBase} border-yellow-500/50`}><span className="text-[7px] font-black leading-none text-yellow-400">→</span></div>; break;
-            case 'D': formIcon = <div className={`${circleBase} border-orange-500/50`}><span className="text-[7px] font-black leading-none text-orange-400">↘</span></div>; break;
-            case 'E': formIcon = <div className={`${circleBase} border-red-500/50`}><span className="text-[7px] font-black leading-none text-red-500">↓</span></div>; break;
-            default: formIcon = null;
-        }
-    }
+  // 🔥 [팀 등급] 엠블럼 우측 하단 오버레이 배지
+  const getTierBadge = (tier?: string) => {
+    const t = (tier || 'C').toUpperCase();
+    let colors = 'bg-slate-800 text-slate-400 border-slate-600';
+    if (t === 'S') colors = 'bg-yellow-500 text-black border-yellow-200';
+    else if (t === 'A') colors = 'bg-slate-300 text-black border-white';
+    else if (t === 'B') colors = 'bg-amber-600 text-white border-amber-400';
     return (
-        <div className="relative w-7 h-7 flex-shrink-0">
-            <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+      <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full border border-slate-950 font-black text-[7px] z-20 shadow-sm ${colors}`}>
+        {t}
+      </div>
+    );
+  };
+
+  // 🔥 [폼 화살표] 배지 정의
+  const getConditionBadge = (condition?: string) => {
+    if (!condition) return null;
+    const config: any = {
+      'A': { icon: '↑', color: 'text-emerald-400' },
+      'B': { icon: '↗', color: 'text-teal-400' },
+      'C': { icon: '→', color: 'text-slate-400' },
+      'D': { icon: '↘', color: 'text-orange-400' },
+      'E': { icon: '⬇', color: 'text-red-500' },
+    };
+    const c = config[condition.toUpperCase()] || config['C'];
+    return (
+      <div className="px-1 py-[1px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5 shadow-inner">
+        <span className={`text-[10px] font-black ${c.color}`}>{c.icon}</span>
+      </div>
+    );
+  };
+
+  const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
+    return (
+        <div className="relative w-9 h-9 flex-shrink-0">
+            <div className={`w-9 h-9 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
                 <img src={logo || TBD_LOGO} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=TBD_LOGO}}/>
             </div>
-            {formIcon}
+            {!isTbd && getTierBadge(tier)}
         </div>
     );
   };
@@ -127,7 +147,6 @@ export const CupSchedule = ({
         }
     });
 
-    // 🔥 승자 정보 동기화 헬퍼 (Modal 에디터 지원용)
     const syncWinnerInfo = (targetMatch: any, side: 'home' | 'away', winnerName: string) => {
         if (!targetMatch) return;
         const info = getTeamExtendedInfo(winnerName);
@@ -136,7 +155,6 @@ export const CupSchedule = ({
         targetMatch[`${side}Owner`] = info.ownerName;
     };
 
-    // 8강 -> 4강 진출 시 메타데이터까지 전이
     if (slots.roundOf4[0]) {
         syncWinnerInfo(slots.roundOf4[0], 'home', getWinnerName(slots.roundOf8[0]));
         syncWinnerInfo(slots.roundOf4[0], 'away', getWinnerName(slots.roundOf8[1]));
@@ -145,7 +163,6 @@ export const CupSchedule = ({
         syncWinnerInfo(slots.roundOf4[1], 'home', getWinnerName(slots.roundOf8[2]));
         syncWinnerInfo(slots.roundOf4[1], 'away', getWinnerName(slots.roundOf8[3]));
     }
-    // 4강 -> 결승 진출 시 메타데이터까지 전이
     if (slots.final[0]) {
         syncWinnerInfo(slots.final[0], 'home', getWinnerName(slots.roundOf4[0]));
         syncWinnerInfo(slots.final[0], 'away', getWinnerName(slots.roundOf4[1]));
@@ -154,25 +171,42 @@ export const CupSchedule = ({
     return slots;
   }, [currentSeason, activeRankingData]);
 
-  const TournamentTeamRow = ({ team, score, isWinner }: { team: any, score: number | null, isWinner: boolean }) => (
-      <div className={`flex items-center justify-between px-3 py-2.5 h-[44px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
-          <div className="flex items-center gap-3 min-w-0">
-              {renderLogoWithForm(team.logo, team.condition, team.name === 'TBD')}
-              <div className="flex flex-col justify-center">
-                  <span className={`text-[12px] font-bold leading-none truncate uppercase tracking-tight ${isWinner ? 'text-white' : team.name === 'TBD' ? 'text-slate-500' : 'text-slate-400'}`}>
-                      {team.name}
-                  </span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                      {team.name !== 'TBD' && getRealRankBadge(team.real_rank)}
-                      <span className="text-[10px] text-slate-500 font-bold truncate">{team.ownerName}</span>
+  // ─────────────────────────────────────────────────────────────
+  // 2. [UI 컴포넌트] Tournament 팀 정보 셀 (Broadcast 스타일)
+  // ─────────────────────────────────────────────────────────────
+  const TournamentTeamRow = ({ team, score, isWinner }: { team: any, score: number | null, isWinner: boolean }) => {
+      const info = getTeamExtendedInfo(team.name);
+      const isTbd = team.name === 'TBD';
+
+      return (
+          <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                  {/* 1. 엠블럼 + 등급 오버레이 */}
+                  {renderLogoWithTier(team.logo, info.tier, isTbd)}
+                  
+                  {/* 2. 팀 정보 텍스트 영역 */}
+                  <div className="flex flex-col justify-center min-w-0">
+                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {team.name}
+                      </span>
+                      {!isTbd && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                              {getRealRankBadge(info.real_rank)}
+                              {getConditionBadge(info.condition)}
+                              <span className="text-[9px] text-slate-500 font-bold italic truncate ml-0.5">
+                                  {info.ownerName}
+                              </span>
+                          </div>
+                      )}
                   </div>
               </div>
+              {/* 3. 스코어 */}
+              <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400 drop-shadow-md' : 'text-slate-600'}`}>
+                  {score ?? '-'}
+              </div>
           </div>
-          <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400 drop-shadow-md' : 'text-slate-600'}`}>
-              {score ?? '-'}
-          </div>
-      </div>
-  );
+      );
+  };
 
   const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
       const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
@@ -185,8 +219,8 @@ export const CupSchedule = ({
 
       return (
           <div className="flex flex-col w-full cursor-pointer hover:scale-[1.02] transition-all" onClick={() => match && onMatchClick(match)}>
-              {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1 pl-1 tracking-widest opacity-60">{title}</div>}
-              <div className={`flex flex-col w-[210px] bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
+              {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
+              <div className={`flex flex-col w-[220px] bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
                   <TournamentTeamRow team={home} score={homeScore} isWinner={isHomeWin} />
                   <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
                   <TournamentTeamRow team={away} score={awayScore} isWinner={isAwayWin} />
@@ -203,7 +237,7 @@ export const CupSchedule = ({
             .no-scrollbar::-webkit-scrollbar { display: none; }
         `}</style>
 
-        {/* 🏆 토너먼트 대진표 섹션 */}
+        {/* 🏆 토너먼트 대진표 섹션 (Broadcast Style 적용) */}
         {knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-[760px] px-2">
