@@ -101,54 +101,51 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
-  const renderOverlayCondition = (cond: string) => {
-    const c = (cond || '').toUpperCase();
+  // 🔥 [공통 사용] 엠블럼 + 폼 오버레이 렌더링 함수 (디자인 통일)
+  const renderLogoWithForm = (logo: string, condition: string, isTbd: boolean = false) => {
+    const c = (condition || '').toUpperCase();
     const circleBase = "absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-[#0f172a] border border-slate-600 flex items-center justify-center shadow-md z-10";
-    const iconBase = "text-[7px] font-black leading-none";
-    switch (c) {
-        case 'A': return <div className={`${circleBase} border-emerald-500/50`}><span className={`${iconBase} text-emerald-400`}>↑</span></div>;
-        case 'B': return <div className={`${circleBase} border-lime-500/50`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
-        case 'C': return <div className={`${circleBase} border-yellow-500/50`}><span className={`${iconBase} text-yellow-400`}>→</span></div>;
-        case 'D': return <div className={`${circleBase} border-orange-500/50`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
-        case 'E': return <div className={`${circleBase} border-red-500/50`}><span className={`${iconBase} text-red-500`}>↓</span></div>;
-        default:  return null;
+    
+    let formIcon = null;
+    if (!isTbd) {
+        switch (c) {
+            case 'A': formIcon = <div className={`${circleBase} border-emerald-500/50`}><span className="text-[7px] font-black leading-none text-emerald-400">↑</span></div>; break;
+            case 'B': formIcon = <div className={`${circleBase} border-lime-500/50`}><span className="text-[7px] font-black leading-none text-lime-400">↗</span></div>; break;
+            case 'C': formIcon = <div className={`${circleBase} border-yellow-500/50`}><span className="text-[7px] font-black leading-none text-yellow-400">→</span></div>; break;
+            case 'D': formIcon = <div className={`${circleBase} border-orange-500/50`}><span className="text-[7px] font-black leading-none text-orange-400">↘</span></div>; break;
+            case 'E': formIcon = <div className={`${circleBase} border-red-500/50`}><span className="text-[7px] font-black leading-none text-red-500">↓</span></div>;
+            default: formIcon = null;
+        }
     }
+
+    return (
+        <div className="relative w-7 h-7 flex-shrink-0">
+            <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+                <img src={logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+            </div>
+            {formIcon}
+        </div>
+    );
   };
 
-  const renderCondition = (cond: string) => {
-      const c = (cond || '').toUpperCase();
-      const circleBase = "w-5 h-5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shadow-sm shrink-0";
-      const iconBase = "text-[10px] font-bold leading-none";
-      switch (c) {
-          case 'A': return <div className={`${circleBase} border-emerald-500/30`}><span className={`${iconBase} text-emerald-400`}>⬆</span></div>;
-          case 'B': return <div className={`${circleBase} border-lime-500/30`}><span className={`${iconBase} text-lime-400`}>↗</span></div>;
-          case 'C': return <div className={`${circleBase} border-yellow-500/30`}><span className={`${iconBase} text-yellow-400`}>➡</span></div>;
-          case 'D': return <div className={`${circleBase} border-orange-500/30`}><span className={`${iconBase} text-orange-400`}>↘</span></div>;
-          case 'E': return <div className={`${circleBase} border-red-500/30`}><span className={`${iconBase} text-red-500`}>⬇</span></div>;
-          default:  return <div className={circleBase}><span className="text-[8px] text-slate-600">-</span></div>;
-      }
+  const renderOverlayCondition = (cond: string) => {
+    // 하위 호환성 및 독립적 사용을 위해 남겨둠 (필요 시 삭제 가능)
+    return null; 
   };
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   const getTeamExtendedInfo = (teamName: string) => {
       const tbdTeam = {
-          id: 0,
-          name: teamName || 'TBD',
-          logo: FALLBACK_IMG,
-          ownerName: '-',
-          region: '',
-          tier: '', 
-          realRankScore: 0,
-          realFormScore: 0,
-          condition: '',
-          real_rank: null
+          id: 0, name: teamName || 'TBD', logo: FALLBACK_IMG, ownerName: '-',
+          region: '', tier: '', realRankScore: 0, realFormScore: 0, condition: '', real_rank: null
       };
 
       if (!teamName || teamName === 'TBD') return tbdTeam;
 
-      const stats = activeRankingData.teams?.find((t:any) => normalize(t.name) === normalize(teamName));
-      const master = masterTeams.find(m => normalize(m.name) === normalize(teamName) || normalize(m.teamName) === normalize(teamName));
+      const stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normalize(teamName));
+      // masterTeams 타입 에러 방지
+      const master = (masterTeams as any[])?.find((m:any) => normalize(m.name) === normalize(teamName) || normalize(m.teamName) === normalize(teamName));
       
       if (!stats && !master) return { ...tbdTeam, name: teamName };
 
@@ -180,13 +177,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return groups;
   }, [currentSeason, sortedTeams]);
 
-  // 🔥 [NEW] 조별리그 키 정렬 (A, B, C, D...)
   const sortedGroupKeys = useMemo(() => {
       if (!groupStandings) return [];
       return Object.keys(groupStandings).sort();
   }, [groupStandings]);
 
-  // 🔥 [Fix] 그룹 탭 자동 초기화 로직
   useEffect(() => {
       if (sortedGroupKeys.length > 0) {
           if (!sortedGroupKeys.includes(selectedGroupTab)) {
@@ -195,29 +190,59 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       }
   }, [sortedGroupKeys, selectedGroupTab]);
 
+  // 🔥 [핵심] 토너먼트 매치 로드 로직 (슬롯 강제 배정)
   const knockoutStages = useMemo(() => {
-    if (currentSeason?.type !== 'CUP') return null;
-    const allMatches = currentSeason.rounds?.find((r: any) => r.round === 2)?.matches || [];
+    if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
     
-    // TBD도 포함, 데이터가 아예 없으면 제외
-    const isValidMatch = (m: any) => m.home !== undefined && m.away !== undefined;
+    let matches: any[] = [];
+    if (Array.isArray(currentSeason.rounds)) {
+        matches = currentSeason.rounds.flatMap((r: any) => r.matches || [])
+            .filter((m: any) => m && (m.stage !== 'GROUP_STAGE' && m.stage !== 'Group Stage'));
+    }
 
-    return {
-      roundOf8: allMatches.filter((m: any) => m.stage === 'ROUND_OF_8' && isValidMatch(m)),
-      roundOf4: allMatches.filter((m: any) => m.stage === 'ROUND_OF_4' && isValidMatch(m)),
-      final: allMatches.filter((m: any) => (m.stage === 'FINAL' || m.stage === 'KNOCKOUT') && isValidMatch(m))
+    // 빈 슬롯 생성
+    const slots = {
+        roundOf8: Array(4).fill(null),
+        roundOf4: Array(2).fill(null),
+        final: Array(1).fill(null)
+    };
+
+    // 슬롯 매핑
+    matches.forEach((m: any) => {
+        const label = m.matchLabel || '';
+        const stage = m.stage || '';
+        
+        const matchNumMatch = label.match(/(\d+)경기/) || label.match(/Match (\d+)/);
+        const matchNum = matchNumMatch ? parseInt(matchNumMatch[1]) : 0; 
+
+        if (stage === 'ROUND_OF_8' || label.includes('8강') || label.includes('토너먼트')) {
+            if (matchNum >= 1 && matchNum <= 4) slots.roundOf8[matchNum - 1] = m;
+            else { const empty = slots.roundOf8.indexOf(null); if(empty!==-1) slots.roundOf8[empty]=m; }
+        }
+        else if (stage === 'ROUND_OF_4' || label.includes('4강') || label.toUpperCase().includes('SEMI')) {
+            if (matchNum >= 1 && matchNum <= 2) slots.roundOf4[matchNum - 1] = m;
+            else { const empty = slots.roundOf4.indexOf(null); if(empty!==-1) slots.roundOf4[empty]=m; }
+        }
+        else if (stage === 'FINAL' || label.includes('결승') || label.toUpperCase().includes('FINAL')) {
+            slots.final[0] = m;
+        }
+    });
+
+    const hasRoundOf8 = slots.roundOf8.some(m => m !== null);
+
+    return { 
+        roundOf8: hasRoundOf8 ? slots.roundOf8 : [], 
+        roundOf4: slots.roundOf4, 
+        final: slots.final 
     };
   }, [currentSeason]);
 
   const TournamentTeamRow = ({ team, score, isWinner }: { team: any, score: number | null, isWinner: boolean }) => (
       <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${team.name === 'TBD' ? 'opacity-30' : ''}`}>
           <div className="flex items-center gap-3 min-w-0">
-              <div className="relative w-7 h-7 flex-shrink-0">
-                  <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${team.name === 'TBD' ? 'bg-slate-700' : 'bg-white'}`}>
-                      <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                  </div>
-                  {team.name !== 'TBD' && renderOverlayCondition(team.condition)}
-              </div>
+              {/* 🔥 공통 엠블럼 사용 */}
+              {renderLogoWithForm(team.logo, team.condition, team.name === 'TBD')}
+              
               <div className="flex flex-col justify-center">
                   <span className={`text-sm font-bold leading-none truncate uppercase tracking-tight ${isWinner ? 'text-white' : team.name === 'TBD' ? 'text-slate-500' : 'text-slate-400'}`}>
                       {team.name}
@@ -235,10 +260,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   );
 
   const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
-      const home = getTeamExtendedInfo(match.home);
-      const away = getTeamExtendedInfo(match.away);
-      const homeScore = match.homeScore !== '' ? Number(match.homeScore) : null;
-      const awayScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+      const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
+      
+      const home = getTeamExtendedInfo(safeMatch.home);
+      const away = getTeamExtendedInfo(safeMatch.away);
+      const homeScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : null;
+      const awayScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : null;
       const isHomeWin = homeScore !== null && awayScore !== null && homeScore > awayScore;
       const isAwayWin = homeScore !== null && awayScore !== null && awayScore > homeScore;
 
@@ -287,8 +314,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <div className="space-y-12">
                 {currentSeason?.type === 'CUP' ? (
                     <>
-                        {/* 1. 토너먼트 트리 영역 */}
-                        {(knockoutStages?.roundOf8.length! > 0 || knockoutStages?.roundOf4.length! > 0 || knockoutStages?.final.length! > 0) && (
+                        {/* 1. 토너먼트 트리 */}
+                        {(knockoutStages?.roundOf8?.length! > 0 || knockoutStages?.roundOf4.some(m => m !== null) || knockoutStages?.final.some(m => m !== null)) && (
                             <div className="overflow-x-auto pb-4">
                                 <div className="min-w-[700px] px-4">
                                     <div className="flex items-center gap-3 mb-6">
@@ -297,28 +324,24 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                     </div>
 
                                     <div className="bracket-tree">
-                                        {knockoutStages?.roundOf8.length! > 0 && (
+                                        {knockoutStages?.roundOf8 && knockoutStages.roundOf8.length > 0 && (
                                             <div className="bracket-column">
-                                                {knockoutStages!.roundOf8.map((match: any, idx: number) => (
-                                                    <TournamentMatchBox key={match.id} title={`Match ${idx + 1}`} match={match} />
+                                                {knockoutStages.roundOf8.map((match: any, idx: number) => (
+                                                    <TournamentMatchBox key={match?.id || `tbd_8_${idx}`} title={`Match ${idx + 1}`} match={match} />
                                                 ))}
                                             </div>
                                         )}
-                                        {knockoutStages?.roundOf4.length! > 0 && (
-                                            <div className="bracket-column">
-                                                {knockoutStages!.roundOf4.map((match: any, idx: number) => (
-                                                    <TournamentMatchBox key={match.id} title={`Semi-Final ${idx + 1}`} match={match} />
-                                                ))}
+                                        <div className="bracket-column">
+                                            {knockoutStages!.roundOf4.map((match: any, idx: number) => (
+                                                <TournamentMatchBox key={match?.id || `tbd_4_${idx}`} title={`Semi-Final ${idx + 1}`} match={match} />
+                                            ))}
+                                        </div>
+                                        <div className="bracket-column">
+                                            <div className="relative scale-110 mt-8">
+                                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
+                                                <TournamentMatchBox title="Final" match={knockoutStages!.final[0]} highlight />
                                             </div>
-                                        )}
-                                        {knockoutStages?.final.length! > 0 && (
-                                            <div className="bracket-column">
-                                                <div className="relative scale-110 mt-8">
-                                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
-                                                    <TournamentMatchBox title="Final" match={knockoutStages!.final[0]} highlight />
-                                                </div>
-                                            </div>
-                                        )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -373,12 +396,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                 <tr key={t.id} className={`border-b border-slate-800/50 ${isQualified ? 'qualified-row' : ''}`}>
                                                     <td className={`p-3 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':'text-slate-600'}`}>{i+1}</td>
                                                     <td className="p-3 flex items-center gap-3">
-                                                        <div className="relative flex-shrink-0 w-7 h-7">
-                                                            <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
-                                                                <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                                            </div>
-                                                            {renderOverlayCondition(teamInfo?.condition || '')}
-                                                        </div>
+                                                        {renderLogoWithForm(t.logo, teamInfo.condition, false)}
                                                         <div className="flex flex-col min-w-0">
                                                             <span className={`font-bold text-sm tracking-tight truncate ${isQualified ? 'text-white' : 'text-slate-400'}`}>{t.name}</span>
                                                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -400,7 +418,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                             </div>
                         </div>
 
-                        {/* 3. 통합 순위 (생략 - 위와 동일) */}
+                        {/* 3. 통합 순위 (생략 - 위와 동일하게 적용) */}
                         <div className="space-y-6">
                             <div className="flex items-center gap-3 px-2">
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
@@ -426,12 +444,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                 <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
                                                     <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
                                                     <td className="p-4 flex items-center gap-4">
-                                                        <div className="relative flex-shrink-0 w-7 h-7">
-                                                            <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
-                                                                <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                                            </div>
-                                                            {renderCondition(teamInfo?.condition || '')}
-                                                        </div>
+                                                        {renderLogoWithForm(t.logo, teamInfo.condition, false)}
                                                         <div className="flex flex-col">
                                                             <span className="font-bold text-sm tracking-tight">{t.name}</span>
                                                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -475,12 +488,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                         <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
                                             <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
                                             <td className="p-4 flex items-center gap-4">
-                                                <div className="relative flex-shrink-0 w-7 h-7">
-                                                    <div className="w-7 h-7 rounded-full bg-white object-contain p-0.5 shadow-md flex items-center justify-center overflow-hidden">
-                                                        <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                                    </div>
-                                                    {renderCondition(teamInfo?.condition || '')}
-                                                </div>
+                                                {renderLogoWithForm(t.logo, teamInfo.condition, false)}
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-sm tracking-tight">{t.name}</span>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
@@ -504,7 +512,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
         
-        {/* OWNERS TAB: 복구 완료 */}
+        {/* OWNERS TAB: 복구됨 */}
         {rankingTab === 'OWNERS' && (
             <div className="space-y-4">
                 {activeRankingData.owners.length > 0 && (() => {
@@ -574,7 +582,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
 
-        {/* PLAYERS TAB: 복구 완료 */}
+        {/* PLAYERS TAB: 복구됨 */}
         {rankingTab === 'PLAYERS' && (
              <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
@@ -597,7 +605,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
         )}
 
-        {/* HIGHLIGHTS TAB: 복구 완료 */}
+        {/* HIGHLIGHTS TAB: 복구됨 */}
         {rankingTab === 'HIGHLIGHTS' && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {activeRankingData.highlights.map((m:any, idx:number) => {
