@@ -9,14 +9,12 @@ import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../uti
 const TierSelector = ({ value, onChange, isMini = false }: { value: string, onChange: (t: string) => void, isMini?: boolean }) => {
     const tiers = ['S', 'A', 'B', 'C'];
     return (
-        // isMini일 때 gap-1로 촘촘하게 배치하고 mt-2로 상단 여백 확보
         <div className={`flex items-center justify-center w-full ${isMini ? 'gap-1 mt-2' : 'gap-1'}`}>
             {tiers.map(t => (
                 <button 
                     key={t} 
                     onClick={(e) => { e.stopPropagation(); onChange(t); }}
                     className={`font-bold transition-all border flex items-center justify-center ${
-                        // 🔥 isMini일 때: w-6 h-6 고정 크기 (아이폰에서도 터치하기 적당함)
                         isMini 
                         ? 'w-6 h-6 rounded text-[10px] p-0 flex-shrink-0' 
                         : 'flex-1 py-2 rounded-lg text-xs'
@@ -81,19 +79,20 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
         return (
             <div className="space-y-2 mb-6">
                 <h3 className={`text-sm font-bold border-l-4 pl-2 ${category === 'CLUB' ? 'text-emerald-400 border-emerald-500' : 'text-blue-400 border-blue-500'}`}>{title}</h3>
-                <div className="grid grid-cols-3 gap-3">
+                {/* 🔥 [수정] 반응형 그리드 적용: 모바일 2, 태블릿 3, 데스크탑 5열 */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {displayList.map(l => (
-                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl border cursor-pointer transition-all group relative ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
+                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl border cursor-pointer transition-all group relative aspect-square flex flex-col items-center justify-center ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
                             <div className="flex flex-col items-center gap-2">
                                 <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                     <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                 </div>
                                 <div className="text-center">
-                                    <p className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors leading-tight">{l.name}</p>
-                                    <span className="text-[10px] text-slate-500">{masterTeams.filter(t => t.region === l.name).length} Teams</span>
+                                    <p className="font-bold text-xs text-white group-hover:text-emerald-400 transition-colors leading-tight">{l.name}</p>
+                                    <span className="text-[9px] text-slate-500 mt-1 block">{masterTeams.filter(t => t.region === l.name).length} Teams</span>
                                 </div>
                             </div>
-                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs">✕</button>
+                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-[10px]">✕</button>
                         </div>
                     ))}
                 </div>
@@ -239,14 +238,11 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
             </div>
 
             <div className="space-y-8">
-                {/* 🔥 [수정] flex-wrap을 유지하되, 버튼 영역을 'flex-1'으로 나누어 크기 동일하게 맞춤 */}
                 <div className="flex flex-wrap items-center bg-slate-950 p-2 rounded-lg border border-slate-800 sticky top-0 z-10 shadow-xl gap-2">
                     <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`h-9 px-4 text-xs rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
                     {selectedLeague ? (
-                         // 🔥 [수정] ml-auto로 우측 정렬하고, flex-1을 사용하여 버튼 크기 균등 분배 가능하도록 구조 변경
                          <div className="flex gap-2 ml-auto">
                              <button onClick={()=>handleBulkTier('C')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 C등급 변경</button>
-                             {/* 🔥 [수정] 목록으로 버튼 텍스트 제거 및 뒤로가기 아이콘 적용 */}
                              <button onClick={()=>setSelectedLeague('')} className="h-9 w-9 flex items-center justify-center bg-slate-800 rounded-lg text-white border border-slate-700 hover:bg-slate-700 font-bold">↩</button>
                          </div>
                     ) : <span className="text-xs text-slate-500 pr-2 ml-auto">리그를 선택하세요</span>}
@@ -257,14 +253,17 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'NATIONAL' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-emerald-500 pl-2">⚽ Club Leagues</h3>
-                                <div className="grid grid-cols-3 gap-3">
+                                {/* 🔥 [수정] 리그 목록: grid-cols-2 sm:3 md:4 lg:5 적용 */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                     {displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => (
-                                        <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
+                                        <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-3 group transition-all aspect-square justify-center relative">
+                                            <div className="w-14 h-14 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
-                                            <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
-                                            <span className="bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className="text-xs text-center text-slate-300 font-bold group-hover:text-white leading-tight">{l.name}</span>
+                                                <span className="bg-slate-950 text-slate-500 text-[9px] px-2 py-0.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -273,14 +272,17 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'CLUB' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-blue-500 pl-2">🌍 National Teams</h3>
-                                <div className="grid grid-cols-3 gap-3">
+                                {/* 🔥 [수정] 국대 목록: grid-cols-2 sm:3 md:4 lg:5 적용 */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                     {displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => (
-                                        <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <div className="w-12 h-12 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
+                                        <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-3 group transition-all aspect-square justify-center relative">
+                                            <div className="w-14 h-14 bg-white rounded-full p-2 shadow-sm flex items-center justify-center">
                                                 <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
                                             </div>
-                                            <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
-                                            <span className="bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className="text-xs text-center text-slate-300 font-bold group-hover:text-white leading-tight">{l.name}</span>
+                                                <span className="bg-slate-950 text-slate-500 text-[9px] px-2 py-0.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length} Teams</span>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -290,20 +292,21 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 )}
 
                 {(selectedLeague || searchTerm) && (
-                    <div className="grid grid-cols-3 gap-3 animate-in fade-in">
+                    /* 🔥 [수정] 팀 목록: grid-cols-2 sm:3 md:4 lg:5 적용 */
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 animate-in fade-in">
                         {filteredTeams.map(t => (
-                            <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-3 rounded-xl border flex flex-col items-center cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
-                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden flex items-center justify-center mb-2 shadow-lg ring-1 ring-slate-700 p-1">
+                            <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-4 rounded-xl border flex flex-col items-center justify-center aspect-square cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
+                                <div className="w-14 h-14 bg-white rounded-full overflow-hidden flex items-center justify-center mb-3 shadow-lg ring-1 ring-slate-700 p-1.5">
                                     <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                 </div>
-                                <span className="text-[10px] text-center text-slate-300 w-full truncate font-bold group-hover:text-white">{t.name}</span>
+                                <span className="text-xs text-center text-slate-300 w-full truncate font-bold group-hover:text-white">{t.name}</span>
                                 {isQuickTierMode ? (
                                     <TierSelector value={t.tier} onChange={(newTier) => t.docId && handleQuickTierUpdate(t.docId, newTier)} isMini={true} />
                                 ) : (
-                                    <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${getTierBadgeColor(t.tier)}`}>{t.tier}</div>
+                                    <div className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold shadow-sm ${getTierBadgeColor(t.tier)}`}>{t.tier}</div>
                                 )}
                                 {!isQuickTierMode && (
-                                    <button onClick={(e)=>{e.stopPropagation(); t.docId && handleDeleteTeam(t.docId);}} className="absolute top-1 left-1 w-5 h-5 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs">✕</button>
+                                    <button onClick={(e)=>{e.stopPropagation(); t.docId && handleDeleteTeam(t.docId);}} className="absolute top-2 left-2 w-5 h-5 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs">✕</button>
                                 )}
                             </div>
                         ))}
