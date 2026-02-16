@@ -51,7 +51,6 @@ export const CupSchedule = ({
       return {
           id: stats?.id || master?.id || 0,
           name: teamName,
-          // 🔥 데이터가 없을 경우 TBD_LOGO로 대체
           logo: stats?.logo || master?.logo || TBD_LOGO,
           ownerName: stats?.ownerName || master?.ownerName || 'CPU',
           region: master?.region || '',
@@ -91,7 +90,6 @@ export const CupSchedule = ({
     return (
         <div className="relative w-7 h-7 flex-shrink-0">
             <div className={`w-7 h-7 rounded-full p-[1.5px] shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                {/* 🔥 로고 에러 시 TBD_LOGO로 한 번 더 방어 */}
                 <img src={logo || TBD_LOGO} className="w-full h-full object-contain" alt="" onError={(e)=>{e.currentTarget.src=TBD_LOGO}}/>
             </div>
             {formIcon}
@@ -99,7 +97,7 @@ export const CupSchedule = ({
     );
   };
 
-  // 🔥 [핵심 업데이트] 참조 분리(Clone) 및 자동 승자 주입
+  // 🔥 [핵심 업데이트] 승자 팀 메타데이터(Logo, Owner) 강제 동기화
   const knockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
     
@@ -112,7 +110,6 @@ export const CupSchedule = ({
         final: Array(1).fill(null)
     };
 
-    // 1차: DB 데이터 배치 (🔥 중요: 딥 클론을 사용하여 객체 간 중복 참조 및 유령 데이터 전이 방지)
     allMatches.forEach((m: any) => {
         const label = m.matchLabel || '';
         const stage = m.stage || '';
@@ -130,26 +127,28 @@ export const CupSchedule = ({
         }
     });
 
-    // 2차 🔥 [승자 진출 로직] 상위 라운드 승자를 하위 라운드 TBD 자리에 주입
-    // 8강 -> 4강
+    // 🔥 승자 정보 동기화 헬퍼 (Modal 에디터 지원용)
+    const syncWinnerInfo = (targetMatch: any, side: 'home' | 'away', winnerName: string) => {
+        if (!targetMatch) return;
+        const info = getTeamExtendedInfo(winnerName);
+        targetMatch[side] = info.name;
+        targetMatch[`${side}Logo`] = info.logo;
+        targetMatch[`${side}Owner`] = info.ownerName;
+    };
+
+    // 8강 -> 4강 진출 시 메타데이터까지 전이
     if (slots.roundOf4[0]) {
-        const winner1 = getWinnerName(slots.roundOf8[0]);
-        const winner2 = getWinnerName(slots.roundOf8[1]);
-        if (winner1 !== 'TBD') slots.roundOf4[0].home = winner1;
-        if (winner2 !== 'TBD') slots.roundOf4[0].away = winner2;
+        syncWinnerInfo(slots.roundOf4[0], 'home', getWinnerName(slots.roundOf8[0]));
+        syncWinnerInfo(slots.roundOf4[0], 'away', getWinnerName(slots.roundOf8[1]));
     }
     if (slots.roundOf4[1]) {
-        const winner3 = getWinnerName(slots.roundOf8[2]);
-        const winner4 = getWinnerName(slots.roundOf8[3]);
-        if (winner3 !== 'TBD') slots.roundOf4[1].home = winner3;
-        if (winner4 !== 'TBD') slots.roundOf4[1].away = winner4;
+        syncWinnerInfo(slots.roundOf4[1], 'home', getWinnerName(slots.roundOf8[2]));
+        syncWinnerInfo(slots.roundOf4[1], 'away', getWinnerName(slots.roundOf8[3]));
     }
-    // 4강 -> 결승
+    // 4강 -> 결승 진출 시 메타데이터까지 전이
     if (slots.final[0]) {
-        const semiWinner1 = getWinnerName(slots.roundOf4[0]);
-        const semiWinner2 = getWinnerName(slots.roundOf4[1]);
-        if (semiWinner1 !== 'TBD') slots.final[0].home = semiWinner1;
-        if (semiWinner2 !== 'TBD') slots.final[0].away = semiWinner2;
+        syncWinnerInfo(slots.final[0], 'home', getWinnerName(slots.roundOf4[0]));
+        syncWinnerInfo(slots.final[0], 'away', getWinnerName(slots.roundOf4[1]));
     }
 
     return slots;
@@ -204,6 +203,7 @@ export const CupSchedule = ({
             .no-scrollbar::-webkit-scrollbar { display: none; }
         `}</style>
 
+        {/* 🏆 토너먼트 대진표 섹션 */}
         {knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-[760px] px-2">
