@@ -57,7 +57,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     const colors = rank === 1 ? 'bg-yellow-500 text-black border-yellow-200' : 
                    rank === 2 ? 'bg-slate-300 text-black border-white' : 
                    rank === 3 ? 'bg-orange-400 text-black border-orange-500' : 
-                   'bg-slate-800 text-slate-400 border-slate-600';
+                   'bg-slate-800 text-slate-400 border-slate-700';
     return (
       <span className={`px-1 py-[1px] rounded text-[9px] font-black border shadow-sm ${colors}`}>
         R.{rank}
@@ -185,7 +185,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 예상승률 그래프 섹션 */}
+        {/* 🔥 예상승률 그래프 섹션 (두께 h-4로 조정, 한글 라벨 적용) */}
         {showGraph && (
             <div className="mt-5 space-y-1.5">
                 <div className="flex justify-between items-end px-1">
@@ -207,7 +207,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 🔥 경기결과 코멘터리 섹션 (가독성 향상 및 중앙 정렬 적용) */}
+        {/* 🔥 경기결과 코멘터리 섹션 (가독성 향상, 중앙 정렬, 빌드 에러 방지 &quot; 적용) */}
         {displayCommentary && (
             <div className="mt-5 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl shadow-inner">
                 <div className="flex flex-col items-center text-center">
@@ -215,7 +215,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                         경기결과
                     </span>
                     <p className="text-[13px] text-emerald-400 leading-relaxed italic font-bold">
-                        "{displayCommentary}"
+                        &quot;{displayCommentary}&quot;
                     </p>
                 </div>
             </div>
