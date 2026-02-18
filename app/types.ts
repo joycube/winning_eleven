@@ -19,7 +19,6 @@ export interface Match {
   awayScorers: any[];
   homeAssists: any[];
   awayAssists: any[];
-  
   // 🔥 [추가] 승부 예측 결과 (Team/Owner 데이터 기반)
   homePredictRate?: number; // 홈 승리 확률 (0~100)
   awayPredictRate?: number; // 원정 승리 확률 (0~100)
@@ -29,7 +28,10 @@ export interface Match {
   loserMatchId?: string | null;
 
   // 🔥 [추가] 컵 모드 전용: 조별 예선 그룹 정보 (예: "A", "B")
-  group?: string; 
+  group?: string;
+
+  // 🔥 [추가] 경기 분석 및 코멘터리 데이터
+  commentary?: string; 
 }
 
 export interface Team {
@@ -69,7 +71,7 @@ export interface Prizes {
 }
 
 // 🔥 [추가] 컵 모드의 현재 진행 상태 (조별리그 vs 토너먼트)
-export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE'; 
+export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE';
 
 export interface Season {
   id: number;
@@ -83,12 +85,10 @@ export interface Season {
 
   // 🔥 [추가] 컵 모드 전용 데이터
   cupPhase?: CupPhase; // 현재 조별리그인지 토너먼트인지 상태값
-  
   // 조 편성 데이터 (예: { "A": [101, 102], "B": [103, 104] } - Team ID 저장)
-  groups?: { 
-    [key: string]: number[]; 
+  groups?: {
+    [key: string]: number[];
   };
-  
   // 토너먼트 진출 규칙 설정
   advancementRule?: {
     fromGroup: number; // 조별 몇 위까지 진출? (보통 2)
@@ -104,7 +104,7 @@ export interface Owner {
   password?: string;
 
   // 🔥 [추가] 오너 승률 가중치 계산용 통산 전적
-  totalWins?: number;    // 통산 승리 횟수
+  totalWins?: number; // 통산 승리 횟수
   totalMatches?: number; // 통산 경기 횟수
 }
 
@@ -128,7 +128,7 @@ export interface MasterTeam {
   condition?: string;
 
   // 🔥 [추가] 마스터 데이터에서 팀 생성 시 넘겨줄 점수
-  realRankScore?: number; 
+  realRankScore?: number;
   realFormScore?: number;
 }
 
@@ -153,6 +153,9 @@ export interface CupEntry {
   group?: string; // 소속 조 저장용
   realRankScore?: number;
   realFormScore?: number;
+  
+  // 🔥 [추가] 컴포넌트 UI 사이즈 조절용 속성
+  size?: string; 
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";

@@ -124,7 +124,8 @@ export const CupSchedule = ({
         homePredictRate: 0, awayPredictRate: 0, 
         stage: stageName, 
         matchLabel: 'TBD', youtubeUrl: '',
-        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
+        commentary: '' // 🔥 추가
     } as Match);
 
     const slots = {
@@ -140,14 +141,12 @@ export const CupSchedule = ({
             const stage = m.stage?.toUpperCase() || "";
             if (stage.includes("GROUP")) return;
 
-            // ID 끝자리 숫자로 슬롯 인덱스 추출 (안전한 정수 파싱)
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                // 슬롯 범위 내에 있을 때만 데이터 삽입
                 if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m };
             } else if (stage.includes("ROUND_OF_8")) {
                 if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m };
@@ -156,11 +155,9 @@ export const CupSchedule = ({
         });
     });
 
-    // 🔥 [승자 동기화] BYE가 아닌 실제 팀 승리 시에만 전달
     const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        // 승자가 TBD나 BYE가 아닌 실제 팀일 때만 다음 라운드에 반영
         if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const info = getTeamExtendedInfo(winner);
@@ -170,7 +167,6 @@ export const CupSchedule = ({
         }
     };
 
-    // 8강 -> 4강 -> 결승 전파
     syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
     syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
     syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
@@ -294,6 +290,15 @@ export const CupSchedule = ({
                                               historyData={historyData} 
                                               masterTeams={masterTeams} 
                                             />
+                                            {/* 🔥 코멘터리 복구 영역 */}
+                                            {m.commentary && (
+                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                        <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
+                                                        {m.commentary}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -321,6 +326,15 @@ export const CupSchedule = ({
                                                 historyData={historyData} 
                                                 masterTeams={masterTeams} 
                                             />
+                                            {/* 🔥 코멘터리 복구 영역 (토너먼트용) */}
+                                            {m.commentary && (
+                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                        <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
+                                                        {m.commentary}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -346,6 +360,14 @@ export const CupSchedule = ({
                                                 historyData={historyData} 
                                                 masterTeams={masterTeams} 
                                             />
+                                            {/* 🔥 코멘터리 복구 영역 */}
+                                            {m.commentary && (
+                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                        {m.commentary}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

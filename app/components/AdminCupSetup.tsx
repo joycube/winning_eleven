@@ -58,6 +58,80 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 🔥 [추가] 조별리그(Step 2) 잠금 상태 확인 (라운드가 1개라도 생성되었으면 잠금)
+  const isGroupLocked = useMemo(() => {
+    return targetSeason.rounds && targetSeason.rounds.length > 0;
+  }, [targetSeason]);
+
+  // 🔥 [추가] 토너먼트(Step 3) 잠금 상태 확인 (라운드가 2개 이상이면 잠금)
+  const isTournamentLocked = useMemo(() => {
+    return targetSeason.rounds && targetSeason.rounds.length > 1;
+  }, [targetSeason]);
+
+  // 🔥 [추가] 이미 생성된 토너먼트 데이터가 있다면 DB에서 가져와 bracket 상태 복구
+  useEffect(() => {
+    if (isTournamentLocked && targetSeason.rounds) {
+      // 토너먼트(Knockout) 라운드 찾기 (보통 인덱스 1 또는 이름으로 검색)
+      const knockoutRound = targetSeason.rounds.find(r => r.round === 2 || r.name.includes("Knockout"));
+      
+      if (knockoutRound && knockoutRound.matches) {
+        const matches = knockoutRound.matches;
+        
+        // 매치 ID 기준 정렬 (ko_4_0, ko_4_1... 순서 보장)
+        const sortedMatches = [...matches].sort((a, b) => {
+            // ID 끝자리 숫자 추출 (예: ko_4_0 -> 0)
+            const aIdParts = a.id.split('_');
+            const bIdParts = b.id.split('_');
+            const aId = parseInt(aIdParts[aIdParts.length - 1] || '0');
+            const bId = parseInt(bIdParts[bIdParts.length - 1] || '0');
+            return aId - bId;
+        });
+
+        // 현재 단계(8강 or 4강)의 첫 번째 라운드 매치만 필터링
+        // (이미 결승까지 생성되었어도 Step3 UI는 첫 대진만 보여줘야 함)
+        const firstStageMatches = sortedMatches.filter(m => 
+            (matches.length > 2 && m.stage.includes('8')) || // 8강이 있으면 8강 매치만
+            (matches.length <= 2 && m.stage.includes('4'))   // 4강부터 시작이면 4강 매치만
+        );
+
+        // bracket 배열 재구성
+        const totalSlots = firstStageMatches.length * 2;
+        const restoredBracket: (CupEntry | null)[] = Array(totalSlots).fill(null);
+
+        firstStageMatches.forEach((match, idx) => {
+            const homeSlotIdx = idx * 2;
+            const awaySlotIdx = idx * 2 + 1;
+
+            // 홈팀 복구 (BYE나 TBD가 아니면 객체 생성)
+            if (match.home !== 'BYE' && match.home !== 'TBD') {
+                restoredBracket[homeSlotIdx] = {
+                    id: `restored_h_${match.id}`,
+                    masterId: 0, 
+                    name: match.home,
+                    logo: match.homeLogo,
+                    ownerName: match.homeOwner,
+                    region: '', tier: '', realRankScore: 0, realFormScore: 0
+                };
+            }
+
+            // 어웨이팀 복구
+            if (match.away !== 'BYE' && match.away !== 'TBD') {
+                restoredBracket[awaySlotIdx] = {
+                    id: `restored_a_${match.id}`,
+                    masterId: 0,
+                    name: match.away,
+                    logo: match.awayLogo,
+                    ownerName: match.awayOwner,
+                    region: '', tier: '', realRankScore: 0, realFormScore: 0
+                };
+            }
+        });
+
+        setTournamentBracket(restoredBracket);
+      }
+    }
+  }, [isTournamentLocked, targetSeason]);
+
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
@@ -198,12 +272,13 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
   }, [targetSeason]);
 
   useEffect(() => {
-    if (qualifiedTeams.length > 0) {
+    // 🔥 [수정] 복구 로직이 실행된 경우에는 초기화하지 않음 (잠금 상태가 아닐 때만 갱신)
+    if (qualifiedTeams.length > 0 && !isTournamentLocked) {
       if (tournamentBracket.length !== qualifiedTeams.length) {
         setTournamentBracket(Array(qualifiedTeams.length).fill(null));
       }
     }
-  }, [qualifiedTeams]);
+  }, [qualifiedTeams, isTournamentLocked]);
 
   const tournamentWaitingPool = useMemo(() => {
     const assignedNames = new Set(tournamentBracket.filter(Boolean).map(t => t?.name));
@@ -810,11 +885,13 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         )}
       </div>
 
+      {/* 🔥 [수정] Step 2에 잠금 상태 전달 */}
       <AdminCupStep2
         unassignedPool={unassignedPool}
         groups={groups}
         customConfig={customConfig}
         configMode={configMode}
+        isLocked={isGroupLocked} // 🔥 조별리그(Step 2) 잠금
         onDragStart={handleDragStart}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -828,6 +905,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       <AdminCupStep3
         waitingPool={tournamentWaitingPool}
         bracket={tournamentBracket}
+        isLocked={isTournamentLocked} // 🔥 토너먼트(Step 3) 잠금
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleTournamentDrop}

@@ -20,6 +20,10 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     return () => clearTimeout(t);
   }, []);
 
+  // 🔥 [핵심 추가] 동적 코멘터리 생성 로직 (객체 전체 전달)
+  const dynamicCommentary = getMatchCommentary(match);
+  const displayCommentary = match.commentary || dynamicCommentary;
+
   const isBye = match.status === 'BYE' || match.home === 'BYE' || match.away === 'BYE';
   const isTbd = match.home === 'TBD' || match.away === 'TBD';
   const isCompleted = match.status === 'COMPLETED'; 
@@ -45,14 +49,14 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   const homeMaster = getTeamMasterInfo(match.home);
   const awayMaster = getTeamMasterInfo(match.away);
 
-  // 🔥 [수정] 리얼순위 배지 축소 (text-[10px] -> text-[9px], padding 축소)
+  // 리얼순위 배지
   const getRankBadge = (rank?: number) => {
     if (!rank || rank <= 0) return (
       <span className="px-1 py-[1px] rounded text-[9px] font-black border border-slate-700 bg-slate-800 text-slate-500">R.-</span>
     );
     const colors = rank === 1 ? 'bg-yellow-500 text-black border-yellow-200' : 
                    rank === 2 ? 'bg-slate-300 text-black border-white' : 
-                   rank === 3 ? 'bg-amber-600 text-white border-amber-400' : 
+                   rank === 3 ? 'bg-orange-400 text-black border-orange-500' : 
                    'bg-slate-800 text-slate-400 border-slate-600';
     return (
       <span className={`px-1 py-[1px] rounded text-[9px] font-black border shadow-sm ${colors}`}>
@@ -61,7 +65,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 🔥 [수정] 팀 등급 배지 축소 (22px -> 18px, 폰트 11px -> 9px)
+  // 팀 등급 배지
   const getTierBadge = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
     let colors = 'bg-slate-800 text-slate-400 border-slate-600';
@@ -76,7 +80,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 🔥 [수정] 폼 배지 축소
+  // 컨디션 배지
   const getConditionBadge = (condition?: string) => {
     if (!condition) return null;
     const config: any = {
@@ -102,7 +106,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
     return (
       <div className="flex flex-col items-center text-center space-y-3 w-full">
-        {/* 1단계: 엠블럼 축소 (w-20 -> w-14) */}
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
             <img src={logo} className="w-full h-full object-contain" alt="" onError={(e)=>e.currentTarget.src=FALLBACK_IMG} />
@@ -111,17 +114,13 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         </div>
 
         <div className="flex flex-col items-center space-y-1.5 w-full">
-          {/* 2단계: 팀명 축소 (text-lg -> text-xs, truncate 확보) */}
           <span className="text-xs font-black text-white uppercase tracking-tighter truncate w-full max-w-[100px] leading-tight drop-shadow-md">
             {name}
           </span>
-
           <div className="flex items-center gap-1">
             {getRankBadge(master?.real_rank)}
             {getConditionBadge(master?.condition)}
           </div>
-
-          {/* 3단계: 오너명 축소 (text-[11px] -> text-[9px]) */}
           <p className="text-[9px] font-bold text-slate-500 italic tracking-wide truncate max-w-[90px]">
             {owner || '-'}
           </p>
@@ -148,7 +147,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
             <div className="flex flex-col items-center px-1">
                 {isCompleted ? (
-                    // 점수 폰트도 살짝 조정 (text-4xl -> text-3xl)하여 공간 확보
                     <div className="flex items-center gap-2 text-3xl font-black italic tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
                         <span className={Number(match.homeScore) > Number(match.awayScore) ? 'text-emerald-400' : 'text-white'}>{match.homeScore}</span>
                         <span className="text-slate-800">:</span>
@@ -187,14 +185,15 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
+        {/* 예상승률 그래프 섹션 */}
         {showGraph && (
             <div className="mt-5 space-y-1.5">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[9px] font-black text-emerald-400">{prediction.hRate}%</span>
-                  <span className="text-[8px] font-bold text-slate-600 tracking-tighter uppercase italic">Win Probability</span>
+                  <span className="text-[8px] font-bold text-slate-600 tracking-tighter uppercase italic">예상승률(%)</span>
                   <span className="text-[9px] font-black text-blue-400">{prediction.aRate}%</span>
                 </div>
-                <div className="relative h-3 bg-slate-900 rounded-lg overflow-hidden flex border border-slate-800/50">
+                <div className="relative h-4 bg-slate-900 rounded-lg overflow-hidden flex border border-slate-800/50">
                     <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-out" />
                     <div className="absolute top-0 bottom-0 z-20 flex items-center justify-center transition-all duration-1000 ease-out" style={{ left: isLoaded ? `${prediction.hRate}%` : '50%', transform: 'translateX(-50%)' }} >
                         <div className="w-0.5 h-full bg-white/40 shadow-[0_0_8px_white] relative flex items-center justify-center">
@@ -204,6 +203,20 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                         </div>
                     </div>
                     <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-gradient-to-l from-blue-600 to-blue-400 transition-all duration-1000 ease-out ml-auto" />
+                </div>
+            </div>
+        )}
+
+        {/* 🔥 경기결과 코멘터리 섹션 (가독성 향상 및 중앙 정렬 적용) */}
+        {displayCommentary && (
+            <div className="mt-5 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl shadow-inner">
+                <div className="flex flex-col items-center text-center">
+                    <span className="text-emerald-500 font-black text-[10px] uppercase tracking-[0.2em] not-italic mb-1.5 opacity-80">
+                        경기결과
+                    </span>
+                    <p className="text-[13px] text-emerald-400 leading-relaxed italic font-bold">
+                        "{displayCommentary}"
+                    </p>
                 </div>
             </div>
         )}
