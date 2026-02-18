@@ -2,6 +2,7 @@
 import React from 'react';
 import { TeamCard } from './TeamCard';
 import { CupEntry, FALLBACK_IMG } from '../types';
+import { getTierBadgeColor } from '../utils/helpers';
 
 interface AdminCupStep3Props {
     waitingPool: CupEntry[];
@@ -32,7 +33,6 @@ export const AdminCupStep3 = ({
         action();
     };
 
-    // 🔥 [수정] 줄터네 이슈 해결을 위한 렌더링 안전장치
     // bracket 길이에 맞춰 매치 수를 계산 (8강이면 4경기, 4강이면 2경기)
     const matchCount = Math.floor(bracket.length / 2);
     const matches = Array.from({ length: matchCount });
@@ -40,6 +40,7 @@ export const AdminCupStep3 = ({
     return (
         <div className={`bg-[#0b0e14] p-6 rounded-[2.5rem] border relative transition-all duration-300 ${isLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
             
+            {/* 헤더 섹션 */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
                 <div className="flex items-center gap-3">
                     <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Tournament Bracket Setup</h3>
@@ -66,6 +67,7 @@ export const AdminCupStep3 = ({
                 </div>
             </div>
 
+            {/* 토너먼트 대기실 (TeamCard 컴포넌트 사용 -> 자동 디자인 적용) */}
             <div className={`mb-6 p-4 rounded-2xl border transition-all duration-300 ${isLocked ? 'bg-black/40 border-slate-800/50 opacity-40 grayscale pointer-events-none' : 'bg-slate-900/50 border-slate-700/50'}`}>
                 <div className="flex justify-between items-center mb-4">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Qualified Teams Inventory ({waitingPool.length})</span>
@@ -82,14 +84,14 @@ export const AdminCupStep3 = ({
                                 team={t} 
                                 draggable={!isLocked} 
                                 onDragStart={(e) => !isLocked && onDragStart(e, t)} 
-                                size="mini" // 리스트에서는 작게 표시
+                                size="mini" 
                             />
                         ))}
                     </div>
                 )}
             </div>
 
-            {/* 🔥 [수정] 줄터네 이슈(배열 인덱스 오류) 방지를 위한 렌더링 로직 개선 */}
+            {/* 🔥 [디자인 업그레이드] 대진표 슬롯 UI를 TeamCard 스타일로 통일 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 relative">
                 <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800 hidden md:block opacity-20"></div>
                 
@@ -105,72 +107,67 @@ export const AdminCupStep3 = ({
                                 {bracket.length === 8 ? 'Quarter-Final' : 'Semi-Final'} Match {mIdx + 1}
                             </div>
                             
-                            {/* 첫 번째 슬롯 (Home) */}
-                            <div 
-                                onDragOver={isLocked ? undefined : onDragOver} 
-                                onDrop={(e) => !isLocked && onDrop(e, slot1)} 
-                                onClick={() => !isLocked && onSlotClick(slot1)} 
-                                className={`relative h-14 rounded-xl border flex items-center justify-center transition-all group ${
-                                    isLocked 
-                                    ? 'border-slate-800/50 bg-black/20 cursor-default'
-                                    : team1 
-                                        ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-950/20 cursor-pointer' 
-                                        : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                }`}
-                            >
-                                {team1 ? (
-                                    <div className="flex items-center gap-3 w-full px-4 overflow-hidden">
-                                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center p-1 shadow-md shrink-0">
-                                            <img src={team1.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                        </div>
-                                        <div className="flex flex-col flex-1 min-w-0">
-                                            <span className={`text-[10px] font-black italic truncate ${isLocked ? 'text-slate-500' : 'text-white'}`}>{team1.name}</span>
-                                            <span className="text-[8px] text-emerald-600 font-bold uppercase truncate">{team1.ownerName}</span>
-                                        </div>
-                                        {!isLocked && <span className="text-[8px] text-slate-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">✕</span>}
-                                    </div>
-                                ) : (
-                                    <span className={`text-[9px] font-black italic tracking-widest ${isLocked ? 'text-slate-800' : 'text-slate-700 group-hover:text-indigo-500'}`}>
-                                        {isLocked ? 'BYE (PASS)' : '+ DROP TEAM'}
-                                    </span>
-                                )}
-                            </div>
+                            {/* 슬롯 렌더링 (반복 코드 제거 및 디자인 적용) */}
+                            {[
+                                { idx: slot1, team: team1 },
+                                { idx: slot2, team: team2 }
+                            ].map(({ idx, team }) => (
+                                <div 
+                                    key={idx}
+                                    onDragOver={isLocked ? undefined : onDragOver} 
+                                    onDrop={(e) => !isLocked && onDrop(e, idx)} 
+                                    onClick={() => !isLocked && onSlotClick(idx)} 
+                                    className={`relative h-16 rounded-2xl border flex items-center justify-between transition-all group overflow-hidden ${
+                                        isLocked 
+                                        ? 'border-slate-800/50 bg-black/20 cursor-default'
+                                        : team 
+                                            ? 'border-emerald-500/30 bg-gradient-to-r from-slate-900 to-slate-950 hover:border-red-500/50 cursor-pointer shadow-lg' 
+                                            : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
+                                    }`}
+                                >
+                                    {team ? (
+                                        <>
+                                            {/* 왼쪽: 로고 및 티어 배지 (TeamCard 스타일) */}
+                                            <div className="relative pl-3 flex items-center">
+                                                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1 shadow-md ring-2 ring-slate-800 relative z-10">
+                                                    <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                                </div>
+                                                {/* 티어 배지 */}
+                                                <div className={`absolute bottom-0 left-9 flex items-center justify-center w-4 h-4 rounded-full border border-slate-900 font-black text-[7px] text-black shadow-md z-20 ${team.tier === 'S' ? 'bg-yellow-400' : team.tier === 'A' ? 'bg-slate-200' : 'bg-orange-600 text-white'}`}>
+                                                    {team.tier}
+                                                </div>
+                                            </div>
 
-                            {/* VS 구분선 */}
-                            <div className="flex justify-center items-center h-4 relative">
-                                <div className="absolute w-full h-px bg-slate-800/30"></div>
-                                <span className="relative bg-[#0b0e14] px-2 text-[8px] font-black text-slate-700 italic">VS</span>
-                            </div>
+                                            {/* 가운데: 팀 이름 및 오너 */}
+                                            <div className="flex flex-col flex-1 min-w-0 px-3">
+                                                <span className={`text-sm font-black italic truncate tracking-tighter ${isLocked ? 'text-slate-500' : 'text-white'}`}>
+                                                    {team.name}
+                                                </span>
+                                                <span className="text-[9px] text-slate-500 font-bold uppercase truncate tracking-wide">
+                                                    {team.ownerName}
+                                                </span>
+                                            </div>
 
-                            {/* 두 번째 슬롯 (Away) */}
-                            <div 
-                                onDragOver={isLocked ? undefined : onDragOver} 
-                                onDrop={(e) => !isLocked && onDrop(e, slot2)} 
-                                onClick={() => !isLocked && onSlotClick(slot2)} 
-                                className={`relative h-14 rounded-xl border flex items-center justify-center transition-all group ${
-                                    isLocked 
-                                    ? 'border-slate-800/50 bg-black/20 cursor-default'
-                                    : team2
-                                        ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-950/20 cursor-pointer' 
-                                        : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                }`}
-                            >
-                                {team2 ? (
-                                    <div className="flex items-center gap-3 w-full px-4 overflow-hidden">
-                                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center p-1 shadow-md shrink-0">
-                                            <img src={team2.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            {/* 오른쪽: 삭제 버튼 */}
+                                            {!isLocked && (
+                                                <div className="pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <span className="text-[9px] text-red-500 font-bold">REMOVE</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="w-full flex justify-center items-center gap-2">
+                                            <span className={`text-[10px] font-black italic tracking-widest ${isLocked ? 'text-slate-800' : 'text-slate-700 group-hover:text-indigo-500'}`}>
+                                                {isLocked ? 'BYE (PASS)' : '+ DROP TEAM'}
+                                            </span>
                                         </div>
-                                        <div className="flex flex-col flex-1 min-w-0">
-                                            <span className={`text-[10px] font-black italic truncate ${isLocked ? 'text-slate-500' : 'text-white'}`}>{team2.name}</span>
-                                            <span className="text-[8px] text-emerald-600 font-bold uppercase truncate">{team2.ownerName}</span>
-                                        </div>
-                                        {!isLocked && <span className="text-[8px] text-slate-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">✕</span>}
-                                    </div>
-                                ) : (
-                                    <span className={`text-[9px] font-black italic tracking-widest ${isLocked ? 'text-slate-800' : 'text-slate-700 group-hover:text-indigo-500'}`}>
-                                        {isLocked ? 'BYE (PASS)' : '+ DROP TEAM'}
-                                    </span>
-                                )}
+                                    )}
+                                </div>
+                            ))}
+
+                            {/* VS Divider */}
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+                                <div className="bg-[#0b0e14] px-1.5 py-0.5 rounded border border-slate-800 text-[8px] font-black text-slate-600 italic">VS</div>
                             </div>
                         </div>
                     );

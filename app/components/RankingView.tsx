@@ -195,7 +195,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const hScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : (safeMatch.home === 'BYE' ? 0 : null);
     const aScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : (safeMatch.away === 'BYE' ? 0 : null);
 
-    // 🔥 [수정] ReferenceError 해결: info.real_rank -> team.real_rank
     const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => {
       const isTbd = team.name === 'TBD';
       const isBye = team.name === 'BYE';
@@ -288,7 +287,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {rankingTab === 'STANDINGS' && (
         <div className="space-y-12">
-          {/* 🏆 토너먼트 트리 (부모가 주는 knockoutStages를 100% 그대로 사용) */}
+          {/* 🏆 토너먼트 트리 */}
           {currentSeason?.type === 'CUP' && knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar">
               <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
@@ -317,7 +316,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               </div>
             </div>
           )}
-          {/* 조별리그 및 나머지 순위표 */}
+
+          {/* 🔥 조별리그 순위표 (승무패 복구) */}
           {currentSeason?.type === 'CUP' && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 px-2">
@@ -332,14 +332,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
                   <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                    <tr><th className="p-4 w-8">#</th><th className="p-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center text-emerald-400">Pts</th></tr>
+                    <tr>
+                      <th className="p-4 w-8">#</th>
+                      <th className="p-4">Club</th>
+                      <th className="p-2 text-center">W</th>
+                      <th className="p-2 text-center">D</th>
+                      <th className="p-2 text-center">L</th>
+                      <th className="p-2 text-center">GD</th>
+                      <th className="p-2 text-center text-emerald-400">Pts</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {groupStandings?.[selectedGroupTab]?.map((t: any, i: number) => (
                       <tr key={t.id} className="border-b border-slate-800/50">
                         <td className={`p-4 text-center font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : 'text-slate-600'}`}>{i + 1}</td>
                         <td className="p-4">{renderBroadcastTeamCell(t)}</td>
-                        <td className="p-2 text-center text-slate-400">{t.win}</td>
+                        <td className="p-2 text-center text-white">{t.win}</td>
+                        <td className="p-2 text-center text-slate-500">{t.draw}</td>
+                        <td className="p-2 text-center text-slate-500">{t.loss}</td>
+                        <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
                         <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
                       </tr>
                     ))}
@@ -349,6 +360,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
           )}
 
+          {/* 🔥 전체 리그 순위표 (승무패 복구) */}
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2">
               <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
@@ -357,14 +369,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
               <table className="w-full text-left text-xs uppercase border-collapse">
                 <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                  <tr><th className="p-4 w-8">#</th><th className="p-4">Club</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr>
+                  <tr>
+                    <th className="p-4 w-8">#</th>
+                    <th className="p-4">Club</th>
+                    <th className="p-2 text-center">W</th>
+                    <th className="p-2 text-center">D</th>
+                    <th className="p-2 text-center">L</th>
+                    <th className="p-2 text-center">GD</th>
+                    <th className="p-2 text-center text-emerald-400">Pts</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {sortedTeams.map((t: any, i: number) => (
                     <tr key={t.id} className="border-b border-slate-800/50">
                       <td className={`p-4 text-center font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-400' : 'text-slate-600'}`}>{i + 1}</td>
                       <td className="p-4">{renderBroadcastTeamCell(t)}</td>
-                      <td className="p-2 text-center text-slate-500 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
+                      <td className="p-2 text-center text-white">{t.win}</td>
+                      <td className="p-2 text-center text-slate-500">{t.draw}</td>
+                      <td className="p-2 text-center text-slate-500">{t.loss}</td>
+                      <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
                       <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
                     </tr>
                   ))}
@@ -375,6 +398,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
       )}
 
+      {/* 이하 탭 (OWNERS, PLAYERS, HIGHLIGHTS) 코드는 기존과 동일 */}
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           {currentSeason?.type === 'CUP' && tournamentChampion && (
