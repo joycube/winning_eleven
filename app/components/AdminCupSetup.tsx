@@ -236,17 +236,17 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     alert("토너먼트 대진 생성 완료!"); onNavigateToSchedule(targetSeason.id);
   };
 
-  // 🔥 [핵심 픽스] 점수 복사 버그 해결을 위한 매치 생성 로직 디벨롭
+  // 🔥 [핵심 픽스] 점수 복사 버그 및 그룹 간 데이터 오염 해결
   const handleCreateSchedule = async () => {
     if(Object.values(groups).flat().some(t=>!t) && !confirm("빈 자리 존재. 진행합니까?")) return;
     const finalTeams: Team[] = [];
     const groupsForDB: { [key: string]: number[] } = {};
     const groupMatches: any[] = [];
-    let matchCounter = 0; // 🔥 파서가 정확한 인덱스를 찾을 수 있도록 순차적인 숫자 부여
+    let matchCounter = 0; // 🔥 CupSchedule 파서가 각 매치를 고유하게 인식하도록 함
 
     Object.keys(groups).forEach(gName => {
       groupsForDB[gName] = [];
-      const currentGroupTeamObjects: Team[] = []; // 🔥 해당 조의 팀들만 필터링하여 매치 생성 (그룹 간 간섭 차단)
+      const currentGroupTeams: Team[] = []; // 🔥 조별 내부 팀들만 명확히 격리
 
       groups[gName].forEach(entry => {
         if (entry) {
@@ -264,18 +264,18 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
           };
           finalTeams.push(newTeam);
           groupsForDB[gName].push(newTeam.id);
-          currentGroupTeamObjects.push(newTeam);
+          currentGroupTeams.push(newTeam);
         }
       });
 
-      // 🔥 해당 조 내부 팀들로만 매치 생성
-      for (let i = 0; i < currentGroupTeamObjects.length; i++) {
-        for (let j = i + 1; j < currentGroupTeamObjects.length; j++) {
-          const home = currentGroupTeamObjects[i];
-          const away = currentGroupTeamObjects[j];
+      // 🔥 해당 조의 팀끼리만 1:1 대결 매치 생성 (이중 반복문)
+      for (let i = 0; i < currentGroupTeams.length; i++) {
+        for (let j = i + 1; j < currentGroupTeams.length; j++) {
+          const home = currentGroupTeams[i];
+          const away = currentGroupTeams[j];
           groupMatches.push({
-            // 🔥 ID 끝자리를 명확한 숫자로 부여하여 CupSchedule의 정규식 파싱 오류 해결
-            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`, 
+            // 🔥 [중요] ID 끝자리를 명시적인 숫자로 부여하여 파서 충돌 방지
+            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`,
             seasonId: targetSeason.id,
             stage: `GROUP STAGE`,
             matchLabel: `Group ${gName} Match`,
