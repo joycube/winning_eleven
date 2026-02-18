@@ -19,7 +19,7 @@ interface TeamCardProps {
     draggable?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     className?: string;
-    // 🔥 [Vercel Build Fix] size 속성 추가
+    // [수정] 빌드 오류 해결을 위한 size 속성 정의
     size?: string; 
 }
 
@@ -29,6 +29,7 @@ export const TeamCard = ({
     draggable, 
     onDragStart, 
     className = '', 
+    // [수정] size 기본값 설정
     size = 'default' 
 }: TeamCardProps) => {
     

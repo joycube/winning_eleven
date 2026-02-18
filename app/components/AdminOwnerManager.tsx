@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react'; // 🔥 [수정] React import 추가
 import { db } from '../firebase';
 import { addDoc, collection, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Owner } from '../types';
