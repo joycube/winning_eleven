@@ -373,6 +373,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
             const teamInfo = getTeamExtendedInfo(leagueChampTeam.name);
 
+            // 🔥 해당 챔피언 팀의 팀 내 득점 1위 선수 추출 로직
+            const teamPlayers = (activeRankingData.players || []).filter((p: any) => p.team === leagueChampTeam.name && p.goals > 0);
+            const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
+
             return (
               <div className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform hover:scale-[1.03] transition-all duration-500 mb-4 group">
                 <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
@@ -387,7 +391,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         <img src={displayPhoto} alt={leagueChampTeam.ownerName} className="w-full h-full object-cover" />
                       </div>
                     </div>
-                    {/* 🔥 챔피언 팀 엠블럼 뱃지 */}
                     <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
                         <img src={teamInfo.logo} className="w-full h-full object-contain" alt="챔피언 팀" />
                     </div>
@@ -395,7 +398,28 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                   <div className="flex-1 text-center md:text-left">
                     <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>🏆</span> LEAGUE CHAMPION</div>
                     <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{leagueChampTeam.ownerName}</h2>
-                    <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic">With {leagueChampTeam.name}</p>
+                    <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6">With {leagueChampTeam.name}</p>
+                    
+                    {/* 🔥 챔피언 팀 스탯 박스 (RECORD, GD, MVP) */}
+                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                      <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
+                        <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">RECORD</span>
+                        <span className="text-lg font-bold text-white tracking-tight">{leagueChampTeam.win}W <span className="text-slate-400">{leagueChampTeam.draw}D</span> <span className="text-red-400">{leagueChampTeam.loss}L</span></span>
+                      </div>
+                      <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
+                        <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">GOAL DIFF</span>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xl font-black text-yellow-400">{leagueChampTeam.gd > 0 ? `+${leagueChampTeam.gd}` : leagueChampTeam.gd}</span>
+                          <span className="text-[10px] text-slate-400 font-medium">({leagueChampTeam.gf}득 / {leagueChampTeam.ga}실)</span>
+                        </div>
+                      </div>
+                      {topScorer && (
+                        <div className="bg-gradient-to-r from-yellow-600/20 to-yellow-900/20 rounded-xl px-5 py-2.5 border border-yellow-400/50">
+                          <span className="text-[10px] text-yellow-500 block font-black mb-0.5">TEAM MVP (TOP SCORER)</span>
+                          <span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className="text-sm text-yellow-400 ml-1">({topScorer.goals} Goals)</span></span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -427,7 +451,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                       <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
-                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W {firstOwner.draw}D {firstOwner.loss}L</span></div>
+                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W <span className="text-slate-500">{firstOwner.draw}D</span> <span className="text-red-400">{firstOwner.loss}L</span></span></div>
                       <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
                     </div>
                   </div>
