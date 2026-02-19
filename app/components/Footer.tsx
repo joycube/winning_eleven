@@ -6,6 +6,14 @@ export const Footer = () => {
       <p className="text-slate-500 text-xs mb-1 font-bold"> 경기는 코나미社의 eFootball 2025로 진행 합니다.</p>
       <p className="text-slate-500 text-xs mb-4">게임 참여 문의 : joycbue@gmail.com</p>
       
+      {/* 개발자 및 운영자 정보 추가 */}
+      <div className="text-slate-600 text-[10px] mb-6 space-y-1 font-medium tracking-wide">
+        <p>Product Planning & Development | 강원주</p>
+        <p>Supervisor | 정일수</p>
+        <p>Team Rating Reviewer | 이준영</p>
+        <p>Marketing & PR | JK</p>
+      </div>
+      
       <div className="flex justify-center gap-6 mb-6">
           <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
               <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6" alt="Konami"/>
