@@ -44,7 +44,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
-  // 🔥 [디벨롭] 팀 순위 계산 로직 (승점 > 득실 > 다득점)
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
@@ -149,7 +148,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     Object.keys(currentSeason.groups).forEach(gName => {
       const teamIds = currentSeason.groups[gName];
       if (teamIds && teamIds.length > 0) {
-        // 🔥 [수정] 조별리그 순위를 해당 그룹 내 성적으로 독립 계산
         const groupTeams = activeRankingData.teams.filter((t: any) => teamIds.includes(t.id));
         groups[gName] = getRankedTeams(groupTeams);
       }
@@ -222,7 +220,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
-  // 🔥 [디벨롭] 선수 랭킹 로직 강화 (타이브레이커: 득점이 같으면 어시스트 순)
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = [...players]
       .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -368,53 +365,70 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
-          {currentSeason?.type === 'CUP' && tournamentChampion && (
-            <div className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform hover:scale-[1.03] transition-all duration-500 mb-10 group">
-              <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
-              <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm">
-                <div className="relative pt-3">
-                  <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
-                  <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
-                    <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950">
-                      <img src={tournamentChampion.photo || FALLBACK_IMG} alt={tournamentChampion.nickname} className="w-full h-full object-cover" />
+          
+          {/* 🔥 1. [디벨롭] 리그 1위 우승 오너 카드 (신규 추가) */}
+          {sortedTeams.length > 0 && (() => {
+            const leagueChampTeam = sortedTeams[0];
+            const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === leagueChampTeam.ownerName) : null;
+            const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
+            const teamInfo = getTeamExtendedInfo(leagueChampTeam.name);
+
+            return (
+              <div className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform hover:scale-[1.03] transition-all duration-500 mb-4 group">
+                <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
+                <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
+                  <img src={teamInfo.logo} className="w-[160px] h-[160px] object-contain filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" alt=""/>
+                </div>
+                <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm">
+                  <div className="relative pt-3">
+                    <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
+                    <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
+                      <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950">
+                        <img src={displayPhoto} alt={leagueChampTeam.ownerName} className="w-full h-full object-cover" />
+                      </div>
+                    </div>
+                    {/* 🔥 챔피언 팀 엠블럼 뱃지 */}
+                    <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
+                        <img src={teamInfo.logo} className="w-full h-full object-contain" alt="챔피언 팀" />
                     </div>
                   </div>
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                  <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>🏆</span> GRAND CHAMPION</div>
-                  <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{tournamentChampion.nickname}</h2>
-                  <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic">The Ultimate Winner of {currentSeason.name}</p>
+                  <div className="flex-1 text-center md:text-left">
+                    <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>🏆</span> LEAGUE CHAMPION</div>
+                    <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{leagueChampTeam.ownerName}</h2>
+                    <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic">With {leagueChampTeam.name}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
+          {/* 🔥 2. 누적 승점 1위 오너 카드 (기존 카드 스타일 유지 및 타이틀 변경) */}
           {activeRankingData.owners.length > 0 && (() => {
             const firstOwner = activeRankingData.owners[0];
             const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === firstOwner.name) : null;
             const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
             const displayPrize = getOwnerPrize(firstOwner.name);
             return (
-              <div className="relative w-full rounded-2xl overflow-hidden border border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
-                <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/40 backdrop-blur-sm">
+              <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
+                <div className="absolute inset-0 z-0 bg-gradient-to-tr from-emerald-900/40 via-transparent to-transparent"></div>
+                <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm">
                   <div className="relative pt-3">
-                    <div className="absolute -top-6 -left-4 text-5xl filter drop-shadow-lg z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-10deg)' }}>👑</div>
-                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-yellow-300 via-yellow-500 to-yellow-200 shadow-2xl relative z-10">
+                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                       <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900">
                         <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover" />
                       </div>
                     </div>
                     <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
-                      <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-xs font-black px-4 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">1st WINNER</span>
+                      <span className="bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">TOP POINTS</span>
                     </div>
                   </div>
                   <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
-                    <h3 className="text-xs md:text-sm text-yellow-500 font-bold tracking-[0.2em] mb-0.5 uppercase">The Champion</h3>
+                    <h3 className="text-xs md:text-sm text-emerald-400 font-bold tracking-[0.2em] mb-0.5 uppercase">Overall Top Points</h3>
                     <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-                      <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
-                      <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-slate-700 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W {firstOwner.draw}D {firstOwner.loss}L</span></div>
-                      <div className="bg-gradient-to-r from-yellow-600/30 to-yellow-900/30 rounded-xl px-5 py-2.5 border border-yellow-500/40"><span className="text-[10px] text-yellow-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-yellow-400">₩ {displayPrize.toLocaleString()}</span></div>
+                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
+                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W {firstOwner.draw}D {firstOwner.loss}L</span></div>
+                      <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
                     </div>
                   </div>
                 </div>
@@ -422,6 +436,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             );
           })()}
 
+          {/* 오너 랭킹 테이블 (기존 유지) */}
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs uppercase border-collapse">
               <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
