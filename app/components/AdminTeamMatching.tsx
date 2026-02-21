@@ -1,12 +1,45 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { updateDoc, doc } from 'firebase/firestore';
+// 🔥 [Finance] collection과 writeBatch 추가 (기존 코드 유지)
+import { updateDoc, doc, collection, writeBatch } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG } from '../types';
 import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
 import { QuickDraftModal } from './QuickDraftModal';
-import { TeamCard } from './TeamCard'; // 🔥 분리된 컴포넌트 import
+import { TeamCard } from './TeamCard'; 
+
+// 🔥 [Finance] 재무 장부에 참가비(-지출)를 일괄 기록하는 독립 함수 (UI 무영향)
+const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
+    try {
+        if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
+        
+        const entryFee = Math.floor(totalPrize / ownerIds.length);
+        if (entryFee <= 0) return;
+
+        const batch = writeBatch(db);
+        const ledgerRef = collection(db, 'finance_ledger');
+
+        ownerIds.forEach(ownerId => {
+            const newDocRef = doc(ledgerRef); // 새 문서 ID 자동 생성
+            batch.set(newDocRef, {
+                seasonId: String(seasonId),
+                ownerId: String(ownerId),
+                type: 'EXPENSE',
+                amount: entryFee,
+                title: `${seasonName} 참가비 🎫`,
+                createdAt: new Date().toISOString()
+            });
+        });
+
+        await batch.commit();
+        console.log(`✅ [Finance] ${ownerIds.length}명의 참가비(-${entryFee}원) 장부 기록 완료!`);
+    } catch (error) {
+        console.error("🚨 [Finance] 참가비 기록 중 에러 발생:", error);
+    }
+};
 
 interface Props {
     targetSeason: Season;
@@ -23,9 +56,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [selectedMasterTeamDocId, setSelectedMasterTeamDocId] = useState('');
     const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
     const [isRolling, setIsRolling] = useState(false);
-    const [isFlipping, setIsFlipping] = useState(false); // 🔥 FC25 플립 연출용
+    const [isFlipping, setIsFlipping] = useState(false); 
     
-    // 🔥 퀵 드래프트 모달 상태
     const [isDraftOpen, setIsDraftOpen] = useState(false);
 
     // 필터 옵션
@@ -113,7 +145,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         const mTeam = masterTeams.find(t => (t.docId || String(t.id)) === selectedMasterTeamDocId);
         if (!owner || !mTeam) return;
 
-        // 🔥 [추가] 중복 팀 검사 (수동 추가 시)
         const isDuplicate = targetSeason.teams?.some(t => t.name === mTeam.name);
         if (isDuplicate) {
             return alert(`🚫 이미 등록된 팀입니다: ${mTeam.name}\n다른 팀을 선택해주세요.`);
@@ -143,11 +174,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams, rounds: updatedRounds });
     };
 
-    // 🔥 [수정] 스케줄 생성 및 재생성(Re-GEN) 로직
     const handleGenerateSchedule = async (isRegen = false) => {
         if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
         
-        // 🔥 [추가] 스케줄 생성 전 최종 중복 검사
         const teamNames = targetSeason.teams.map(t => t.name);
         const uniqueNames = new Set(teamNames);
         if (teamNames.length !== uniqueNames.size) {
@@ -156,7 +185,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
         if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
 
-        // 1. 팀 순서를 랜덤하게 섞어 새로운 대진이 나오도록 유도 (최신 정보 동기화 포함)
         const refreshedTeams = targetSeason.teams.map(seasonTeam => {
             const master = masterTeams.find(m => m.name === seasonTeam.name);
             if (master) {
@@ -167,18 +195,34 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
         const shuffledTeams = [...refreshedTeams].sort(() => Math.random() - 0.5);
         
-        // 2. 라운드 정보가 없는 임시 시즌 객체 생성 (스케줄러가 새 데이터로 인식하도록)
         const tempSeason = { ...targetSeason, teams: shuffledTeams, rounds: [] };
 
-        // 3. 스케줄 생성
         const rounds = generateRoundsLogic(tempSeason);
         
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
+
+        // 🔥 [Finance] 스케줄 생성 직후, 오너들의 참가비 내역을 장부에 확정 기록!
+        if (!isRegen && (targetSeason as any).totalPrize) {
+            // 참여한 팀들의 오너 이름에서 중복을 제거하고 오너 ID를 추출
+            const uniqueOwnerNames = Array.from(new Set(shuffledTeams.map(t => t.ownerName)));
+            const uniqueOwnerIds = uniqueOwnerNames.map(name => {
+                const owner = owners.find(o => o.nickname === name);
+                return owner ? String(owner.id) : '';
+            }).filter(id => id !== '');
+
+            // 백그라운드 실행 (UI를 멈추지 않음)
+            recordEntryFees(
+                targetSeason.id,
+                targetSeason.name,
+                (targetSeason as any).totalPrize,
+                uniqueOwnerIds
+            );
+        }
+
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
 
     const handleDraftApply = async (newTeams: Team[]) => {
-        // 🔥 [추가] 퀵 매칭 결과 적용 시 중복 필터링
         const existingNames = new Set(targetSeason.teams?.map(t => t.name) || []);
         const filteredNewTeams = newTeams.filter(t => !existingNames.has(t.name));
 
@@ -257,9 +301,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
                 <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
 
-                {/* 🔥 [수정됨] ⚡ 퀵 팀매칭 버튼 섹션 */}
                 <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-2">
-                    {/* 🔥 텍스트 영역 수정: 중앙 정렬 및 폰트 강조 */}
                     <div className="flex-1 flex flex-col items-center justify-center text-center">
                         <div className="text-white font-black italic flex items-center gap-2 text-sm">
                             <span className="text-yellow-400">⚡</span> 퀵 팀매칭 (Quick Match)
@@ -390,10 +432,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     <div className="flex gap-2">{hasSchedule ? (<><button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button><button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button></>) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}</div>
                 </div>
                 
-                {/* 🔥 [디자인 수정] TeamCard 컴포넌트 적용 + 반응형 그리드 */}
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                     {targetSeason.teams?.map(t => {
-                        // 최신 정보 동기화
                         const master = masterTeams.find(m => m.name === t.name);
                         const displayTeam = {
                             ...t,
@@ -404,10 +444,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
                         return (
                             <div key={t.id} className="relative group">
-                                {/* TeamCard 컴포넌트 사용 */}
                                 <TeamCard team={displayTeam} />
                                 
-                                {/* 삭제 버튼 오버레이 */}
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} 
                                     className={`absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 text-white transition-colors ${hasSchedule ? 'cursor-not-allowed opacity-50' : ''}`}
@@ -420,7 +458,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 </div>
             </div>
 
-            {/* 🔥 모달 컴포넌트 연결 */}
             <QuickDraftModal 
                 isOpen={isDraftOpen}
                 onClose={() => setIsDraftOpen(false)}

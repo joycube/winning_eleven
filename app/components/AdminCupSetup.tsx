@@ -1,7 +1,10 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { updateDoc, doc } from 'firebase/firestore';
+// 🔥 [Finance] collection, writeBatch, getDocs, query, where 추가 (기존 코드 유지)
+import { updateDoc, doc, collection, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match, CupEntry } from '../types';
 import { getSortedTeamsLogic } from '../utils/helpers';
 import { QuickDraftModal } from './QuickDraftModal';
@@ -16,6 +19,46 @@ const LEAGUE_RANKING: { [key: string]: number } = {
   "BRASILEIRAO": 10, "ARGENTINE LPF": 11, "MLS": 12, "SAUDI PRO LEAGUE": 13,
   "SUPER LIG": 14, "SCOTTISH PREMIERSHIP": 15, "K LEAGUE": 16, "J LEAGUE": 17,
   "EUROPE": 1, "SOUTH AMERICA": 2, "NORTH AMERICA": 3, "AFRICA": 4, "ASIA-OCEANIA": 5
+};
+
+// 🔥 [Finance] 재무 장부에 참가비를 일괄 기록하는 독립 함수 (2중 차감 방지 적용)
+const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
+  try {
+      if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
+
+      const ledgerRef = collection(db, 'finance_ledger');
+
+      // 🛡️ [2중 차감 방지 방어막] 이미 이 시즌의 '참가비(EXPENSE)' 기록이 있는지 DB에서 확인
+      const q = query(ledgerRef, where("seasonId", "==", String(seasonId)), where("type", "==", "EXPENSE"));
+      const existingDocs = await getDocs(q);
+      
+      if (!existingDocs.empty) {
+          console.log("✅ [Finance] 이미 참가비가 징수된 시즌입니다. (2중 차감 스킵)");
+          return; // 이미 장부에 기록이 있다면 조용히 함수 종료 (안전)
+      }
+
+      const entryFee = Math.floor(totalPrize / ownerIds.length);
+      if (entryFee <= 0) return;
+
+      const batch = writeBatch(db);
+
+      ownerIds.forEach(ownerId => {
+          const newDocRef = doc(ledgerRef); 
+          batch.set(newDocRef, {
+              seasonId: String(seasonId),
+              ownerId: String(ownerId),
+              type: 'EXPENSE',
+              amount: entryFee,
+              title: `${seasonName} 참가비 🎫`,
+              createdAt: new Date().toISOString()
+          });
+      });
+
+      await batch.commit();
+      console.log(`✅ [Finance] ${ownerIds.length}명의 참가비(-${entryFee}원) 장부 기록 완료!`);
+  } catch (error) {
+      console.error("🚨 [Finance] 참가비 기록 중 에러 발생:", error);
+  }
 };
 
 interface AdminCupSetupProps {
@@ -236,17 +279,17 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     alert("토너먼트 대진 생성 완료!"); onNavigateToSchedule(targetSeason.id);
   };
 
-  // 🔥 [핵심 픽스] 점수 복사 버그 및 그룹 간 데이터 오염 해결
+  // 🔥 [Finance 적용됨] 스케줄 생성 및 참가비 청구 
   const handleCreateSchedule = async () => {
     if(Object.values(groups).flat().some(t=>!t) && !confirm("빈 자리 존재. 진행합니까?")) return;
     const finalTeams: Team[] = [];
     const groupsForDB: { [key: string]: number[] } = {};
     const groupMatches: any[] = [];
-    let matchCounter = 0; // 🔥 CupSchedule 파서가 각 매치를 고유하게 인식하도록 함
+    let matchCounter = 0; 
 
     Object.keys(groups).forEach(gName => {
       groupsForDB[gName] = [];
-      const currentGroupTeams: Team[] = []; // 🔥 조별 내부 팀들만 명확히 격리
+      const currentGroupTeams: Team[] = []; 
 
       groups[gName].forEach(entry => {
         if (entry) {
@@ -268,13 +311,11 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         }
       });
 
-      // 🔥 해당 조의 팀끼리만 1:1 대결 매치 생성 (이중 반복문)
       for (let i = 0; i < currentGroupTeams.length; i++) {
         for (let j = i + 1; j < currentGroupTeams.length; j++) {
           const home = currentGroupTeams[i];
           const away = currentGroupTeams[j];
           groupMatches.push({
-            // 🔥 [중요] ID 끝자리를 명시적인 숫자로 부여하여 파서 충돌 방지
             id: `match_${targetSeason.id}_${gName}_${matchCounter++}`,
             seasonId: targetSeason.id,
             stage: `GROUP STAGE`,
@@ -296,6 +337,24 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       cupPhase: 'GROUP_STAGE', 
       status: 'ACTIVE' 
     });
+
+    // 🔥 [Finance] 조별리그(최초 스케줄) 생성 직후, 오너들의 참가비 내역을 장부에 확정 기록!
+    // isGroupLocked가 false일 때(최초 생성)만 작동하고, 내부적으로 한 번 더 검사(2중 차감 완벽 방어)
+    if (!isGroupLocked && (targetSeason as any).totalPrize) {
+      const uniqueOwnerNames = Array.from(new Set(finalTeams.map(t => t.ownerName)));
+      const uniqueOwnerIds = uniqueOwnerNames.map(name => {
+          const owner = owners.find(o => o.nickname === name);
+          return owner ? String(owner.id) : '';
+      }).filter(id => id !== '');
+
+      recordEntryFees(
+          targetSeason.id,
+          targetSeason.name,
+          (targetSeason as any).totalPrize,
+          uniqueOwnerIds
+      );
+    }
+
     alert("조별리그 시작!"); onNavigateToSchedule(targetSeason.id);
   };
 

@@ -17,6 +17,8 @@ import { HistoryView } from './components/HistoryView';
 import { TutorialView } from './components/TutorialView';
 import { AdminView } from './components/AdminView';
 import { MatchEditModal } from './components/MatchEditModal';
+// 🔥 [Finance] 컴포넌트 정식 임포트 완료
+import { FinanceView } from './components/FinanceView'; 
 
 // 훅 (데이터 가져오는 엔진)
 import { useLeagueData } from './hooks/useLeagueData';
@@ -32,8 +34,8 @@ export default function FootballLeagueApp() {
   // 1. 데이터 로딩
   const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
   
-  // 2. 화면 상태 관리
-  const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TUTORIAL'>('RANKING');
+  // 2. 화면 상태 관리 (🔥 FINANCE 추가)
+  const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'ADMIN' | 'TUTORIAL'>('RANKING');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
   const [adminTab, setAdminTab] = useState<any>('NEW'); 
   
@@ -152,7 +154,8 @@ export default function FootballLeagueApp() {
     const params = new URLSearchParams(window.location.search);
     const paramView = params.get('view');
     const paramSeasonId = Number(params.get('season'));
-    if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
+    // 🔥 URL 파라미터에 FINANCE 추가
+    if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
     if (paramSeasonId && seasons.find(s => s.id === paramSeasonId)) setViewSeasonId(paramSeasonId);
     else if (viewSeasonId === 0 && seasons.length > 0) setViewSeasonId(seasons[0].id);
   }, [seasons]);
@@ -332,6 +335,12 @@ export default function FootballLeagueApp() {
           />
         )}
         {currentView === 'HISTORY' && <HistoryView historyData={historyData} owners={owners} />}
+        
+        {/* 🔥 FINANCE 뷰 정식 연결 완료! */}
+        {currentView === 'FINANCE' && (
+            <FinanceView owners={owners} seasons={seasons} />
+        )}
+
         {currentView === 'TUTORIAL' && <TutorialView />}
         {currentView === 'ADMIN' && <AdminView adminTab={adminTab} setAdminTab={setAdminTab} seasons={seasons} owners={owners} leagues={leagues} masterTeams={masterTeams} banners={banners || []} onAdminLogin={(pw) => pw === '0705'} onCreateSeason={handleCreateSeason} onSaveOwner={handleSaveOwner} onNavigateToSchedule={handleNavigateToSchedule} />}
       </main>
