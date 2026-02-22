@@ -3,7 +3,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-// 🔥 [Finance] collection, writeBatch, getDocs, query, where 추가 (기존 코드 유지)
 import { updateDoc, doc, collection, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match, CupEntry } from '../types';
 import { getSortedTeamsLogic } from '../utils/helpers';
@@ -21,20 +20,18 @@ const LEAGUE_RANKING: { [key: string]: number } = {
   "EUROPE": 1, "SOUTH AMERICA": 2, "NORTH AMERICA": 3, "AFRICA": 4, "ASIA-OCEANIA": 5
 };
 
-// 🔥 [Finance] 재무 장부에 참가비를 일괄 기록하는 독립 함수 (2중 차감 방지 적용)
 const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
   try {
       if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
 
       const ledgerRef = collection(db, 'finance_ledger');
 
-      // 🛡️ [2중 차감 방지 방어막] 이미 이 시즌의 '참가비(EXPENSE)' 기록이 있는지 DB에서 확인
       const q = query(ledgerRef, where("seasonId", "==", String(seasonId)), where("type", "==", "EXPENSE"));
       const existingDocs = await getDocs(q);
       
       if (!existingDocs.empty) {
           console.log("✅ [Finance] 이미 참가비가 징수된 시즌입니다. (2중 차감 스킵)");
-          return; // 이미 장부에 기록이 있다면 조용히 함수 종료 (안전)
+          return; 
       }
 
       const entryFee = Math.floor(totalPrize / ownerIds.length);
@@ -70,7 +67,6 @@ interface AdminCupSetupProps {
 }
 
 export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule }: AdminCupSetupProps) => {
-  // State
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
   const [isRolling, setIsRolling] = useState(false);
@@ -95,11 +91,9 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Memos & Effects
   const isGroupLocked = useMemo(() => targetSeason.rounds && targetSeason.rounds.length > 0, [targetSeason]);
   const isTournamentLocked = useMemo(() => targetSeason.rounds && targetSeason.rounds.length > 1, [targetSeason]);
 
-  // DB 데이터 로드 및 복구 (토너먼트)
   useEffect(() => {
     if (isTournamentLocked && targetSeason.rounds) {
       const knockoutRound = targetSeason.rounds.find(r => r.round === 2 || r.name.includes("Knockout"));
@@ -111,15 +105,30 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         const restoredBracket: (CupEntry | null)[] = Array(firstStageMatches.length * 2).fill(null);
 
         firstStageMatches.forEach((match, idx) => {
-          if (match.home !== 'TBD') restoredBracket[idx*2] = { id: match.home==='BYE'?`bye_h_${idx}`:`restored_h_${match.id}`, masterId: match.home==='BYE'?-1:0, name: match.home, logo: match.homeLogo, ownerName: match.homeOwner, region: '', tier: '', realRankScore: 0, realFormScore: 0 };
-          if (match.away !== 'TBD') restoredBracket[idx*2+1] = { id: match.away==='BYE'?`bye_a_${idx}`:`restored_a_${match.id}`, masterId: match.away==='BYE'?-1:0, name: match.away, logo: match.awayLogo, ownerName: match.awayOwner, region: '', tier: '', realRankScore: 0, realFormScore: 0 };
+          if (match.home !== 'TBD') {
+              const master = masterTeams.find(mt => mt.name === match.home);
+              restoredBracket[idx*2] = { 
+                  id: match.home==='BYE'?`bye_h_${idx}`:`restored_h_${match.id}`, masterId: match.home==='BYE'?-1:0, 
+                  name: match.home, logo: match.homeLogo, ownerName: match.homeOwner, 
+                  region: master?.region || '', tier: master?.tier || '',
+                  realRankScore: 0, realFormScore: 0 
+              };
+          }
+          if (match.away !== 'TBD') {
+              const master = masterTeams.find(mt => mt.name === match.away);
+              restoredBracket[idx*2+1] = { 
+                  id: match.away==='BYE'?`bye_a_${idx}`:`restored_a_${match.id}`, masterId: match.away==='BYE'?-1:0, 
+                  name: match.away, logo: match.awayLogo, ownerName: match.awayOwner, 
+                  region: master?.region || '', tier: master?.tier || '',
+                  realRankScore: 0, realFormScore: 0 
+              };
+          }
         });
         setTournamentBracket(restoredBracket);
       }
     }
-  }, [isTournamentLocked, targetSeason]);
+  }, [isTournamentLocked, targetSeason, masterTeams]);
 
-  // DB 데이터 로드 (조별리그)
   useEffect(() => {
     if (targetSeason.groups && Object.keys(targetSeason.groups).length > 0) {
       const loadedGroups: any = {};
@@ -163,32 +172,58 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     return getSortedTeamsLogic(teams, '');
   }, [masterTeams, unassignedPool, groups, filterCategory, filterLeague, filterTier, searchTeam]);
 
+  // 🔥 [TS 버그 해결 완벽 픽스] undefined 방어용 폴백(|| '') 적용
   const qualifiedTeams = useMemo(() => {
     if (!targetSeason.rounds?.[0]) return [];
     const matches = targetSeason.rounds[0].matches;
-    const stats: any = {};
+    
+    type TeamStat = { name: string; points: number; gd: number; gf: number; group: string; logo: string; ownerName: string; };
+    const stats: Record<string, TeamStat> = {};
+    
     matches.filter(m => m.status === 'COMPLETED').forEach(m => {
-      [m.home, m.away].forEach(t => { if(!stats[t]) stats[t] = { name:t, points:0, gd:0, gf:0, group:m.group, logo:t===m.home?m.homeLogo:m.awayLogo, ownerName:t===m.home?m.homeOwner:m.awayOwner }; });
+      [m.home, m.away].forEach(t => { 
+          if(!stats[t]) stats[t] = { 
+              name: t, 
+              points: 0, 
+              gd: 0, 
+              gf: 0, 
+              group: m.group || '', // 🔥 해결 1: undefined가 들어오지 않도록 빈 문자열 폴백
+              logo: (t === m.home ? m.homeLogo : m.awayLogo) || FALLBACK_IMG, 
+              ownerName: (t === m.home ? m.homeOwner : m.awayOwner) || 'CPU' 
+          }; 
+      });
       const h=Number(m.homeScore), a=Number(m.awayScore);
       stats[m.home].gf+=h; stats[m.home].gd+=(h-a); stats[m.home].points+=(h>a?3:h===a?1:0);
       stats[m.away].gf+=a; stats[m.away].gd+=(a-h); stats[m.away].points+=(a>h?3:a===h?1:0);
     });
+
     const winners: CupEntry[] = [];
-    Array.from(new Set(matches.map(m=>m.group))).sort().forEach((g:any) => {
-      const gTeams = Object.values(stats).filter((t:any)=>t.group===g).sort((a:any,b:any)=>b.points-a.points||b.gd-a.gd||b.gf-a.gf);
+    
+    // 🔥 해결 2: map 돌릴 때도 undefined 방어
+    const groups = Array.from(new Set(matches.map(m => m.group || ''))).sort();
+
+    groups.forEach((g: string) => {
+      const gTeams = Object.values(stats).filter(t => t.group === g).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+      
       if(gTeams[0]) {
+        const master = masterTeams.find(mt => mt.name === gTeams[0].name);
         winners.push({
-            ...gTeams[0], masterId: 0, id: `q_${g}_1`, tier: 'S', region: '', rank: 1, realRankScore: 80, realFormScore: 80
+            ...gTeams[0], masterId: 0, id: `q_${g}_1`, 
+            tier: master?.tier || 'N/A', region: master?.region || '',
+            rank: 1, realRankScore: 80, realFormScore: 80
         } as CupEntry);
       }
       if(gTeams[1]) {
+        const master = masterTeams.find(mt => mt.name === gTeams[1].name);
         winners.push({
-            ...gTeams[1], masterId: 0, id: `q_${g}_2`, tier: 'A', region: '', rank: 2, realRankScore: 80, realFormScore: 80
+            ...gTeams[1], masterId: 0, id: `q_${g}_2`, 
+            tier: master?.tier || 'N/A', region: master?.region || '',
+            rank: 2, realRankScore: 80, realFormScore: 80
         } as CupEntry);
       }
     });
     return winners;
-  }, [targetSeason]);
+  }, [targetSeason, masterTeams]);
 
   const tournamentWaitingPool = useMemo(() => {
     if(isTournamentLocked) return [];
@@ -196,7 +231,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     return qualifiedTeams.filter(t => !assigned.has(t.name));
   }, [qualifiedTeams, tournamentBracket, isTournamentLocked]);
 
-  // Handlers
   const handleRandom = () => {
     if (!selectedOwnerId) return alert("오너를 먼저 선택해주세요.");
     if (availableTeams.length === 0) return alert("조건에 맞는 팀이 없습니다.");
@@ -225,7 +259,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     setUnassignedPool(prev => [...prev, ...newTeams.filter(t => !used.has(t.id)).map((t,i) => ({ id:`draft_${Date.now()}_${i}`, masterId:t.id, name:t.name, logo:t.logo, ownerName:t.ownerName||'CPU', region:t.region, tier:t.tier, realRankScore:t.realRankScore, realFormScore:t.realFormScore }))]);
   };
 
-  // Drag & Drop
   const handleDragStart = (e: React.DragEvent, entry: CupEntry) => { setDraggedEntry(entry); setDraggedTournamentEntry(entry); e.dataTransfer.effectAllowed = "move"; };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
   
@@ -279,7 +312,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     alert("토너먼트 대진 생성 완료!"); onNavigateToSchedule(targetSeason.id);
   };
 
-  // 🔥 [Finance 적용됨] 스케줄 생성 및 참가비 청구 
   const handleCreateSchedule = async () => {
     if(Object.values(groups).flat().some(t=>!t) && !confirm("빈 자리 존재. 진행합니까?")) return;
     const finalTeams: Team[] = [];
@@ -294,67 +326,32 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       groups[gName].forEach(entry => {
         if (entry) {
           const newTeam: Team = {
-            id: Number(entry.masterId),
-            seasonId: targetSeason.id,
-            name: entry.name,
-            logo: entry.logo,
-            ownerName: entry.ownerName,
-            region: entry.region,
-            tier: entry.tier,
-            win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0,
-            realRankScore: entry.realRankScore || 80,
-            realFormScore: entry.realFormScore || 80
+            id: Number(entry.masterId), seasonId: targetSeason.id, name: entry.name, logo: entry.logo, ownerName: entry.ownerName, region: entry.region, tier: entry.tier, win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0, realRankScore: entry.realRankScore || 80, realFormScore: entry.realFormScore || 80
           };
-          finalTeams.push(newTeam);
-          groupsForDB[gName].push(newTeam.id);
-          currentGroupTeams.push(newTeam);
+          finalTeams.push(newTeam); groupsForDB[gName].push(newTeam.id); currentGroupTeams.push(newTeam);
         }
       });
 
       for (let i = 0; i < currentGroupTeams.length; i++) {
         for (let j = i + 1; j < currentGroupTeams.length; j++) {
-          const home = currentGroupTeams[i];
-          const away = currentGroupTeams[j];
+          const home = currentGroupTeams[i]; const away = currentGroupTeams[j];
           groupMatches.push({
-            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`,
-            seasonId: targetSeason.id,
-            stage: `GROUP STAGE`,
-            matchLabel: `Group ${gName} Match`,
-            group: gName,
-            home: home.name, homeLogo: home.logo, homeOwner: home.ownerName,
-            away: away.name, awayLogo: away.logo, awayOwner: away.ownerName,
-            homeScore: '', awayScore: '', status: 'UPCOMING',
-            homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`, seasonId: targetSeason.id, stage: `GROUP STAGE`, matchLabel: `Group ${gName} Match`, group: gName, home: home.name, homeLogo: home.logo, homeOwner: home.ownerName, away: away.name, awayLogo: away.logo, awayOwner: away.ownerName, homeScore: '', awayScore: '', status: 'UPCOMING', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
           });
         }
       }
     });
 
-    await updateDoc(doc(db, "seasons", String(targetSeason.id)), { 
-      teams: finalTeams, 
-      rounds: [{round:1, name:'Group Stage', seasonId:targetSeason.id, matches:groupMatches.sort(()=>0.5-Math.random())}], 
-      groups: groupsForDB, 
-      cupPhase: 'GROUP_STAGE', 
-      status: 'ACTIVE' 
-    });
+    await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: finalTeams, rounds: [{round:1, name:'Group Stage', seasonId:targetSeason.id, matches:groupMatches.sort(()=>0.5-Math.random())}], groups: groupsForDB, cupPhase: 'GROUP_STAGE', status: 'ACTIVE' });
 
-    // 🔥 [Finance] 조별리그(최초 스케줄) 생성 직후, 오너들의 참가비 내역을 장부에 확정 기록!
-    // isGroupLocked가 false일 때(최초 생성)만 작동하고, 내부적으로 한 번 더 검사(2중 차감 완벽 방어)
     if (!isGroupLocked && (targetSeason as any).totalPrize) {
       const uniqueOwnerNames = Array.from(new Set(finalTeams.map(t => t.ownerName)));
       const uniqueOwnerIds = uniqueOwnerNames.map(name => {
           const owner = owners.find(o => o.nickname === name);
           return owner ? String(owner.id) : '';
       }).filter(id => id !== '');
-
-      recordEntryFees(
-          targetSeason.id,
-          targetSeason.name,
-          (targetSeason as any).totalPrize,
-          uniqueOwnerIds
-      );
+      recordEntryFees(targetSeason.id, targetSeason.name, (targetSeason as any).totalPrize, uniqueOwnerIds);
     }
-
     alert("조별리그 시작!"); onNavigateToSchedule(targetSeason.id);
   };
 

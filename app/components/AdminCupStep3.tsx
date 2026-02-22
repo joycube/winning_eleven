@@ -2,7 +2,6 @@
 import React from 'react';
 import { TeamCard } from './TeamCard';
 import { CupEntry, FALLBACK_IMG } from '../types';
-import { getTierBadgeColor } from '../utils/helpers';
 
 interface AdminCupStep3Props {
     waitingPool: CupEntry[];
@@ -33,12 +32,11 @@ export const AdminCupStep3 = ({
         action();
     };
 
-    // bracket 길이에 맞춰 매치 수를 계산 (8강이면 4경기, 4강이면 2경기)
     const matchCount = Math.floor(bracket.length / 2);
     const matches = Array.from({ length: matchCount });
 
     return (
-        <div className={`bg-[#0b0e14] p-6 rounded-[2.5rem] border relative transition-all duration-300 ${isLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
+        <div className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 ${isLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
             
             {/* 헤더 섹션 */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
@@ -67,7 +65,7 @@ export const AdminCupStep3 = ({
                 </div>
             </div>
 
-            {/* 토너먼트 대기실 (TeamCard 컴포넌트 사용 -> 자동 디자인 적용) */}
+            {/* 토너먼트 대기실 */}
             <div className={`mb-6 p-4 rounded-2xl border transition-all duration-300 ${isLocked ? 'bg-black/40 border-slate-800/50 opacity-40 grayscale pointer-events-none' : 'bg-slate-900/50 border-slate-700/50'}`}>
                 <div className="flex justify-between items-center mb-4">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Qualified Teams Inventory ({waitingPool.length})</span>
@@ -77,23 +75,23 @@ export const AdminCupStep3 = ({
                 {waitingPool.length === 0 ? (
                     <div className="text-center py-4 text-slate-600 text-xs italic">조별리그 통과팀이 대기실에 없습니다.</div>
                 ) : (
-                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
                         {waitingPool.map(t => (
                             <TeamCard 
                                 key={t.id} 
                                 team={t} 
                                 draggable={!isLocked} 
                                 onDragStart={(e) => !isLocked && onDragStart(e, t)} 
-                                size="mini" 
+                                size="small" 
                             />
                         ))}
                     </div>
                 )}
             </div>
 
-            {/* 🔥 [디자인 업그레이드] 대진표 슬롯 UI를 TeamCard 스타일로 통일 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 relative">
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800 hidden md:block opacity-20"></div>
+            {/* 🔥 토너먼트 대진표 보드 (Step 2와 동일한 정사각형 카드 레이아웃으로 변경) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 relative">
+                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800 hidden lg:block opacity-20"></div>
                 
                 {matches.map((_, mIdx) => {
                     const slot1 = mIdx * 2;
@@ -102,73 +100,64 @@ export const AdminCupStep3 = ({
                     const team2 = bracket[slot2];
 
                     return (
-                        <div key={mIdx} className={`space-y-3 p-4 rounded-3xl border transition-all ${isLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50'}`}>
-                            <div className="text-[9px] text-slate-600 font-black mb-1 italic tracking-widest uppercase">
-                                {bracket.length === 8 ? 'Quarter-Final' : 'Semi-Final'} Match {mIdx + 1}
+                        <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border transition-all ${isLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50'}`}>
+                            
+                            <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
+                                <span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">
+                                    {bracket.length === 8 ? 'Quarter-Final' : 'Semi-Final'} Match {mIdx + 1}
+                                </span>
                             </div>
                             
-                            {/* 슬롯 렌더링 (반복 코드 제거 및 디자인 적용) */}
-                            {[
-                                { idx: slot1, team: team1 },
-                                { idx: slot2, team: team2 }
-                            ].map(({ idx, team }) => (
-                                <div 
-                                    key={idx}
-                                    onDragOver={isLocked ? undefined : onDragOver} 
-                                    onDrop={(e) => !isLocked && onDrop(e, idx)} 
-                                    onClick={() => !isLocked && onSlotClick(idx)} 
-                                    className={`relative h-16 rounded-2xl border flex items-center justify-between transition-all group overflow-hidden ${
-                                        isLocked 
-                                        ? 'border-slate-800/50 bg-black/20 cursor-default'
-                                        : team 
-                                            ? 'border-emerald-500/30 bg-gradient-to-r from-slate-900 to-slate-950 hover:border-red-500/50 cursor-pointer shadow-lg' 
-                                            : 'border-slate-800 bg-black/20 hover:border-indigo-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                    }`}
-                                >
-                                    {team ? (
-                                        <>
-                                            {/* 왼쪽: 로고 및 티어 배지 (TeamCard 스타일) */}
-                                            <div className="relative pl-3 flex items-center">
-                                                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1 shadow-md ring-2 ring-slate-800 relative z-10">
-                                                    <img src={team.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                                </div>
-                                                {/* 티어 배지 */}
-                                                <div className={`absolute bottom-0 left-9 flex items-center justify-center w-4 h-4 rounded-full border border-slate-900 font-black text-[7px] text-black shadow-md z-20 ${team.tier === 'S' ? 'bg-yellow-400' : team.tier === 'A' ? 'bg-slate-200' : 'bg-orange-600 text-white'}`}>
-                                                    {team.tier}
-                                                </div>
-                                            </div>
-
-                                            {/* 가운데: 팀 이름 및 오너 */}
-                                            <div className="flex flex-col flex-1 min-w-0 px-3">
-                                                <span className={`text-sm font-black italic truncate tracking-tighter ${isLocked ? 'text-slate-500' : 'text-white'}`}>
-                                                    {team.name}
-                                                </span>
-                                                <span className="text-[9px] text-slate-500 font-bold uppercase truncate tracking-wide">
-                                                    {team.ownerName}
-                                                </span>
-                                            </div>
-
-                                            {/* 오른쪽: 삭제 버튼 */}
-                                            {!isLocked && (
-                                                <div className="pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <span className="text-[9px] text-red-500 font-bold">REMOVE</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div className="w-full flex justify-center items-center gap-2">
-                                            <span className={`text-[10px] font-black italic tracking-widest ${isLocked ? 'text-slate-800' : 'text-slate-700 group-hover:text-indigo-500'}`}>
-                                                {isLocked ? 'BYE (PASS)' : '+ DROP TEAM'}
-                                            </span>
-                                        </div>
-                                    )}
+                            {/* 🔥 grid-cols-2를 사용해서 Step2 조별리그 슬롯과 완벽하게 똑같은 구조 적용 */}
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
+                                
+                                {/* VS Divider */}
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                                    <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
                                 </div>
-                            ))}
 
-                            {/* VS Divider */}
-                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-                                <div className="bg-[#0b0e14] px-1.5 py-0.5 rounded border border-slate-800 text-[8px] font-black text-slate-600 italic">VS</div>
+                                {[
+                                    { idx: slot1, team: team1 },
+                                    { idx: slot2, team: team2 }
+                                ].map(({ idx, team }) => (
+                                    <div 
+                                        key={idx}
+                                        onDragOver={isLocked ? undefined : onDragOver} 
+                                        onDrop={(e) => !isLocked && onDrop(e, idx)} 
+                                        onClick={() => !isLocked && onSlotClick(idx)} 
+                                        // 🔥 Step 2 슬롯 클래스 그대로 복사 (최소 높이, 보더 등)
+                                        className={`relative min-h-[96px] sm:min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
+                                            isLocked 
+                                            ? 'border-slate-800/50 bg-black/20 cursor-default'
+                                            : team 
+                                                ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-dashed' 
+                                                : 'border-slate-700 bg-slate-900/30 hover:border-yellow-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
+                                        }`}
+                                    >
+                                        {team ? (
+                                            <div className="w-full h-full">
+                                                {/* 🔥 TeamCard 통째로 삽입 */}
+                                                <TeamCard 
+                                                    team={team} 
+                                                    size="small" 
+                                                    className={`w-full h-full border-none shadow-none bg-transparent flex items-center justify-center ${isLocked ? 'grayscale opacity-80' : ''}`}
+                                                />
+                                                {!isLocked && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30">
+                                                        <span className="text-red-400 font-black text-xs">REMOVE ✕</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className={`flex flex-col items-center transition-colors ${isLocked ? 'text-slate-700' : 'text-slate-600 group-hover:text-yellow-500'}`}>
+                                                <span className="text-xl font-black">{isLocked ? '-' : '+'}</span>
+                                                <span className="text-[9px] font-bold">{isLocked ? 'EMPTY' : 'ADD TEAM'}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
+
                         </div>
                     );
                 })}

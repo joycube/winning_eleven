@@ -8,7 +8,7 @@ interface AdminCupStep2Props {
     groups: { [key: string]: (CupEntry | null)[] };
     customConfig: { groupCount: number; teamCount: number };
     configMode: 'AUTO' | 'CUSTOM';
-    isLocked?: boolean; // 🔥 잠금 상태 Prop 추가
+    isLocked?: boolean; 
     
     // 핸들러 함수들
     onDragStart: (e: React.DragEvent, entry: CupEntry) => void;
@@ -27,7 +27,6 @@ export const AdminCupStep2 = ({
     onAutoDraw, onResetDraw, onCreateSchedule
 }: AdminCupStep2Props) => {
     
-    // 🔥 [잠금 가드] 작업 실행 전 잠금 상태 체크
     const handleLockedAction = (action: () => void) => {
         if (isLocked) {
             alert("🔒 조 편성이 이미 확정되었습니다.\n수정하려면 시즌 데이터를 초기화해야 합니다.");
@@ -37,13 +36,12 @@ export const AdminCupStep2 = ({
     };
 
     return (
-        <div className={`bg-[#0b0e14] p-6 rounded-[2.5rem] border relative transition-all duration-300 ${isLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
+        <div className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 ${isLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
             
             {/* 상단 헤더 & 컨트롤 패널 */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
                 <div className="flex items-center gap-3">
                     <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 2. Group Draw Board</h3>
-                    {/* 🔥 잠금 배지 표시 */}
                     {isLocked && (
                         <div className="flex items-center gap-1 bg-red-900/30 border border-red-500/30 px-3 py-1 rounded-full">
                             <span className="text-sm">🔒</span>
@@ -78,12 +76,15 @@ export const AdminCupStep2 = ({
                 {unassignedPool.length === 0 ? (
                     <div className="text-center py-4 text-slate-600 text-xs italic">Step 1에서 팀을 선발해주세요.</div>
                 ) : (
-                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                    // 🔥 대기실 그리드 간격 넓혀서 가독성 확보
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
                         {unassignedPool.map(t => (
                             <TeamCard 
                                 key={t.id} 
                                 team={t} 
-                                draggable={!isLocked} // 🔥 잠금 시 드래그 차단
+                                // 🔥 미니 사이즈 제거하고 일반/스몰 사이즈로 큼직하게 렌더링
+                                size="small" 
+                                draggable={!isLocked} 
                                 onDragStart={(e) => !isLocked && onDragStart(e, t)} 
                             />
                         ))}
@@ -92,40 +93,40 @@ export const AdminCupStep2 = ({
             </div>
 
             {/* 조 추첨 보드 (잠금 시 드롭 차단) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 {Object.keys(groups).sort().slice(0, customConfig.groupCount).map(gName => (
                     <div key={gName} className={`rounded-2xl border overflow-hidden flex flex-col transition-all ${isLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/50 border-slate-800'}`}>
                         <div className="bg-slate-800/80 px-4 py-3 flex justify-between items-center border-b border-slate-700">
                             <span className="text-sm font-black italic text-emerald-400">GROUP {gName}</span>
                             <span className="text-[10px] text-slate-500 font-bold">{groups[gName].filter(Boolean).length}/{customConfig.teamCount}</span>
                         </div>
-                        <div className={`p-3 grid gap-2 ${customConfig.teamCount > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                        {/* 🔥 그룹 슬롯 그리드 최적화 (모바일에서 너무 찌그러지지 않도록) */}
+                        <div className={`p-3 grid gap-3 ${customConfig.teamCount > 4 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
                             {groups[gName].slice(0, customConfig.teamCount).map((slot, idx) => (
                                 <div 
                                     key={idx} 
-                                    // 🔥 [핵심] 잠금 시 이벤트 핸들러 제거
                                     onDragOver={isLocked ? undefined : onDragOver}
                                     onDrop={(e) => !isLocked && onDrop(e, gName, idx)}
                                     onClick={() => !isLocked && onSlotClick(gName, idx)} 
-                                    className={`relative aspect-video rounded-xl border-2 flex flex-col items-center justify-center transition-all group ${
+                                    // 🔥 [핵심] aspect-video 제거하고 min-h-24 적용. 팀 카드가 들어갈 숨통 확보!
+                                    className={`relative min-h-[96px] sm:min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
                                         isLocked 
-                                        ? 'border-slate-800/50 bg-black/20 cursor-default' // 잠금 스타일
+                                        ? 'border-slate-800/50 bg-black/20 cursor-default'
                                         : slot 
                                             ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-dashed' 
                                             : 'border-slate-700 bg-slate-900/30 hover:border-yellow-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
                                     }`}
                                 >
                                     {slot ? (
-                                        // 🔥 TeamCard 교체 (디자인 통일)
-                                        <div className="w-full h-full p-1">
+                                        <div className="w-full h-full">
                                             <TeamCard 
                                                 team={slot} 
-                                                size="mini" // 작은 사이즈 (필요시 'list'나 'small'로 변경)
-                                                className={`w-full h-full border-none shadow-none bg-transparent ${isLocked ? 'grayscale opacity-80' : ''}`}
+                                                // 🔥 mini 대신 small 적용하여 로고와 텍스트 시원하게 표시
+                                                size="small" 
+                                                className={`w-full h-full border-none shadow-none bg-transparent flex items-center justify-center ${isLocked ? 'grayscale opacity-80' : ''}`}
                                             />
-                                            {/* 잠금 아닐 때만 삭제 오버레이 */}
                                             {!isLocked && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl backdrop-blur-sm">
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
                                                     <span className="text-red-400 font-black text-xs">REMOVE ✕</span>
                                                 </div>
                                             )}

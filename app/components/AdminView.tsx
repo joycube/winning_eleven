@@ -50,11 +50,35 @@ export const AdminView = ({
         if (e.key === 'Enter') handleLogin();
     };
 
+    // 🔥 [데이터 무결성 픽스] 시즌 삭제 시 연결된 재무 장부 데이터 일괄 파기 로직
     const handleDeleteSeason = async (seasonId: number) => {
-        if (!confirm("시즌을 삭제할 경우, 모든 기록이 삭제됩니다. 삭제하시겠습니까?")) return;
-        await deleteDoc(doc(db, "seasons", String(seasonId)));
-        setAdminTab('NEW');
-        alert("시즌 삭제 완료");
+        if (!confirm("⚠️ 시즌을 삭제할 경우 해당 시즌의 모든 기록과 '참가비/상금 장부 데이터'까지 영구 삭제됩니다.\n정말 삭제하시겠습니까?")) return;
+
+        try {
+            const batch = writeBatch(db);
+
+            // 1. 시즌 문서 자체 삭제
+            batch.delete(doc(db, "seasons", String(seasonId)));
+
+            // 2. 해당 시즌과 묶인 finance_ledger (장부 데이터) 싹 다 긁어오기
+            const ledgerRef = collection(db, 'finance_ledger');
+            const q = query(ledgerRef, where("seasonId", "==", String(seasonId)));
+            const ledgerDocs = await getDocs(q);
+
+            // 3. 긁어온 장부 데이터들도 삭제 리스트에 추가
+            ledgerDocs.forEach((docSnap) => {
+                batch.delete(docSnap.ref);
+            });
+
+            // 4. 파이어베이스에 일괄 삭제 처리 쾅!
+            await batch.commit();
+
+            setAdminTab('NEW');
+            alert("✅ 시즌 및 연관된 재무 기록까지 깔끔하게 파기 완료되었습니다!");
+        } catch (error) {
+            console.error("🚨 시즌 삭제 오류:", error);
+            alert("시즌 및 장부 삭제 중 오류가 발생했습니다.");
+        }
     };
 
     const handleDeleteSchedule = async (seasonId: number) => {
@@ -106,7 +130,6 @@ export const AdminView = ({
                 const sortedTeams = Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
                 firstOwner = sortedTeams[0]?.owner || ''; secondOwner = sortedTeams[1]?.owner || ''; thirdOwner = sortedTeams[2]?.owner || '';
             } else {
-                // 🔥 TS 에러 해결을 위해 명시적으로 any 타입 지정
                 let finalMatch: any = null;
                 season.rounds?.forEach(r => r.matches?.forEach(m => {
                     if (m.stage === 'FINAL' || m.matchLabel?.toUpperCase().includes('FINAL')) finalMatch = m;
@@ -154,7 +177,7 @@ export const AdminView = ({
         }
     };
 
-    // 🔥 [서버 부하/렉 해결 핵심] 과거 시즌 데이터를 진짜 DB로 영구 이관하는 1회성 함수
+    // 🔥 과거 시즌 데이터를 진짜 DB로 영구 이관하는 1회성 함수
     const handleMigratePastData = async () => {
         if (!confirm("⚠️ 주의: 서버 부하를 줄이기 위해 과거 시즌 기록을 DB에 영구 저장합니다.\n1회만 실행하면 되며, 진행하시겠습니까?")) return;
 
@@ -171,7 +194,7 @@ export const AdminView = ({
 
                 const hasExpense = existingDocs.some(l => String(l.seasonId) === String(s.id) && l.type === 'EXPENSE');
                 const hasRevenue = existingDocs.some(l => String(l.seasonId) === String(s.id) && l.type === 'REVENUE');
-                if (hasExpense && hasRevenue) return; // 이미 이관된 시즌 패스
+                if (hasExpense && hasRevenue) return; 
 
                 const teamStats: Record<string, any> = {};
                 const playerGoals: Record<string, any> = {};
@@ -269,7 +292,6 @@ export const AdminView = ({
 
     return (
         <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
-            {/* 🔥 상단 메뉴 옆에 과거 데이터 DB 마이그레이션 버튼 배치 */}
             <div className="flex justify-between items-center mb-4 gap-2">
                 <select value={adminTab} onChange={(e) => handleTabChange(e.target.value)} className="flex-1 w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm h-14 font-bold text-white">
                     <option value="NEW">➕ Create New Season</option>
