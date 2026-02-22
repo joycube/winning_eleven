@@ -156,3 +156,29 @@ export interface CupEntry {
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
+
+// 🔥 [NEW] 댓글 데이터 타입 (Notice 하위)
+export interface NoticeComment {
+  id: string;        // 댓글 고유 ID
+  ownerId: string;   // 댓글 작성자(오너) ID
+  ownerName: string; // 작성자 닉네임
+  ownerPhoto: string;// 작성자 프로필 사진
+  text: string;      // 댓글 내용
+  createdAt: string; // 작성 시간
+}
+
+// 🔥 [NEW] 공지사항 및 팝업용 데이터 타입 (게시판 고도화 반영)
+export interface Notice {
+  id: string;        // 파이어베이스 문서 ID
+  title: string;     // 공지 제목
+  content: string;   // 공지 내용 (텍스트 에디터)
+  imageUrl?: string;   // (추가) 이미지 업로드 URL
+  youtubeUrl?: string; // (추가) 유튜브 엠베드 링크
+  isPopup: boolean;  // 메인 화면 팝업 노출 여부
+  createdAt: string; // 작성일 (ISO String)
+  
+  // 🔥 인터랙션 데이터 (게시판 기능용)
+  likedBy?: string[];    // 좋아요 누른 오너 ID 배열 (중복 방지)
+  dislikedBy?: string[]; // 싫어요 누른 오너 ID 배열
+  comments?: NoticeComment[]; // 댓글 목록
+}

@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection } from 'firebase/firestore';
-import { Season, Match } from './types';
+import { doc, updateDoc, setDoc, addDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { Season, Match, Notice } from './types';
 
 // 컴포넌트들
 import { TopBar } from './components/TopBar';
@@ -17,52 +17,71 @@ import { HistoryView } from './components/HistoryView';
 import { TutorialView } from './components/TutorialView';
 import { AdminView } from './components/AdminView';
 import { MatchEditModal } from './components/MatchEditModal';
-// 🔥 [Finance] 컴포넌트 정식 임포트 완료
 import { FinanceView } from './components/FinanceView'; 
+import { NoticeView } from './components/NoticeView';
 
 // 훅 (데이터 가져오는 엔진)
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
-
-// 🔥 승률 박제 도우미 함수 import
 import { calculateMatchSnapshot } from './utils/predictor';
 
 // TBD 로고 정의
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
 export default function FootballLeagueApp() {
-  // 1. 데이터 로딩
   const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
   
-  // 2. 화면 상태 관리 (🔥 FINANCE 추가)
-  const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'ADMIN' | 'TUTORIAL'>('RANKING');
+  const [currentView, setCurrentView] = useState<'NOTICE' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'ADMIN' | 'TUTORIAL'>('NOTICE');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
   const [adminTab, setAdminTab] = useState<any>('NEW'); 
   
-  // 3. 통계 계산 (랭킹 등)
   const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId);
-  
-  // 4. 경기 수정 모달 상태
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
-  // ==================================================================================
-  // 🔥 [중앙 제어] 마스터 대진표 연산 (RankingView와 ScheduleView가 100% 동일하게 사용)
-  // ==================================================================================
+  const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
+  const [hideTicker, setHideTicker] = useState(false);
+
+  useEffect(() => {
+    const fetchLatestPopup = async () => {
+      try {
+        const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+        const notices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
+        const popupNotice = notices.find(n => n.isPopup);
+        
+        if (popupNotice) {
+            const hideUntil = localStorage.getItem(`hide_notice_${popupNotice.id}`);
+            if (hideUntil && Date.now() < Number(hideUntil)) {
+                setHideTicker(true);
+            } else {
+                setLatestPopupNotice(popupNotice);
+            }
+        }
+      } catch (error) {
+        console.error("🚨 Error fetching popup notice:", error);
+      }
+    };
+    fetchLatestPopup();
+  }, []);
+
+  const handleCloseTicker = () => {
+      if (latestPopupNotice) {
+          localStorage.setItem(`hide_notice_${latestPopupNotice.id}`, String(Date.now() + 86400000));
+          setHideTicker(true);
+      }
+  };
+
   const knockoutStages = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === viewSeasonId);
     if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) return null;
 
-    // 1. 승자 판별 로직 (BYE 처리 강화)
     const getWinnerName = (match: Match | null): string => {
         if (!match) return 'TBD';
         const home = match.home?.trim();
         const away = match.away?.trim();
 
-        // 부전승 처리: 한쪽이 BYE면 반대쪽이 무조건 승자 (TBD 제외)
         if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
         if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
-        
-        // 경기 미완료이거나 양쪽 다 BYE/TBD면 승자 없음
         if (match.status !== 'COMPLETED') return 'TBD';
         
         const h = Number(match.homeScore || 0);
@@ -99,13 +118,11 @@ export default function FootballLeagueApp() {
 
     let hasActualRoundOf8 = false;
 
-    // 2. 실제 데이터를 ID 기반으로 슬롯에 정확히 배치 (인덱스 꼬임 방지)
     currentSeason.rounds.forEach((round) => {
         round.matches?.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
             if (stage.includes("GROUP")) return;
 
-            // 매치 ID 끝자리 숫자 파싱 (예: ko_4_0 -> 0)
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
@@ -120,18 +137,14 @@ export default function FootballLeagueApp() {
         });
     });
 
-    // 3. 승자 데이터 전파 (이전 라운드 점수 이월 방지 및 BYE 필터링)
     const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
         const winner = getWinnerName(source);
-        
-        // 승자가 실제 팀이고, 다음 라운드 슬롯이 비어있거나 BYE/TBD일 때만 전파
         if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
             target[side] = winner;
             const meta = getTeamMeta(winner);
             target[`${side}Logo`] = meta.logo;
             target[`${side}Owner`] = meta.owner;
-            // 🔥 [중요] 미래 매치의 점수는 항상 초기화 (빈 상태)
             target[`${side}Score`] = '';
         }
     };
@@ -154,8 +167,7 @@ export default function FootballLeagueApp() {
     const params = new URLSearchParams(window.location.search);
     const paramView = params.get('view');
     const paramSeasonId = Number(params.get('season'));
-    // 🔥 URL 파라미터에 FINANCE 추가
-    if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
+    if (paramView && ['NOTICE', 'RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
     if (paramSeasonId && seasons.find(s => s.id === paramSeasonId)) setViewSeasonId(paramSeasonId);
     else if (viewSeasonId === 0 && seasons.length > 0) setViewSeasonId(seasons[0].id);
   }, [seasons]);
@@ -171,9 +183,6 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // ==================================================================================
-  // 🔥 [픽스 완료] 경기 결과 저장 및 승자 전파 시 데이터 오염(점수 이월) 방지
-  // ==================================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -253,7 +262,6 @@ export default function FootballLeagueApp() {
           else if (!isGroupStage) return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
           const mAny = editingMatch as any;
-          // 🔥 [중요] 다음 매치 업데이트 시, 점수 필드를 명시적으로 비우고 상태를 'UPCOMING'으로 변경하여 데이터 오염 차단
           if (winningTeam && !isGroupStage && mAny.nextMatchId) {
               newRounds = newRounds.map(round => ({
                   ...round,
@@ -266,9 +274,9 @@ export default function FootballLeagueApp() {
                           return { 
                               ...m, 
                               ...update,
-                              homeScore: '', // 🔥 다음 경기의 점수 초기화
-                              awayScore: '', // 🔥 다음 경기의 점수 초기화
-                              status: 'UPCOMING' // 🔥 상태 초기화
+                              homeScore: '',
+                              awayScore: '',
+                              status: 'UPCOMING'
                           };
                       }
                       return m;
@@ -316,9 +324,65 @@ export default function FootballLeagueApp() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
+      
+      {/* 🔥 [디벨롭 1] 티커(전광판) 오버레이 해결, 디자인 사이버틱하게 변경, 무한 심리스 스크롤 적용 */}
+      {latestPopupNotice && !hideTicker && (
+          <div className="w-full bg-[#050b14] border-b border-emerald-500/30 py-2.5 px-4 flex items-center justify-between z-50">
+              {/* 전광판용 CSS 애니메이션 정의 */}
+              <style>{`
+                  @keyframes seamless-ticker {
+                      0% { transform: translateX(0); }
+                      100% { transform: translateX(-50%); }
+                  }
+                  .animate-ticker-seamless {
+                      display: flex;
+                      white-space: nowrap;
+                      width: max-content;
+                      animation: seamless-ticker 20s linear infinite;
+                  }
+                  .animate-ticker-seamless:hover {
+                      animation-play-state: paused;
+                  }
+              `}</style>
+              
+              <div className="flex items-center w-full overflow-hidden">
+                  <span className="shrink-0 bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 px-2 py-0.5 rounded text-[10px] font-black mr-4 z-10 shadow-[0_0_10px_rgba(52,211,153,0.2)]">전체 공지</span>
+                  
+                  <div 
+                      className="flex-1 overflow-hidden cursor-pointer flex"
+                      onClick={() => setCurrentView('NOTICE')} 
+                  >
+                      {/* 🔥 여백 텀을 없애기 위해 문구를 여러 번 반복해서 Seamless 구현 */}
+                      <div className="animate-ticker-seamless gap-16 pr-16 text-emerald-400/90 font-bold text-[11px] sm:text-xs tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">
+                          <span>{latestPopupNotice.title}</span>
+                          <span>{latestPopupNotice.title}</span>
+                          <span>{latestPopupNotice.title}</span>
+                          <span>{latestPopupNotice.title}</span>
+                      </div>
+                  </div>
+              </div>
+
+              <button 
+                  onClick={handleCloseTicker} 
+                  className="shrink-0 ml-4 bg-slate-800/80 hover:bg-slate-700 text-slate-400 px-2 py-1 rounded text-[10px] font-black transition-all border border-slate-700/50 z-10"
+                  title="오늘 하루 보지 않기"
+              >
+                  ✕ 닫기
+              </button>
+          </div>
+      )}
+
+      {/* 배너는 티커 아래로 자연스럽게 밀림 (오버레이 해결) */}
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
+      
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
+      
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
+        
+        {currentView === 'NOTICE' && (
+            <NoticeView owners={owners} />
+        )}
+
         {currentView === 'RANKING' && (
             <RankingView 
                 seasons={seasons} 
@@ -336,7 +400,6 @@ export default function FootballLeagueApp() {
         )}
         {currentView === 'HISTORY' && <HistoryView historyData={historyData} owners={owners} />}
         
-        {/* 🔥 FINANCE 뷰 정식 연결 완료! */}
         {currentView === 'FINANCE' && (
             <FinanceView owners={owners} seasons={seasons} />
         )}

@@ -65,7 +65,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return ranked;
   };
 
-  const sortedTeams = useMemo(() => getRankedTeams(activeRankingData.teams), [activeRankingData.teams]);
+  const sortedTeams = useMemo(() => getRankedTeams(activeRankingData?.teams || []), [activeRankingData?.teams]);
 
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
@@ -146,14 +146,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (currentSeason?.type !== 'CUP' || !currentSeason?.groups) return null;
     const groups: { [key: string]: any[] } = {};
     Object.keys(currentSeason.groups).forEach(gName => {
-      const teamIds = currentSeason.groups[gName];
+      const teamIds = currentSeason.groups![gName];
       if (teamIds && teamIds.length > 0) {
-        const groupTeams = activeRankingData.teams.filter((t: any) => teamIds.includes(t.id));
+        const groupTeams = (activeRankingData?.teams || []).filter((t: any) => teamIds.includes(t.id));
         groups[gName] = getRankedTeams(groupTeams);
       }
     });
     return groups;
-  }, [currentSeason, activeRankingData.teams]);
+  }, [currentSeason, activeRankingData?.teams]);
 
   const sortedGroupKeys = useMemo(() => groupStandings ? Object.keys(groupStandings).sort() : [], [groupStandings]);
 
@@ -169,7 +169,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const teamInfo = activeRankingData?.teams?.find((t: any) => t.name === winnerName);
     const ownerName = teamInfo?.ownerName;
     return (owners && owners.length > 0) ? owners.find(o => o.nickname === ownerName) : { nickname: ownerName, photo: FALLBACK_IMG };
-  }, [knockoutStages, activeRankingData, owners]);
+  }, [knockoutStages, activeRankingData?.teams, owners]);
 
   const TournamentMatchBox = ({ match, title, highlight = false, isFinal = false }: { match: any, title?: string, highlight?: boolean, isFinal?: boolean }) => {
     const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
@@ -180,6 +180,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const isAwayWin = winner !== 'TBD' && winner === safeMatch.away;
     const hScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : (safeMatch.home === 'BYE' ? 0 : null);
     const aScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : (safeMatch.away === 'BYE' ? 0 : null);
+    
     const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => {
       const isTbd = team.name === 'TBD';
       const isBye = team.name === 'BYE';
@@ -221,7 +222,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   };
 
   const getPlayerRanking = (players: any[]) => {
-    const sortedPlayers = [...players]
+    const sortedPlayers = [...(players || [])]
       .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
       .sort((a: any, b: any) => {
         if (rankPlayerMode === 'GOAL') return b.goals - a.goals || b.assists - a.assists;
@@ -243,7 +244,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return ranked;
   };
 
-  const rankedPlayers = getPlayerRanking(activeRankingData.players || []);
+  const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -289,7 +290,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     </div>
                   )}
                   <div className="flex flex-col gap-12">
-                    {knockoutStages.roundOf4.map((m: any, idx: number) => <TournamentMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />)}
+                    {knockoutStages.roundOf4?.map((m: any, idx: number) => <TournamentMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />)}
                   </div>
                   <div className="relative pt-8">
                     <div className="absolute -top-0 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
@@ -366,15 +367,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           
-          {/* 🔥 1. [디벨롭] 리그 1위 우승 오너 카드 (신규 추가) */}
+          {/* 🔥 1. [디벨롭] 리그 1위 우승 오너 카드 */}
           {sortedTeams.length > 0 && (() => {
             const leagueChampTeam = sortedTeams[0];
             const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === leagueChampTeam.ownerName) : null;
             const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
             const teamInfo = getTeamExtendedInfo(leagueChampTeam.name);
 
-            // 🔥 해당 챔피언 팀의 팀 내 득점 1위 선수 추출 로직
-            const teamPlayers = (activeRankingData.players || []).filter((p: any) => p.team === leagueChampTeam.name && p.goals > 0);
+            const teamPlayers = (activeRankingData?.players || []).filter((p: any) => p.team === leagueChampTeam.name && p.goals > 0);
             const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
 
             return (
@@ -400,7 +400,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{leagueChampTeam.ownerName}</h2>
                     <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6">With {leagueChampTeam.name}</p>
                     
-                    {/* 🔥 챔피언 팀 스탯 박스 (RECORD, GD, MVP) */}
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                       <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
                         <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">RECORD</span>
@@ -426,8 +425,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             );
           })()}
 
-          {/* 🔥 2. 누적 승점 1위 오너 카드 (기존 카드 스타일 유지 및 타이틀 변경) */}
-          {activeRankingData.owners.length > 0 && (() => {
+          {/* 🔥 2. 누적 승점 1위 오너 카드 */}
+          {(activeRankingData?.owners || []).length > 0 && (() => {
             const firstOwner = activeRankingData.owners[0];
             const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === firstOwner.name) : null;
             const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
@@ -460,14 +459,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             );
           })()}
 
-          {/* 오너 랭킹 테이블 (기존 유지) */}
+          {/* 오너 랭킹 테이블 */}
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs uppercase border-collapse">
               <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
                 <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr>
               </thead>
               <tbody>
-                {activeRankingData.owners.slice(1).map((o: any, i: number) => {
+                {(activeRankingData?.owners || []).slice(1).map((o: any, i: number) => {
                   const actualRank = i + 2;
                   const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === o.name) : null;
                   return (
@@ -510,7 +509,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {rankingTab === 'HIGHLIGHTS' && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {activeRankingData.highlights.map((m: any, idx: number) => (
+          {(activeRankingData?.highlights || []).map((m: any, idx: number) => (
             <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
               <div className="relative aspect-video">
                 <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />

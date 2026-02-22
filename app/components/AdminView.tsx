@@ -10,9 +10,12 @@ import { AdminOwnerManager } from './AdminOwnerManager';
 import { AdminTeamMatching } from './AdminTeamMatching';
 import { AdminCupSetup } from './AdminCupSetup';
 import { AdminRealWorldManager } from './AdminRealWorldManager';
+// 🔥 [Notice] 공지사항 관리자 컴포넌트 추가
+import { AdminNoticeManager } from './AdminNoticeManager';
 
+// 🔥 [Notice] adminTab 타입에 'NOTICE' 추가
 interface AdminViewProps {
-    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL';
+    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL' | 'NOTICE';
     setAdminTab: (tab: any) => void;
     seasons: Season[];
     owners: Owner[];
@@ -50,7 +53,6 @@ export const AdminView = ({
         if (e.key === 'Enter') handleLogin();
     };
 
-    // 🔥 [데이터 무결성 픽스] 시즌 삭제 시 연결된 재무 장부 데이터 일괄 파기 로직
     const handleDeleteSeason = async (seasonId: number) => {
         if (!confirm("⚠️ 시즌을 삭제할 경우 해당 시즌의 모든 기록과 '참가비/상금 장부 데이터'까지 영구 삭제됩니다.\n정말 삭제하시겠습니까?")) return;
 
@@ -87,7 +89,6 @@ export const AdminView = ({
         alert("스케줄 삭제 완료");
     };
 
-    // 🔥 시즌 마감 및 상금(REVENUE) 일괄 지급 로직
     const handleCloseSeason = async (season: Season) => {
         if (season.status === 'COMPLETED') return alert("이미 마감된 시즌입니다.");
         if (!confirm(`정말 '${season.name}' 시즌을 마감하고 상금을 정산하시겠습니까?\n수익 기록이 장부에 즉시 등록됩니다.`)) return;
@@ -185,9 +186,10 @@ export const AdminView = ({
 
     return (
         <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
-            {/* 🔥 불필요해진 영구이관 버튼 깔끔하게 삭제 */}
             <select value={adminTab} onChange={(e) => handleTabChange(e.target.value)} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm mb-4 h-14 font-bold text-white">
                 <option value="NEW">➕ Create New Season</option>
+                {/* 🔥 [Notice] 옵션 추가 */}
+                <option value="NOTICE">📢 Notice Management</option>
                 <option value="LEAGUES">🏳️ League Management</option>
                 <option value="TEAMS">🛡️ Team Management</option>
                 <option value="OWNER">👤 Owner Management</option>
@@ -208,6 +210,9 @@ export const AdminView = ({
                 </optgroup>
             </select>
 
+            {/* 🔥 [Notice] 라우팅 추가 */}
+            {adminTab === 'NOTICE' && <AdminNoticeManager />}
+            
             {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
             {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
             {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
