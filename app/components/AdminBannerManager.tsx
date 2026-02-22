@@ -3,6 +3,13 @@ import { db } from '../firebase';
 import { addDoc, collection, deleteDoc, doc } from 'firebase/firestore';
 import { Banner } from '../types'; 
 
+// 🔥 유튜브 URL에서 ID를 추출하는 헬퍼 함수 추가
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/))([^"&?\/\s]{11})/);
+    return match ? match[1] : null;
+};
+
 export const AdminBannerManager = ({ banners }: { banners: Banner[] }) => {
     const [url, setUrl] = useState('');
     const [desc, setDesc] = useState('');
@@ -31,9 +38,17 @@ export const AdminBannerManager = ({ banners }: { banners: Banner[] }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {banners.map(b => (
                     <div key={b.id} className="bg-slate-950 p-3 rounded-xl flex gap-4 border border-slate-800 relative group hover:border-emerald-500 transition-all">
-                        <div className="w-24 h-16 bg-black rounded-lg overflow-hidden flex-shrink-0 border border-slate-800">
-                             {!b.url.includes('youtube') && <img src={b.url} className="w-full h-full object-cover" alt="" />}
-                             {b.url.includes('youtube') && <div className="w-full h-full flex items-center justify-center text-red-500 font-bold bg-slate-900 text-xs">VIDEO</div>}
+                        {/* 🔥 썸네일 렌더링 영역에 relative 속성 추가 및 유튜브 이미지 출력 처리 */}
+                        <div className="w-24 h-16 bg-black rounded-lg overflow-hidden flex-shrink-0 border border-slate-800 relative">
+                             {!(b.url.includes('youtube') || b.url.includes('youtu.be')) && <img src={b.url} className="w-full h-full object-cover" alt="" />}
+                             {(b.url.includes('youtube') || b.url.includes('youtu.be')) && (
+                                 <>
+                                     <img src={`https://img.youtube.com/vi/${getYouTubeId(b.url)}/mqdefault.jpg`} className="w-full h-full object-cover opacity-60" alt="youtube thumbnail" />
+                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                         <span className="text-red-500 font-black text-[10px] tracking-widest drop-shadow-md">VIDEO</span>
+                                     </div>
+                                 </>
+                             )}
                         </div>
                         <div className="flex flex-col justify-center flex-1 min-w-0">
                             <span className="text-xs text-emerald-400 font-bold truncate mb-1">{b.description || 'No Description'}</span>
