@@ -18,7 +18,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
     const [activeOwnerId, setActiveOwnerId] = useState<string>('');
     const [commentText, setCommentText] = useState('');
 
-    // 🔥 댓글 수정용 상태 추가
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editCommentText, setEditCommentText] = useState<string>('');
 
@@ -42,10 +41,45 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     }, [owners]);
 
+    // URL 파라미터를 읽어서 공유된 링크로 접속 시 자동으로 해당 글 열기
+    useEffect(() => {
+        if (notices.length > 0) {
+            const params = new URLSearchParams(window.location.search);
+            const noticeId = params.get('noticeId');
+            if (noticeId && !selectedNotice) {
+                const target = notices.find(n => n.id === noticeId);
+                if (target) setSelectedNotice(target);
+            }
+        }
+    }, [notices]);
+
+    // 글을 열거나 닫을 때 URL 파라미터(noticeId)를 실시간으로 업데이트
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            if (selectedNotice) {
+                params.set('noticeId', selectedNotice.id);
+            } else {
+                params.delete('noticeId');
+            }
+            window.history.replaceState(null, '', `?${params.toString()}`);
+        }
+    }, [selectedNotice]);
+
     const handleBackToList = () => {
         setSelectedNotice(null);
-        setEditingCommentId(null); // 목록으로 갈 때 수정 상태 초기화
+        setEditingCommentId(null); 
         fetchNotices(); 
+    };
+
+    // 클립보드에 현재 주소 복사하기
+    const handleShareLink = () => {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+            alert('🔗 게시글 링크가 클립보드에 복사되었습니다!\n단톡방에 공유해보세요.');
+        }).catch(() => {
+            alert('🚨 링크 복사에 실패했습니다.');
+        });
     };
 
     const extractYouTubeId = (url: string) => {
@@ -107,7 +141,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     };
 
-    // 댓글 등록
     const handleAddComment = async () => {
         if (!activeOwnerId) return alert("댓글을 작성할 프로필을 확인해주세요.");
         if (!commentText.trim()) return alert("댓글 내용을 입력해주세요.");
@@ -138,7 +171,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     };
 
-    // 🔥 댓글 삭제 핸들러
     const handleDeleteComment = async (commentId: string) => {
         if (!confirm("정말 이 댓글을 삭제하시겠습니까?")) return;
         if (!selectedNotice) return;
@@ -156,13 +188,11 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     };
 
-    // 🔥 댓글 수정 시작
     const startEditingComment = (cmt: NoticeComment) => {
         setEditingCommentId(cmt.id);
         setEditCommentText(cmt.text);
     };
 
-    // 🔥 댓글 수정 저장 핸들러
     const handleSaveEditComment = async (commentId: string) => {
         if (!editCommentText.trim()) return alert("댓글 내용을 입력해주세요.");
         if (!selectedNotice) return;
@@ -196,9 +226,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
     return (
         <div className="space-y-6 animate-in fade-in pb-10 max-w-4xl mx-auto px-2 sm:px-4">
             
-            {/* ====================================================
-                VIEW 1 : 심플한 게시판 리스트 화면
-            ==================================================== */}
             {!selectedNotice ? (
                 <>
                     <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 shadow-xl flex items-center justify-between mb-4">
@@ -242,26 +269,32 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                     </div>
                 </>
             ) : (
-            /* ====================================================
-                VIEW 2 : 공지사항 상세 읽기 화면 (뷰 페이지)
-            ==================================================== */
                 <div className="animate-in slide-in-from-bottom-4 space-y-4">
-                    <button onClick={handleBackToList} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-sm mb-2">
-                        ← <span>목록으로</span>
-                    </button>
+                    
+                    {/* 🔥 상단에는 '목록으로' 버튼만 남김 */}
+                    <div className="mb-2">
+                        <button onClick={handleBackToList} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-sm">
+                            ← <span>목록으로</span>
+                        </button>
+                    </div>
 
-                    {/* 본문 영역 */}
                     <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
                         <div className="p-6 sm:p-8 border-b border-slate-800">
                             <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mb-4">{selectedNotice.title}</h2>
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
-                                {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
-                                <span>{formatDate(selectedNotice.createdAt, true)}</span>
+                            
+                            {/* 🔥 공유하기 버튼을 날짜 맨 우측으로 이동 */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
+                                    {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
+                                    <span>{formatDate(selectedNotice.createdAt, true)}</span>
+                                </div>
+                                <button onClick={handleShareLink} className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors border border-slate-700 shadow-sm shrink-0">
+                                    🔗 공유하기
+                                </button>
                             </div>
                             
                             <div className="h-px w-full bg-slate-800/60 my-6"></div>
                             
-                            {/* 첨부파일 렌더링 영역 */}
                             <div className="space-y-6 mb-8">
                                 {selectedNotice.youtubeUrl && extractYouTubeId(selectedNotice.youtubeUrl) && (
                                     <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black">
@@ -283,13 +316,11 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                 )}
                             </div>
 
-                            {/* 텍스트 본문 (줄바꿈 허용) */}
                             <div className="text-slate-300 text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
                                 {selectedNotice.content}
                             </div>
                         </div>
 
-                        {/* 좋아요 / 싫어요 인터랙션 */}
                         <div className="bg-slate-900/50 p-6 flex justify-center gap-4 border-b border-slate-800">
                             <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(activeOwnerId) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👍 좋아요 {(selectedNotice.likedBy || []).length}
@@ -299,19 +330,16 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                             </button>
                         </div>
 
-                        {/* 댓글 영역 */}
                         <div className="p-6 sm:p-8 bg-slate-950/30">
                             <h4 className="text-sm font-black text-white uppercase mb-4 flex items-center gap-2">
                                 💬 Comments <span className="text-emerald-500">{(selectedNotice.comments || []).length}</span>
                             </h4>
                             
-                            {/* 댓글 목록 */}
                             <div className="space-y-4 mb-6">
                                 {(selectedNotice.comments || []).length === 0 && (
                                     <p className="text-xs text-slate-500 italic">가장 먼저 댓글을 남겨보세요!</p>
                                 )}
                                 {(selectedNotice.comments || []).map(cmt => {
-                                    // 🔥 작성자 본인인지 확인 (선택된 프로필 기준)
                                     const isMyComment = cmt.ownerId === activeOwnerId;
                                     const isEditing = cmt.id === editingCommentId;
 
@@ -326,7 +354,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                                         <span className="text-[9px] text-slate-500">{formatDate(cmt.createdAt, true)}</span>
                                                     </div>
                                                     
-                                                    {/* 🔥 내 댓글일 경우에만 노출되는 수정/삭제 버튼 */}
                                                     {isMyComment && !isEditing && (
                                                         <div className="hidden group-hover:flex items-center gap-3">
                                                             <button onClick={() => startEditingComment(cmt)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>
@@ -335,7 +362,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                                     )}
                                                 </div>
 
-                                                {/* 🔥 수정 모드와 일반 뷰 모드 분기 */}
                                                 {isEditing ? (
                                                     <div className="mt-2 flex flex-col gap-2">
                                                         <textarea 
@@ -358,7 +384,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                 })}
                             </div>
 
-                            {/* 댓글 입력 폼 & 프로필 선택기 */}
                             <div className="flex flex-col gap-3 border-t border-slate-800/50 pt-6">
                                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-1">댓글 쓰기</div>
                                 <div className="flex flex-col sm:flex-row items-stretch gap-2">
