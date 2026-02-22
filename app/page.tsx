@@ -39,15 +39,19 @@ export default function FootballLeagueApp() {
 
   const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
   const [hideTicker, setHideTicker] = useState(false);
+  
+  // 🔥 [디벨롭] 새로운 알림(N 마크) 여부 상태
+  const [hasNewNotice, setHasNewNotice] = useState(false);
 
   useEffect(() => {
-    const fetchLatestPopup = async () => {
+    const fetchNoticeData = async () => {
       try {
         const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         const notices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
-        const popupNotice = notices.find(n => n.isPopup);
         
+        // 팝업 티커 세팅
+        const popupNotice = notices.find(n => n.isPopup);
         if (popupNotice) {
             const hideUntil = localStorage.getItem(`hide_notice_${popupNotice.id}`);
             if (hideUntil && Date.now() < Number(hideUntil)) {
@@ -56,12 +60,31 @@ export default function FootballLeagueApp() {
                 setLatestPopupNotice(popupNotice);
             }
         }
+
+        // 🔥 새글/새댓글 업데이트 시간 계산하여 N 뱃지 결정
+        let latestTime = 0;
+        notices.forEach(n => {
+            const time = new Date(n.updatedAt || n.createdAt).getTime();
+            if (time > latestTime) latestTime = time;
+        });
+        const lastChecked = Number(localStorage.getItem('lastCheckedNoticeTime') || '0');
+        if (latestTime > lastChecked) {
+            setHasNewNotice(true);
+        }
       } catch (error) {
-        console.error("🚨 Error fetching popup notice:", error);
+        console.error("🚨 Error fetching notices:", error);
       }
     };
-    fetchLatestPopup();
-  }, []);
+    fetchNoticeData();
+  }, [currentView]); // 화면 바뀔 때마다 체크
+
+  // 🔥 사용자가 NOTICE 탭에 들어오면 마지막 확인 시간 갱신하고 N 뱃지 지우기
+  useEffect(() => {
+      if (currentView === 'NOTICE') {
+          localStorage.setItem('lastCheckedNoticeTime', String(Date.now()));
+          setHasNewNotice(false);
+      }
+  }, [currentView]);
 
   const handleCloseTicker = () => {
       if (latestPopupNotice) {
@@ -345,7 +368,6 @@ export default function FootballLeagueApp() {
               <div className="flex items-center w-full overflow-hidden">
                   <span className="shrink-0 bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 px-2 py-0.5 rounded text-[10px] font-black mr-4 z-10 shadow-[0_0_10px_rgba(52,211,153,0.2)]">전체 공지</span>
                   
-                  {/* 🔥 [수술 포인트] 메인화면 티커 누르면 해당 게시글(뷰 페이지)로 다이렉트 이동! */}
                   <div 
                       className="flex-1 overflow-hidden cursor-pointer flex"
                       onClick={() => {
@@ -379,7 +401,8 @@ export default function FootballLeagueApp() {
 
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
       
-      <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
+      {/* 🔥 hasNewNotice 상태를 NavTabs로 전달! */}
+      <NavTabs currentView={currentView} setCurrentView={setCurrentView} hasNewNotice={hasNewNotice} />
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         

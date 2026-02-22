@@ -20,6 +20,9 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
 
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editCommentText, setEditCommentText] = useState<string>('');
+    
+    const [replyingToId, setReplyingToId] = useState<string | null>(null);
+    const [replyText, setReplyText] = useState('');
 
     const fetchNotices = async () => {
         setIsLoading(true);
@@ -41,39 +44,39 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     }, [owners]);
 
-    // 🔥 [수술 포인트] 공유 링크로 접속 시 초기 로딩 완벽 대응 (삭제 버그 원천 차단)
     useEffect(() => {
-        if (notices.length > 0 && !selectedNotice) {
+        if (notices.length > 0) {
             const params = new URLSearchParams(window.location.search);
             const noticeId = params.get('noticeId');
-            if (noticeId) {
+            if (noticeId && !selectedNotice) {
                 const target = notices.find(n => n.id === noticeId);
-                if (target) {
-                    setSelectedNotice(target);
-                }
+                if (target) setSelectedNotice(target);
             }
         }
     }, [notices]);
 
-    // 목록으로 돌아가기
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            if (selectedNotice) {
+                params.set('noticeId', selectedNotice.id);
+            } else {
+                params.delete('noticeId');
+            }
+            window.history.replaceState(null, '', `?${params.toString()}`);
+        }
+    }, [selectedNotice]);
+
     const handleBackToList = () => {
         setSelectedNotice(null);
         setEditingCommentId(null); 
+        setReplyingToId(null);
         fetchNotices(); 
-        
-        // 뒤로 갈 때 명시적으로 URL 초기화
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            params.delete('noticeId');
-            window.history.replaceState(null, '', `?${params.toString()}`);
-        }
     };
 
-    // 리스트에서 글 클릭하기
+    // 🔥 에러의 원인이었던 클릭 함수! (확실하게 포함됨)
     const handleNoticeClick = (notice: Notice) => {
         setSelectedNotice(notice);
-        
-        // 글을 열 때 명시적으로 URL 업데이트
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             params.set('view', 'NOTICE');
@@ -82,15 +85,10 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     };
 
-    // 공유하기 (절대 주소 생성 방식으로 강화)
     const handleShareLink = () => {
-        const params = new URLSearchParams(window.location.search);
-        params.set('view', 'NOTICE');
-        if (selectedNotice) params.set('noticeId', selectedNotice.id);
-        const shareUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-        
-        navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('🔗 게시글 링크가 클립보드에 복사되었습니다!\n단톡방에 붙여넣기 해보세요.');
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+            alert('🔗 게시글 링크가 클립보드에 복사되었습니다!\n단톡방에 공유해보세요.');
         }).catch(() => {
             alert('🚨 링크 복사에 실패했습니다.');
         });
@@ -101,14 +99,10 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         if (url.length === 11 && !url.includes('http')) return url;
         const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
         const match = url.match(regExp);
-        if (match && match[7].length === 11) {
-            return match[7];
-        }
+        if (match && match[7].length === 11) return match[7];
         try {
             const urlObj = new URL(url);
-            if (urlObj.pathname.includes('/shorts/')) {
-                return urlObj.pathname.split('/shorts/')[1].substring(0, 11);
-            }
+            if (urlObj.pathname.includes('/shorts/')) return urlObj.pathname.split('/shorts/')[1].substring(0, 11);
         } catch (e) { }
         return null;
     };
@@ -121,111 +115,118 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         return includeTime ? `${datePart} ${timePart}` : datePart;
     };
 
+    const updateCommentsInDB = async (updatedComments: NoticeComment[]) => {
+        if (!selectedNotice) return;
+        const now = new Date().toISOString();
+        try {
+            await updateDoc(doc(db, 'notices', selectedNotice.id), {
+                comments: updatedComments,
+                updatedAt: now
+            });
+            setSelectedNotice({ ...selectedNotice, comments: updatedComments, updatedAt: now });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const handleReaction = async (type: 'LIKE' | 'DISLIKE') => {
         if (!activeOwnerId || !selectedNotice) return alert("프로필을 먼저 선택해주세요.");
-        
         try {
             const noticeRef = doc(db, 'notices', selectedNotice.id);
             const noticeSnap = await getDoc(noticeRef);
             const noticeData = noticeSnap.data() as Notice;
-
             let likes = noticeData.likedBy || [];
             let dislikes = noticeData.dislikedBy || [];
 
             if (type === 'LIKE') {
-                if (likes.includes(activeOwnerId)) {
-                    likes = likes.filter(id => id !== activeOwnerId); 
-                } else {
-                    likes.push(activeOwnerId);
-                    dislikes = dislikes.filter(id => id !== activeOwnerId); 
-                }
+                if (likes.includes(activeOwnerId)) likes = likes.filter(id => id !== activeOwnerId); 
+                else { likes.push(activeOwnerId); dislikes = dislikes.filter(id => id !== activeOwnerId); }
             } else {
-                if (dislikes.includes(activeOwnerId)) {
-                    dislikes = dislikes.filter(id => id !== activeOwnerId); 
-                } else {
-                    dislikes.push(activeOwnerId);
-                    likes = likes.filter(id => id !== activeOwnerId); 
-                }
+                if (dislikes.includes(activeOwnerId)) dislikes = dislikes.filter(id => id !== activeOwnerId); 
+                else { dislikes.push(activeOwnerId); likes = likes.filter(id => id !== activeOwnerId); }
             }
-
-            await updateDoc(noticeRef, { likedBy: likes, dislikedBy: dislikes });
-            setSelectedNotice({ ...selectedNotice, likedBy: likes, dislikedBy: dislikes });
-        } catch (error) {
-            console.error("🚨 Error updating reaction:", error);
-        }
+            const now = new Date().toISOString();
+            await updateDoc(noticeRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: now });
+            setSelectedNotice({ ...selectedNotice, likedBy: likes, dislikedBy: dislikes, updatedAt: now });
+        } catch (error) { console.error(error); }
     };
 
     const handleAddComment = async () => {
-        if (!activeOwnerId) return alert("댓글을 작성할 프로필을 확인해주세요.");
-        if (!commentText.trim()) return alert("댓글 내용을 입력해주세요.");
+        if (!activeOwnerId) return alert("프로필을 확인해주세요.");
+        if (!commentText.trim()) return alert("내용을 입력해주세요.");
         if (!selectedNotice) return;
-
         const owner = owners.find(o => String(o.id) === activeOwnerId);
         if (!owner) return;
 
         const newComment: NoticeComment = {
-            id: `cmt_${Date.now()}`,
-            ownerId: String(owner.id),
-            ownerName: owner.nickname,
-            ownerPhoto: owner.photo || FALLBACK_IMG,
-            text: commentText,
-            createdAt: new Date().toISOString()
+            id: `cmt_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || FALLBACK_IMG, text: commentText, createdAt: new Date().toISOString()
+        };
+        const updatedComments = [...(selectedNotice.comments || []), newComment];
+        await updateCommentsInDB(updatedComments);
+        setCommentText('');
+    };
+
+    const handleAddReply = async (parentId: string) => {
+        if (!activeOwnerId) return alert("프로필을 확인해주세요.");
+        if (!replyText.trim()) return alert("답글을 입력해주세요.");
+        if (!selectedNotice) return;
+        const owner = owners.find(o => String(o.id) === activeOwnerId);
+        if (!owner) return;
+
+        const newReply: NoticeComment = {
+            id: `reply_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || FALLBACK_IMG, text: replyText, createdAt: new Date().toISOString()
         };
 
-        try {
-            const noticeRef = doc(db, 'notices', selectedNotice.id);
-            await updateDoc(noticeRef, {
-                comments: arrayUnion(newComment)
-            });
-            setSelectedNotice({ ...selectedNotice, comments: [...(selectedNotice.comments || []), newComment] });
-            setCommentText('');
-        } catch (error) {
-            console.error("🚨 Error adding comment:", error);
-            alert("댓글 등록에 실패했습니다.");
-        }
-    };
-
-    const handleDeleteComment = async (commentId: string) => {
-        if (!confirm("정말 이 댓글을 삭제하시겠습니까?")) return;
-        if (!selectedNotice) return;
-
-        const updatedComments = (selectedNotice.comments || []).filter(c => c.id !== commentId);
-
-        try {
-            await updateDoc(doc(db, 'notices', selectedNotice.id), {
-                comments: updatedComments
-            });
-            setSelectedNotice({ ...selectedNotice, comments: updatedComments });
-        } catch (error) {
-            console.error("🚨 Error deleting comment:", error);
-            alert("댓글 삭제에 실패했습니다.");
-        }
-    };
-
-    const startEditingComment = (cmt: NoticeComment) => {
-        setEditingCommentId(cmt.id);
-        setEditCommentText(cmt.text);
-    };
-
-    const handleSaveEditComment = async (commentId: string) => {
-        if (!editCommentText.trim()) return alert("댓글 내용을 입력해주세요.");
-        if (!selectedNotice) return;
-
-        const updatedComments = (selectedNotice.comments || []).map(c => 
-            c.id === commentId ? { ...c, text: editCommentText } : c
+        const updatedComments = [...(selectedNotice.comments || [])].map(c => 
+            c.id === parentId ? { ...c, replies: [...(c.replies || []), newReply] } : c
         );
+        await updateCommentsInDB(updatedComments);
+        setReplyingToId(null);
+        setReplyText('');
+    };
 
-        try {
-            await updateDoc(doc(db, 'notices', selectedNotice.id), {
-                comments: updatedComments
-            });
-            setSelectedNotice({ ...selectedNotice, comments: updatedComments });
-            setEditingCommentId(null);
-            setEditCommentText('');
-        } catch (error) {
-            console.error("🚨 Error updating comment:", error);
-            alert("댓글 수정에 실패했습니다.");
+    const handleCommentReaction = async (commentId: string, parentId?: string) => {
+        if (!activeOwnerId || !selectedNotice) return alert("프로필을 먼저 선택해주세요.");
+        const toggleLike = (likes: string[]) => likes.includes(activeOwnerId) ? likes.filter(id => id !== activeOwnerId) : [...likes, activeOwnerId];
+
+        let updatedComments = [...(selectedNotice.comments || [])];
+        if (parentId) {
+            updatedComments = updatedComments.map(c => 
+                c.id === parentId ? { ...c, replies: (c.replies||[]).map(r => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r) } : c
+            );
+        } else {
+            updatedComments = updatedComments.map(c => 
+                c.id === commentId ? { ...c, likedBy: toggleLike(c.likedBy||[]) } : c
+            );
         }
+        await updateCommentsInDB(updatedComments);
+    };
+
+    const handleDeleteComment = async (commentId: string, parentId?: string) => {
+        if (!confirm("정말 삭제하시겠습니까?")) return;
+        let updatedComments = [...(selectedNotice?.comments || [])];
+        if (parentId) {
+            updatedComments = updatedComments.map(c => c.id === parentId ? { ...c, replies: (c.replies||[]).filter(r => r.id !== commentId) } : c);
+        } else {
+            updatedComments = updatedComments.filter(c => c.id !== commentId);
+        }
+        await updateCommentsInDB(updatedComments);
+    };
+
+    const startEditingComment = (cmt: NoticeComment, parentId?: string) => {
+        setEditingCommentId(cmt.id); setEditCommentText(cmt.text);
+    };
+
+    const handleSaveEditComment = async (commentId: string, parentId?: string) => {
+        if (!editCommentText.trim()) return;
+        let updatedComments = [...(selectedNotice?.comments || [])];
+        if (parentId) {
+            updatedComments = updatedComments.map(c => c.id === parentId ? { ...c, replies: (c.replies||[]).map(r => r.id === commentId ? { ...r, text: editCommentText } : r) } : c);
+        } else {
+            updatedComments = updatedComments.map(c => c.id === commentId ? { ...c, text: editCommentText } : c);
+        }
+        await updateCommentsInDB(updatedComments);
+        setEditingCommentId(null);
     };
 
     if (isLoading && !selectedNotice) {
@@ -237,9 +238,78 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         );
     }
 
+    const renderComment = (cmt: NoticeComment, parentId?: string) => {
+        const isMyComment = cmt.ownerId === activeOwnerId;
+        const isEditing = cmt.id === editingCommentId;
+        const isReply = !!parentId;
+
+        return (
+            <div key={cmt.id} className={`flex gap-3 py-3 sm:py-4 group transition-colors ${isReply ? 'ml-8 sm:ml-12 pl-3 sm:pl-4 border-l-2 border-slate-700/60' : 'border-b border-slate-800/50 last:border-0'}`}>
+                <img src={cmt.ownerPhoto} alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5" />
+                
+                <div className="flex flex-col min-w-0 flex-1">
+                    <div className="flex items-start justify-between leading-tight mb-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] sm:text-xs font-bold text-emerald-400">{cmt.ownerName}</span>
+                            <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium">{formatDate(cmt.createdAt, true)}</span>
+                        </div>
+                        {isMyComment && !isEditing && (
+                            <div className="hidden group-hover:flex items-center gap-2.5">
+                                <button onClick={() => startEditingComment(cmt, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>
+                                <button onClick={() => handleDeleteComment(cmt.id, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-red-400 transition-colors">삭제</button>
+                            </div>
+                        )}
+                    </div>
+
+                    {isEditing ? (
+                        <div className="mt-1 flex flex-col gap-2">
+                            <textarea 
+                                value={editCommentText}
+                                onChange={(e) => setEditCommentText(e.target.value)}
+                                className="w-full bg-slate-900/80 p-2.5 rounded-lg border border-emerald-500/50 text-white text-xs sm:text-sm focus:outline-none focus:border-emerald-500 resize-none"
+                                rows={2}
+                            />
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => setEditingCommentId(null)} className="px-3 py-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 rounded transition-colors">취소</button>
+                                <button onClick={() => handleSaveEditComment(cmt.id, parentId)} className="px-3 py-1 text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded transition-colors shadow-lg">저장</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-xs sm:text-sm text-slate-300 leading-normal whitespace-pre-wrap mb-1.5">{cmt.text}</p>
+                    )}
+                    
+                    <div className="flex items-center gap-3 mt-1">
+                        <button onClick={() => handleCommentReaction(cmt.id, parentId)} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${(cmt.likedBy || []).includes(activeOwnerId) ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                            👍 {(cmt.likedBy || []).length > 0 ? (cmt.likedBy || []).length : '좋아요'}
+                        </button>
+                        {!isReply && (
+                            <button onClick={() => { setReplyingToId(replyingToId === cmt.id ? null : cmt.id); setReplyText(''); }} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${replyingToId === cmt.id ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                                💬 답글 {(cmt.replies || []).length > 0 ? (cmt.replies || []).length : ''}
+                            </button>
+                        )}
+                    </div>
+
+                    {replyingToId === cmt.id && !isReply && (
+                        <div className="mt-2.5 flex gap-2 items-stretch">
+                            <input 
+                                value={replyText} 
+                                onChange={(e) => setReplyText(e.target.value)} 
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddReply(cmt.id); }}
+                                placeholder="답글을 입력하세요..." 
+                                className="flex-1 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800 text-white text-xs placeholder-slate-600 focus:border-emerald-500 transition-colors"
+                            />
+                            <button onClick={() => handleAddReply(cmt.id)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] rounded-lg transition-all shrink-0">
+                                등록
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in pb-10 max-w-4xl mx-auto px-2 sm:px-4">
-            
             {!selectedNotice ? (
                 <>
                     <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 shadow-xl flex items-center justify-between mb-4">
@@ -284,7 +354,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                 </>
             ) : (
                 <div className="animate-in slide-in-from-bottom-4 space-y-4">
-                    
                     <div className="mb-2">
                         <button onClick={handleBackToList} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-sm">
                             ← <span>목록으로</span>
@@ -294,7 +363,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                     <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
                         <div className="p-6 sm:p-8 border-b border-slate-800">
                             <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mb-4">{selectedNotice.title}</h2>
-                            
                             <div className="flex items-center justify-between">
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
                                     {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
@@ -333,7 +401,7 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                             </div>
                         </div>
 
-                        <div className="bg-slate-900/50 p-6 flex justify-center gap-4 border-b border-slate-800">
+                        <div className="bg-slate-900/50 p-5 sm:p-6 flex justify-center gap-4 border-b border-slate-800">
                             <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(activeOwnerId) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👍 좋아요 {(selectedNotice.likedBy || []).length}
                             </button>
@@ -342,64 +410,27 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                             </button>
                         </div>
 
-                        <div className="p-6 sm:p-8 bg-slate-950/30">
+                        <div className="p-5 sm:p-8 bg-slate-950/30">
                             <h4 className="text-sm font-black text-white uppercase mb-4 flex items-center gap-2">
                                 💬 Comments <span className="text-emerald-500">{(selectedNotice.comments || []).length}</span>
                             </h4>
                             
-                            <div className="space-y-4 mb-6">
+                            <div className="mb-6 border-t border-slate-800/50">
                                 {(selectedNotice.comments || []).length === 0 && (
-                                    <p className="text-xs text-slate-500 italic">가장 먼저 댓글을 남겨보세요!</p>
+                                    <p className="text-xs text-slate-500 italic py-4">가장 먼저 댓글을 남겨보세요!</p>
                                 )}
-                                {(selectedNotice.comments || []).map(cmt => {
-                                    const isMyComment = cmt.ownerId === activeOwnerId;
-                                    const isEditing = cmt.id === editingCommentId;
-
-                                    return (
-                                        <div key={cmt.id} className="flex gap-3 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/80 shadow-sm group">
-                                            <img src={cmt.ownerPhoto} alt="" className="w-8 h-8 rounded-full border border-slate-700 object-cover shrink-0" />
-                                            <div className="flex flex-col min-w-0 flex-1">
-                                                
-                                                <div className="flex items-baseline justify-between mb-1">
-                                                    <div className="flex items-baseline gap-2">
-                                                        <span className="text-xs font-black text-emerald-400">{cmt.ownerName}</span>
-                                                        <span className="text-[9px] text-slate-500">{formatDate(cmt.createdAt, true)}</span>
-                                                    </div>
-                                                    
-                                                    {isMyComment && !isEditing && (
-                                                        <div className="hidden group-hover:flex items-center gap-3">
-                                                            <button onClick={() => startEditingComment(cmt)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>
-                                                            <button onClick={() => handleDeleteComment(cmt.id)} className="text-[10px] font-bold text-slate-500 hover:text-red-400 transition-colors">삭제</button>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {isEditing ? (
-                                                    <div className="mt-2 flex flex-col gap-2">
-                                                        <textarea 
-                                                            value={editCommentText}
-                                                            onChange={(e) => setEditCommentText(e.target.value)}
-                                                            className="w-full bg-slate-950 p-3 rounded-xl border border-emerald-500/50 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none"
-                                                            rows={2}
-                                                        />
-                                                        <div className="flex justify-end gap-2 mt-1">
-                                                            <button onClick={() => setEditingCommentId(null)} className="px-4 py-1.5 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 rounded-lg transition-colors">취소</button>
-                                                            <button onClick={() => handleSaveEditComment(cmt.id)} className="px-4 py-1.5 text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow-lg">저장</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-slate-300 leading-snug whitespace-pre-wrap">{cmt.text}</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                {(selectedNotice.comments || []).map(cmt => (
+                                    <React.Fragment key={cmt.id}>
+                                        {renderComment(cmt)}
+                                        {(cmt.replies || []).map(reply => renderComment(reply, cmt.id))}
+                                    </React.Fragment>
+                                ))}
                             </div>
 
-                            <div className="flex flex-col gap-3 border-t border-slate-800/50 pt-6">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-1">댓글 쓰기</div>
+                            <div className="flex flex-col gap-3 pt-2">
+                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">댓글 쓰기</div>
                                 <div className="flex flex-col sm:flex-row items-stretch gap-2">
-                                    <div className="flex items-center gap-2 bg-slate-900 p-2 sm:p-3 rounded-xl border border-slate-700 shrink-0">
+                                    <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700 shrink-0">
                                         <img src={owners.find(o => String(o.id) === activeOwnerId)?.photo || FALLBACK_IMG} className="w-6 h-6 rounded-full object-cover border border-slate-800" alt="" />
                                         <select 
                                             value={activeOwnerId} 
@@ -418,9 +449,9 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                             onChange={(e) => setCommentText(e.target.value)} 
                                             onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(); }}
                                             placeholder="댓글 내용을 입력하세요..." 
-                                            className="flex-1 bg-slate-900 px-4 py-3 rounded-xl border border-slate-700 text-white text-sm placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner"
+                                            className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-sm placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner"
                                         />
-                                        <button onClick={handleAddComment} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-all shadow-lg shrink-0">
+                                        <button onClick={handleAddComment} className="px-5 sm:px-6 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-all shadow-lg shrink-0">
                                             등록
                                         </button>
                                     </div>

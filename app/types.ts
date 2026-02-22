@@ -20,18 +20,13 @@ export interface Match {
   homeAssists: any[];
   awayAssists: any[];
   
-  // 승부 예측 결과 (Team/Owner 데이터 기반)
   homePredictRate?: number; 
   awayPredictRate?: number; 
 
-  // 토너먼트 로직용
   nextMatchId?: string | null;
   loserMatchId?: string | null;
 
-  // 컵 모드 전용: 조별 예선 그룹 정보
   group?: string;
-
-  // 🔥 [필수 수정] 이 줄이 있어야 CupSchedule 오류가 해결됨!
   commentary?: string; 
 }
 
@@ -51,7 +46,6 @@ export interface Team {
   ga: number;
   gd: number;
 
-  // 승률 예측 알고리즘용 리얼 데이터
   realRankScore?: number; 
   realFormScore?: number; 
 }
@@ -83,7 +77,6 @@ export interface Season {
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
   prizes?: Prizes;
 
-  // 컵 모드 전용 데이터
   cupPhase?: CupPhase; 
   groups?: {
     [key: string]: number[];
@@ -100,8 +93,6 @@ export interface Owner {
   nickname: string;
   photo?: string;
   password?: string;
-
-  // 오너 승률 가중치 계산용 통산 전적
   totalWins?: number; 
   totalMatches?: number; 
 }
@@ -124,8 +115,6 @@ export interface MasterTeam {
   category: 'CLUB' | 'NATIONAL';
   real_rank?: number;
   condition?: string;
-
-  // 마스터 데이터에서 팀 생성 시 넘겨줄 점수
   realRankScore?: number;
   realFormScore?: number;
 }
@@ -150,35 +139,33 @@ export interface CupEntry {
   group?: string; 
   realRankScore?: number;
   realFormScore?: number;
-  
-  // 🔥 [필수 수정] AdminCupStep2 빌드 오류 방지용 속성
   size?: string; 
 }
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
-// 🔥 [NEW] 댓글 데이터 타입 (Notice 하위)
+// 🔥 [디벨롭] 댓글 안에 좋아요(likedBy)와 대댓글(replies) 배열 추가!
 export interface NoticeComment {
-  id: string;        // 댓글 고유 ID
-  ownerId: string;   // 댓글 작성자(오너) ID
-  ownerName: string; // 작성자 닉네임
-  ownerPhoto: string;// 작성자 프로필 사진
-  text: string;      // 댓글 내용
-  createdAt: string; // 작성 시간
+  id: string;
+  ownerId: string;
+  ownerName: string;
+  ownerPhoto: string;
+  text: string;
+  createdAt: string;
+  likedBy?: string[];         // 댓글 좋아요 누른 사람
+  replies?: NoticeComment[];  // 대댓글(답글) 목록
 }
 
-// 🔥 [NEW] 공지사항 및 팝업용 데이터 타입 (게시판 고도화 반영)
 export interface Notice {
-  id: string;        // 파이어베이스 문서 ID
-  title: string;     // 공지 제목
-  content: string;   // 공지 내용 (텍스트 에디터)
-  imageUrl?: string;   // (추가) 이미지 업로드 URL
-  youtubeUrl?: string; // (추가) 유튜브 엠베드 링크
-  isPopup: boolean;  // 메인 화면 팝업 노출 여부
-  createdAt: string; // 작성일 (ISO String)
-  
-  // 🔥 인터랙션 데이터 (게시판 기능용)
-  likedBy?: string[];    // 좋아요 누른 오너 ID 배열 (중복 방지)
-  dislikedBy?: string[]; // 싫어요 누른 오너 ID 배열
-  comments?: NoticeComment[]; // 댓글 목록
+  id: string;
+  title: string;
+  content: string;
+  imageUrl?: string;
+  youtubeUrl?: string;
+  isPopup: boolean;
+  createdAt: string;
+  updatedAt?: string;         // 🔥 [디벨롭] 최신 업데이트 시간 (N 뱃지용)
+  likedBy?: string[];
+  dislikedBy?: string[];
+  comments?: NoticeComment[];
 }

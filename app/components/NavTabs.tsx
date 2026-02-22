@@ -1,21 +1,19 @@
 import React from 'react';
 
-// 🔥 NOTICE 추가 및 타입 정비
 type ViewType = 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'ADMIN' | 'TUTORIAL' | 'NOTICE';
 
 interface NavTabsProps {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
+  // 🔥 [픽스] page.tsx에서 넘겨주는 hasNewNotice 속성을 받을 수 있도록 타입 추가!
+  hasNewNotice?: boolean; 
 }
 
-export const NavTabs = ({ currentView, setCurrentView }: NavTabsProps) => {
-  // 🔥 NOTICE를 추가하여 총 6개 메뉴 구성 (공지사항을 맨 앞에 배치)
+export const NavTabs = ({ currentView, setCurrentView, hasNewNotice }: NavTabsProps) => {
   const tabs: ViewType[] = ['NOTICE', 'RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'ADMIN'];
 
   return (
     <div className="max-w-6xl mx-auto px-4 mt-6 mb-8 relative">
-      
-      {/* 튜토리얼 아이콘 (메뉴영역 맨우측 상단, 박스 없음, 공간 최소화) */}
       <button 
         onClick={() => setCurrentView('TUTORIAL')} 
         className={`absolute -top-5 right-4 z-10 flex items-center justify-center transition-all hover:scale-110 ${
@@ -28,7 +26,6 @@ export const NavTabs = ({ currentView, setCurrentView }: NavTabsProps) => {
         <span className="text-sm md:text-base">ℹ️</span>
       </button>
 
-      {/* 메인 6개 탭 (모바일에선 3칸씩 2줄, PC에선 6칸 1줄로 깨짐 방지) */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 md:gap-2">
         {tabs.map(t => (
           <button 
@@ -40,8 +37,15 @@ export const NavTabs = ({ currentView, setCurrentView }: NavTabsProps) => {
                 : 'bg-slate-950 text-slate-500 hover:bg-slate-900 hover:text-slate-300'
             }`}
           >
-            <span className="text-[10px] sm:text-[10px] md:text-xs font-black tracking-widest truncate px-1 w-full text-center">
+            {/* 🔥 N 뱃지 마크 적용 로직 */}
+            <span className="relative text-[10px] sm:text-[10px] md:text-xs font-black tracking-widest truncate px-1 w-full text-center">
               {t}
+              {t === 'NOTICE' && hasNewNotice && (
+                <span className="absolute -top-2 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border border-[#020617]"></span>
+                </span>
+              )}
             </span>
           </button>
         ))}
