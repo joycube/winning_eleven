@@ -37,7 +37,17 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
     const fetchFinanceData = async () => {
       try {
         const lSnap = await getDocs(collection(db, 'finance_ledger'));
-        setDbLedgers(lSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rawLedgers = lSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // 🔥 [버그 픽스] 삭제된 시즌의 참가비/상금(유령 데이터) 완벽 차단 필터
+        // 1. 현재 존재하는(살아있는) 시즌의 ID 목록을 가져옵니다.
+        const activeSeasonIds = new Set(seasons.map(s => String(s.id)));
+        
+        // 2. 장부 데이터 중, 살아있는 시즌의 데이터만 남깁니다. (삭제된 시즌 기록은 자동 증발)
+        const validLedgers = rawLedgers.filter((l: any) => activeSeasonIds.has(String(l.seasonId)));
+
+        setDbLedgers(validLedgers);
+
         if (owners.length > 0 && !selectedOwnerId) {
             setSelectedOwnerId(String(owners[0].id));
         }
@@ -48,7 +58,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
       }
     };
     fetchFinanceData();
-  }, [owners, selectedOwnerId]);
+  }, [owners, seasons, selectedOwnerId]);
 
   const formatDate = (isoString: string) => {
     if (!isoString) return '-';
@@ -160,12 +170,10 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
     return txs;
   }, [dbLedgers, owners]);
 
-  // 🔥 [버그 해결 핵심] 필터링 조건에 맞춰 정확하게 데이터셋 깎아내기
   const settlementViewData = useMemo(() => {
     if (!selectedOwnerId) return {} as Record<string, SettlementGroup>;
     const groups: Record<string, SettlementGroup> = {};
     
-    // 1. 타겟 오너가 'ALL'일 때만 전체 상금/참가비(P&L) 내역 삽입
     if (targetOwnerId === 'ALL') {
         dbLedgers.filter(l => l.ownerId === selectedOwnerId).forEach(l => {
             const sName = seasons.find(s => String(s.id) === l.seasonId)?.name || '기타';
@@ -176,7 +184,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         });
     }
 
-    // 2. 이체(P2P) 내역 삽입
     computedSettlements.forEach(tx => {
         if (tx.from !== selectedOwnerId && tx.to !== selectedOwnerId) return;
         if (targetOwnerId !== 'ALL' && tx.from !== targetOwnerId && tx.to !== targetOwnerId) return;
@@ -196,16 +203,13 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         }
     });
 
-    // 3. 조건에 맞는 시즌만 반환 (빈 껍데기 시즌 제거)
     const filteredGroups: Record<string, SettlementGroup> = {};
     Object.entries(groups).forEach(([sName, g]) => {
         if (settlementSeason !== 'ALL' && sName !== settlementSeason) return;
         
         if (targetOwnerId !== 'ALL') {
-            // 1:1 관계일 때는 이체 내역이 있는 시즌만 남김
             if (g.p2pRx.length > 0 || g.p2pTx.length > 0) filteredGroups[sName] = g;
         } else {
-            // 전체 보기일 때는 뭐라도 기록이 있으면 남김
             if (g.rev.length > 0 || g.exp.length > 0 || g.p2pRx.length > 0 || g.p2pTx.length > 0) filteredGroups[sName] = g;
         }
     });
@@ -213,14 +217,13 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
     return filteredGroups;
   }, [dbLedgers, computedSettlements, selectedOwnerId, targetOwnerId, settlementSeason, seasons, owners]);
 
-  // 🔥 [버그 해결 핵심] 화면에 보이는 데이터만 기반으로 최종 합계 계산 (동적 합산)
   const totalNetSettlement = useMemo(() => {
       let total = 0;
       Object.values(settlementViewData).forEach((g: SettlementGroup) => {
           if (targetOwnerId === 'ALL') {
-              total += (g.sumRev - g.sumExp); // 전체 뷰는 순수익(상금-참가비) 기준
+              total += (g.sumRev - g.sumExp);
           } else {
-              total += (g.sumRx - g.sumTx);   // 1:1 뷰는 주고받은 돈(Rx-Tx) 기준
+              total += (g.sumRx - g.sumTx); 
           }
       });
       return total;
@@ -410,7 +413,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
               <span className="text-xs font-black italic text-slate-400 uppercase tracking-widest">{activeOwner.nickname}님의 정산 장부</span>
             </div>
 
-            {/* 🔥 타겟 지정 여부에 따라 헤더 텍스트 동적 변경 */}
             <div className="grid grid-cols-2 text-center border-b border-slate-700 bg-slate-900/80 py-2.5 shadow-md">
                <div className="text-emerald-500 font-black text-[11px] sm:text-xs tracking-widest">
                  {targetOwnerId === 'ALL' ? '🟢 수입 (INCOME)' : '🟢 받을 돈 (RX)'}
@@ -435,7 +437,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                       <span className="text-xs font-black text-yellow-500 tracking-wider">{season}</span>
                     </div>
 
-                    {/* 🔥 ALL 뷰일 때만 P&L (상금/참가비) 근거 노출 */}
                     {isAll && (
                       <>
                         <div className="bg-slate-950/40 p-1.5 text-center text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800/30">
@@ -468,7 +469,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                       </>
                     )}
 
-                    {/* 🔥 1:1 이체 내역은 항상 조건부 노출 */}
                     {(!isAll || data.p2pRx.length > 0 || data.p2pTx.length > 0) && (
                       <>
                         {isAll && (
@@ -494,7 +494,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                             ))}
                           </div>
                         </div>
-                        {/* 1:1 뷰일 경우 시즌별 이체 부분합계 노출 */}
                         {!isAll && (
                             <div className="bg-slate-900/30 px-4 py-2 flex justify-between items-center text-[10px] sm:text-xs border-y border-slate-800/30 mt-2">
                                 <span className="text-slate-400 font-bold uppercase tracking-widest">이번 시즌 이체 합계</span>
@@ -517,13 +516,13 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                   <span className="text-xs sm:text-sm text-white font-black uppercase tracking-widest">
                     {targetOwnerId === 'ALL' 
                       ? (settlementSeason === 'ALL' ? '전체 최종 수입 (잔액)' : '선택 시즌 수입 합계')
-                      : `${owners.find(o => String(o.id) === targetOwnerId)?.nickname}님과의 최종 정산금`
+                      : `${owners.find(o => String(o.id) === targetOwnerId)?.nickname}님과의 누적 채무`
                     }
                   </span>
                   <span className="text-[9px] text-slate-500 mt-1">
                     {targetOwnerId === 'ALL' 
                       ? '* 화면에 표시된 내역의 순수익 합계입니다.' 
-                      : '* 선택한 상대방과의 실제 채무(송금/수금) 합계입니다.'
+                      : '* 선택한 상대방과 역대 주고받아야 할 총 누적 채무액입니다.'
                     }
                   </span>
                 </div>
