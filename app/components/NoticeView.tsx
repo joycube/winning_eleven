@@ -41,42 +41,56 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         }
     }, [owners]);
 
-    // URL 파라미터를 읽어서 공유된 링크로 접속 시 자동으로 해당 글 열기
+    // 🔥 [수술 포인트] 공유 링크로 접속 시 초기 로딩 완벽 대응 (삭제 버그 원천 차단)
     useEffect(() => {
-        if (notices.length > 0) {
+        if (notices.length > 0 && !selectedNotice) {
             const params = new URLSearchParams(window.location.search);
             const noticeId = params.get('noticeId');
-            if (noticeId && !selectedNotice) {
+            if (noticeId) {
                 const target = notices.find(n => n.id === noticeId);
-                if (target) setSelectedNotice(target);
+                if (target) {
+                    setSelectedNotice(target);
+                }
             }
         }
     }, [notices]);
 
-    // 글을 열거나 닫을 때 URL 파라미터(noticeId)를 실시간으로 업데이트
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            if (selectedNotice) {
-                params.set('noticeId', selectedNotice.id);
-            } else {
-                params.delete('noticeId');
-            }
-            window.history.replaceState(null, '', `?${params.toString()}`);
-        }
-    }, [selectedNotice]);
-
+    // 목록으로 돌아가기
     const handleBackToList = () => {
         setSelectedNotice(null);
         setEditingCommentId(null); 
         fetchNotices(); 
+        
+        // 뒤로 갈 때 명시적으로 URL 초기화
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('noticeId');
+            window.history.replaceState(null, '', `?${params.toString()}`);
+        }
     };
 
-    // 클립보드에 현재 주소 복사하기
+    // 리스트에서 글 클릭하기
+    const handleNoticeClick = (notice: Notice) => {
+        setSelectedNotice(notice);
+        
+        // 글을 열 때 명시적으로 URL 업데이트
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            params.set('view', 'NOTICE');
+            params.set('noticeId', notice.id);
+            window.history.replaceState(null, '', `?${params.toString()}`);
+        }
+    };
+
+    // 공유하기 (절대 주소 생성 방식으로 강화)
     const handleShareLink = () => {
-        const url = window.location.href;
-        navigator.clipboard.writeText(url).then(() => {
-            alert('🔗 게시글 링크가 클립보드에 복사되었습니다!\n단톡방에 공유해보세요.');
+        const params = new URLSearchParams(window.location.search);
+        params.set('view', 'NOTICE');
+        if (selectedNotice) params.set('noticeId', selectedNotice.id);
+        const shareUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+        
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('🔗 게시글 링크가 클립보드에 복사되었습니다!\n단톡방에 붙여넣기 해보세요.');
         }).catch(() => {
             alert('🚨 링크 복사에 실패했습니다.');
         });
@@ -249,7 +263,7 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                                     const boardNumber = notices.length - index; 
 
                                     return (
-                                        <div key={notice.id} onClick={() => setSelectedNotice(notice)} className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-800/40 transition-colors cursor-pointer group">
+                                        <div key={notice.id} onClick={() => handleNoticeClick(notice)} className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-800/40 transition-colors cursor-pointer group">
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
                                                 <span className="text-slate-600 font-black text-[11px] sm:text-xs w-5 text-center shrink-0">{boardNumber}</span>
                                                 {notice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-2 py-[2px] rounded uppercase tracking-widest border border-yellow-500/30 shrink-0">전체 공지</span>}
@@ -271,7 +285,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
             ) : (
                 <div className="animate-in slide-in-from-bottom-4 space-y-4">
                     
-                    {/* 🔥 상단에는 '목록으로' 버튼만 남김 */}
                     <div className="mb-2">
                         <button onClick={handleBackToList} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-sm">
                             ← <span>목록으로</span>
@@ -282,7 +295,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                         <div className="p-6 sm:p-8 border-b border-slate-800">
                             <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mb-4">{selectedNotice.title}</h2>
                             
-                            {/* 🔥 공유하기 버튼을 날짜 맨 우측으로 이동 */}
                             <div className="flex items-center justify-between">
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
                                     {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}

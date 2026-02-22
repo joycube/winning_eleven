@@ -25,7 +25,6 @@ import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 
-// TBD 로고 정의
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
 export default function FootballLeagueApp() {
@@ -325,10 +324,8 @@ export default function FootballLeagueApp() {
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       
-      {/* 🔥 [디벨롭 1] 티커(전광판) 오버레이 해결, 디자인 사이버틱하게 변경, 무한 심리스 스크롤 적용 */}
       {latestPopupNotice && !hideTicker && (
           <div className="w-full bg-[#050b14] border-b border-emerald-500/30 py-2.5 px-4 flex items-center justify-between z-50">
-              {/* 전광판용 CSS 애니메이션 정의 */}
               <style>{`
                   @keyframes seamless-ticker {
                       0% { transform: translateX(0); }
@@ -348,11 +345,19 @@ export default function FootballLeagueApp() {
               <div className="flex items-center w-full overflow-hidden">
                   <span className="shrink-0 bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 px-2 py-0.5 rounded text-[10px] font-black mr-4 z-10 shadow-[0_0_10px_rgba(52,211,153,0.2)]">전체 공지</span>
                   
+                  {/* 🔥 [수술 포인트] 메인화면 티커 누르면 해당 게시글(뷰 페이지)로 다이렉트 이동! */}
                   <div 
                       className="flex-1 overflow-hidden cursor-pointer flex"
-                      onClick={() => setCurrentView('NOTICE')} 
+                      onClick={() => {
+                          setCurrentView('NOTICE');
+                          if (typeof window !== 'undefined') {
+                              const params = new URLSearchParams(window.location.search);
+                              params.set('view', 'NOTICE');
+                              params.set('noticeId', latestPopupNotice.id);
+                              window.history.replaceState(null, '', `?${params.toString()}`);
+                          }
+                      }} 
                   >
-                      {/* 🔥 여백 텀을 없애기 위해 문구를 여러 번 반복해서 Seamless 구현 */}
                       <div className="animate-ticker-seamless gap-16 pr-16 text-emerald-400/90 font-bold text-[11px] sm:text-xs tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">
                           <span>{latestPopupNotice.title}</span>
                           <span>{latestPopupNotice.title}</span>
@@ -372,7 +377,6 @@ export default function FootballLeagueApp() {
           </div>
       )}
 
-      {/* 배너는 티커 아래로 자연스럽게 밀림 (오버레이 해결) */}
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
       
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
