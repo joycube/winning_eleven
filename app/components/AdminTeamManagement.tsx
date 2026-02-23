@@ -5,28 +5,35 @@ import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from 'fireb
 import { League, MasterTeam, FALLBACK_IMG } from '../types'; 
 import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../utils/helpers'; 
 
-// 🔥 TierSelector 컴포넌트
+// 🔥 TierSelector 컴포넌트: D등급 추가 및 레이아웃 깨짐 방지 완벽 적용
 const TierSelector = ({ value, onChange, isMini = false }: { value: string, onChange: (t: string) => void, isMini?: boolean }) => {
-    const tiers = ['S', 'A', 'B', 'C'];
+    const tiers = ['S', 'A', 'B', 'C', 'D']; // D 추가!
     return (
-        <div className={`flex items-center justify-center w-full ${isMini ? 'gap-1 mt-2' : 'gap-1'}`}>
-            {tiers.map(t => (
-                <button 
-                    key={t} 
-                    onClick={(e) => { e.stopPropagation(); onChange(t); }}
-                    className={`font-bold transition-all border flex items-center justify-center ${
-                        isMini 
-                        ? 'w-6 h-6 rounded text-[10px] p-0 flex-shrink-0' 
-                        : 'flex-1 py-2 rounded-lg text-xs'
-                    } ${
-                        value === t 
-                        ? getTierBadgeColor(t) + ' ring-1 ring-white' 
-                        : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
-                    }`} 
-                >
-                    {t}
-                </button>
-            ))}
+        // isMini일 때 gap을 줄이고 flex-wrap 방지로 무조건 1줄에 예쁘게 맞춤
+        <div className={`flex items-center justify-center w-full ${isMini ? 'gap-[2px] mt-2' : 'gap-1'}`}>
+            {tiers.map(t => {
+                // helpers.ts에 D등급 색상이 없을 경우를 대비한 안전장치
+                const badgeClass = getTierBadgeColor(t) || 'bg-slate-700 text-slate-300 border-slate-600'; 
+                return (
+                    <button 
+                        key={t} 
+                        onClick={(e) => { e.stopPropagation(); onChange(t); }}
+                        className={`font-bold transition-all border flex items-center justify-center ${
+                            isMini 
+                            // 🔥 빠른 등급설정 (미니): 5개가 넘어가도 안 깨지게 flex-1과 작은 크기 적용
+                            ? 'flex-1 h-5 rounded-[3px] text-[9px] p-0' 
+                            // 기본 등급설정: flex-1로 5개 공간 균등 분할
+                            : 'flex-1 py-2 rounded-lg text-xs'
+                        } ${
+                            value === t 
+                            ? badgeClass + ' ring-1 ring-white z-10' 
+                            : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
+                        }`} 
+                    >
+                        {t}
+                    </button>
+                );
+            })}
         </div>
     );
 };
@@ -79,7 +86,6 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
         return (
             <div className="space-y-2 mb-6">
                 <h3 className={`text-sm font-bold border-l-4 pl-2 ${category === 'CLUB' ? 'text-emerald-400 border-emerald-500' : 'text-blue-400 border-blue-500'}`}>{title}</h3>
-                {/* 🔥 [픽스] 리그 관리 그리드 최적화: 3열 시작, 최대 6열, 간격 축소 */}
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                     {displayList.map(l => (
                         <div key={l.id} onClick={() => handleEdit(l)} className={`p-2.5 rounded-xl border cursor-pointer transition-all group relative aspect-square flex flex-col items-center justify-center ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
@@ -141,7 +147,8 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     const [tName, setTName] = useState('');
     const [tLogo, setTLogo] = useState('');
     const [tRegion, setTRegion] = useState('');
-    const [tTier, setTTier] = useState('C');
+    // 🔥 기본값을 'C'에서 'D'로 변경
+    const [tTier, setTTier] = useState('D'); 
     const [editTeamId, setEditTeamId] = useState<string | null>(null);
 
     const handleSaveTeam = async () => {
@@ -157,11 +164,13 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
             await addDoc(collection(db, "master_teams"), { id: Date.now(), ...teamData });
             alert("생성 완료");
         }
-        setTName(''); setTLogo(''); setTTier('C');
+        // 🔥 생성/수정 후 폼 초기화 시에도 'D' 적용
+        setTName(''); setTLogo(''); setTTier('D');
     };
 
     const handleDeleteTeam = async (id: string) => { if(confirm("정말 삭제하시겠습니까?")) await deleteDoc(doc(db,"master_teams",id)); };
     const handleQuickTierUpdate = async (teamId: string, newTier: string) => { await updateDoc(doc(db, "master_teams", teamId), { tier: newTier }); };
+    
     const handleBulkTier = async (targetTier: string) => {
         if (!selectedLeague) return alert("리그를 먼저 선택해주세요.");
         if (!confirm(`'${selectedLeague}'의 모든 팀 등급을 '${targetTier}'로 변경하시겠습니까?`)) return;
@@ -231,7 +240,8 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         </div>
                         <div className="flex gap-2 pt-2">
                             <button onClick={handleSaveTeam} className={`flex-1 py-3 rounded font-bold shadow-lg transition-all ${editTeamId ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>{editTeamId ? 'Update Team' : 'Add Team'}</button>
-                            {editTeamId && <button onClick={()=>{setEditTeamId(null); setTName(''); setTLogo(''); setTTier('C'); setIsEditOpen(false);}} className="px-6 bg-slate-800 rounded text-slate-400 text-sm hover:text-white">Cancel</button>}
+                            {/* 🔥 취소 버튼 시에도 D로 초기화 */}
+                            {editTeamId && <button onClick={()=>{setEditTeamId(null); setTName(''); setTLogo(''); setTTier('D'); setIsEditOpen(false);}} className="px-6 bg-slate-800 rounded text-slate-400 text-sm hover:text-white">Cancel</button>}
                         </div>
                     </div>
                 )}
@@ -242,7 +252,8 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                     <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`h-9 px-4 text-xs rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
                     {selectedLeague ? (
                          <div className="flex gap-2 ml-auto">
-                             <button onClick={()=>handleBulkTier('C')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 C등급 변경</button>
+                             {/* 🔥 C -> D 로 인자값 및 버튼 텍스트 변경 완벽 적용! */}
+                             <button onClick={()=>handleBulkTier('D')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 D등급 변경</button>
                              <button onClick={()=>setSelectedLeague('')} className="h-9 w-9 flex items-center justify-center bg-slate-800 rounded-lg text-white border border-slate-700 hover:bg-slate-700 font-bold">↩</button>
                          </div>
                     ) : <span className="text-xs text-slate-500 pr-2 ml-auto">리그를 선택하세요</span>}
@@ -253,7 +264,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'NATIONAL' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-emerald-500 pl-2">⚽ Club Leagues</h3>
-                                {/* 🔥 [픽스] 리그 선택 그리드 최적화: 3열 시작, 최대 6열, 간격 축소 */}
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                                     {displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-1.5 group transition-all aspect-square justify-center relative">
@@ -272,7 +282,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'CLUB' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-blue-500 pl-2">🌍 National Teams</h3>
-                                {/* 🔥 [픽스] 국가대표 선택 그리드 최적화: 3열 시작, 최대 6열, 간격 축소 */}
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                                     {displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-1.5 group transition-all aspect-square justify-center relative">
@@ -292,7 +301,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 )}
 
                 {(selectedLeague || searchTerm) && (
-                    /* 🔥 [픽스] 팀 목록 그리드 최적화: 3열 시작, 최대 6열, 간격 축소, 패딩 축소 */
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 animate-in fade-in">
                         {filteredTeams.map(t => (
                             <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-2.5 rounded-xl border flex flex-col items-center justify-center aspect-square cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
@@ -303,7 +311,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                 {isQuickTierMode ? (
                                     <TierSelector value={t.tier} onChange={(newTier) => t.docId && handleQuickTierUpdate(t.docId, newTier)} isMini={true} />
                                 ) : (
-                                    <div className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${getTierBadgeColor(t.tier)}`}>{t.tier}</div>
+                                    <div className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${getTierBadgeColor(t.tier) || 'bg-slate-700 text-slate-300 border-slate-600'}`}>{t.tier}</div>
                                 )}
                                 {!isQuickTierMode && (
                                     <button onClick={(e)=>{e.stopPropagation(); t.docId && handleDeleteTeam(t.docId);}} className="absolute top-1.5 left-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-[10px]">✕</button>
