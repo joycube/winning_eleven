@@ -3,17 +3,17 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, updateDoc, arrayUnion, query, orderBy, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { Notice, NoticeComment, Owner, FALLBACK_IMG } from '../types';
 
 interface NoticeViewProps {
     owners: Owner[];
+    // 🔥 [수술 포인트 1] 부모(page.tsx)에서 실시간 notices 데이터를 직접 받음 (로딩 딜레이 완전 제거)
+    notices: Notice[]; 
 }
 
-export const NoticeView = ({ owners }: NoticeViewProps) => {
-    const [notices, setNotices] = useState<Notice[]>([]);
+export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
     const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
 
     const [activeOwnerId, setActiveOwnerId] = useState<string>('');
     const [commentText, setCommentText] = useState('');
@@ -24,64 +24,56 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
     const [replyingToId, setReplyingToId] = useState<string | null>(null);
     const [replyText, setReplyText] = useState('');
 
-    const fetchNotices = async () => {
-        setIsLoading(true);
-        try {
-            const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            setNotices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice)));
-        } catch (error) {
-            console.error("🚨 Error fetching notices:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     useEffect(() => {
-        fetchNotices();
         if (owners.length > 0 && !activeOwnerId) {
             setActiveOwnerId(String(owners[0].id));
         }
     }, [owners]);
 
+    // 🔥 [수술 포인트 2] URL 실시간 감지 및 동기화 (팝업 클릭 시 본문 즉시 이동)
     useEffect(() => {
-        if (notices.length > 0) {
+        const checkUrlAndSyncNotice = () => {
             const params = new URLSearchParams(window.location.search);
             const noticeId = params.get('noticeId');
-            if (noticeId && !selectedNotice) {
+            
+            if (noticeId && notices.length > 0) {
                 const target = notices.find(n => n.id === noticeId);
                 if (target) setSelectedNotice(target);
+            } else if (!noticeId) {
+                setSelectedNotice(null);
             }
-        }
-    }, [notices]);
+        };
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            if (selectedNotice) {
-                params.set('noticeId', selectedNotice.id);
-            } else {
-                params.delete('noticeId');
-            }
-            window.history.replaceState(null, '', `?${params.toString()}`);
-        }
-    }, [selectedNotice]);
+        checkUrlAndSyncNotice(); // notices 배열이 업데이트되거나 렌더링될 때 실행
+
+        // TopBar 팝업 클릭이나 뒤로가기 발생 시 즉시 반응하도록 리스너 추가
+        window.addEventListener('popstate', checkUrlAndSyncNotice);
+        window.addEventListener('forceNoticeCheck', checkUrlAndSyncNotice);
+
+        return () => {
+            window.removeEventListener('popstate', checkUrlAndSyncNotice);
+            window.removeEventListener('forceNoticeCheck', checkUrlAndSyncNotice);
+        };
+    }, [notices]);
 
     const handleBackToList = () => {
         setSelectedNotice(null);
         setEditingCommentId(null); 
         setReplyingToId(null);
-        fetchNotices(); 
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('noticeId');
+            window.history.replaceState(null, '', `?${params.toString()}`);
+        }
     };
 
-    // 🔥 에러의 원인이었던 클릭 함수! (확실하게 포함됨)
     const handleNoticeClick = (notice: Notice) => {
         setSelectedNotice(notice);
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             params.set('view', 'NOTICE');
             params.set('noticeId', notice.id);
-            window.history.replaceState(null, '', `?${params.toString()}`);
+            window.history.pushState(null, '', `?${params.toString()}`);
         }
     };
 
@@ -123,6 +115,7 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
                 comments: updatedComments,
                 updatedAt: now
             });
+            // 낙관적 UI 업데이트 (DB 반영 전 즉시 화면 변경)
             setSelectedNotice({ ...selectedNotice, comments: updatedComments, updatedAt: now });
         } catch (error) {
             console.error(error);
@@ -228,15 +221,6 @@ export const NoticeView = ({ owners }: NoticeViewProps) => {
         await updateCommentsInDB(updatedComments);
         setEditingCommentId(null);
     };
-
-    if (isLoading && !selectedNotice) {
-        return (
-            <div className="flex flex-col items-center justify-center py-32 animate-pulse">
-                <span className="text-5xl mb-4">📢</span>
-                <p className="text-emerald-500 font-bold italic tracking-widest uppercase text-sm">Loading Board...</p>
-            </div>
-        );
-    }
 
     const renderComment = (cmt: NoticeComment, parentId?: string) => {
         const isMyComment = cmt.ownerId === activeOwnerId;

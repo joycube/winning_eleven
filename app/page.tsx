@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+// 🔥 [수술 포인트 1] 실시간 동기화를 위해 onSnapshot 훅 추가!
+import { doc, updateDoc, setDoc, addDoc, collection, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Season, Match, Notice } from './types';
 
 // 컴포넌트들
@@ -37,54 +38,56 @@ export default function FootballLeagueApp() {
   const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
+  // 🔥 [수술 포인트 2] notices 데이터를 부모에서 쥐고 있도록 State 추가
+  const [notices, setNotices] = useState<Notice[]>([]);
   const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
   const [hideTicker, setHideTicker] = useState(false);
-  
-  // 🔥 [디벨롭] 새로운 알림(N 마크) 여부 상태
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
+  // 🔥 [수술 포인트 3] onSnapshot을 이용한 실시간 로딩 (로딩 0%의 핵심)
   useEffect(() => {
-    const fetchNoticeData = async () => {
-      try {
-        const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        const notices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
+    const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+        const fetchedNotices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
+        setNotices(fetchedNotices); // 데이터 즉시 반영!
         
         // 팝업 티커 세팅
-        const popupNotice = notices.find(n => n.isPopup);
+        const popupNotice = fetchedNotices.find(n => n.isPopup);
         if (popupNotice) {
             const hideUntil = localStorage.getItem(`hide_notice_${popupNotice.id}`);
             if (hideUntil && Date.now() < Number(hideUntil)) {
                 setHideTicker(true);
             } else {
                 setLatestPopupNotice(popupNotice);
+                setHideTicker(false);
             }
+        } else {
+            setLatestPopupNotice(null);
         }
-
-        // 🔥 새글/새댓글 업데이트 시간 계산하여 N 뱃지 결정
-        let latestTime = 0;
-        notices.forEach(n => {
-            const time = new Date(n.updatedAt || n.createdAt).getTime();
-            if (time > latestTime) latestTime = time;
-        });
-        const lastChecked = Number(localStorage.getItem('lastCheckedNoticeTime') || '0');
-        if (latestTime > lastChecked) {
-            setHasNewNotice(true);
-        }
-      } catch (error) {
+    }, (error) => {
         console.error("🚨 Error fetching notices:", error);
-      }
-    };
-    fetchNoticeData();
-  }, [currentView]); // 화면 바뀔 때마다 체크
+    });
 
-  // 🔥 사용자가 NOTICE 탭에 들어오면 마지막 확인 시간 갱신하고 N 뱃지 지우기
+    return () => unsubscribe(); // 언마운트 시 메모리 누수 방지
+  }, []);
+
+  // 🔥 [수술 포인트 4] N 뱃지 로직 최적화 (뷰가 바뀌거나 공지가 올라올 때 즉시 판별)
   useEffect(() => {
       if (currentView === 'NOTICE') {
           localStorage.setItem('lastCheckedNoticeTime', String(Date.now()));
           setHasNewNotice(false);
+      } else {
+          let latestTime = 0;
+          notices.forEach(n => {
+              const time = new Date(n.updatedAt || n.createdAt).getTime();
+              if (time > latestTime) latestTime = time;
+          });
+          const lastChecked = Number(localStorage.getItem('lastCheckedNoticeTime') || '0');
+          if (latestTime > lastChecked) {
+              setHasNewNotice(true);
+          }
       }
-  }, [currentView]);
+  }, [currentView, notices]);
 
   const handleCloseTicker = () => {
       if (latestPopupNotice) {
@@ -373,10 +376,14 @@ export default function FootballLeagueApp() {
                       onClick={() => {
                           setCurrentView('NOTICE');
                           if (typeof window !== 'undefined') {
+                              // 🔥 [수술 포인트 5] 팝업 클릭 시 탭 이동 + 다이렉트 뷰로 점프!
                               const params = new URLSearchParams(window.location.search);
                               params.set('view', 'NOTICE');
                               params.set('noticeId', latestPopupNotice.id);
-                              window.history.replaceState(null, '', `?${params.toString()}`);
+                              // replaceState -> pushState로 변경하여 확실히 URL을 밀어넣음
+                              window.history.pushState(null, '', `?${params.toString()}`);
+                              // 커스텀 이벤트 발송 (NoticeView가 이걸 듣고 즉각 반응함)
+                              window.dispatchEvent(new Event('forceNoticeCheck'));
                           }
                       }} 
                   >
@@ -401,13 +408,13 @@ export default function FootballLeagueApp() {
 
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
       
-      {/* 🔥 hasNewNotice 상태를 NavTabs로 전달! */}
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} hasNewNotice={hasNewNotice} />
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
         {currentView === 'NOTICE' && (
-            <NoticeView owners={owners} />
+            // 🔥 [수술 포인트 6] notices 배열을 Props로 던져줘서 즉시 렌더링되게 함
+            <NoticeView owners={owners} notices={notices} />
         )}
 
         {currentView === 'RANKING' && (
