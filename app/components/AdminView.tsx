@@ -186,29 +186,46 @@ export const AdminView = ({
 
     return (
         <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
-            <select value={adminTab} onChange={(e) => handleTabChange(e.target.value)} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm mb-4 h-14 font-bold text-white">
-                <option value="NEW">➕ Create New Season</option>
-                {/* 🔥 [Notice] 옵션 추가 */}
-                <option value="NOTICE">📢 Notice Management</option>
-                <option value="LEAGUES">🏳️ League Management</option>
-                <option value="TEAMS">🛡️ Team Management</option>
-                <option value="OWNER">👤 Owner Management</option>
-                <option value="BANNER">🖼️ Banner Management</option>
-                <option value="REAL">🌏 Real-World Data Patch</option>
-                <optgroup label="Select Season to Manage">
-                    {seasons.map(s => (
-                        <option key={s.id} value={s.id}>
-                            {(() => {
-                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️)\s*/, '');
-                                let icon = '🏳️';
-                                if (s.type === 'CUP') icon = '🏆';
-                                if (s.type === 'TOURNAMENT') icon = '⚔️';
-                                return `${icon} ${pureName} ${s.status === 'COMPLETED' ? '(마감)' : ''}`;
-                            })()}
-                        </option>
-                    ))}
-                </optgroup>
-            </select>
+            
+            {/* 🔥 모바일 및 개발자 모드 깨짐 방지: 완벽한 Select UI */}
+            <div className="relative mb-8">
+                <select 
+                    value={String(adminTab)} 
+                    onChange={(e) => handleTabChange(e.target.value)}
+                    className="w-full bg-slate-950 text-white text-base font-bold py-4 px-5 rounded-xl border border-slate-700 shadow-xl appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
+                >
+                    <optgroup label="⚙️ System Management" className="bg-slate-800 text-slate-400 font-bold text-sm">
+                        <option value="NEW" className="text-white text-base bg-slate-900 py-2">➕ Create New Season</option>
+                        <option value="NOTICE" className="text-white text-base bg-slate-900 py-2">📢 Notice Management</option>
+                        <option value="LEAGUES" className="text-white text-base bg-slate-900 py-2">🏳️ League Management</option>
+                        <option value="TEAMS" className="text-white text-base bg-slate-900 py-2">🛡️ Team Management</option>
+                        <option value="OWNER" className="text-white text-base bg-slate-900 py-2">👤 Owner Management</option>
+                        <option value="BANNER" className="text-white text-base bg-slate-900 py-2">🖼️ Banner Management</option>
+                        <option value="REAL" className="text-white text-base bg-slate-900 py-2">🌏 Real-World Data Patch</option>
+                    </optgroup>
+                    
+                    <optgroup label="📋 Select Season to Manage" className="bg-slate-800 text-slate-400 font-bold text-sm">
+                        {seasons.map(s => (
+                            <option key={s.id} value={s.id} className="text-white text-base bg-slate-900 py-2">
+                                {(() => {
+                                    const pureName = s.name.replace(/^(🏆|🏳️|⚔️)\s*/, '');
+                                    let icon = '🏳️';
+                                    if (s.type === 'CUP') icon = '🏆';
+                                    if (s.type === 'TOURNAMENT') icon = '⚔️';
+                                    return `${icon} ${pureName} ${s.status === 'COMPLETED' ? '(마감)' : ''}`;
+                                })()}
+                            </option>
+                        ))}
+                    </optgroup>
+                </select>
+                
+                {/* 커스텀 화살표 아이콘 (네이티브 화살표 숨김 대응) */}
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+            </div>
 
             {/* 🔥 [Notice] 라우팅 추가 */}
             {adminTab === 'NOTICE' && <AdminNoticeManager />}

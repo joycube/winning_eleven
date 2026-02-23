@@ -256,17 +256,32 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       `}</style>
 
       <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
-        <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700 font-bold italic">
-          {seasons.map(s => (
-            <option key={s.id} value={s.id}>
-              {(() => {
-                const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
-                let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️';
-                return `${icon} ${pureName}`;
-              })()}
-            </option>
-          ))}
-        </select>
+        
+        {/* 🔥 모바일 및 개발자 모드 깨짐 방지: 완벽한 Select UI (AdminView와 동일) */}
+        <div className="relative">
+          <select 
+            value={viewSeasonId} 
+            onChange={(e) => setViewSeasonId(Number(e.target.value))} 
+            className="w-full bg-slate-950 text-white text-base font-bold py-4 px-5 rounded-xl border border-slate-700 shadow-xl appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer italic"
+          >
+            {seasons.map(s => (
+              <option key={s.id} value={s.id} className="text-white text-base bg-slate-900 py-2">
+                {(() => {
+                  const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
+                  let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️';
+                  return `${icon} ${pureName}`;
+                })()}
+              </option>
+            ))}
+          </select>
+          {/* 커스텀 화살표 아이콘 (네이티브 화살표 숨김 대응) */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </div>
+        </div>
+
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {['STANDINGS', 'OWNERS', 'PLAYERS', 'HIGHLIGHTS'].map(sub => (
             <button key={sub} onClick={() => setRankingTab(sub as any)} className={`px-4 py-2 rounded-lg text-xs font-black italic transition-all whitespace-nowrap ${rankingTab === sub ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}>{sub}</button>

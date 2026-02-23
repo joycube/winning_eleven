@@ -6,6 +6,14 @@ import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { FALLBACK_IMG, Owner, Season } from '../types';
 
+// 🔥 [에러 해결] style 태그의 jsx 속성을 TypeScript가 인식하도록 선언
+declare module 'react' {
+  interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
+    jsx?: boolean;
+    global?: boolean;
+  }
+}
+
 interface FinanceViewProps {
   owners: Owner[];
   seasons: Season[];

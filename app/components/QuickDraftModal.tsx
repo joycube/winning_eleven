@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Owner, MasterTeam, Team, FALLBACK_IMG } from '../types';
 
+// 🔥 [에러 해결] style 태그의 jsx 속성을 TypeScript가 인식하도록 선언
+declare module 'react' {
+  interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
+    jsx?: boolean;
+    global?: boolean;
+  }
+}
+
 interface QuickDraftModalProps {
     isOpen: boolean;
     onClose: () => void;
