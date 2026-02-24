@@ -1,7 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
+
+// 🔥 캡처 라이브러리 추가
+import { toPng } from 'html-to-image';
+// 🔥 [에러 해결] Vercel 빌드 시 TypeScript 예외 처리
+// @ts-ignore
+import download from 'downloadjs';
 
 // 🔥 [TS Error Fix] styled-jsx 속성 인식
 declare module 'react' {
@@ -10,6 +16,15 @@ declare module 'react' {
     global?: boolean;
   }
 }
+
+// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
+const getTodayFormatted = () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}.${month}.${day}`;
+};
 
 // 🔥 TBD 전용 플레이스홀더 이미지
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
@@ -30,24 +45,71 @@ export const CupSchedule = ({
 }: CupScheduleProps) => {
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
+  const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || 'CUP';
+
+  // 🔥 캡처 중인 매치 카드를 추적하는 상태
+  const [capturingMatchId, setCapturingMatchId] = useState<string | null>(null);
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🔥 [디벨롭] BYE 로직이 포함된 승자 판별 (실제 팀 우선 순위)
+  // 🔥 매치카드 캡처 전용 함수
+  const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
+    const element = document.getElementById(`cup-match-card-wrap-${matchId}`);
+    if (!element) return;
+    
+    setCapturingMatchId(matchId);
+
+    try {
+        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const dataUrl = await toPng(element, { 
+            cacheBust: true, 
+            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            pixelRatio: 2, 
+            style: { margin: '0' } 
+        });
+        
+        const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
+        
+        // 1. 다운로드 실행
+        download(dataUrl, fileName);
+        
+        // 2. 모바일일 경우 공유 시트 띄우기
+        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
+             try {
+                 const blob = await (await fetch(dataUrl)).blob();
+                 const file = new File([blob], fileName, { type: blob.type });
+                 await navigator.share({
+                     title: '🔥 Match Result',
+                     text: `${home} vs ${away} 컵 경기 결과!`,
+                     files: [file]
+                 });
+             } catch (shareErr) {
+                 console.log('Share canceled or failed', shareErr);
+             }
+        } else {
+             alert('📷 기기에 매치카드가 저장되었습니다!');
+        }
+    } catch (error: any) {
+        console.error('캡처 실패:', error);
+        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.`);
+    } finally {
+        setCapturingMatchId(null);
+    }
+  };
+
   const getWinnerName = (match: Match | null): string => {
       if (!match) return 'TBD';
       
       const home = match.home?.trim();
       const away = match.away?.trim();
 
-      // 1. 부전승 처리: 한쪽만 BYE인 경우 실제 팀이 무조건 승자
       if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
       if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
       
-      // 2. 양쪽이 BYE이거나 TBD면 다음 라운드로 전파하지 않음 (TBD 반환)
       if (home === 'BYE' || away === 'BYE' || home === 'TBD' || away === 'TBD') return 'TBD';
 
-      // 3. 일반 경기 결과 확인 (완료된 경기만)
       if (match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore || 0);
       const a = Number(match.awayScore || 0);
@@ -125,7 +187,7 @@ export const CupSchedule = ({
         stage: stageName, 
         matchLabel: 'TBD', youtubeUrl: '',
         homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
-        commentary: '' // 🔥 추가
+        commentary: '' 
     } as Match);
 
     const slots = {
@@ -270,6 +332,7 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
+                    {/* 조별리그 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
@@ -282,23 +345,41 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => (
-                                        <div key={m.id} className="w-full min-w-0">
-                                            <MatchCard 
-                                              match={{...m, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
-                                              onClick={onMatchClick} 
-                                              activeRankingData={activeRankingData} 
-                                              historyData={historyData} 
-                                              masterTeams={masterTeams} 
-                                            />
-                                            {/* 🔥 코멘터리 복구 영역 */}
-                                            {m.commentary && (
-                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                        <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
-                                                        {m.commentary}
-                                                    </p>
+                                        <div key={m.id} className="relative flex flex-col gap-1 mb-2">
+                                            {/* 🔥 캡처 버튼 */}
+                                            <div className="flex justify-end w-full px-1">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                    disabled={capturingMatchId === m.id}
+                                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                    title="결과 캡처 및 공유"
+                                                >
+                                                    {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                </button>
+                                            </div>
+
+                                            {/* 🔥 캡처 타겟 */}
+                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                <MatchCard 
+                                                  match={{...m, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
+                                                  onClick={onMatchClick} 
+                                                  activeRankingData={activeRankingData} 
+                                                  historyData={historyData} 
+                                                  masterTeams={masterTeams} 
+                                                />
+                                                {m.commentary && (
+                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                            <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
+                                                            {m.commentary}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {/* 🔥 워터마크 */}
+                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -306,6 +387,7 @@ export const CupSchedule = ({
                         ));
                     })}
 
+                    {/* 토너먼트 리스트 */}
                     {[
                         { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
                         { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },
@@ -318,23 +400,42 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => (
-                                        <div key={m.id || `${section.id}-${mIdx}`} className="w-full min-w-0">
-                                            <MatchCard 
-                                                match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
-                                                onClick={onMatchClick} 
-                                                activeRankingData={activeRankingData} 
-                                                historyData={historyData} 
-                                                masterTeams={masterTeams} 
-                                            />
-                                            {/* 🔥 코멘터리 복구 영역 (토너먼트용) */}
-                                            {m.commentary && (
-                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                        <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
-                                                        {m.commentary}
-                                                    </p>
+                                        <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
+                                            {/* 🔥 캡처 버튼 */}
+                                            {m.status !== 'UPCOMING' && m.home !== 'TBD' && m.home !== 'BYE' && (
+                                                <div className="flex justify-end w-full px-1">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                        disabled={capturingMatchId === m.id}
+                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                    >
+                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                    </button>
                                                 </div>
                                             )}
+
+                                            {/* 🔥 캡처 타겟 */}
+                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                <MatchCard 
+                                                    match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
+                                                    onClick={onMatchClick} 
+                                                    activeRankingData={activeRankingData} 
+                                                    historyData={historyData} 
+                                                    masterTeams={masterTeams} 
+                                                />
+                                                {m.commentary && (
+                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                            <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
+                                                            {m.commentary}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {/* 🔥 워터마크 */}
+                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -352,22 +453,39 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => (
-                                        <div key={m.id} className="w-full min-w-0">
-                                            <MatchCard 
-                                                match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
-                                                onClick={onMatchClick} 
-                                                activeRankingData={activeRankingData} 
-                                                historyData={historyData} 
-                                                masterTeams={masterTeams} 
-                                            />
-                                            {/* 🔥 코멘터리 복구 영역 */}
-                                            {m.commentary && (
-                                                <div className="mt-2 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                    <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                        {m.commentary}
-                                                    </p>
+                                        <div key={m.id} className="relative flex flex-col gap-1 mb-2">
+                                            {/* 🔥 캡처 버튼 */}
+                                            <div className="flex justify-end w-full px-1">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                    disabled={capturingMatchId === m.id}
+                                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                >
+                                                    {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                </button>
+                                            </div>
+
+                                            {/* 🔥 캡처 타겟 */}
+                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                <MatchCard 
+                                                    match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
+                                                    onClick={onMatchClick} 
+                                                    activeRankingData={activeRankingData} 
+                                                    historyData={historyData} 
+                                                    masterTeams={masterTeams} 
+                                                />
+                                                {m.commentary && (
+                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                            {m.commentary}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {/* 🔥 워터마크 */}
+                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

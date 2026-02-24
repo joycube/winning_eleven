@@ -6,6 +6,21 @@ import { MatchCard } from './MatchCard';
 import { CupSchedule } from './CupSchedule'; 
 import { Season, Match, MasterTeam } from '../types'; 
 
+// 🔥 캡처 라이브러리 추가
+import { toPng } from 'html-to-image';
+// 🔥 [에러 해결] Vercel 빌드 시 TypeScript 예외 처리
+// @ts-ignore
+import download from 'downloadjs';
+
+// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
+const getTodayFormatted = () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}.${month}.${day}`;
+};
+
 interface ScheduleViewProps {
   seasons: Season[];
   viewSeasonId: number;
@@ -21,13 +36,13 @@ export const ScheduleView = ({
 }: ScheduleViewProps) => {
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
-  
-  // 🔥 [추가] 오너(유저) 데이터 상태
   const [owners, setOwners] = useState<any[]>([]);
+
+  // 🔥 캡처 중인 매치 카드를 추적하는 상태 (로딩 스피너용)
+  const [capturingMatchId, setCapturingMatchId] = useState<string | null>(null);
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
-  // 뷰 모드 자동 전환
   useEffect(() => {
     if (currentSeason?.type === 'CUP') {
         setViewMode('CUP');
@@ -36,11 +51,9 @@ export const ScheduleView = ({
     }
   }, [viewSeasonId, seasons, currentSeason]); 
 
-  // 🔥 [수정] MasterTeams와 Users 데이터를 함께 가져오기
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Master Teams 가져오기
         const teamQ = query(collection(db, 'master_teams'));
         const teamSnapshot = await getDocs(teamQ);
         const teams = teamSnapshot.docs.map(doc => ({
@@ -49,7 +62,6 @@ export const ScheduleView = ({
         })) as MasterTeam[];
         setMasterTeams(teams);
 
-        // 2. 🔥 Users(Owners) 가져오기 (이게 있어야 닉네임 매칭 가능!)
         const userQ = query(collection(db, 'users'));
         const userSnapshot = await getDocs(userQ);
         const userList = userSnapshot.docs.map(doc => doc.data());
@@ -76,6 +88,55 @@ export const ScheduleView = ({
     return stage;
   };
 
+  // 🔥 매치카드 캡처 전용 함수 (TS 에러 및 모바일 보안 에러 방어 로직 적용)
+  const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
+    const element = document.getElementById(`match-card-wrap-${matchId}`);
+    if (!element) return;
+    
+    setCapturingMatchId(matchId);
+
+    try {
+        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const dataUrl = await toPng(element, { 
+            cacheBust: true, 
+            // 🔥 Vercel 배포 에러의 주범이었던 useCORS 옵션은 html-to-image에 없는 문법이므로 삭제!
+            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            pixelRatio: 2, 
+            style: { margin: '0' }
+        });
+        
+        const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
+        
+        // 1. 다운로드 실행
+        download(dataUrl, fileName);
+        
+        // 2. 모바일일 경우 공유 시트 띄우기
+        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
+             try {
+                 const blob = await (await fetch(dataUrl)).blob();
+                 const file = new File([blob], fileName, { type: blob.type });
+                 await navigator.share({
+                     title: '🔥 Match Result',
+                     text: `${home} vs ${away} 경기 결과!`,
+                     files: [file]
+                 });
+             } catch (shareErr) {
+                 console.log('Share canceled or failed', shareErr);
+             }
+        } else {
+             alert('📷 기기에 매치카드가 저장되었습니다!');
+        }
+    } catch (error: any) {
+        console.error('캡처 실패:', error);
+        // 🔥 [object Event] 경고창을 좀 더 친절하게 표시
+        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.\n\nPC 환경에서 시도해주세요!`);
+    } finally {
+        setCapturingMatchId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in">
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 shadow-lg">
@@ -86,7 +147,6 @@ export const ScheduleView = ({
                     onChange={(e) => setViewSeasonId(Number(e.target.value))} 
                     className="w-full bg-slate-950 text-white text-sm font-bold p-3 rounded-xl border border-slate-700 focus:border-emerald-500 outline-none cursor-pointer transition-colors hover:border-slate-500"
                 >
-                    {/* 🔥 [수정] 시즌 타입에 따른 아이콘 통일 및 중복 아이콘 제거 로직 적용 */}
                     {seasons.map(s => (
                         <option key={s.id} value={s.id}>
                             {(() => {
@@ -110,7 +170,7 @@ export const ScheduleView = ({
                 masterTeams={masterTeams}       
                 activeRankingData={activeRankingData}
                 historyData={historyData}
-                owners={owners} // 🔥 [추가] 오너 데이터 전달
+                owners={owners} 
             />
         ) : (
             <>
@@ -128,18 +188,40 @@ export const ScheduleView = ({
                                         <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">
                                             {displayStageName}
                                         </h3>
-                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
+                                                const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || '';
+                                                
                                                 return (
-                                                    <div key={m.id} className="relative">
-                                                        <MatchCard 
-                                                            match={{ ...m, matchLabel: customMatchLabel }} 
-                                                            onClick={onMatchClick}
-                                                            activeRankingData={activeRankingData}
-                                                            historyData={historyData}
-                                                            masterTeams={masterTeams} 
-                                                        />
+                                                    <div key={m.id} className="relative flex flex-col gap-1 mb-2">
+                                                        
+                                                        {/* 🔥 캡처 버튼을 매치카드 밖(위쪽)으로 꺼내서 우측 정렬 */}
+                                                        <div className="flex justify-end w-full px-1">
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                                disabled={capturingMatchId === m.id}
+                                                                className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                                title="결과 캡처 및 공유"
+                                                            >
+                                                                {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                            </button>
+                                                        </div>
+
+                                                        {/* 🔥 캡처 타겟 영역 (라운딩 유지 및 배경색 지정) */}
+                                                        <div id={`match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                            <MatchCard 
+                                                                match={{ ...m, matchLabel: customMatchLabel }} 
+                                                                onClick={onMatchClick}
+                                                                activeRankingData={activeRankingData}
+                                                                historyData={historyData}
+                                                                masterTeams={masterTeams} 
+                                                            />
+                                                            {/* 🔥 워터마크 (시즌명 / 날짜) - 매치카드 우측 하단에 살포시 얹힘 */}
+                                                            <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                                시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}

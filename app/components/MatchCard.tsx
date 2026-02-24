@@ -4,6 +4,33 @@ import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
+// 💣 [궁극의 해결책] 모바일 CORS 캡처 에러 방지용 특수 이미지 컴포넌트
+const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const fetchImage = async () => {
+      try {
+        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+        const response = await fetch(proxy);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => setDataUrl(reader.result as string);
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        setDataUrl(src); // 실패 시 원본 그대로 사용
+      }
+    };
+    fetchImage();
+  }, [src]);
+
+  // 로딩 중 깜빡임 방지 뼈대
+  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+
+  return <img src={dataUrl} className={className} alt={alt} onError={(e) => e.currentTarget.src = FALLBACK_IMG} />;
+};
+
 interface MatchCardProps {
   match: Match;
   onClick: (m: Match) => void;
@@ -20,7 +47,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     return () => clearTimeout(t);
   }, []);
 
-  // 🔥 [핵심 추가] 동적 코멘터리 생성 로직 (객체 전체 전달)
+  // 🔥 동적 코멘터리 생성 로직
   const dynamicCommentary = getMatchCommentary(match);
   const displayCommentary = match.commentary || dynamicCommentary;
 
@@ -108,7 +135,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className="flex flex-col items-center text-center space-y-3 w-full">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            <img src={logo} className="w-full h-full object-contain" alt="" onError={(e)=>e.currentTarget.src=FALLBACK_IMG} />
+            {/* 🔥 캡처 방해꾼(외부 로고)을 SafeImage로 완벽하게 감쌈 */}
+            <SafeImage src={logo || FALLBACK_IMG} className="w-full h-full object-contain" />
           </div>
           {getTierBadge(master?.tier)}
         </div>
@@ -174,7 +202,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="flex flex-col items-center px-1">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT"/>
+                              {/* 🔥 유튜브 아이콘도 SafeImage로 처리 */}
+                              <SafeImage src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT"/>
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>
@@ -185,7 +214,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 🔥 예상승률 그래프 섹션 (두께 h-4로 조정, 한글 라벨 적용) */}
+        {/* 🔥 예상승률 그래프 섹션 */}
         {showGraph && (
             <div className="mt-5 space-y-1.5">
                 <div className="flex justify-between items-end px-1">
@@ -207,7 +236,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 🔥 경기결과 코멘터리 섹션 (가독성 향상, 중앙 정렬, 빌드 에러 방지 &quot; 적용) */}
+        {/* 🔥 경기결과 코멘터리 섹션 */}
         {displayCommentary && (
             <div className="mt-5 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl shadow-inner">
                 <div className="flex flex-col items-center text-center">

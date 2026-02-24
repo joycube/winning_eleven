@@ -1,6 +1,61 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
+
+// 🔥 캡처 라이브러리 추가
+import { toPng } from 'html-to-image';
+// 🔥 [에러 해결] Vercel 빌드 시 TypeScript 예외 처리
+// @ts-ignore
+import download from 'downloadjs';
+
+// 💣 [궁극의 해결책] 페페 증식 버그 완벽 차단용 특수 이미지 컴포넌트
+const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const fetchImage = async () => {
+      try {
+        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+        const response = await fetch(proxy);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => setDataUrl(reader.result as string);
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        setDataUrl(src);
+      }
+    };
+    fetchImage();
+  }, [src]);
+
+  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+
+  if (isBg) {
+    return (
+      <div 
+        className={className} 
+        style={{ 
+          backgroundImage: `url(${dataUrl})`, 
+          backgroundSize: 'contain', 
+          backgroundPosition: 'center', 
+          backgroundRepeat: 'no-repeat' 
+        }} 
+      />
+    );
+  }
+
+  return <img src={dataUrl} className={className} alt="" />;
+};
+
+// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
+const getTodayFormatted = () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}.${month}.${day}`;
+};
 
 interface HistoryViewProps {
   historyData: any;
@@ -10,6 +65,10 @@ interface HistoryViewProps {
 export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
+
+  // 🔥 캡처 중인 상태 관리를 위한 State 및 Ref
+  const legendCardRef = useRef<HTMLDivElement>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   // 1️⃣ [적용] 팀 순위 정렬 로직: 승점 > 득실 > 다득점
   const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
@@ -45,6 +104,51 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   };
 
   const rankedPlayers = getPlayerRanking(historyData.players || []);
+
+  // 🔥 레전드 카드 캡처 함수 (모바일 CORS 보안 에러 완벽 차단)
+  const handleCaptureLegend = async () => {
+    if (!legendCardRef.current) return;
+    setIsCapturing(true);
+
+    try {
+        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const dataUrl = await toPng(legendCardRef.current, { 
+            cacheBust: true, 
+            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            pixelRatio: 2, 
+            style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
+        });
+        
+        const fileName = `hall-of-fame-legend-${Date.now()}.png`;
+        
+        // 1. 다운로드 실행
+        download(dataUrl, fileName);
+        
+        // 2. 모바일일 경우 공유 시트 띄우기
+        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
+             try {
+                 const blob = await (await fetch(dataUrl)).blob();
+                 const file = new File([blob], fileName, { type: blob.type });
+                 await navigator.share({
+                     title: '👑 Hall of Fame Legend',
+                     text: '역대 통합 랭킹 1위 레전드입니다!',
+                     files: [file]
+                 });
+             } catch (shareErr) {
+                 console.log('Share canceled or failed', shareErr);
+             }
+        } else {
+             alert('📷 기기에 레전드 카드가 저장되었습니다!');
+        }
+    } catch (error: any) {
+        console.error('캡처 실패:', error);
+        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 보안 정책 이슈일 수 있습니다.`);
+    } finally {
+        setIsCapturing(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -122,61 +226,80 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
 
                     return (
-                        <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 mb-6">
-                            {/* 배경 이펙트 */}
-                            <div className="absolute inset-0 green-neon-bg z-0"></div>
-                            <div className="green-sweep-beam z-0"></div>
-                            
-                            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm">
-                                {/* 1. 트로피와 오너 이미지 */}
-                                <div className="relative pt-4 pl-10">
-                                    <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
-                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
-                                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
-                                            <img src={displayPhoto} alt={legend.name} className="w-full h-full object-cover"/>
+                        <div className="mb-6 relative flex flex-col">
+                            {/* 🔥 캡처 버튼 (카드 밖 우측 상단) */}
+                            <div className="flex justify-end w-full px-1 mb-2">
+                                <button 
+                                    onClick={handleCaptureLegend} 
+                                    disabled={isCapturing}
+                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                >
+                                    {isCapturing ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                </button>
+                            </div>
+
+                            {/* 🔥 캡처 타겟 영역 (투명 배경 및 곡률 유지) */}
+                            <div id="legend-card-wrap" ref={legendCardRef} className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-[#0f172a]">
+                                {/* 배경 이펙트 */}
+                                <div className="absolute inset-0 green-neon-bg z-0"></div>
+                                <div className="green-sweep-beam z-0"></div>
+                                
+                                <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm pb-10">
+                                    {/* 1. 트로피와 오너 이미지 */}
+                                    <div className="relative pt-4 pl-10">
+                                        <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
+                                        <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
+                                            <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
+                                                {/* 💣 SafeImage로 교체하여 에러 방지 */}
+                                                <SafeImage src={displayPhoto} className="w-full h-full object-cover"/>
+                                            </div>
+                                        </div>
+                                        <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
+                                            <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase">
+                                                All-Time Legend
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
-                                        <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase">
-                                            All-Time Legend
-                                        </span>
-                                    </div>
-                                </div>
 
-                                {/* 2. 레전드 정보 */}
-                                <div className="flex-1 text-center md:text-left pt-3 md:pt-0 w-full">
-                                    <h3 className="text-[10px] text-emerald-400 font-bold tracking-[0.3em] mb-1 uppercase">Hall of Fame No.1</h3>
-                                    <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
-                                        {legend.name}
-                                    </h2>
-                                    
-                                    {/* 스탯 그리드 (1열 3개 / 2열 1개) */}
-                                    <div className="flex flex-col gap-2 w-full">
-                                        {/* 1열: Points, Record, Trophies (균등 배분) */}
-                                        <div className="grid grid-cols-3 gap-2 w-full">
-                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
-                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">POINTS</span>
-                                                <span className="text-lg font-black text-emerald-400 leading-none">{legend.points}</span>
-                                            </div>
-                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
-                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">RECORD</span>
-                                                <span className="text-sm font-bold text-slate-200 leading-none">{legend.win}W {legend.draw}D {legend.loss}L</span>
-                                            </div>
-                                            <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
-                                                <span className="text-[9px] text-slate-500 block font-bold mb-0.5">TROPHIES</span>
-                                                <div className="flex gap-1 text-xs leading-none">
-                                                    {legend.golds > 0 ? <span>🥇{legend.golds}</span> : <span className="text-slate-700">-</span>}
-                                                    {legend.silvers > 0 && <span className="opacity-70">🥈{legend.silvers}</span>}
+                                    {/* 2. 레전드 정보 */}
+                                    <div className="flex-1 text-center md:text-left pt-3 md:pt-0 w-full">
+                                        <h3 className="text-[10px] text-emerald-400 font-bold tracking-[0.3em] mb-1 uppercase">Hall of Fame No.1</h3>
+                                        <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
+                                            {legend.name}
+                                        </h2>
+                                        
+                                        {/* 스탯 그리드 (1열 3개 / 2열 1개) */}
+                                        <div className="flex flex-col gap-2 w-full">
+                                            {/* 1열: Points, Record, Trophies (균등 배분) */}
+                                            <div className="grid grid-cols-3 gap-2 w-full">
+                                                <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                    <span className="text-[9px] text-slate-500 block font-bold mb-0.5">POINTS</span>
+                                                    <span className="text-lg font-black text-emerald-400 leading-none">{legend.points}</span>
+                                                </div>
+                                                <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                    <span className="text-[9px] text-slate-500 block font-bold mb-0.5">RECORD</span>
+                                                    <span className="text-sm font-bold text-slate-200 leading-none">{legend.win}W {legend.draw}D {legend.loss}L</span>
+                                                </div>
+                                                <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
+                                                    <span className="text-[9px] text-slate-500 block font-bold mb-0.5">TROPHIES</span>
+                                                    <div className="flex gap-1 text-xs leading-none">
+                                                        {legend.golds > 0 ? <span>🥇{legend.golds}</span> : <span className="text-slate-700">-</span>}
+                                                        {legend.silvers > 0 && <span className="opacity-70">🥈{legend.silvers}</span>}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        {/* 2열: Total Prize (전체 너비) */}
-                                        <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
-                                            <span className="text-[9px] text-emerald-400 block font-black mb-0.5">TOTAL PRIZE</span>
-                                            <span className="text-base font-bold text-white leading-none">₩ {legend.prize.toLocaleString()}</span>
+                                            {/* 2열: Total Prize (전체 너비) */}
+                                            <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
+                                                <span className="text-[9px] text-emerald-400 block font-black mb-0.5">TOTAL PRIZE</span>
+                                                <span className="text-base font-bold text-white leading-none">₩ {legend.prize.toLocaleString()}</span>
+                                            </div>
                                         </div>
                                     </div>
+                                </div>
+                                {/* 🔥 [LEGEND CARD] 하단 워터마크 추가 */}
+                                <div className="absolute bottom-2 right-4 text-[8px] text-slate-500/80 font-bold italic tracking-wider z-20">
+                                    HALL OF FAME / {getTodayFormatted()}
                                 </div>
                             </div>
                         </div>
