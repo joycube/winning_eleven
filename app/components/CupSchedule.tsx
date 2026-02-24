@@ -17,43 +17,60 @@ declare module 'react' {
   }
 }
 
-// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
-const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+// 💣 [궁극의 SafeImage V6] 특정 오너 프사 까맣게 나오는 현상 100% 픽스! (Direct -> Proxy -> Unsafe Fallback)
+const SafeImage = ({ src, className, isBg = false, uid = '' }: { src: string, className?: string, isBg?: boolean, uid?: string }) => {
+  const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
+  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
 
   useEffect(() => {
-    if (!src) return;
-    let isMounted = true;
-
-    const fetchImage = async () => {
-      try {
-        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
-        if (!res || !res.ok) {
-          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-          res = await fetch(proxy).catch(() => null);
-        }
-
-        if (res && res.ok) {
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (isMounted) setDataUrl(reader.result as string);
-          };
-          reader.readAsDataURL(blob);
-        } else {
-          if (isMounted) setDataUrl(src); 
-        }
-      } catch (e) {
-        if (isMounted) setDataUrl(src);
-      }
-    };
-    fetchImage();
-    return () => { isMounted = false; };
+    if (!src) {
+      setImgSrc(FALLBACK_IMG);
+      setCors(undefined);
+      return;
+    }
+    if (src.startsWith('data:') || src.startsWith('blob:')) {
+      setImgSrc(src);
+      setCors(undefined);
+      return;
+    }
+    // 🔥 1단계: 무조건 원본(Direct)으로 먼저 시도!
+    setImgSrc(src);
+    setCors("anonymous");
   }, [src]);
 
-  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+  const handleError = () => {
+    if (cors === "anonymous" && imgSrc === src) {
+      // 🔥 2단계: 원본 접근이 막히면 캡처 전용 프록시 서버로 우회!
+      setImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`);
+    } else if (cors === "anonymous" && imgSrc !== src) {
+      // 🔥 3단계: 프록시마저 실패하면, UI 깨짐 방지를 위해 보안 제약을 풀고 강제 렌더링
+      setImgSrc(src);
+      setCors(undefined);
+    } else {
+      // 🔥 4단계: 다 안 되면 기본 폴백 이미지 표시
+      setImgSrc(FALLBACK_IMG);
+    }
+  };
 
-  return <img src={dataUrl} className={className} alt={alt} crossOrigin="anonymous" />;
+  if (isBg) {
+    return (
+      <>
+        {/* 배경 이미지 에러 추적용 투명 태그 */}
+        <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
+        <div 
+          className={className} 
+          style={{ 
+            backgroundImage: `url(${imgSrc})`, 
+            backgroundSize: 'contain', 
+            backgroundPosition: 'center', 
+            backgroundRepeat: 'no-repeat' 
+          }} 
+        />
+      </>
+    );
+  }
+
+  return <img src={imgSrc} className={className} alt="" crossOrigin={cors} onError={handleError} />;
 };
 
 // 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
@@ -199,11 +216,9 @@ export const CupSchedule = ({
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => (
     <div className="relative w-9 h-9 flex-shrink-0">
         <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-            <img 
+            <SafeImage 
               src={logo || TBD_LOGO} 
               className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
-              alt="" 
-              onError={(e)=>{e.currentTarget.src=TBD_LOGO}}
             />
         </div>
         {!isTbd && getTierBadge(tier)}
@@ -365,6 +380,7 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
+                    {/* 조별리그 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
@@ -416,6 +432,7 @@ export const CupSchedule = ({
                         ));
                     })}
 
+                    {/* 토너먼트 리스트 */}
                     {[
                         { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
                         { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },

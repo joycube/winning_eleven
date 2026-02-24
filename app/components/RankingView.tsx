@@ -12,60 +12,70 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
+// 💣 [진짜 최종 SafeImage] 블랙홀(시꺼먼 화면) 완벽 방지! 무적의 5단계 에러 폴백 체인
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
+  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
+  const [errorCount, setErrorCount] = useState(0);
 
+  // 주소가 바뀌면 초기화
   useEffect(() => {
-    if (!src) return;
-    let isMounted = true;
-
-    const fetchImage = async () => {
-      try {
-        // 1. 먼저 안전한 다이렉트(Direct) 연결 시도 (구글 프사 해결)
-        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
-        
-        // 2. 다이렉트 실패 시 프록시 서버 경유
-        if (!res || !res.ok) {
-          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-          res = await fetch(proxy).catch(() => null);
-        }
-
-        if (res && res.ok) {
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (isMounted) setDataUrl(reader.result as string);
-          };
-          reader.readAsDataURL(blob);
-        } else {
-          if (isMounted) setDataUrl(src); // 최후의 보루: 원본 URL 삽입
-        }
-      } catch (e) {
-        if (isMounted) setDataUrl(src);
-      }
-    };
-    fetchImage();
-    return () => { isMounted = false; };
+    if (!src) {
+      setImgSrc(FALLBACK_IMG);
+      setCors(undefined);
+      return;
+    }
+    setImgSrc(src);
+    setCors("anonymous"); // 캡처를 위해 일단 CORS 허용으로 찔러봄
+    setErrorCount(0);
   }, [src]);
 
-  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+  // 🔥 이미지가 막힐 때마다 즉시 다음 플랜으로 자동 교체 (블랙홀 절대 방지)
+  const handleError = () => {
+    if (errorCount >= 5) return; // 무한 루프 방지 안전장치
+    
+    const nextCount = errorCount + 1;
+    setErrorCount(nextCount);
+
+    if (nextCount === 1) {
+      // 플랜 B: 이미지 최적화 프록시
+      setImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`);
+    } else if (nextCount === 2) {
+      // 플랜 C: 뚫기 힘든 언론사 보안용 강력 우회 프록시
+      setImgSrc(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(src)}`);
+    } else if (nextCount === 3) {
+      // 플랜 D: 또 다른 우회망
+      setImgSrc(`https://corsproxy.io/?${encodeURIComponent(src)}`);
+    } else if (nextCount === 4) {
+      // 🚨 최후의 수단: 캡처를 포기하더라도 화면에 시꺼먼 빵꾸가 나는 건 막는다! (CORS 해제 강제 렌더링)
+      setImgSrc(src);
+      setCors(undefined); 
+    } else {
+      // 플랜 F: 다 망하면 기본 이미지
+      setImgSrc(FALLBACK_IMG);
+      setCors(undefined);
+    }
+  };
 
   if (isBg) {
     return (
-      <div 
-        className={className} 
-        style={{ 
-          backgroundImage: `url(${dataUrl})`, 
-          backgroundSize: 'contain', 
-          backgroundPosition: 'center', 
-          backgroundRepeat: 'no-repeat' 
-        }} 
-      />
+      <>
+        {/* 에러 추적용 투명 센서 (화면엔 안 보이지만 에러를 감지해서 배경을 교체해줌) */}
+        <img src={imgSrc} crossOrigin={cors} onError={handleError} style={{ display: 'none' }} alt="bg-sensor" />
+        <div 
+          className={className} 
+          style={{ 
+            backgroundImage: `url(${imgSrc})`, 
+            backgroundSize: 'contain', 
+            backgroundPosition: 'center', 
+            backgroundRepeat: 'no-repeat' 
+          }} 
+        />
+      </>
     );
   }
 
-  return <img src={dataUrl} className={className} alt="" crossOrigin="anonymous" />;
+  return <img src={imgSrc} crossOrigin={cors} onError={handleError} className={className} alt="" />;
 };
 
 const getTodayFormatted = () => {
@@ -312,7 +322,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       setIsCapturing(true);
 
       try {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // 🔥 모든 이미지 에러 체크가 끝날 때까지 넉넉하게 대기!
+          await new Promise(resolve => setTimeout(resolve, 800));
           const dataUrl = await toPng(championCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
@@ -336,7 +347,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
+          console.error(error);
+          alert('이미지 캡처에 실패했습니다. (보안 제약)');
       } finally {
           setIsCapturing(false);
       }
@@ -347,7 +359,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       setIsCapturingTopPoints(true);
 
       try {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 800));
           const dataUrl = await toPng(topPointsCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
@@ -371,7 +383,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
+          console.error(error);
+          alert('이미지 캡처에 실패했습니다.');
       } finally {
           setIsCapturingTopPoints(false);
       }
@@ -380,7 +393,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   return (
     <div className="space-y-6 animate-in fade-in">
       
-      {/* 🔥 [Vercel 에러 해결] dangerouslySetInnerHTML로 안전하게 style 주입 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .crown-icon { animation: bounce 2s infinite; }
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -543,6 +555,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                       <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
+                          {/* 🔥 V9 적용: 까만 화면(블랙홀) 절대 방어! */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
@@ -607,6 +620,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <div className="relative pt-3">
                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
+                          {/* 🔥 V9 적용! */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>

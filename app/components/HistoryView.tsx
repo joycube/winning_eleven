@@ -7,48 +7,39 @@ import { toPng } from 'html-to-image';
 // @ts-ignore
 import download from 'downloadjs';
 
-// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
+// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
+  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
 
   useEffect(() => {
-    if (!src) return;
-    let isMounted = true;
-
-    const fetchImage = async () => {
-      try {
-        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
-        if (!res || !res.ok) {
-          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-          res = await fetch(proxy).catch(() => null);
-        }
-
-        if (res && res.ok) {
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (isMounted) setDataUrl(reader.result as string);
-          };
-          reader.readAsDataURL(blob);
-        } else {
-          if (isMounted) setDataUrl(src); 
-        }
-      } catch (e) {
-        if (isMounted) setDataUrl(src);
-      }
-    };
-    fetchImage();
-    return () => { isMounted = false; };
+    if (!src) {
+      setImgSrc(FALLBACK_IMG);
+      setCors(undefined);
+      return;
+    }
+    // 1단계: 캡처를 염두에 두고 원본 주소 + CORS 허용으로 시도
+    setImgSrc(src);
+    setCors("anonymous");
   }, [src]);
 
-  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+  const handleError = () => {
+    if (cors === "anonymous") {
+      // 2단계: CORS 때문에 브라우저가 원본 로딩을 막으면, 보안 설정을 풀고 단순 화면 표시용으로 재시도
+      setImgSrc(src);
+      setCors(undefined);
+    } else {
+      // 3단계: 그래도 에러 나면 기본 이미지 표시
+      setImgSrc(FALLBACK_IMG);
+    }
+  };
 
   if (isBg) {
     return (
       <div 
         className={className} 
         style={{ 
-          backgroundImage: `url(${dataUrl})`, 
+          backgroundImage: `url(${imgSrc})`, 
           backgroundSize: 'contain', 
           backgroundPosition: 'center', 
           backgroundRepeat: 'no-repeat' 
@@ -57,7 +48,7 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
     );
   }
 
-  return <img src={dataUrl} className={className} alt="" crossOrigin="anonymous" />;
+  return <img src={imgSrc} className={className} alt="" crossOrigin={cors} onError={handleError} />;
 };
 
 const getTodayFormatted = () => {
@@ -118,7 +109,8 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
     setIsCapturing(true);
 
     try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // 모바일 환경 렌더링 딜레이 대기
+        await new Promise(resolve => setTimeout(resolve, 400));
 
         const dataUrl = await toPng(legendCardRef.current, { 
             cacheBust: true, 
@@ -146,7 +138,8 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
         }
     } catch (error: any) {
         console.error('캡처 실패:', error);
-        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 보안 정책 이슈일 수 있습니다.`);
+        // 🔥 프록시 없이 캡처가 막혔을 때, 정확한 원인 안내
+        alert(`이미지 캡처에 실패했습니다.\n오너 프로필 사진이 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다. (사파리/크롬 모바일 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 오너의 프로필 사진을 일반적인 이미지 링크로 변경해 주세요.`);
     } finally {
         setIsCapturing(false);
     }
@@ -155,7 +148,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   return (
     <div className="space-y-6 animate-in fade-in">
         
-        {/* 🔥 [Vercel 에러 방지] style JSX 삭제 후 안전한 방식 적용 */}
         <style dangerouslySetInnerHTML={{ __html: `
             @keyframes verticalFloat {
                 0%, 100% { transform: translateY(0); }
@@ -245,7 +237,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                         <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
                                         <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
                                             <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
-                                                {/* 💣 SafeImage 적용! 빈 동그라미 방지 */}
+                                                {/* 💣 SafeImage 적용! */}
                                                 <SafeImage src={displayPhoto} className="w-full h-full object-cover"/>
                                             </div>
                                         </div>

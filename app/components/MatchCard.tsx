@@ -4,24 +4,46 @@ import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 💣 [궁극의 해결책 V2] 하얀색 빈 원(로딩 지연) 현상 해결 및 모바일 캡처 완벽 호환
+// 💣 [궁극의 해결책 V4] 하얀색 빈 원 & 파란 물음표 완벽 해결! (프록시 실패 시 즉각 원본 복구)
 const SafeImage = ({ src, className, alt = '', uid = '' }: { src: string, className?: string, alt?: string, uid?: string }) => {
-  // 🔥 비동기 다운로드(Base64 변환)로 인해 캡처 시 하얗게 뜨는 현상을 방지!
-  // 즉시 렌더링 가능한 프록시 URL 생성 + 고유 UID로 캐시 꼬임(페페 증식) 방지
-  const proxyUrl = useMemo(() => {
-    if (!src) return FALLBACK_IMG;
-    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
-    // uid를 붙여서 홈/어웨이/유튜브 이미지를 라이브러리가 완전히 다른 파일로 인식하게 만듦
-    return `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`;
+  const isDirect = src?.startsWith('data:') || src?.startsWith('blob:');
+  const proxyUrl = src ? `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}` : FALLBACK_IMG;
+
+  // 초기 상태 세팅
+  const [imgSrc, setImgSrc] = useState(isDirect ? src : proxyUrl);
+  const [useCors, setUseCors] = useState<"anonymous" | undefined>(isDirect ? undefined : "anonymous");
+
+  // src나 uid가 변경될 때마다 재설정
+  useEffect(() => {
+    if (!src) {
+      setImgSrc(FALLBACK_IMG);
+      setUseCors(undefined);
+      return;
+    }
+    const direct = src.startsWith('data:') || src.startsWith('blob:');
+    setImgSrc(direct ? src : `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`);
+    setUseCors(direct ? undefined : "anonymous");
   }, [src, uid]);
+
+  // 🔥 핵심 방어 로직: 캡처용 프록시가 막히면 즉시 원본을 띄워 UI 깨짐 방지!
+  const handleError = () => {
+    if (useCors === "anonymous") {
+      // 1. 프록시(wsrv.nl)에서 에러가 나면, crossOrigin 제약을 풀고 순수 원본 주소로 재시도
+      setImgSrc(src);
+      setUseCors(undefined);
+    } else {
+      // 2. 원본마저도 실패하면 그때 폴백(기본) 이미지 띄움
+      setImgSrc(FALLBACK_IMG);
+    }
+  };
 
   return (
     <img 
-      src={proxyUrl} 
-      crossOrigin="anonymous" // 모바일 CORS 차단 방지용 마법의 속성
+      src={imgSrc} 
+      crossOrigin={useCors} 
       className={className} 
       alt={alt} 
-      onError={(e) => e.currentTarget.src = FALLBACK_IMG} 
+      onError={handleError} 
     />
   );
 };
