@@ -11,7 +11,7 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 🔥 [완벽 해결] CORS 차단을 우회하는 글로벌 프록시 헬퍼
+// 🔥 CORS 차단을 우회하는 글로벌 프록시 헬퍼
 const getProxyUrl = (url: string) => {
     if (!url) return FALLBACK_IMG;
     if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -254,7 +254,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
-  // 🔥 캡처 기능 (프록시 적용)
+  // 🔥 캡처 기능 (다운로드 강제 실행 및 오류 방지)
   const handleCaptureChampion = async () => {
       if (championCardRef.current === null) return;
       setIsCapturing(true);
@@ -267,16 +267,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               style: { transform: 'scale(1)', transformOrigin: 'top left' }
           });
           
+          // 🔥 1. 모바일/PC 상관없이 무조건 파일 다운로드 트리거 (저장 보장)
+          download(dataUrl, `champion-card-${Date.now()}.png`);
+          
+          // 🔥 2. 모바일 환경일 경우 저장 후 공유 시트 띄워줌 (편의성)
           if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
-               const blob = await (await fetch(dataUrl)).blob();
-               const file = new File([blob], "champion.png", { type: blob.type });
-               await navigator.share({
-                   title: '🏆 League Champion',
-                   text: '이번 시즌 챔피언입니다! 🔥',
-                   files: [file]
-               });
+               try {
+                   const blob = await (await fetch(dataUrl)).blob();
+                   const file = new File([blob], "champion.png", { type: blob.type });
+                   await navigator.share({
+                       title: '🏆 League Champion',
+                       text: '이번 시즌 챔피언입니다! 🔥',
+                       files: [file]
+                   });
+               } catch (shareErr) {
+                   console.log('Share canceled or failed', shareErr);
+               }
           } else {
-               download(dataUrl, `champion-card-${Date.now()}.png`);
+               // 다운로드만 된 경우 안내
+               alert('📷 갤러리(또는 다운로드 폴더)에 저장되었습니다!');
           }
       } catch (error) {
           console.error('캡처 실패:', error);
@@ -289,7 +298,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   return (
     <div className="space-y-6 animate-in fade-in">
       
-      {/* 🔥 React 권장 방식의 안전한 Style 주입으로 변경 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .crown-icon { animation: bounce 2s infinite; }
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -446,9 +454,20 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
                 <div ref={championCardRef} className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
                   <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
+                  
+                  {/* 🔥 [완벽 해결] 배경 이미지가 프사로 둔갑하는 버그 수정 (CSS backgroundImage 사용) */}
                   <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
-                    <img src={getProxyUrl(teamInfo.logo)} crossOrigin="anonymous" className="w-[160px] h-[160px] object-contain filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" alt=""/>
+                    <div 
+                      className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]"
+                      style={{
+                        backgroundImage: `url(${getProxyUrl(teamInfo.logo)})`,
+                        backgroundSize: 'contain',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                    />
                   </div>
+
                   <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm">
                     <div className="relative pt-3 shrink-0">
                       <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
