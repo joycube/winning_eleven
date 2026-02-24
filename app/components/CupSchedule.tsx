@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 
@@ -16,6 +16,45 @@ declare module 'react' {
     global?: boolean;
   }
 }
+
+// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
+const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    let isMounted = true;
+
+    const fetchImage = async () => {
+      try {
+        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
+        if (!res || !res.ok) {
+          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+          res = await fetch(proxy).catch(() => null);
+        }
+
+        if (res && res.ok) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (isMounted) setDataUrl(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          if (isMounted) setDataUrl(src); 
+        }
+      } catch (e) {
+        if (isMounted) setDataUrl(src);
+      }
+    };
+    fetchImage();
+    return () => { isMounted = false; };
+  }, [src]);
+
+  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+
+  return <img src={dataUrl} className={className} alt={alt} crossOrigin="anonymous" />;
+};
 
 // 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
@@ -47,7 +86,6 @@ export const CupSchedule = ({
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || 'CUP';
 
-  // 🔥 캡처 중인 매치 카드를 추적하는 상태
   const [capturingMatchId, setCapturingMatchId] = useState<string | null>(null);
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
@@ -60,12 +98,11 @@ export const CupSchedule = ({
     setCapturingMatchId(matchId);
 
     try {
-        // 모바일 환경 렌더링 딜레이 확보
         await new Promise(resolve => setTimeout(resolve, 300));
 
         const dataUrl = await toPng(element, { 
             cacheBust: true, 
-            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            backgroundColor: 'transparent', 
             pixelRatio: 2, 
             style: { margin: '0' } 
         });
@@ -83,9 +120,7 @@ export const CupSchedule = ({
                      text: `${home} vs ${away} 컵 경기 결과!`,
                      files: [file]
                  });
-             } catch (shareErr) {
-                 console.log('Share canceled or failed', shareErr);
-             }
+             } catch (shareErr) {}
         } else {
              alert('📷 기기에 매치카드가 저장되었습니다!');
         }
@@ -294,13 +329,12 @@ export const CupSchedule = ({
 
   return (
     <div className="space-y-10">
-        <style jsx>{`
+        <style dangerouslySetInnerHTML={{ __html: `
             .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
             .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
             .no-scrollbar::-webkit-scrollbar { display: none; }
-        `}</style>
+        `}} />
 
-        {/* 대진표 부분 (기존 유지) */}
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -331,7 +365,6 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
-                    {/* 조별리그 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
@@ -345,7 +378,6 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => (
                                         <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                            {/* 🔥 캡처 버튼 */}
                                             <div className="flex justify-end w-full px-1">
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
@@ -357,7 +389,6 @@ export const CupSchedule = ({
                                                 </button>
                                             </div>
 
-                                            {/* 🔥 캡처 타겟 */}
                                             <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                 <MatchCard 
                                                   match={{...m, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
@@ -374,7 +405,6 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
                                                     {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
@@ -386,7 +416,6 @@ export const CupSchedule = ({
                         ));
                     })}
 
-                    {/* 토너먼트 리스트 */}
                     {[
                         { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
                         { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },
@@ -400,7 +429,6 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => (
                                         <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
-                                            {/* 🔥 캡처 버튼 */}
                                             {m.status !== 'UPCOMING' && m.home !== 'TBD' && m.home !== 'BYE' && (
                                                 <div className="flex justify-end w-full px-1">
                                                     <button 
@@ -413,7 +441,6 @@ export const CupSchedule = ({
                                                 </div>
                                             )}
 
-                                            {/* 🔥 캡처 타겟 */}
                                             <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                 <MatchCard 
                                                     match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
@@ -430,7 +457,6 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
                                                     {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
@@ -453,7 +479,6 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => (
                                         <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                            {/* 🔥 캡처 버튼 */}
                                             <div className="flex justify-end w-full px-1">
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
@@ -464,7 +489,6 @@ export const CupSchedule = ({
                                                 </button>
                                             </div>
 
-                                            {/* 🔥 캡처 타겟 */}
                                             <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                 <MatchCard 
                                                     match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
@@ -480,7 +504,6 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
                                                     {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>

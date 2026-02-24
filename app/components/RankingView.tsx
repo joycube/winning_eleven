@@ -5,33 +5,48 @@ import { db } from '../firebase';
 import { FALLBACK_IMG, Owner } from '../types';
 import { getYouTubeThumbnail } from '../utils/helpers';
 
-// 🔥 캡처 라이브러리 추가
+// 🔥 캡처 라이브러리
 import { toPng } from 'html-to-image';
-// 🔥 [에러 해결] Vercel 빌드 시 TypeScript가 downloadjs 타입을 검사하지 않도록 예외 처리!
 // @ts-ignore
 import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [궁극의 해결책] 페페 증식 버그 완벽 차단용 특수 이미지 컴포넌트
+// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!src) return;
+    let isMounted = true;
+
     const fetchImage = async () => {
       try {
-        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-        const response = await fetch(proxy);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => setDataUrl(reader.result as string);
-        reader.readAsDataURL(blob);
+        // 1. 먼저 안전한 다이렉트(Direct) 연결 시도 (구글 프사 해결)
+        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
+        
+        // 2. 다이렉트 실패 시 프록시 서버 경유
+        if (!res || !res.ok) {
+          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+          res = await fetch(proxy).catch(() => null);
+        }
+
+        if (res && res.ok) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (isMounted) setDataUrl(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          if (isMounted) setDataUrl(src); // 최후의 보루: 원본 URL 삽입
+        }
       } catch (e) {
-        setDataUrl(src);
+        if (isMounted) setDataUrl(src);
       }
     };
     fetchImage();
+    return () => { isMounted = false; };
   }, [src]);
 
   if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
@@ -50,10 +65,9 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
     );
   }
 
-  return <img src={dataUrl} className={className} alt="" />;
+  return <img src={dataUrl} className={className} alt="" crossOrigin="anonymous" />;
 };
 
-// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(2);
@@ -77,7 +91,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  // 🔥 캡처를 위한 Ref와 로딩 상태
   const championCardRef = useRef<HTMLDivElement>(null);
   const topPointsCardRef = useRef<HTMLDivElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -96,7 +109,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   }, []);
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
-  // 🔥 현재 시즌명과 오늘 날짜 정보 준비
   const seasonName = currentSeason?.name || 'Unknown Season';
   const todayDate = getTodayFormatted();
   const footerText = `시즌 '${seasonName}' / ${todayDate}`;
@@ -220,16 +232,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  const tournamentChampion = useMemo(() => {
-    const final = knockoutStages?.final?.[0];
-    if (!final) return null;
-    const winnerName = getWinnerName(final);
-    if (winnerName === 'TBD' || winnerName === 'BYE') return null;
-    const teamInfo = activeRankingData?.teams?.find((t: any) => t.name === winnerName);
-    const ownerName = teamInfo?.ownerName;
-    return (owners && owners.length > 0) ? owners.find(o => o.nickname === ownerName) : { nickname: ownerName, photo: FALLBACK_IMG };
-  }, [knockoutStages, activeRankingData?.teams, owners]);
-
   const TournamentMatchBox = ({ match, title, highlight = false, isFinal = false }: { match: any, title?: string, highlight?: boolean, isFinal?: boolean }) => {
     const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
     const home = getTeamExtendedInfo(safeMatch.home);
@@ -305,17 +307,17 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
-  // 🔥 챔피언 캡처 기능 (투명 모서리 라운딩 적용)
   const handleCaptureChampion = async () => {
       if (championCardRef.current === null) return;
       setIsCapturing(true);
 
       try {
+          await new Promise(resolve => setTimeout(resolve, 300));
           const dataUrl = await toPng(championCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
               pixelRatio: 2, 
-              style: { transform: 'scale(1)', transformOrigin: 'top left' }
+              style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
           });
           
           download(dataUrl, `champion-card-${Date.now()}.png`);
@@ -329,31 +331,28 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                        text: '이번 시즌 챔피언입니다! 🔥',
                        files: [file]
                    });
-               } catch (shareErr) {
-                   console.log('Share canceled or failed', shareErr);
-               }
+               } catch (shareErr) {}
           } else {
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          console.error('캡처 실패:', error);
           alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
       } finally {
           setIsCapturing(false);
       }
   };
 
-  // 🔥 누적 승점 1위 캡처 기능 (챔피언과 동일한 투명 모서리 적용)
   const handleCaptureTopPoints = async () => {
       if (topPointsCardRef.current === null) return;
       setIsCapturingTopPoints(true);
 
       try {
+          await new Promise(resolve => setTimeout(resolve, 300));
           const dataUrl = await toPng(topPointsCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
               pixelRatio: 2, 
-              style: { transform: 'scale(1)', transformOrigin: 'top left' }
+              style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
           });
           
           download(dataUrl, `top-points-${Date.now()}.png`);
@@ -367,14 +366,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                        text: '현재 누적 승점 1위입니다!',
                        files: [file]
                    });
-               } catch (shareErr) {
-                   console.log('Share canceled or failed', shareErr);
-               }
+               } catch (shareErr) {}
           } else {
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          console.error('캡처 실패:', error);
           alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
       } finally {
           setIsCapturingTopPoints(false);
@@ -384,6 +380,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   return (
     <div className="space-y-6 animate-in fade-in">
       
+      {/* 🔥 [Vercel 에러 해결] dangerouslySetInnerHTML로 안전하게 style 주입 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .crown-icon { animation: bounce 2s infinite; }
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -392,7 +389,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       `}} />
 
       <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
-        
         <div className="relative">
           <select 
             value={viewSeasonId} 
@@ -410,9 +406,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             ))}
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
         </div>
 
@@ -516,7 +510,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           
-          {/* 🔥 1. 리그 1위 우승 오너 카드 */}
           {sortedTeams.length > 0 && (() => {
             const leagueChampTeam = sortedTeams[0];
             const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === leagueChampTeam.ownerName) : null;
@@ -538,11 +531,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     </button>
                 </div>
 
-                {/* 🔥 [CHAMPION CARD] 시즌명/날짜 푸터 추가 */}
                 <div ref={championCardRef} className="relative w-full rounded-xl overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
                   <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
                   
-                  {/* 💣 배경 이미지: SafeImage로 처리 */}
                   <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
                     <SafeImage src={teamInfo.logo} className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" isBg={true} />
                   </div>
@@ -552,12 +543,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                       <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                          {/* 💣 오너 프사: SafeImage로 처리 */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
-                          {/* 💣 우측 하단 미니 로고: SafeImage로 처리 */}
                           <SafeImage src={teamInfo.logo} className="w-full h-full object-contain" />
                       </div>
                     </div>
@@ -587,7 +576,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       </div>
                     </div>
                   </div>
-                  {/* 🔥 [CHAMPION CARD] 하단 시즌명/날짜 텍스트 */}
                   <div className="absolute bottom-3 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">
                     {footerText}
                   </div>
@@ -596,7 +584,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             );
           })()}
 
-          {/* 🔥 2. 누적 승점 1위 오너 카드 */}
           {(activeRankingData?.owners || []).length > 0 && (() => {
             const firstOwner = activeRankingData.owners[0];
             const matchedOwner = (owners && owners.length > 0) ? owners.find(owner => owner.nickname === firstOwner.name) : null;
@@ -604,7 +591,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             const displayPrize = getOwnerPrize(firstOwner.name);
             return (
               <div className="mb-6">
-                {/* 🔥 Top Points 용 캡처 버튼 */}
                 <div className="flex justify-end mb-2">
                     <button 
                         onClick={handleCaptureTopPoints} 
@@ -615,14 +601,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     </button>
                 </div>
                 
-                {/* 🔥 [TOP POINTS CARD] 시즌명/날짜 푸터 추가 */}
                 <div ref={topPointsCardRef} className="relative w-full rounded-xl overflow-hidden border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)] transform transition-transform duration-300 bg-[#020617]">
                   <div className="absolute inset-0 z-0 bg-gradient-to-tr from-emerald-900/40 via-transparent to-transparent"></div>
                   <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
                     <div className="relative pt-3">
                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                          {/* 💣 오너 프사: SafeImage로 처리 */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
@@ -640,7 +624,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       </div>
                     </div>
                   </div>
-                  {/* 🔥 [TOP POINTS CARD] 하단 시즌명/날짜 텍스트 */}
                   <div className="absolute bottom-2 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">
                     {footerText}
                   </div>
@@ -649,7 +632,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             );
           })()}
 
-          {/* 오너 랭킹 테이블 */}
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs uppercase border-collapse">
               <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">

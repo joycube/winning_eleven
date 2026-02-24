@@ -1,34 +1,29 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 💣 [궁극의 해결책] 모바일 CORS 캡처 에러 방지용 특수 이미지 컴포넌트
-const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+// 💣 [궁극의 해결책 V2] 하얀색 빈 원(로딩 지연) 현상 해결 및 모바일 캡처 완벽 호환
+const SafeImage = ({ src, className, alt = '', uid = '' }: { src: string, className?: string, alt?: string, uid?: string }) => {
+  // 🔥 비동기 다운로드(Base64 변환)로 인해 캡처 시 하얗게 뜨는 현상을 방지!
+  // 즉시 렌더링 가능한 프록시 URL 생성 + 고유 UID로 캐시 꼬임(페페 증식) 방지
+  const proxyUrl = useMemo(() => {
+    if (!src) return FALLBACK_IMG;
+    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
+    // uid를 붙여서 홈/어웨이/유튜브 이미지를 라이브러리가 완전히 다른 파일로 인식하게 만듦
+    return `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`;
+  }, [src, uid]);
 
-  useEffect(() => {
-    if (!src) return;
-    const fetchImage = async () => {
-      try {
-        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-        const response = await fetch(proxy);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => setDataUrl(reader.result as string);
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        setDataUrl(src); // 실패 시 원본 그대로 사용
-      }
-    };
-    fetchImage();
-  }, [src]);
-
-  // 로딩 중 깜빡임 방지 뼈대
-  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
-
-  return <img src={dataUrl} className={className} alt={alt} onError={(e) => e.currentTarget.src = FALLBACK_IMG} />;
+  return (
+    <img 
+      src={proxyUrl} 
+      crossOrigin="anonymous" // 모바일 CORS 차단 방지용 마법의 속성
+      className={className} 
+      alt={alt} 
+      onError={(e) => e.currentTarget.src = FALLBACK_IMG} 
+    />
+  );
 };
 
 interface MatchCardProps {
@@ -135,8 +130,12 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className="flex flex-col items-center text-center space-y-3 w-full">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            {/* 🔥 캡처 방해꾼(외부 로고)을 SafeImage로 완벽하게 감쌈 */}
-            <SafeImage src={logo || FALLBACK_IMG} className="w-full h-full object-contain" />
+            {/* 🔥 핵심: uid를 명시하여 홈/어웨이 이미지가 절대 누락되거나 섞이지 않게 함 */}
+            <SafeImage 
+              src={logo || FALLBACK_IMG} 
+              className="w-full h-full object-contain" 
+              uid={`${match.id}-${side}`} 
+            />
           </div>
           {getTierBadge(master?.tier)}
         </div>
@@ -202,8 +201,13 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="flex flex-col items-center px-1">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              {/* 🔥 유튜브 아이콘도 SafeImage로 처리 */}
-                              <SafeImage src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT"/>
+                              {/* 🔥 유튜브 아이콘도 고유 UID 부여 */}
+                              <SafeImage 
+                                src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" 
+                                className="w-3 h-3 group-hover/yt:scale-110 transition-transform" 
+                                alt="YT"
+                                uid={`yt-${match.id}`}
+                              />
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>

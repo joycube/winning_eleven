@@ -4,29 +4,41 @@ import { FALLBACK_IMG, Owner } from '../types';
 
 // 🔥 캡처 라이브러리 추가
 import { toPng } from 'html-to-image';
-// 🔥 [에러 해결] Vercel 빌드 시 TypeScript 예외 처리
 // @ts-ignore
 import download from 'downloadjs';
 
-// 💣 [궁극의 해결책] 페페 증식 버그 완벽 차단용 특수 이미지 컴포넌트
+// 💣 [궁극의 SafeImage V3] 빈 동그라미 에러 완벽 해결! (Direct Fetch -> Proxy Fallback)
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!src) return;
+    let isMounted = true;
+
     const fetchImage = async () => {
       try {
-        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
-        const response = await fetch(proxy);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => setDataUrl(reader.result as string);
-        reader.readAsDataURL(blob);
+        let res = await fetch(src, { mode: 'cors' }).catch(() => null);
+        if (!res || !res.ok) {
+          const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+          res = await fetch(proxy).catch(() => null);
+        }
+
+        if (res && res.ok) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (isMounted) setDataUrl(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          if (isMounted) setDataUrl(src); 
+        }
       } catch (e) {
-        setDataUrl(src);
+        if (isMounted) setDataUrl(src);
       }
     };
     fetchImage();
+    return () => { isMounted = false; };
   }, [src]);
 
   if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
@@ -45,10 +57,9 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
     );
   }
 
-  return <img src={dataUrl} className={className} alt="" />;
+  return <img src={dataUrl} className={className} alt="" crossOrigin="anonymous" />;
 };
 
-// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(2);
@@ -66,18 +77,15 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
-  // 🔥 캡처 중인 상태 관리를 위한 State 및 Ref
   const legendCardRef = useRef<HTMLDivElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // 1️⃣ [적용] 팀 순위 정렬 로직: 승점 > 득실 > 다득점
   const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
-    if (b.points !== a.points) return b.points - a.points;      // 1. 승점
-    if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); // 2. 득실차
-    return (b.gf || 0) - (a.gf || 0);                           // 3. 다득점
+    if (b.points !== a.points) return b.points - a.points;      
+    if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); 
+    return (b.gf || 0) - (a.gf || 0);                           
   });
 
-  // 2️⃣ [적용] 선수 랭킹 공동 순위 계산 함수
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = players
         .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -105,28 +113,24 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
   const rankedPlayers = getPlayerRanking(historyData.players || []);
 
-  // 🔥 레전드 카드 캡처 함수 (모바일 CORS 보안 에러 완벽 차단)
   const handleCaptureLegend = async () => {
     if (!legendCardRef.current) return;
     setIsCapturing(true);
 
     try {
-        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
         await new Promise(resolve => setTimeout(resolve, 300));
 
         const dataUrl = await toPng(legendCardRef.current, { 
             cacheBust: true, 
-            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            backgroundColor: 'transparent', 
             pixelRatio: 2, 
             style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
         });
         
         const fileName = `hall-of-fame-legend-${Date.now()}.png`;
         
-        // 1. 다운로드 실행
         download(dataUrl, fileName);
         
-        // 2. 모바일일 경우 공유 시트 띄우기
         if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
              try {
                  const blob = await (await fetch(dataUrl)).blob();
@@ -136,9 +140,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                      text: '역대 통합 랭킹 1위 레전드입니다!',
                      files: [file]
                  });
-             } catch (shareErr) {
-                 console.log('Share canceled or failed', shareErr);
-             }
+             } catch (shareErr) {}
         } else {
              alert('📷 기기에 레전드 카드가 저장되었습니다!');
         }
@@ -152,9 +154,9 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-        {/* 스타일 정의 */}
-        {/* @ts-ignore */}
-        <style jsx>{`
+        
+        {/* 🔥 [Vercel 에러 방지] style JSX 삭제 후 안전한 방식 적용 */}
+        <style dangerouslySetInnerHTML={{ __html: `
             @keyframes verticalFloat {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-12px); }
@@ -179,7 +181,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                 background: linear-gradient(to right, transparent, rgba(52, 211, 153, 0.2), transparent);
                 filter: blur(10px); animation: green-light-sweep 4s infinite ease-in-out; pointer-events: none;
             }
-        `}</style>
+        `}} />
 
         <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 to-blue-900/20" />
@@ -193,7 +195,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             ))}
         </div>
 
-        {/* 1. Teams History */}
         {historyTab === 'TEAMS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs uppercase">
@@ -214,10 +215,8 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 2. Owners History */}
         {historyTab === 'OWNERS' && (
             <div className="space-y-4">
-                {/* 🏆 역대 1위 'THE LEGEND' 카드 */}
                 {historyData.owners.length > 0 && (() => {
                     const legend = historyData.owners[0];
                     const matchedOwner = (owners && owners.length > 0) 
@@ -227,7 +226,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
                     return (
                         <div className="mb-6 relative flex flex-col">
-                            {/* 🔥 캡처 버튼 (카드 밖 우측 상단) */}
                             <div className="flex justify-end w-full px-1 mb-2">
                                 <button 
                                     onClick={handleCaptureLegend} 
@@ -238,19 +236,16 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                 </button>
                             </div>
 
-                            {/* 🔥 캡처 타겟 영역 (투명 배경 및 곡률 유지) */}
                             <div id="legend-card-wrap" ref={legendCardRef} className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-[#0f172a]">
-                                {/* 배경 이펙트 */}
                                 <div className="absolute inset-0 green-neon-bg z-0"></div>
                                 <div className="green-sweep-beam z-0"></div>
                                 
                                 <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm pb-10">
-                                    {/* 1. 트로피와 오너 이미지 */}
                                     <div className="relative pt-4 pl-10">
                                         <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
                                         <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
                                             <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
-                                                {/* 💣 SafeImage로 교체하여 에러 방지 */}
+                                                {/* 💣 SafeImage 적용! 빈 동그라미 방지 */}
                                                 <SafeImage src={displayPhoto} className="w-full h-full object-cover"/>
                                             </div>
                                         </div>
@@ -261,16 +256,13 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                         </div>
                                     </div>
 
-                                    {/* 2. 레전드 정보 */}
                                     <div className="flex-1 text-center md:text-left pt-3 md:pt-0 w-full">
                                         <h3 className="text-[10px] text-emerald-400 font-bold tracking-[0.3em] mb-1 uppercase">Hall of Fame No.1</h3>
                                         <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
                                             {legend.name}
                                         </h2>
                                         
-                                        {/* 스탯 그리드 (1열 3개 / 2열 1개) */}
                                         <div className="flex flex-col gap-2 w-full">
-                                            {/* 1열: Points, Record, Trophies (균등 배분) */}
                                             <div className="grid grid-cols-3 gap-2 w-full">
                                                 <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
                                                     <span className="text-[9px] text-slate-500 block font-bold mb-0.5">POINTS</span>
@@ -289,7 +281,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                                 </div>
                                             </div>
 
-                                            {/* 2열: Total Prize (전체 너비) */}
                                             <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
                                                 <span className="text-[9px] text-emerald-400 block font-black mb-0.5">TOTAL PRIZE</span>
                                                 <span className="text-base font-bold text-white leading-none">₩ {legend.prize.toLocaleString()}</span>
@@ -297,16 +288,14 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                         </div>
                                     </div>
                                 </div>
-                                {/* 🔥 [LEGEND CARD] 하단 워터마크 추가 */}
                                 <div className="absolute bottom-2 right-4 text-[8px] text-slate-500/80 font-bold italic tracking-wider z-20">
-                                    HALL OF FAME / {getTodayFormatted()}
+                                    {`HALL OF FAME / ${getTodayFormatted()}`}
                                 </div>
                             </div>
                         </div>
                     );
                 })()}
 
-                {/* 2위부터 테이블 리스트 (기존 유지) */}
                 <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
                     <table className="w-full text-left text-xs uppercase">
                         <thead className="bg-slate-950 text-slate-500">
@@ -368,7 +357,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
             </div>
         )}
 
-        {/* 3. Players History */}
         {historyTab === 'PLAYERS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
