@@ -7,6 +7,7 @@ import { getYouTubeThumbnail } from '../utils/helpers';
 
 // 🔥 캡처 라이브러리 추가
 import { toPng } from 'html-to-image';
+// @ts-ignore
 import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
