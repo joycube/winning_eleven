@@ -12,66 +12,47 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [진짜 최종 SafeImage] 블랙홀(시꺼먼 화면) 완벽 방지! 무적의 5단계 에러 폴백 체인
+// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식 (아이폰 파란 물음표 완벽 방지)
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
   const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
-  const [errorCount, setErrorCount] = useState(0);
 
-  // 주소가 바뀌면 초기화
   useEffect(() => {
     if (!src) {
       setImgSrc(FALLBACK_IMG);
       setCors(undefined);
       return;
     }
+    // 1단계: 캡처를 염두에 두고 원본 주소 + CORS 허용으로 시도
     setImgSrc(src);
-    setCors("anonymous"); // 캡처를 위해 일단 CORS 허용으로 찔러봄
-    setErrorCount(0);
+    setCors("anonymous");
   }, [src]);
 
-  // 🔥 이미지가 막힐 때마다 즉시 다음 플랜으로 자동 교체 (블랙홀 절대 방지)
   const handleError = () => {
-    if (errorCount >= 5) return; // 무한 루프 방지 안전장치
-    
-    const nextCount = errorCount + 1;
-    setErrorCount(nextCount);
-
-    if (nextCount === 1) {
-      // 플랜 B: 이미지 최적화 프록시
-      setImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`);
-    } else if (nextCount === 2) {
-      // 플랜 C: 뚫기 힘든 언론사 보안용 강력 우회 프록시
-      setImgSrc(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(src)}`);
-    } else if (nextCount === 3) {
-      // 플랜 D: 또 다른 우회망
-      setImgSrc(`https://corsproxy.io/?${encodeURIComponent(src)}`);
-    } else if (nextCount === 4) {
-      // 🚨 최후의 수단: 캡처를 포기하더라도 화면에 시꺼먼 빵꾸가 나는 건 막는다! (CORS 해제 강제 렌더링)
+    if (cors === "anonymous") {
+      // 2단계: CORS 때문에 사파리가 로딩을 막으면, 캡처를 포기하더라도 화면에는 무조건 나오게 보안 설정 해제
       setImgSrc(src);
-      setCors(undefined); 
-    } else {
-      // 플랜 F: 다 망하면 기본 이미지
-      setImgSrc(FALLBACK_IMG);
       setCors(undefined);
+    } else {
+      // 3단계: 그래도 에러 나면 기본 이미지 표시
+      setImgSrc(FALLBACK_IMG);
     }
   };
 
   if (isBg) {
     return (
-      <>
-        {/* 에러 추적용 투명 센서 (화면엔 안 보이지만 에러를 감지해서 배경을 교체해줌) */}
-        <img src={imgSrc} crossOrigin={cors} onError={handleError} style={{ display: 'none' }} alt="bg-sensor" />
-        <div 
-          className={className} 
-          style={{ 
-            backgroundImage: `url(${imgSrc})`, 
-            backgroundSize: 'contain', 
-            backgroundPosition: 'center', 
-            backgroundRepeat: 'no-repeat' 
-          }} 
-        />
-      </>
+      <div 
+        className={className} 
+        style={{ 
+          backgroundImage: `url(${imgSrc})`, 
+          backgroundSize: 'contain', 
+          backgroundPosition: 'center', 
+          backgroundRepeat: 'no-repeat' 
+        }} 
+      >
+        {/* 에러 추적용 투명 태그 */}
+        <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
+      </div>
     );
   }
 
@@ -198,6 +179,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
   };
 
+  // 🔥 순위표 및 모든 곳에 SafeImage 적용 완료
   const renderBroadcastTeamCell = (team: any) => {
     const info = getTeamExtendedInfo(team.name);
     const isTbd = team.name === 'TBD';
@@ -205,7 +187,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       <div className="flex items-center gap-4">
         <div className="relative w-10 h-10 flex-shrink-0">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
-            <img src={info.logo || team.logo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG }} />
+            <SafeImage src={info.logo || team.logo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} />
           </div>
           {!isTbd && getTierBadge(info.tier)}
         </div>
@@ -260,7 +242,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative w-7 h-7 flex-shrink-0">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center overflow-hidden ${isTbd || isBye ? 'bg-slate-700' : 'bg-white shadow-sm'}`}>
-                <img src={team.logo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" />
+                {/* 🔥 대진표 내 국기도 SafeImage 적용 */}
+                <SafeImage src={team.logo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} />
               </div>
               {!isTbd && !isBye && getTierBadge(team.tier)}
             </div>
@@ -322,8 +305,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       setIsCapturing(true);
 
       try {
-          // 🔥 모든 이미지 에러 체크가 끝날 때까지 넉넉하게 대기!
-          await new Promise(resolve => setTimeout(resolve, 800));
+          await new Promise(resolve => setTimeout(resolve, 400));
           const dataUrl = await toPng(championCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
@@ -347,8 +329,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          console.error(error);
-          alert('이미지 캡처에 실패했습니다. (보안 제약)');
+          alert(`이미지 캡처에 실패했습니다.\n\n프로필 사진이나 로고가 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다.\n(아이폰 사파리 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 이미지를 안전한 링크로 변경해 주세요.`);
       } finally {
           setIsCapturing(false);
       }
@@ -359,7 +340,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       setIsCapturingTopPoints(true);
 
       try {
-          await new Promise(resolve => setTimeout(resolve, 800));
+          await new Promise(resolve => setTimeout(resolve, 400));
           const dataUrl = await toPng(topPointsCardRef.current, { 
               cacheBust: true, 
               backgroundColor: 'transparent', 
@@ -383,8 +364,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
-          console.error(error);
-          alert('이미지 캡처에 실패했습니다.');
+          alert(`이미지 캡처에 실패했습니다.\n\n프로필 사진이나 로고가 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다.\n(아이폰 사파리 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 이미지를 안전한 링크로 변경해 주세요.`);
       } finally {
           setIsCapturingTopPoints(false);
       }
@@ -555,7 +535,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                       <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                          {/* 🔥 V9 적용: 까만 화면(블랙홀) 절대 방어! */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
@@ -620,7 +599,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <div className="relative pt-3">
                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                          {/* 🔥 V9 적용! */}
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
@@ -658,7 +636,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                   return (
                     <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
                       <td className={`p-4 text-center font-bold ${actualRank === 2 ? 'text-slate-300' : actualRank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{actualRank}</td>
-                      <td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}><img src={matchedOwner?.photo || FALLBACK_IMG} alt={o.name} className="w-full h-full object-cover" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div><span className="font-bold text-sm whitespace-nowrap">{o.name}</span></div></td>
+                      <td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}><SafeImage src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" /></div><span className="font-bold text-sm whitespace-nowrap">{o.name}</span></div></td>
                       <td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td>
                       <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
                       <td className={`p-4 text-right font-bold ${getOwnerPrize(o.name) > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>₩ {getOwnerPrize(o.name).toLocaleString()}</td>
@@ -684,7 +662,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                 <tr key={i} className="border-b border-slate-800/50">
                   <td className={`p-3 text-center ${p.rank <= 3 ? 'text-emerald-400 font-bold' : 'text-slate-600'}`}>{p.rank}</td>
                   <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                  <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /><span>{p.team}</span></td>
+                  <td className="p-3 text-slate-400 flex items-center gap-2"><SafeImage src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" /><span>{p.team}</span></td>
                   <td className={`p-3 text-right font-bold ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>{rankPlayerMode === 'GOAL' ? p.goals : p.assists}</td>
                 </tr>
               ))}
@@ -698,11 +676,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           {(activeRankingData?.highlights || []).map((m: any, idx: number) => (
             <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
               <div className="relative aspect-video">
-                <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                <SafeImage src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                 <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
               </div>
               <div className="p-3 flex items-center gap-3">
-                <img src={m.winnerLogo || FALLBACK_IMG} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
+                <SafeImage src={m.winnerLogo || FALLBACK_IMG} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" />
                 <div className="flex-1 min-w-0"><p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p><p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p></div>
               </div>
             </div>
