@@ -1,51 +1,37 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 💣 [궁극의 해결책 V4] 하얀색 빈 원 & 파란 물음표 완벽 해결! (프록시 실패 시 즉각 원본 복구)
-const SafeImage = ({ src, className, alt = '', uid = '' }: { src: string, className?: string, alt?: string, uid?: string }) => {
-  const isDirect = src?.startsWith('data:') || src?.startsWith('blob:');
-  const proxyUrl = src ? `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}` : FALLBACK_IMG;
+// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식 (국기 깨짐 완벽 방지)
+const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
+  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
+  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
 
-  // 초기 상태 세팅
-  const [imgSrc, setImgSrc] = useState(isDirect ? src : proxyUrl);
-  const [useCors, setUseCors] = useState<"anonymous" | undefined>(isDirect ? undefined : "anonymous");
-
-  // src나 uid가 변경될 때마다 재설정
   useEffect(() => {
     if (!src) {
       setImgSrc(FALLBACK_IMG);
-      setUseCors(undefined);
+      setCors(undefined);
       return;
     }
-    const direct = src.startsWith('data:') || src.startsWith('blob:');
-    setImgSrc(direct ? src : `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`);
-    setUseCors(direct ? undefined : "anonymous");
-  }, [src, uid]);
+    // 1단계: 원본 주소 + CORS 허용으로 시도 (위키피디아 국기 등 대부분 여기서 100% 성공)
+    setImgSrc(src);
+    setCors("anonymous");
+  }, [src]);
 
-  // 🔥 핵심 방어 로직: 캡처용 프록시가 막히면 즉시 원본을 띄워 UI 깨짐 방지!
   const handleError = () => {
-    if (useCors === "anonymous") {
-      // 1. 프록시(wsrv.nl)에서 에러가 나면, crossOrigin 제약을 풀고 순수 원본 주소로 재시도
+    if (cors === "anonymous") {
+      // 2단계: CORS 때문에 캡처용 로딩이 막히면, 캡처를 포기하더라도 화면에는 무조건 나오게 보안 설정 해제
       setImgSrc(src);
-      setUseCors(undefined);
+      setCors(undefined);
     } else {
-      // 2. 원본마저도 실패하면 그때 폴백(기본) 이미지 띄움
+      // 3단계: 주소 자체가 박살 났을 때만 기본 로고 표시
       setImgSrc(FALLBACK_IMG);
     }
   };
 
-  return (
-    <img 
-      src={imgSrc} 
-      crossOrigin={useCors} 
-      className={className} 
-      alt={alt} 
-      onError={handleError} 
-    />
-  );
+  return <img src={imgSrc} crossOrigin={cors} onError={handleError} className={className} alt={alt} />;
 };
 
 interface MatchCardProps {
@@ -152,12 +138,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className="flex flex-col items-center text-center space-y-3 w-full">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            {/* 🔥 핵심: uid를 명시하여 홈/어웨이 이미지가 절대 누락되거나 섞이지 않게 함 */}
-            <SafeImage 
-              src={logo || FALLBACK_IMG} 
-              className="w-full h-full object-contain" 
-              uid={`${match.id}-${side}`} 
-            />
+            {/* 🔥 새롭게 적용된 '원본 최우선' SafeImage */}
+            <SafeImage src={logo || FALLBACK_IMG} className="w-full h-full object-contain" />
           </div>
           {getTierBadge(master?.tier)}
         </div>
@@ -223,13 +205,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="flex flex-col items-center px-1">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              {/* 🔥 유튜브 아이콘도 고유 UID 부여 */}
-                              <SafeImage 
-                                src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" 
-                                className="w-3 h-3 group-hover/yt:scale-110 transition-transform" 
-                                alt="YT"
-                                uid={`yt-${match.id}`}
-                              />
+                              <SafeImage src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT" />
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>
