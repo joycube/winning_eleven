@@ -52,7 +52,7 @@ export const CupSchedule = ({
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🔥 매치카드 캡처 전용 함수
+  // 🔥 매치카드 캡처 전용 함수 (모바일 에러 완벽 차단)
   const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
     const element = document.getElementById(`cup-match-card-wrap-${matchId}`);
     if (!element) return;
@@ -60,7 +60,7 @@ export const CupSchedule = ({
     setCapturingMatchId(matchId);
 
     try {
-        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
+        // 모바일 환경 렌더링 딜레이 확보
         await new Promise(resolve => setTimeout(resolve, 300));
 
         const dataUrl = await toPng(element, { 
@@ -72,10 +72,8 @@ export const CupSchedule = ({
         
         const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
         
-        // 1. 다운로드 실행
         download(dataUrl, fileName);
         
-        // 2. 모바일일 경우 공유 시트 띄우기
         if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
              try {
                  const blob = await (await fetch(dataUrl)).blob();
@@ -93,7 +91,7 @@ export const CupSchedule = ({
         }
     } catch (error: any) {
         console.error('캡처 실패:', error);
-        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.`);
+        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.\n\nPC 환경에서 시도해주세요!`);
     } finally {
         setCapturingMatchId(null);
     }
@@ -302,6 +300,7 @@ export const CupSchedule = ({
             .no-scrollbar::-webkit-scrollbar { display: none; }
         `}</style>
 
+        {/* 대진표 부분 (기존 유지) */}
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -375,9 +374,9 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 워터마크 */}
+                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
                                             </div>
                                         </div>
@@ -431,9 +430,9 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 워터마크 */}
+                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
                                             </div>
                                         </div>
@@ -481,9 +480,9 @@ export const CupSchedule = ({
                                                         </p>
                                                     </div>
                                                 )}
-                                                {/* 🔥 워터마크 */}
+                                                {/* 🔥 [에러 픽스] JSX 문법 에러 방지용 템플릿 리터럴 적용 */}
                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
                                             </div>
                                         </div>

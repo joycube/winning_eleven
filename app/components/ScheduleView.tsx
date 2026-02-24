@@ -88,7 +88,7 @@ export const ScheduleView = ({
     return stage;
   };
 
-  // 🔥 매치카드 캡처 전용 함수 (TS 에러 및 모바일 보안 에러 방어 로직 적용)
+  // 🔥 매치카드 캡처 전용 함수
   const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
     const element = document.getElementById(`match-card-wrap-${matchId}`);
     if (!element) return;
@@ -96,13 +96,12 @@ export const ScheduleView = ({
     setCapturingMatchId(matchId);
 
     try {
-        // 모바일 환경에서 렌더링 타이밍 대기 (0.3초)
+        // 모바일 환경에서 렌더링 타이밍 대기
         await new Promise(resolve => setTimeout(resolve, 300));
 
         const dataUrl = await toPng(element, { 
             cacheBust: true, 
-            // 🔥 Vercel 배포 에러의 주범이었던 useCORS 옵션은 html-to-image에 없는 문법이므로 삭제!
-            backgroundColor: 'transparent', // 투명한 라운딩 유지
+            backgroundColor: 'transparent',
             pixelRatio: 2, 
             style: { margin: '0' }
         });
@@ -130,7 +129,6 @@ export const ScheduleView = ({
         }
     } catch (error: any) {
         console.error('캡처 실패:', error);
-        // 🔥 [object Event] 경고창을 좀 더 친절하게 표시
         alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.\n\nPC 환경에서 시도해주세요!`);
     } finally {
         setCapturingMatchId(null);
@@ -217,9 +215,9 @@ export const ScheduleView = ({
                                                                 historyData={historyData}
                                                                 masterTeams={masterTeams} 
                                                             />
-                                                            {/* 🔥 워터마크 (시즌명 / 날짜) - 매치카드 우측 하단에 살포시 얹힘 */}
+                                                            {/* 🔥 [에러 해결] Vercel이 불평하지 않게 템플릿 리터럴로 감싸서 문자열 처리 */}
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                                시즌 '{pureSeasonName}' / {getTodayFormatted()}
+                                                                {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                             </div>
                                                         </div>
                                                     </div>
