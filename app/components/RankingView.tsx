@@ -7,16 +7,57 @@ import { getYouTubeThumbnail } from '../utils/helpers';
 
 // 🔥 캡처 라이브러리 추가
 import { toPng } from 'html-to-image';
-// @ts-ignore
 import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 🔥 CORS 차단을 우회하는 글로벌 프록시 헬퍼
-const getProxyUrl = (url: string) => {
-    if (!url) return FALLBACK_IMG;
-    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`;
+// 💣 [궁극의 해결책] 페페 증식 버그 완벽 차단용 특수 이미지 컴포넌트
+const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const fetchImage = async () => {
+      try {
+        const proxy = `https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png`;
+        const response = await fetch(proxy);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => setDataUrl(reader.result as string);
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        setDataUrl(src);
+      }
+    };
+    fetchImage();
+  }, [src]);
+
+  if (!dataUrl) return <div className={`animate-pulse bg-slate-800/50 ${className}`} />;
+
+  if (isBg) {
+    return (
+      <div 
+        className={className} 
+        style={{ 
+          backgroundImage: `url(${dataUrl})`, 
+          backgroundSize: 'contain', 
+          backgroundPosition: 'center', 
+          backgroundRepeat: 'no-repeat' 
+        }} 
+      />
+    );
+  }
+
+  return <img src={dataUrl} className={className} alt="" />;
+};
+
+// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
+const getTodayFormatted = () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}.${month}.${day}`;
 };
 
 interface RankingViewProps {
@@ -34,9 +75,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  // 🔥 캡처를 위한 Ref와 로딩 상태 추가
+  // 🔥 캡처를 위한 Ref와 로딩 상태
   const championCardRef = useRef<HTMLDivElement>(null);
+  const topPointsCardRef = useRef<HTMLDivElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isCapturingTopPoints, setIsCapturingTopPoints] = useState(false);
 
   useEffect(() => {
     const fetchMasterTeams = async () => {
@@ -51,6 +94,11 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   }, []);
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
+  // 🔥 현재 시즌명과 오늘 날짜 정보 준비
+  const seasonName = currentSeason?.name || 'Unknown Season';
+  const todayDate = getTodayFormatted();
+  const footerText = `시즌 '${seasonName}' / ${todayDate}`;
+
   const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
 
   const getRankedTeams = (teams: any[]) => {
@@ -255,7 +303,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
-  // 🔥 캡처 기능 (다운로드 강제 실행 및 오류 방지)
+  // 🔥 챔피언 캡처 기능
   const handleCaptureChampion = async () => {
       if (championCardRef.current === null) return;
       setIsCapturing(true);
@@ -263,15 +311,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       try {
           const dataUrl = await toPng(championCardRef.current, { 
               cacheBust: true, 
-              backgroundColor: '#020617',
-              pixelRatio: 2,
+              backgroundColor: 'transparent', 
+              pixelRatio: 2, 
               style: { transform: 'scale(1)', transformOrigin: 'top left' }
           });
           
-          // 🔥 1. 모바일/PC 상관없이 무조건 파일 다운로드 트리거 (저장 보장)
           download(dataUrl, `champion-card-${Date.now()}.png`);
           
-          // 🔥 2. 모바일 환경일 경우 저장 후 공유 시트 띄워줌 (편의성)
           if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
                try {
                    const blob = await (await fetch(dataUrl)).blob();
@@ -285,14 +331,51 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                    console.log('Share canceled or failed', shareErr);
                }
           } else {
-               // 다운로드만 된 경우 안내
-               alert('📷 갤러리(또는 다운로드 폴더)에 저장되었습니다!');
+               alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
           }
       } catch (error) {
           console.error('캡처 실패:', error);
-          alert('이미지 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+          alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
       } finally {
           setIsCapturing(false);
+      }
+  };
+
+  // 🔥 누적 승점 1위 캡처 기능
+  const handleCaptureTopPoints = async () => {
+      if (topPointsCardRef.current === null) return;
+      setIsCapturingTopPoints(true);
+
+      try {
+          const dataUrl = await toPng(topPointsCardRef.current, { 
+              cacheBust: true, 
+              backgroundColor: 'transparent', 
+              pixelRatio: 2, 
+              style: { transform: 'scale(1)', transformOrigin: 'top left' }
+          });
+          
+          download(dataUrl, `top-points-${Date.now()}.png`);
+          
+          if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
+               try {
+                   const blob = await (await fetch(dataUrl)).blob();
+                   const file = new File([blob], "top-points.png", { type: blob.type });
+                   await navigator.share({
+                       title: '🔥 Overall Top Points',
+                       text: '현재 누적 승점 1위입니다!',
+                       files: [file]
+                   });
+               } catch (shareErr) {
+                   console.log('Share canceled or failed', shareErr);
+               }
+          } else {
+               alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
+          }
+      } catch (error) {
+          console.error('캡처 실패:', error);
+          alert('이미지 캡처에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      } finally {
+          setIsCapturingTopPoints(false);
       }
   };
 
@@ -449,36 +532,31 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         disabled={isCapturing}
                         className="bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg"
                     >
-                        {isCapturing ? '📸 이미지 저장 중...' : '📷 카드 캡처 / 공유하기'}
+                        {isCapturing ? '📸 캡처 준비 중...' : '📷 카드 저장 및 공유하기'}
                     </button>
                 </div>
 
-                <div ref={championCardRef} className="relative w-full rounded-[2rem] overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
+                {/* 🔥 [CHAMPION CARD] 시즌명/날짜 푸터 추가 */}
+                <div ref={championCardRef} className="relative w-full rounded-xl overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
                   <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
                   
-                  {/* 🔥 [완벽 해결] 배경 이미지가 프사로 둔갑하는 버그 수정 (CSS backgroundImage 사용) */}
+                  {/* 💣 배경 이미지: SafeImage로 처리 */}
                   <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
-                    <div 
-                      className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]"
-                      style={{
-                        backgroundImage: `url(${getProxyUrl(teamInfo.logo)})`,
-                        backgroundSize: 'contain',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat'
-                      }}
-                    />
+                    <SafeImage src={teamInfo.logo} className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" isBg={true} />
                   </div>
 
-                  <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm">
+                  <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm pb-12">
                     <div className="relative pt-3 shrink-0">
                       <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                       <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                          <img src={getProxyUrl(displayPhoto)} crossOrigin="anonymous" alt={leagueChampTeam.ownerName} className="w-full h-full object-cover" />
+                          {/* 💣 오너 프사: SafeImage로 처리 */}
+                          <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
-                          <img src={getProxyUrl(teamInfo.logo)} crossOrigin="anonymous" className="w-full h-full object-contain" alt="챔피언 팀" />
+                          {/* 💣 우측 하단 미니 로고: SafeImage로 처리 */}
+                          <SafeImage src={teamInfo.logo} className="w-full h-full object-contain" />
                       </div>
                     </div>
                     <div className="flex-1 text-center md:text-left">
@@ -507,6 +585,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       </div>
                     </div>
                   </div>
+                  {/* 🔥 [CHAMPION CARD] 하단 시즌명/날짜 텍스트 */}
+                  <div className="absolute bottom-3 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">
+                    {footerText}
+                  </div>
                 </div>
               </div>
             );
@@ -519,27 +601,46 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
             const displayPrize = getOwnerPrize(firstOwner.name);
             return (
-              <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)] mb-6 transform hover:scale-[1.02] transition-transform duration-300">
-                <div className="absolute inset-0 z-0 bg-gradient-to-tr from-emerald-900/40 via-transparent to-transparent"></div>
-                <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm">
-                  <div className="relative pt-3">
-                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
-                      <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                        <img src={displayPhoto} alt={firstOwner.name} className="w-full h-full object-cover" />
+              <div className="mb-6">
+                {/* 🔥 Top Points 용 캡처 버튼 */}
+                <div className="flex justify-end mb-2">
+                    <button 
+                        onClick={handleCaptureTopPoints} 
+                        disabled={isCapturingTopPoints}
+                        className="bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg"
+                    >
+                        {isCapturingTopPoints ? '📸 캡처 준비 중...' : '📷 카드 저장 및 공유하기'}
+                    </button>
+                </div>
+                
+                {/* 🔥 [TOP POINTS CARD] 시즌명/날짜 푸터 추가 */}
+                <div ref={topPointsCardRef} className="relative w-full rounded-xl overflow-hidden border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)] transform transition-transform duration-300 bg-[#020617]">
+                  <div className="absolute inset-0 z-0 bg-gradient-to-tr from-emerald-900/40 via-transparent to-transparent"></div>
+                  <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
+                    <div className="relative pt-3">
+                      <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
+                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
+                          {/* 💣 오너 프사: SafeImage로 처리 */}
+                          <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
+                        </div>
+                      </div>
+                      <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
+                        <span className="bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">TOP POINTS</span>
                       </div>
                     </div>
-                    <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
-                      <span className="bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider">TOP POINTS</span>
+                    <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                      <h3 className="text-xs md:text-sm text-emerald-400 font-bold tracking-[0.2em] mb-0.5 uppercase">Overall Top Points</h3>
+                      <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
+                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                        <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
+                        <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W <span className="text-slate-500">{firstOwner.draw}D</span> <span className="text-red-400">{firstOwner.loss}L</span></span></div>
+                        <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
-                    <h3 className="text-xs md:text-sm text-emerald-400 font-bold tracking-[0.2em] mb-0.5 uppercase">Overall Top Points</h3>
-                    <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{firstOwner.name}</h2>
-                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
-                      <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W <span className="text-slate-500">{firstOwner.draw}D</span> <span className="text-red-400">{firstOwner.loss}L</span></span></div>
-                      <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
-                    </div>
+                  {/* 🔥 [TOP POINTS CARD] 하단 시즌명/날짜 텍스트 */}
+                  <div className="absolute bottom-2 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">
+                    {footerText}
                   </div>
                 </div>
               </div>
