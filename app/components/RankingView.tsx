@@ -7,6 +7,8 @@ import { getYouTubeThumbnail } from '../utils/helpers';
 
 // 🔥 캡처 라이브러리 추가
 import { toPng } from 'html-to-image';
+// 🔥 [에러 해결] Vercel 빌드 시 TypeScript가 downloadjs 타입을 검사하지 않도록 예외 처리!
+// @ts-ignore
 import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
@@ -303,7 +305,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
-  // 🔥 챔피언 캡처 기능
+  // 🔥 챔피언 캡처 기능 (투명 모서리 라운딩 적용)
   const handleCaptureChampion = async () => {
       if (championCardRef.current === null) return;
       setIsCapturing(true);
@@ -341,7 +343,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       }
   };
 
-  // 🔥 누적 승점 1위 캡처 기능
+  // 🔥 누적 승점 1위 캡처 기능 (챔피언과 동일한 투명 모서리 적용)
   const handleCaptureTopPoints = async () => {
       if (topPointsCardRef.current === null) return;
       setIsCapturingTopPoints(true);
