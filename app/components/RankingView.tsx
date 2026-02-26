@@ -281,7 +281,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               s1 += Number(leg1.homeScore); 
               s2 += Number(leg1.awayScore); 
           }
-          if (isLeg2Done && leg2) { // 🔥 TS 18048 해결
+          if (isLeg2Done && leg2) { 
               if (leg2.home === t2) {
                   s2 += Number(leg2.homeScore);
                   s1 += Number(leg2.awayScore);
@@ -306,7 +306,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           };
       };
 
-      const playoffRounds = currentSeason.rounds.filter(r => ['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name));
+      // 🔥 [TS 에러 픽스] filter 메서드 내 매개변수 r에 명시적으로 any 타입 지정
+      const playoffRounds = currentSeason.rounds.filter((r: any) => ['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name));
       const displayRounds = JSON.parse(JSON.stringify(playoffRounds)); 
 
       const po4Rounds = displayRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
@@ -329,7 +330,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           return {
               name: stats?.name || master?.name || teamName,
               logo: stats?.logo || master?.logo || FALLBACK_IMG,
-              owner: stats?.ownerName || (master as any)?.ownerName || '-' // 🔥 TS 2339 우회 해결
+              owner: stats?.ownerName || (master as any)?.ownerName || '-' 
           };
       };
 
@@ -813,3 +814,5 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     </div>
   );
 };
+
+export default RankingView;
