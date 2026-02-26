@@ -91,7 +91,6 @@ export const generateLeagueSchedule = (teams: Team[], isDouble: boolean): MatchS
     return null; // 실패 시
 };
 
-// ... generateRoundsLogic 및 distributeTeamsSmartly 등 나머지 코드는 그대로 유지 ...
 export const generateRoundsLogic = (season: Season): Round[] => {
     const teams = season.teams || [];
     if (teams.length < 2) return [];
@@ -120,6 +119,89 @@ export const generateRoundsLogic = (season: Season): Round[] => {
                 homeScore: '', awayScore: '', youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
             }))
         }));
+
+    } else if (season.type === 'LEAGUE_PLAYOFF') {
+        // 🔥 [디벨롭] 신규 모드: 엄격한 리그 스케줄링 + 플레이오프 빈 슬롯 부착
+        const schedule = generateLeagueSchedule(teams, season.leagueMode === 'DOUBLE');
+        
+        if (!schedule) {
+            console.error("균일한 스케줄 생성 실패 (조건이 너무 까다로움)");
+            return [];
+        }
+
+        // 1. 정규 리그 라운드 매핑
+        const rounds: Round[] = schedule.map((matches, rIdx) => ({
+            round: rIdx + 1,
+            name: `ROUND ${rIdx + 1}`,
+            seasonId: season.id,
+            matches: matches.map((m, mIdx) => ({
+                id: `${season.id}_R${rIdx+1}_M${mIdx}`,
+                seasonId: season.id,
+                home: m.home.name, away: m.away.name,
+                homeLogo: m.home.logo, awayLogo: m.away.logo,
+                homeOwner: m.home.ownerName, awayOwner: m.away.ownerName,
+                status: 'UPCOMING', stage: `ROUND ${rIdx+1}`, matchLabel: `리그 ${rIdx+1}R`,
+                homeScore: '', awayScore: '', youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+            }))
+        }));
+
+        let roundIndex = rounds.length + 1;
+        let matchCounter = 1;
+        const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
+
+        const createTbdMatch = (stageName: string, label: string): Match => ({
+            id: `${season.id}_po_tbd_${matchCounter++}`,
+            seasonId: season.id,
+            home: 'TBD', away: 'TBD',
+            homeLogo: TBD_LOGO, awayLogo: TBD_LOGO,
+            homeOwner: '-', awayOwner: '-',
+            homeScore: '', awayScore: '',
+            status: 'UPCOMING',
+            stage: stageName,
+            matchLabel: label,
+            homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], youtubeUrl: ''
+        });
+
+        // 2. PO 4강 (1차전, 2차전)
+        rounds.push({
+            round: roundIndex++, name: 'ROUND_OF_4', seasonId: season.id,
+            matches: [
+                createTbdMatch('ROUND_OF_4', 'PO 4강 1차전 (5위 홈 vs 2위)'),
+                createTbdMatch('ROUND_OF_4', 'PO 4강 1차전 (4위 홈 vs 3위)')
+            ]
+        });
+        rounds.push({
+            round: roundIndex++, name: 'ROUND_OF_4', seasonId: season.id,
+            matches: [
+                createTbdMatch('ROUND_OF_4', 'PO 4강 2차전 (2위 홈 vs 5위)'),
+                createTbdMatch('ROUND_OF_4', 'PO 4강 2차전 (3위 홈 vs 4위)')
+            ]
+        });
+
+        // 3. PO 결승 (1차전, 2차전)
+        rounds.push({
+            round: roundIndex++, name: 'SEMI_FINAL', seasonId: season.id,
+            matches: [
+                createTbdMatch('SEMI_FINAL', 'PO 결승 1차전 (하위승자 홈 vs 상위승자)')
+            ]
+        });
+        rounds.push({
+            round: roundIndex++, name: 'SEMI_FINAL', seasonId: season.id,
+            matches: [
+                createTbdMatch('SEMI_FINAL', 'PO 결승 2차전 (상위승자 홈 vs 하위승자)')
+            ]
+        });
+
+        // 4. 최종 결승 (단판)
+        rounds.push({
+            round: roundIndex++, name: 'FINAL', seasonId: season.id,
+            matches: [
+                createTbdMatch('FINAL', '🏆 최종 결승전 (1위 vs PO승자)')
+            ]
+        });
+
+        return rounds;
+
     } else {
         // 토너먼트 로직 (기존 유지)
         const distributeTeamsSmartly = (teams: Team[], targetSize: number): Team[] => {
@@ -133,7 +215,8 @@ export const generateRoundsLogic = (season: Season): Round[] => {
             const sortedOwners = Object.keys(ownerGroups).sort((a, b) => ownerGroups[b].length - ownerGroups[a].length);
             
             const getOrder = (n: number) => {
-                const res = [];
+                // 🔥 [TypeScript 버그 픽스] 빈 배열을 number 타입 배열로 명시적 선언
+                const res: number[] = []; 
                 const bits = Math.log2(n);
                 for (let i = 0; i < n; i++) {
                     let rev = 0, temp = i;

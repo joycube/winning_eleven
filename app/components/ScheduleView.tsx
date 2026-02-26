@@ -74,9 +74,25 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
+  // 💣 [디벨롭] 하이브리드(LEAGUE_PLAYOFF) 모드까지 완벽 지원하는 스테이지 라벨링 로직!
   const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
     const s = stage.toUpperCase();
-    if (seasonType === 'LEAGUE') return stage.replace(/ROUND/i, '라운드 ').replace(/GAME/i, '경기');
+
+    // 1. 순수 리그 모드인 경우
+    if (seasonType === 'LEAGUE') {
+        return s.replace(/ROUND\s/i, '라운드 ').replace(/GAME/i, '경기');
+    }
+
+    // 2. 신규 모드: 리그 + 플레이오프 모드인 경우
+    if (seasonType === 'LEAGUE_PLAYOFF') {
+        if (s.includes('ROUND_OF_4')) return '🔥 플레이오프 (4강)';
+        if (s.includes('SEMI_FINAL')) return '🔥 플레이오프 (결승)';
+        if (s.includes('FINAL')) return '🏆 대망의 최종 결승전';
+        // 나머지는 정규 라운드 처리
+        return s.replace(/ROUND\s/i, '라운드 ').replace(/GAME/i, '경기');
+    }
+
+    // 3. 기존 토너먼트 모드일 경우 (Fallback)
     if (s.includes('34') || s.includes('3RD')) return '🥉 3·4위전';
     if (s === 'FINAL') return '🏆 결승전';
     if (s.includes('SEMI')) return '4강 (준결승)';
@@ -148,10 +164,11 @@ export const ScheduleView = ({
                     {seasons.map(s => (
                         <option key={s.id} value={s.id}>
                             {(() => {
-                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
+                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '');
                                 let icon = '🏳️'; // LEAGUE
                                 if (s.type === 'CUP') icon = '🏆';
                                 if (s.type === 'TOURNAMENT') icon = '⚔️';
+                                if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐'; // 하이브리드 전용 아이콘
                                 return `${icon} ${pureName}`;
                             })()}
                         </option>
@@ -180,7 +197,9 @@ export const ScheduleView = ({
                     return (
                         <div key={rIdx} className="space-y-6">
                             {uniqueStages.map((stageName) => {
+                                // 🔥 새롭게 적용된 라벨링 로직 호출!
                                 const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, seasonType);
+                                
                                 return (
                                     <div key={stageName} className="space-y-2">
                                         <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">
@@ -188,8 +207,14 @@ export const ScheduleView = ({
                                         </h3>
                                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                                const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
-                                                const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || '';
+                                                
+                                                // 매치카드 안에 들어갈 세부 라벨 (예: 1경기, 2차전 등)
+                                                let customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
+                                                if (m.matchLabel && m.matchLabel.includes('PO')) {
+                                                    customMatchLabel = m.matchLabel; // TBD 슬롯에 미리 심어둔 라벨(예: PO 4강 1차전)이 있으면 그걸 씀!
+                                                }
+
+                                                const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                 
                                                 return (
                                                     <div key={m.id} className="relative flex flex-col gap-1 mb-2">
@@ -215,7 +240,6 @@ export const ScheduleView = ({
                                                                 historyData={historyData}
                                                                 masterTeams={masterTeams} 
                                                             />
-                                                            {/* 🔥 [에러 해결] Vercel이 불평하지 않게 템플릿 리터럴로 감싸서 문자열 처리 */}
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
                                                                 {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                             </div>

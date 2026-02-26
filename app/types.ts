@@ -70,7 +70,7 @@ export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE';
 export interface Season {
   id: number;
   name: string;
-  type: 'LEAGUE' | 'TOURNAMENT' | 'CUP';
+  type: 'LEAGUE' | 'TOURNAMENT' | 'CUP' | 'LEAGUE_PLAYOFF'; // 🔥 LEAGUE_PLAYOFF 추가됨!
   leagueMode?: 'SINGLE' | 'DOUBLE';
   teams: Team[];
   rounds?: Round[];

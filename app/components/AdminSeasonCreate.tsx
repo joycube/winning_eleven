@@ -46,6 +46,7 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
             case 'LEAGUE': iconPrefix = '🏳️'; break;
             case 'TOURNAMENT': iconPrefix = '⚔️'; break;
             case 'CUP': iconPrefix = '🏆'; break;
+            case 'LEAGUE_PLAYOFF': iconPrefix = '⭐'; break; // 🔥 [수정] 리그+PO 모드 아이콘 추가
             default: iconPrefix = '';
         }
         const finalName = `${iconPrefix} ${name}`;
@@ -70,6 +71,9 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
                 fromGroup: Number(cupAdvance),
                 method: 'CROSS'
             };
+        } else if (type === 'LEAGUE_PLAYOFF') {
+            // 🔥 [수정] 리그+PO 모드 전용 속성 추가 (필요 시 확장 가능)
+            newSeason.leagueMode = mode; // 리그 방식 (단판/더블) 설정 동일하게 적용
         }
 
         await setDoc(doc(db, "seasons", String(id)), newSeason);
@@ -89,13 +93,16 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
             <div className="space-y-1">
                 <label className="text-xs text-slate-400 font-bold">2. Type & Mode</label>
                 <div className="grid grid-cols-2 gap-2">
-                    <select value={type} onChange={e => setType(e.target.value)} className="bg-slate-950 p-4 rounded border border-slate-700 w-full h-14 text-base text-white font-bold">
+                    <select value={type} onChange={e => setType(e.target.value)} className="bg-slate-950 p-4 rounded border border-slate-700 w-full h-14 text-[13px] sm:text-base text-white font-bold">
                         <option value="LEAGUE">🏳️ LEAGUE</option>
                         <option value="CUP">🏆 CUP (Group+KO)</option>
                         <option value="TOURNAMENT">⚔️ TOURNAMENT</option>
+                        {/* 🔥 [수정] 리그+PO 모드 옵션 추가 */}
+                        <option value="LEAGUE_PLAYOFF">⭐ LEAGUE + PO</option>
                     </select>
 
-                    {type === 'LEAGUE' && (
+                    {/* 🔥 [수정] LEAGUE_PLAYOFF 일 때도 모드(단판/더블)를 선택하도록 조건 변경 */}
+                    {(type === 'LEAGUE' || type === 'LEAGUE_PLAYOFF') && (
                         <select value={mode} onChange={e => setMode(e.target.value)} className="bg-slate-950 p-4 rounded border border-slate-700 w-full h-14 text-base text-white">
                             <option value="SINGLE">Single Round (단판)</option>
                             <option value="DOUBLE">Double Round (홈&어웨이)</option>
