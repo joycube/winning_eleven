@@ -12,9 +12,9 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식 (아이폰 파란 물음표 완벽 방지)
+// 💣 [사파리 캐시 무력화 SafeImage] 파란색 엑스박스 절대 방지!
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
+  const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
   const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
 
   useEffect(() => {
@@ -23,18 +23,24 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
       setCors(undefined);
       return;
     }
-    // 1단계: 캡처를 염두에 두고 원본 주소 + CORS 허용으로 시도
-    setImgSrc(src);
-    setCors("anonymous");
+    // 🔥 핵심: 사파리가 이전에 에러 났던 캐시를 기억하고 무조건 엑스박스를 띄우는 것을 방지!
+    // 주소 끝에 타임스탬프(랜덤 값)를 붙여서 무조건 '새 이미지'인 것처럼 사파리를 속임.
+    const cacheBuster = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
+    const safeSrc = src.startsWith('data:') ? src : `${src}${cacheBuster}`;
+    
+    setImgSrc(safeSrc);
+    setCors("anonymous"); // 캡처를 위해 일단 CORS로 찔러봄
   }, [src]);
 
   const handleError = () => {
     if (cors === "anonymous") {
-      // 2단계: CORS 때문에 사파리가 로딩을 막으면, 캡처를 포기하더라도 화면에는 무조건 나오게 보안 설정 해제
-      setImgSrc(src);
+      // CORS 때문에 캡처용 로딩이 막히면 (사파리 보안)
+      // 캡처는 포기하더라도 화면에는 무조건 나오도록 보안 설정을 풀고 '캐시를 무시한 순수 원본'을 다시 때려박음!
+      const pureSrc = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
+      setImgSrc(src.startsWith('data:') ? src : `${src}${pureSrc}`);
       setCors(undefined);
     } else {
-      // 3단계: 그래도 에러 나면 기본 이미지 표시
+      // 주소 자체가 박살난 경우만 폴백
       setImgSrc(FALLBACK_IMG);
     }
   };
@@ -50,7 +56,6 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
           backgroundRepeat: 'no-repeat' 
         }} 
       >
-        {/* 에러 추적용 투명 태그 */}
         <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
       </div>
     );
@@ -179,7 +184,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
   };
 
-  // 🔥 순위표 및 모든 곳에 SafeImage 적용 완료
   const renderBroadcastTeamCell = (team: any) => {
     const info = getTeamExtendedInfo(team.name);
     const isTbd = team.name === 'TBD';
@@ -242,7 +246,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative w-7 h-7 flex-shrink-0">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center overflow-hidden ${isTbd || isBye ? 'bg-slate-700' : 'bg-white shadow-sm'}`}>
-                {/* 🔥 대진표 내 국기도 SafeImage 적용 */}
                 <SafeImage src={team.logo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} />
               </div>
               {!isTbd && !isBye && getTierBadge(team.tier)}
@@ -656,7 +659,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <button onClick={() => setRankPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode === 'ASSIST' ? 'text-blue-400 bg-slate-900' : 'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
           </div>
           <table className="w-full text-left text-xs uppercase">
-            <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{rankPlayerMode}</th></tr></thead>
+            <thead className="bg-slate-950 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{rankPlayerMode}</th></tr></thead>
             <tbody>
               {rankedPlayers.slice(0, 20).map((p: any, i: number) => (
                 <tr key={i} className="border-b border-slate-800/50">
