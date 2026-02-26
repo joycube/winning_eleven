@@ -3,15 +3,13 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-// 🔥 [Finance] collection과 writeBatch 추가 (기존 코드 유지)
 import { updateDoc, doc, collection, writeBatch } from 'firebase/firestore';
-import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG } from '../types';
+import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG, Match } from '../types';
 import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
 import { QuickDraftModal } from './QuickDraftModal';
 import { TeamCard } from './TeamCard'; 
 
-// 🔥 [Finance] 재무 장부에 참가비(-지출)를 일괄 기록하는 독립 함수 (UI 무영향)
 const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
     try {
         if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
@@ -23,7 +21,7 @@ const recordEntryFees = async (seasonId: number | string, seasonName: string, to
         const ledgerRef = collection(db, 'finance_ledger');
 
         ownerIds.forEach(ownerId => {
-            const newDocRef = doc(ledgerRef); // 새 문서 ID 자동 생성
+            const newDocRef = doc(ledgerRef); 
             batch.set(newDocRef, {
                 seasonId: String(seasonId),
                 ownerId: String(ownerId),
@@ -51,7 +49,6 @@ interface Props {
 }
 
 export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule, onDeleteSchedule }: Props) => {
-    // 1. 상태 관리
     const [selectedOwnerId, setSelectedOwnerId] = useState('');
     const [selectedMasterTeamDocId, setSelectedMasterTeamDocId] = useState('');
     const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
@@ -60,7 +57,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     
     const [isDraftOpen, setIsDraftOpen] = useState(false);
 
-    // 필터 옵션
     const [filterCategory, setFilterCategory] = useState('ALL');
     const [filterLeague, setFilterLeague] = useState('');
     const [filterTier, setFilterTier] = useState('ALL');
@@ -94,7 +90,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         return getSortedTeamsLogic(teams, '');
     }, [masterTeams, targetSeason, filterCategory, filterLeague, filterTier, searchTeam]);
 
-    // 🎯 FC25 스타일 랜덤 룰렛 로직
     const handleRandom = () => {
         if (hasSchedule) return alert("🚫 스케줄이 이미 생성되어 팀을 추가할 수 없습니다.\n먼저 스케줄을 삭제해주세요.");
         if (!selectedOwnerId) return alert("오너를 먼저 선택해주세요.");
@@ -201,16 +196,13 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
 
-        // 🔥 [Finance] 스케줄 생성 직후, 오너들의 참가비 내역을 장부에 확정 기록!
         if (!isRegen && (targetSeason as any).totalPrize) {
-            // 참여한 팀들의 오너 이름에서 중복을 제거하고 오너 ID를 추출
             const uniqueOwnerNames = Array.from(new Set(shuffledTeams.map(t => t.ownerName)));
             const uniqueOwnerIds = uniqueOwnerNames.map(name => {
                 const owner = owners.find(o => o.nickname === name);
                 return owner ? String(owner.id) : '';
             }).filter(id => id !== '');
 
-            // 백그라운드 실행 (UI를 멈추지 않음)
             recordEntryFees(
                 targetSeason.id,
                 targetSeason.name,
@@ -237,61 +229,111 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
     };
 
+    // 💣 [핵심 디벨롭] 하이브리드 모드 TBD 자리에 1~5위 자동 매핑!
+    const handleConfirmPlayoffBracket = async () => {
+        if (!targetSeason.rounds) return;
+        
+        if (!confirm("현재 순위를 기반으로 플레이오프 대진표를 확정하시겠습니까?\n(정규 리그의 모든 경기가 종료되었는지 확인하세요!)")) return;
+
+        // 1. 순위 계산 로직 (승점 -> 골득실 -> 다득점)
+        const leagueMatches = targetSeason.rounds
+            .filter(r => !['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name))
+            .flatMap(r => r.matches)
+            .filter(m => m.status === 'COMPLETED');
+
+        const statsMap: Record<string, any> = {};
+        targetSeason.teams.forEach(t => {
+            statsMap[t.name] = { ...t, win: 0, draw: 0, loss: 0, points: 0, gd: 0, gf: 0 };
+        });
+
+        leagueMatches.forEach(m => {
+            if (!statsMap[m.home] || !statsMap[m.away]) return;
+            const hScore = Number(m.homeScore);
+            const aScore = Number(m.awayScore);
+            
+            statsMap[m.home].gf += hScore; statsMap[m.away].gf += aScore;
+            statsMap[m.home].gd += (hScore - aScore); statsMap[m.away].gd += (aScore - hScore);
+
+            if (hScore > aScore) {
+                statsMap[m.home].win += 1; statsMap[m.home].points += 3;
+                statsMap[m.away].loss += 1;
+            } else if (aScore > hScore) {
+                statsMap[m.away].win += 1; statsMap[m.away].points += 3;
+                statsMap[m.home].loss += 1;
+            } else {
+                statsMap[m.home].draw += 1; statsMap[m.home].points += 1;
+                statsMap[m.away].draw += 1; statsMap[m.away].points += 1;
+            }
+        });
+
+        const rankedTeams = Object.values(statsMap).sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.gd !== a.gd) return b.gd - a.gd;
+            return b.gf - a.gf;
+        });
+
+        if (rankedTeams.length < 5) return alert("리그에 참가한 팀이 5팀 미만이라 PO를 구성할 수 없습니다.");
+
+        const t1 = rankedTeams[0]; // 1위 (결승 직행)
+        const t2 = rankedTeams[1]; // 2위
+        const t3 = rankedTeams[2]; // 3위
+        const t4 = rankedTeams[3]; // 4위
+        const t5 = rankedTeams[4]; // 5위
+
+        // 2. 새로운 라운드 배열 복사
+        const updatedRounds = targetSeason.rounds.map(round => {
+            if (!['ROUND_OF_4', 'FINAL'].includes(round.name)) return round;
+
+            const newMatches = round.matches.map(m => {
+                const newMatch = { ...m };
+                
+                // PO 4강 1차전 매핑 (5위 홈 vs 2위 / 4위 홈 vs 3위)
+                if (round.name === 'ROUND_OF_4' && m.matchLabel.includes('1차전')) {
+                    if (m.matchLabel.includes('5위')) {
+                        newMatch.home = t5.name; newMatch.homeLogo = t5.logo; newMatch.homeOwner = t5.ownerName;
+                        newMatch.away = t2.name; newMatch.awayLogo = t2.logo; newMatch.awayOwner = t2.ownerName;
+                    } else if (m.matchLabel.includes('4위')) {
+                        newMatch.home = t4.name; newMatch.homeLogo = t4.logo; newMatch.homeOwner = t4.ownerName;
+                        newMatch.away = t3.name; newMatch.awayLogo = t3.logo; newMatch.awayOwner = t3.ownerName;
+                    }
+                }
+                // PO 4강 2차전 매핑 (2위 홈 vs 5위 / 3위 홈 vs 4위)
+                if (round.name === 'ROUND_OF_4' && m.matchLabel.includes('2차전')) {
+                    if (m.matchLabel.includes('2위')) {
+                        newMatch.home = t2.name; newMatch.homeLogo = t2.logo; newMatch.homeOwner = t2.ownerName;
+                        newMatch.away = t5.name; newMatch.awayLogo = t5.logo; newMatch.awayOwner = t5.ownerName;
+                    } else if (m.matchLabel.includes('3위')) {
+                        newMatch.home = t3.name; newMatch.homeLogo = t3.logo; newMatch.homeOwner = t3.ownerName;
+                        newMatch.away = t4.name; newMatch.awayLogo = t4.logo; newMatch.awayOwner = t4.ownerName;
+                    }
+                }
+                // 최종 결승 (1위 직행)
+                if (round.name === 'FINAL') {
+                    newMatch.home = t1.name; newMatch.homeLogo = t1.logo; newMatch.homeOwner = t1.ownerName;
+                }
+                return newMatch;
+            });
+            return { ...round, matches: newMatches };
+        });
+
+        // 3. DB 업데이트
+        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
+        alert(`🎉 플레이오프 대진표 확정 완료!\n1위 ${t1.name}가 결승전에 안착했습니다.`);
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in relative">
             <style jsx>{`
-                /* 1. 배경 암전 */
-                .stage-overlay {
-                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                    background: rgba(0,0,0,0.92); z-index: 50;
-                    backdrop-filter: blur(8px);
-                    animation: fadeIn 0.3s ease-out forwards;
-                }
+                .stage-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 50; backdrop-filter: blur(8px); animation: fadeIn 0.3s ease-out forwards; }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-                /* 2. 번쩍이는 섬광 */
-                .reveal-flash {
-                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                    background: white; z-index: 60; pointer-events: none;
-                    animation: flashAnim 0.6s ease-out forwards;
-                }
-                @keyframes flashAnim {
-                    0% { opacity: 0; }
-                    10% { opacity: 0.8; }
-                    100% { opacity: 0; }
-                }
-
-                /* 3. 형광 에너지 분출 */
-                .blast-circle {
-                    position: absolute; top: 50%; left: 50%;
-                    transform: translate(-50%, -50%) scale(0.5);
-                    width: 100px; height: 100px; border-radius: 50%;
-                    border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; 
-                    box-shadow: 0 0 50px ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'};
-                    z-index: 52; pointer-events: none;
-                    animation: blastOut 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards;
-                }
-                @keyframes blastOut {
-                    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; border-width: 10px; }
-                    100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 0px; }
-                }
-
-                /* 카드 효과 */
-                .fc-card-reveal {
-                    animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-                    z-index: 55;
-                }
-                @keyframes card-flip {
-                    0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); }
-                    100% { transform: rotateY(0deg) scale(1.1); filter: brightness(1); }
-                }
-                .fc-gold-glow {
-                    animation: gold-glow 2s infinite;
-                }
-                @keyframes gold-glow {
-                    0%, 100% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); }
-                    50% { box-shadow: 0 0 60px rgba(251, 191, 36, 0.8); }
-                }
+                .reveal-flash { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: white; z-index: 60; pointer-events: none; animation: flashAnim 0.6s ease-out forwards; }
+                @keyframes flashAnim { 0% { opacity: 0; } 10% { opacity: 0.8; } 100% { opacity: 0; } }
+                .blast-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.5); width: 100px; height: 100px; border-radius: 50%; border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; box-shadow: 0 0 50px ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; z-index: 52; pointer-events: none; animation: blastOut 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards; }
+                @keyframes blastOut { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; border-width: 10px; } 100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 0px; } }
+                .fc-card-reveal { animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; z-index: 55; }
+                @keyframes card-flip { 0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); } 100% { transform: rotateY(0deg) scale(1.1); filter: brightness(1); } }
+                .fc-gold-glow { animation: gold-glow 2s infinite; }
+                @keyframes gold-glow { 0%, 100% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); } 50% { box-shadow: 0 0 60px rgba(251, 191, 36, 0.8); } }
             `}</style>
 
             {(isRolling || isFlipping) && <div className="stage-overlay" />}
@@ -427,9 +469,24 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
             {/* Step 2 */}
             <div className="bg-black p-5 rounded-[2rem] border border-slate-800">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
-                    <h3 className="text-white font-black italic tracking-tighter uppercase">Step 2. Season Members ({targetSeason.teams?.length || 0})</h3>
-                    <div className="flex gap-2">{hasSchedule ? (<><button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button><button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button></>) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}</div>
+                <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 mb-6 border-b border-slate-800 pb-4">
+                    <h3 className="text-white font-black italic tracking-tighter uppercase w-full md:w-auto">Step 2. Season Members ({targetSeason.teams?.length || 0})</h3>
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
+                        {hasSchedule ? (
+                            <>
+                                {/* 🔥 [핵심 디벨롭] 하이브리드 전용 플레이오프 확정 버튼 추가! */}
+                                {targetSeason.type === 'LEAGUE_PLAYOFF' && (
+                                    <button onClick={handleConfirmPlayoffBracket} className="bg-emerald-600 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-emerald-500 shadow-lg shadow-emerald-900/50 animate-bounce">
+                                        🌟 PO 대진 확정 (순위 반영)
+                                    </button>
+                                )}
+                                <button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button>
+                                <button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button>
+                            </>
+                        ) : (
+                            <button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>
+                        )}
+                    </div>
                 </div>
                 
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

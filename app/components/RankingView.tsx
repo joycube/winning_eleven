@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FALLBACK_IMG, Owner } from '../types';
+import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers';
 
 // 🔥 캡처 라이브러리
@@ -12,7 +12,7 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [사파리 캐시 무력화 SafeImage] 파란색 엑스박스 절대 방지!
+// 💣 [사파리 캐시 무력화 SafeImage] 
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
   const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
@@ -23,39 +23,26 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
       setCors(undefined);
       return;
     }
-    // 🔥 핵심: 사파리가 이전에 에러 났던 캐시를 기억하고 무조건 엑스박스를 띄우는 것을 방지!
-    // 주소 끝에 타임스탬프(랜덤 값)를 붙여서 무조건 '새 이미지'인 것처럼 사파리를 속임.
     const cacheBuster = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
     const safeSrc = src.startsWith('data:') ? src : `${src}${cacheBuster}`;
     
     setImgSrc(safeSrc);
-    setCors("anonymous"); // 캡처를 위해 일단 CORS로 찔러봄
+    setCors("anonymous"); 
   }, [src]);
 
   const handleError = () => {
     if (cors === "anonymous") {
-      // CORS 때문에 캡처용 로딩이 막히면 (사파리 보안)
-      // 캡처는 포기하더라도 화면에는 무조건 나오도록 보안 설정을 풀고 '캐시를 무시한 순수 원본'을 다시 때려박음!
       const pureSrc = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
       setImgSrc(src.startsWith('data:') ? src : `${src}${pureSrc}`);
       setCors(undefined);
     } else {
-      // 주소 자체가 박살난 경우만 폴백
       setImgSrc(FALLBACK_IMG);
     }
   };
 
   if (isBg) {
     return (
-      <div 
-        className={className} 
-        style={{ 
-          backgroundImage: `url(${imgSrc})`, 
-          backgroundSize: 'contain', 
-          backgroundPosition: 'center', 
-          backgroundRepeat: 'no-repeat' 
-        }} 
-      >
+      <div className={className} style={{ backgroundImage: `url(${imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
         <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
       </div>
     );
@@ -72,13 +59,73 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
+const BracketMatchBox = ({ match, title, highlight = false }: any) => {
+    if (!match) return null;
+    
+    const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
+    const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+    
+    let winner = match.aggWinner || 'TBD'; 
+    if (winner === 'TBD' && match.status === 'COMPLETED') {
+        if (hScore !== null && aScore !== null) {
+            if (hScore > aScore) winner = match.home;
+            else if (aScore > hScore) winner = match.away;
+        }
+    } else if (match.home === 'BYE') winner = match.away;
+    else if (match.away === 'BYE') winner = match.home;
+
+    const isHomeWin = winner !== 'TBD' && winner === match.home;
+    const isAwayWin = winner !== 'TBD' && winner === match.away;
+
+    const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
+        const isTbd = teamName === 'TBD' || !teamName;
+        const isBye = teamName === 'BYE';
+        const displayLogo = logo || (isTbd || isBye ? TBD_LOGO : FALLBACK_IMG);
+        const dispOwner = owner || '-';
+
+        return (
+            <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
+                        <SafeImage src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} />
+                    </div>
+                    <div className="flex flex-col justify-center min-w-0">
+                        <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {teamName || 'TBD'}
+                        </span>
+                        {!isTbd && !isBye && (
+                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
+                        )}
+                        {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned</span>}
+                    </div>
+                </div>
+                <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
+                    {isBye ? '0' : (score ?? '-')}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col w-[200px] sm:w-[220px]">
+            {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
+            <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
+                {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeLogo)}
+                <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayLogo)}
+            </div>
+        </div>
+    );
+};
+
+
 interface RankingViewProps {
   seasons: any[];
   viewSeasonId: number;
   setViewSeasonId: (id: number) => void;
   activeRankingData: any;
   owners?: Owner[];
-  knockoutStages: any;
+  knockoutStages?: any; 
 }
 
 export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRankingData, owners = [], knockoutStages }: RankingViewProps) => {
@@ -143,17 +190,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   };
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
-
-  const getWinnerName = (match: any): string => {
-    if (!match) return 'TBD';
-    if (match.home === 'BYE' && match.away !== 'BYE') return match.away;
-    if (match.away === 'BYE' && match.home !== 'BYE') return match.home;
-    if (match.home === 'BYE' && match.away === 'BYE') return 'BYE';
-    if (match.status !== 'COMPLETED') return 'TBD';
-    const h = Number(match.homeScore || 0);
-    const a = Number(match.awayScore || 0);
-    return h > a ? match.home : a > h ? match.away : 'TBD';
-  };
 
   const getTeamExtendedInfo = (teamIdentifier: string) => {
     const tbdTeam = { id: 0, name: teamIdentifier || 'TBD', logo: TBD_LOGO, ownerName: '-', region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null };
@@ -228,55 +264,104 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  const TournamentMatchBox = ({ match, title, highlight = false, isFinal = false }: { match: any, title?: string, highlight?: boolean, isFinal?: boolean }) => {
-    const safeMatch = match || { home: 'TBD', away: 'TBD', homeScore: '', awayScore: '' };
-    const home = getTeamExtendedInfo(safeMatch.home);
-    const away = getTeamExtendedInfo(safeMatch.away);
-    const winner = getWinnerName(safeMatch);
-    const isHomeWin = winner !== 'TBD' && winner === safeMatch.home;
-    const isAwayWin = winner !== 'TBD' && winner === safeMatch.away;
-    const hScore = safeMatch.homeScore !== '' ? Number(safeMatch.homeScore) : (safeMatch.home === 'BYE' ? 0 : null);
-    const aScore = safeMatch.awayScore !== '' ? Number(safeMatch.awayScore) : (safeMatch.away === 'BYE' ? 0 : null);
-    
-    const Row = ({ team, score, isWinner }: { team: any, score: any, isWinner: boolean }) => {
-      const isTbd = team.name === 'TBD';
-      const isBye = team.name === 'BYE';
-      return (
-        <div className={`flex items-center justify-between p-3 ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="relative w-7 h-7 flex-shrink-0">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center overflow-hidden ${isTbd || isBye ? 'bg-slate-700' : 'bg-white shadow-sm'}`}>
-                <SafeImage src={team.logo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} />
-              </div>
-              {!isTbd && !isBye && getTierBadge(team.tier)}
-            </div>
-            <div className="flex flex-col justify-center min-w-0">
-              <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>{team.name}</span>
-              {!isTbd && !isBye && (
-                <div className="flex items-center gap-1.5 mt-0.5 scale-[0.85] origin-left">
-                  {getRealRankBadge(team.real_rank)}
-                  {getConditionBadge(team.condition)}
-                  <span className="text-[9px] text-slate-500 font-bold italic truncate">{team.ownerName}</span>
-                </div>
-              )}
-              {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned Slot</span>}
-            </div>
-          </div>
-          <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>{isBye ? '0' : (score ?? '-')}</div>
-        </div>
-      );
-    };
-    return (
-      <div className={`flex flex-col w-full ${isFinal ? 'scale-110 origin-top' : ''}`}>
-        {title && <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-70">{title}</div>}
-        <div className={`flex flex-col w-[210px] bg-[#0f141e] border rounded-xl overflow-hidden shadow-sm relative z-10 transition-all ${highlight || isFinal ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-slate-800/50'}`}>
-          <Row team={home} score={hScore} isWinner={isHomeWin} />
-          <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-          <Row team={away} score={aScore} isWinner={isAwayWin} />
-        </div>
-      </div>
-    );
-  };
+  // 🔥 [디벨롭] 하이브리드 대진표 렌더링용 변수 추출 (TS 에러 완벽 해결)
+  const hybridPlayoffData = useMemo(() => {
+      if (currentSeason?.type !== 'LEAGUE_PLAYOFF' || !currentSeason?.rounds) return null;
+
+      const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
+          if (!leg1) return null;
+          let s1 = 0, s2 = 0;
+          let isLeg1Done = leg1.status === 'COMPLETED';
+          let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
+          
+          const t1 = leg1.home;
+          const t2 = leg1.away;
+
+          if (isLeg1Done) { 
+              s1 += Number(leg1.homeScore); 
+              s2 += Number(leg1.awayScore); 
+          }
+          if (isLeg2Done && leg2) { // 🔥 TS 18048 해결
+              if (leg2.home === t2) {
+                  s2 += Number(leg2.homeScore);
+                  s1 += Number(leg2.awayScore);
+              } else {
+                  s1 += Number(leg2.homeScore);
+                  s2 += Number(leg2.awayScore);
+              }
+          }
+
+          let aggWinner = 'TBD';
+          if (isLeg1Done && (!leg2 || isLeg2Done)) {
+              if (s1 > s2) aggWinner = t1;
+              else if (s2 > s1) aggWinner = t2;
+          }
+
+          return {
+              ...leg1,
+              homeScore: isLeg1Done || isLeg2Done ? String(s1) : '',
+              awayScore: isLeg1Done || isLeg2Done ? String(s2) : '',
+              status: (isLeg1Done && (!leg2 || isLeg2Done)) ? 'COMPLETED' : 'UPCOMING',
+              aggWinner
+          };
+      };
+
+      const playoffRounds = currentSeason.rounds.filter(r => ['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name));
+      const displayRounds = JSON.parse(JSON.stringify(playoffRounds)); 
+
+      const po4Rounds = displayRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
+      const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
+      const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
+
+      const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel.includes('5위') && m.matchLabel.includes('1차전'));
+      const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel.includes('2위') && m.matchLabel.includes('2차전'));
+      const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel.includes('4위') && m.matchLabel.includes('1차전'));
+      const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel.includes('3위') && m.matchLabel.includes('2차전'));
+
+      const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
+      const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+
+      const getTeamInfo = (teamName: string) => {
+          if (!teamName || teamName === 'TBD') return { name: 'TBD', logo: TBD_LOGO, owner: '-' };
+          const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
+          const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
+          const master = masterTeams.find(m => m.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
+          return {
+              name: stats?.name || master?.name || teamName,
+              logo: stats?.logo || master?.logo || FALLBACK_IMG,
+              owner: stats?.ownerName || (master as any)?.ownerName || '-' // 🔥 TS 2339 우회 해결
+          };
+      };
+
+      if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
+          poFinalRounds.forEach((m: any) => {
+              const info = getTeamInfo(compSemi1.aggWinner);
+              m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.owner;
+          });
+      }
+      if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
+          poFinalRounds.forEach((m: any) => {
+              const info = getTeamInfo(compSemi2.aggWinner);
+              m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner;
+          });
+      }
+
+      const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel.includes('1차전'));
+      const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel.includes('2차전'));
+      const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+
+      if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
+          grandFinalRounds.forEach((m: any) => {
+              const info = getTeamInfo(compPoFinal.aggWinner);
+              m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner;
+          });
+      }
+
+      const displayGrandFinal = grandFinalRounds.length > 0 ? grandFinalRounds[0] : null;
+
+      return { compSemi1, compSemi2, compPoFinal, displayGrandFinal };
+  }, [currentSeason, activeRankingData, masterTeams]);
+
 
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = [...(players || [])]
@@ -381,6 +466,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .champion-glow { box-shadow: 0 0 50px rgba(234, 179, 8, 0.4); }
+        .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
+        .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
       `}} />
 
       <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
@@ -393,8 +480,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             {seasons.map(s => (
               <option key={s.id} value={s.id} className="text-white text-base bg-slate-900 py-2">
                 {(() => {
-                  const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '');
-                  let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️';
+                  const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '');
+                  let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️'; if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
                   return `${icon} ${pureName}`;
                 })()}
               </option>
@@ -414,6 +501,35 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {rankingTab === 'STANDINGS' && (
         <div className="space-y-12">
+          
+          {/* 🔥 1. 하이브리드 모드 대진표 (상단 노출) */}
+          {currentSeason?.type === 'LEAGUE_PLAYOFF' && hybridPlayoffData && (
+             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
+                <div className="min-w-max md:min-w-[760px] px-2">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3>
+                    </div>
+                    <div className="bracket-tree no-scrollbar">
+                        <div className="bracket-column">
+                            <BracketMatchBox match={hybridPlayoffData.compSemi1} title="PO 4강 1경기 (합산)" />
+                            <BracketMatchBox match={hybridPlayoffData.compSemi2} title="PO 4강 2경기 (합산)" />
+                        </div>
+                        <div className="bracket-column">
+                            <BracketMatchBox match={hybridPlayoffData.compPoFinal} title="PO 결승 (합산)" />
+                        </div>
+                        <div className="bracket-column">
+                            <div className="relative scale-110 ml-4">
+                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
+                                <BracketMatchBox match={hybridPlayoffData.displayGrandFinal} title="🏆 Grand Final (단판)" highlight />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+          )}
+
+          {/* 🔥 2. 컵 모드 대진표 (기존 로직 유지) */}
           {currentSeason?.type === 'CUP' && knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar">
               <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
@@ -421,18 +537,20 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                   <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                   <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                 </div>
-                <div className="flex items-center gap-10">
+                <div className="bracket-tree no-scrollbar">
                   {knockoutStages.roundOf8 && (
-                    <div className="flex flex-col gap-5">
-                      {knockoutStages.roundOf8.map((m: any, idx: number) => <TournamentMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />)}
+                    <div className="bracket-column">
+                      {knockoutStages.roundOf8.map((m: any, idx: number) => <BracketMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />)}
                     </div>
                   )}
-                  <div className="flex flex-col gap-12">
-                    {knockoutStages.roundOf4?.map((m: any, idx: number) => <TournamentMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />)}
+                  <div className="bracket-column">
+                    {knockoutStages.roundOf4?.map((m: any, idx: number) => <BracketMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />)}
                   </div>
-                  <div className="relative pt-8">
-                    <div className="absolute -top-0 left-1/2 -translate-x-1/2 text-3xl crown-icon">👑</div>
-                    <TournamentMatchBox title="Final" match={knockoutStages.final?.[0]} isFinal highlight />
+                  <div className="bracket-column">
+                    <div className="relative scale-110 ml-4">
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
+                        <BracketMatchBox title="Final" match={knockoutStages.final?.[0]} highlight />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -476,7 +594,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2">
               <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
-              <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">League Total Standing</h3>
+              <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">
+                  {currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'Regular League Standing' : 'League Total Standing'}
+              </h3>
             </div>
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
               <table className="w-full text-left text-xs uppercase border-collapse">
