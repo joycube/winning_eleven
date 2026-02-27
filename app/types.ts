@@ -58,9 +58,10 @@ export interface Round {
 }
 
 export interface Prizes {
-  first: number;
-  second: number;
-  third: number;
+  champion?: number; // 🔥 [디벨롭] 하이브리드 & 컵 모드용 '최종 우승' 상금 추가!
+  first: number;     // 기존의 정규리그 1위 (또는 조별리그 1위) 상금
+  second: number;    // 정규리그 2위 상금
+  third: number;     // 정규리그 3위 상금
   scorer: number;
   assist: number;
 }
@@ -70,7 +71,7 @@ export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE';
 export interface Season {
   id: number;
   name: string;
-  type: 'LEAGUE' | 'TOURNAMENT' | 'CUP' | 'LEAGUE_PLAYOFF'; // 🔥 LEAGUE_PLAYOFF 추가됨!
+  type: 'LEAGUE' | 'TOURNAMENT' | 'CUP' | 'LEAGUE_PLAYOFF';
   leagueMode?: 'SINGLE' | 'DOUBLE';
   teams: Team[];
   rounds?: Round[];
@@ -152,8 +153,8 @@ export interface NoticeComment {
   ownerPhoto: string;
   text: string;
   createdAt: string;
-  likedBy?: string[];         // 댓글 좋아요 누른 사람
-  replies?: NoticeComment[];  // 대댓글(답글) 목록
+  likedBy?: string[];         
+  replies?: NoticeComment[];  
 }
 
 export interface Notice {
@@ -164,7 +165,7 @@ export interface Notice {
   youtubeUrl?: string;
   isPopup: boolean;
   createdAt: string;
-  updatedAt?: string;         // 🔥 [디벨롭] 최신 업데이트 시간 (N 뱃지용)
+  updatedAt?: string;         
   likedBy?: string[];
   dislikedBy?: string[];
   comments?: NoticeComment[];

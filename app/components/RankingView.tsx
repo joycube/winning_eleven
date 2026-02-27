@@ -134,9 +134,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  const championCardRef = useRef<HTMLDivElement>(null);
+  // 🔥 [디벨롭] 우승 카드 2개 분리를 위한 레퍼런스와 상태값
+  const grandChampionCardRef = useRef<HTMLDivElement>(null);
+  const leagueChampionCardRef = useRef<HTMLDivElement>(null);
   const topPointsCardRef = useRef<HTMLDivElement>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [isCapturingGrand, setIsCapturingGrand] = useState(false);
+  const [isCapturingLeague, setIsCapturingLeague] = useState(false);
   const [isCapturingTopPoints, setIsCapturingTopPoints] = useState(false);
 
   useEffect(() => {
@@ -156,7 +159,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const todayDate = getTodayFormatted();
   const footerText = `시즌 '${seasonName}' / ${todayDate}`;
 
-  const prizeRule = currentSeason?.prizes || { first: 0, second: 0, third: 0 };
+  // 🔥 [디벨롭] 상금 정책에 champion 속성 추가 연동 (없으면 0)
+  const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0 };
 
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
@@ -181,14 +185,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const sortedTeams = useMemo(() => getRankedTeams(activeRankingData?.teams || []), [activeRankingData?.teams]);
 
-  const getOwnerPrize = (ownerName: string) => {
-    let totalPrize = 0;
-    if (ownerName && ownerName === sortedTeams[0]?.ownerName) totalPrize += (prizeRule.first || 0);
-    if (ownerName && ownerName === sortedTeams[1]?.ownerName) totalPrize += (prizeRule.second || 0);
-    if (ownerName && ownerName === sortedTeams[2]?.ownerName) totalPrize += (prizeRule.third || 0);
-    return totalPrize;
-  };
-
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
 
   const getTeamExtendedInfo = (teamIdentifier: string) => {
@@ -198,7 +194,42 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const normId = normalize(teamIdentifier);
     let stats = activeRankingData?.teams?.find((t: any) => normalize(t.name) === normId);
     let master = masterTeams.find((m: any) => m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier);
-    return { id: stats?.id || master?.id || 0, name: stats?.name || master?.name || teamIdentifier, logo: stats?.logo || master?.logo || TBD_LOGO, ownerName: stats?.ownerName || master?.ownerName || 'CPU', region: master?.region || '', tier: master?.tier || 'C', realRankScore: master?.realRankScore, realFormScore: master?.realFormScore, condition: master?.condition || 'C', real_rank: master?.real_rank };
+    return { id: stats?.id || master?.id || 0, name: stats?.name || master?.name || teamIdentifier, logo: stats?.logo || master?.logo || TBD_LOGO, ownerName: stats?.ownerName || (master as any)?.ownerName || 'CPU', region: master?.region || '', tier: master?.tier || 'C', realRankScore: master?.realRankScore, realFormScore: master?.realFormScore, condition: master?.condition || 'C', real_rank: master?.real_rank };
+  };
+
+  // 🔥 [디벨롭] 최종 결승 우승자 추출 로직 (CUP & LEAGUE_PLAYOFF 공통)
+  const grandFinalMatch = useMemo(() => {
+      if (!currentSeason?.rounds) return null;
+      return currentSeason.rounds.flatMap((r: any) => r.matches).find((m: any) => m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER'));
+  }, [currentSeason]);
+
+  const grandChampionName = useMemo(() => {
+      if (!grandFinalMatch || grandFinalMatch.status !== 'COMPLETED') return null;
+      const hScore = Number(grandFinalMatch.homeScore);
+      const aScore = Number(grandFinalMatch.awayScore);
+      if (hScore > aScore) return grandFinalMatch.home;
+      if (aScore > hScore) return grandFinalMatch.away;
+      return null; // 무승부면 TBD 유지
+  }, [grandFinalMatch]);
+
+  const grandChampionInfo = useMemo(() => {
+      if (!grandChampionName || grandChampionName === 'TBD') return null;
+      return getTeamExtendedInfo(grandChampionName);
+  }, [grandChampionName, activeRankingData, masterTeams]);
+
+  // 🔥 [디벨롭] 오너 상금 계산에 최종 우승(champion) 파이 합산 로직 추가!
+  const getOwnerPrize = (ownerName: string) => {
+    let totalPrize = 0;
+    // 정규 리그(또는 조별) 순위에 따른 상금
+    if (ownerName && ownerName === sortedTeams[0]?.ownerName) totalPrize += (prizeRule.first || 0);
+    if (ownerName && ownerName === sortedTeams[1]?.ownerName) totalPrize += (prizeRule.second || 0);
+    if (ownerName && ownerName === sortedTeams[2]?.ownerName) totalPrize += (prizeRule.third || 0);
+    
+    // 최종 우승(Grand Champion) 상금
+    if (grandChampionInfo && ownerName === grandChampionInfo.ownerName) {
+        totalPrize += (prizeRule.champion || 0);
+    }
+    return totalPrize;
   };
 
   const getRealRankBadge = (rank: number | undefined | null) => {
@@ -264,7 +295,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  // 🔥 [디벨롭] 하이브리드 대진표 렌더링용 변수 추출 (TS 에러 완벽 해결)
   const hybridPlayoffData = useMemo(() => {
       if (currentSeason?.type !== 'LEAGUE_PLAYOFF' || !currentSeason?.rounds) return null;
 
@@ -306,7 +336,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           };
       };
 
-      // 🔥 [TS 에러 픽스] filter 메서드 내 매개변수 r에 명시적으로 any 타입 지정
       const playoffRounds = currentSeason.rounds.filter((r: any) => ['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name));
       const displayRounds = JSON.parse(JSON.stringify(playoffRounds)); 
 
@@ -322,7 +351,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
       const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
 
-      const getTeamInfo = (teamName: string) => {
+      const getTeamInfoLocal = (teamName: string) => {
           if (!teamName || teamName === 'TBD') return { name: 'TBD', logo: TBD_LOGO, owner: '-' };
           const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
           const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
@@ -336,13 +365,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
           poFinalRounds.forEach((m: any) => {
-              const info = getTeamInfo(compSemi1.aggWinner);
+              const info = getTeamInfoLocal(compSemi1.aggWinner);
               m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.owner;
           });
       }
       if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
           poFinalRounds.forEach((m: any) => {
-              const info = getTeamInfo(compSemi2.aggWinner);
+              const info = getTeamInfoLocal(compSemi2.aggWinner);
               m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner;
           });
       }
@@ -353,7 +382,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
           grandFinalRounds.forEach((m: any) => {
-              const info = getTeamInfo(compPoFinal.aggWinner);
+              const info = getTeamInfoLocal(compPoFinal.aggWinner);
               m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner;
           });
       }
@@ -389,74 +418,58 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const rankedPlayers = getPlayerRanking(activeRankingData?.players || []);
 
-  const handleCaptureChampion = async () => {
-      if (championCardRef.current === null) return;
-      setIsCapturing(true);
-
+  const handleCaptureGrand = async () => {
+      if (grandChampionCardRef.current === null) return;
+      setIsCapturingGrand(true);
       try {
           await new Promise(resolve => setTimeout(resolve, 400));
-          const dataUrl = await toPng(championCardRef.current, { 
-              cacheBust: true, 
-              backgroundColor: 'transparent', 
-              pixelRatio: 2, 
-              style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
-          });
-          
-          download(dataUrl, `champion-card-${Date.now()}.png`);
-          
+          const dataUrl = await toPng(grandChampionCardRef.current, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' } });
+          download(dataUrl, `grand-champion-${Date.now()}.png`);
           if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
                try {
                    const blob = await (await fetch(dataUrl)).blob();
-                   const file = new File([blob], "champion.png", { type: blob.type });
-                   await navigator.share({
-                       title: '🏆 League Champion',
-                       text: '이번 시즌 챔피언입니다! 🔥',
-                       files: [file]
-                   });
+                   const file = new File([blob], "grand-champion.png", { type: blob.type });
+                   await navigator.share({ title: '👑 Grand Final Champion', text: '최종 우승자입니다! 🔥', files: [file] });
                } catch (shareErr) {}
-          } else {
-               alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
-          }
-      } catch (error) {
-          alert(`이미지 캡처에 실패했습니다.\n\n프로필 사진이나 로고가 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다.\n(아이폰 사파리 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 이미지를 안전한 링크로 변경해 주세요.`);
-      } finally {
-          setIsCapturing(false);
-      }
+          } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
+      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      finally { setIsCapturingGrand(false); }
+  };
+
+  const handleCaptureLeague = async () => {
+      if (leagueChampionCardRef.current === null) return;
+      setIsCapturingLeague(true);
+      try {
+          await new Promise(resolve => setTimeout(resolve, 400));
+          const dataUrl = await toPng(leagueChampionCardRef.current, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' } });
+          download(dataUrl, `league-first-${Date.now()}.png`);
+          if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
+               try {
+                   const blob = await (await fetch(dataUrl)).blob();
+                   const file = new File([blob], "league-first.png", { type: blob.type });
+                   await navigator.share({ title: '🚩 League 1st', text: '정규리그 1위 달성! 🔥', files: [file] });
+               } catch (shareErr) {}
+          } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
+      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      finally { setIsCapturingLeague(false); }
   };
 
   const handleCaptureTopPoints = async () => {
       if (topPointsCardRef.current === null) return;
       setIsCapturingTopPoints(true);
-
       try {
           await new Promise(resolve => setTimeout(resolve, 400));
-          const dataUrl = await toPng(topPointsCardRef.current, { 
-              cacheBust: true, 
-              backgroundColor: 'transparent', 
-              pixelRatio: 2, 
-              style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
-          });
-          
+          const dataUrl = await toPng(topPointsCardRef.current, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' } });
           download(dataUrl, `top-points-${Date.now()}.png`);
-          
           if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
                try {
                    const blob = await (await fetch(dataUrl)).blob();
                    const file = new File([blob], "top-points.png", { type: blob.type });
-                   await navigator.share({
-                       title: '🔥 Overall Top Points',
-                       text: '현재 누적 승점 1위입니다!',
-                       files: [file]
-                   });
+                   await navigator.share({ title: '🔥 Overall Top Points', text: '현재 누적 승점 1위입니다!', files: [file] });
                } catch (shareErr) {}
-          } else {
-               alert('📷 기기에 이미지가 성공적으로 저장되었습니다!');
-          }
-      } catch (error) {
-          alert(`이미지 캡처에 실패했습니다.\n\n프로필 사진이나 로고가 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다.\n(아이폰 사파리 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 이미지를 안전한 링크로 변경해 주세요.`);
-      } finally {
-          setIsCapturingTopPoints(false);
-      }
+          } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
+      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      finally { setIsCapturingTopPoints(false); }
   };
 
   return (
@@ -503,7 +516,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'STANDINGS' && (
         <div className="space-y-12">
           
-          {/* 🔥 1. 하이브리드 모드 대진표 (상단 노출) */}
+          {/* 하이브리드 모드 대진표 */}
           {currentSeason?.type === 'LEAGUE_PLAYOFF' && hybridPlayoffData && (
              <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -530,7 +543,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
           )}
 
-          {/* 🔥 2. 컵 모드 대진표 (기존 로직 유지) */}
+          {/* 컵 모드 대진표 */}
           {currentSeason?.type === 'CUP' && knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar">
               <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
@@ -626,7 +639,76 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           
-          {sortedTeams.length > 0 && (() => {
+          {/* 🔥 [디벨롭 1] 👑 GRAND FINAL CHAMPION 카드 (컵, 하이브리드 모드 전용) */}
+          {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF') && grandChampionInfo && (() => {
+              const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === grandChampionInfo.ownerName) : null;
+              const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
+              const team = sortedTeams.find((t: any) => t.name === grandChampionInfo.name) || grandChampionInfo;
+              const teamPlayers = (activeRankingData?.players || []).filter((p: any) => p.team === team.name && p.goals > 0);
+              const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
+
+              return (
+                <div className="mb-8">
+                  <div className="flex justify-end mb-2">
+                      <button onClick={handleCaptureGrand} disabled={isCapturingGrand} className="bg-slate-800 hover:bg-yellow-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg">
+                          {isCapturingGrand ? '📸 캡처 준비 중...' : '📷 최종 우승 카드 저장'}
+                      </button>
+                  </div>
+
+                  <div ref={grandChampionCardRef} className="relative w-full rounded-xl overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
+                    <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
+                    <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
+                      <SafeImage src={team.logo} className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" isBg={true} />
+                    </div>
+
+                    <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm pb-12">
+                      <div className="relative pt-3 shrink-0">
+                        <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
+                        <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
+                          <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
+                            <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
+                          </div>
+                        </div>
+                        <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
+                            <SafeImage src={team.logo} className="w-full h-full object-contain" />
+                        </div>
+                      </div>
+                      <div className="flex-1 text-center md:text-left">
+                        <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>👑</span> GRAND FINAL CHAMPION</div>
+                        <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{team.ownerName}</h2>
+                        <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6">With {team.name}</p>
+                        
+                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                          <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
+                            <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">OVERALL RECORD</span>
+                            <span className="text-lg font-bold text-white tracking-tight">{team.win || 0}W <span className="text-slate-400">{team.draw || 0}D</span> <span className="text-red-400">{team.loss || 0}L</span></span>
+                          </div>
+                          <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
+                            <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">OVERALL GOAL DIFF</span>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-xl font-black text-yellow-400">{(team.gd || 0) > 0 ? `+${team.gd}` : team.gd || 0}</span>
+                              <span className="text-[10px] text-slate-400 font-medium">({team.gf || 0}득 / {team.ga || 0}실)</span>
+                            </div>
+                          </div>
+                          {topScorer && (
+                            <div className="bg-gradient-to-r from-yellow-600/20 to-yellow-900/20 rounded-xl px-5 py-2.5 border border-yellow-400/50">
+                              <span className="text-[10px] text-yellow-500 block font-black mb-0.5">TEAM MVP (TOP SCORER)</span>
+                              <span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className="text-sm text-yellow-400 ml-1">({topScorer.goals} Goals)</span></span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="absolute bottom-3 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">
+                      {footerText}
+                    </div>
+                  </div>
+                </div>
+              );
+          })()}
+
+          {/* 🔥 [디벨롭 2] 🚩 REGULAR LEAGUE 1ST (모든 모드 공통 - 모드에 따라 테마 색상 분리) */}
+          {sortedTeams.length > 0 && currentSeason?.type !== 'TOURNAMENT' && (() => {
             const leagueChampTeam = sortedTeams[0];
             const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === leagueChampTeam.ownerName) : null;
             const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
@@ -635,58 +717,69 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             const teamPlayers = (activeRankingData?.players || []).filter((p: any) => p.team === leagueChampTeam.name && p.goals > 0);
             const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
 
+            // 모드에 따른 테마 세팅 (일반 리그는 황금색, 컵/하이브리드는 파란색 분리)
+            const isHybridOrCup = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF';
+            const badgeIcon = isHybridOrCup ? '🚩' : '🏆';
+            const badgeText = isHybridOrCup ? (currentSeason?.type === 'CUP' ? 'GROUP STAGE 1ST' : 'REGULAR LEAGUE 1ST') : 'LEAGUE CHAMPION';
+            
+            const borderColor = isHybridOrCup ? 'border-blue-400/50' : 'border-yellow-400/50';
+            const glowClass = isHybridOrCup ? 'shadow-[0_0_50px_rgba(59,130,246,0.3)]' : 'champion-glow';
+            const bgGradient = isHybridOrCup ? 'from-blue-600/40 via-blue-900/60' : 'from-yellow-600/40 via-yellow-900/60';
+            const dropShadow = isHybridOrCup ? 'drop-shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]';
+            const ringGradient = isHybridOrCup ? 'from-blue-200 via-blue-500 to-blue-100' : 'from-yellow-200 via-yellow-500 to-yellow-100';
+            const ringShadow = isHybridOrCup ? 'shadow-[0_0_30px_rgba(59,130,246,0.6)]' : 'shadow-[0_0_30px_rgba(234,179,8,0.6)]';
+            const badgeBg = isHybridOrCup ? 'bg-blue-500 text-white' : 'bg-yellow-500 text-black';
+            const subTextColor = isHybridOrCup ? 'text-blue-400' : 'text-yellow-400';
+            const boxBorder = isHybridOrCup ? 'border-blue-500/30' : 'border-yellow-500/30';
+
             return (
               <div className="mb-6">
                 <div className="flex justify-end mb-2">
-                    <button 
-                        onClick={handleCaptureChampion} 
-                        disabled={isCapturing}
-                        className="bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg"
-                    >
-                        {isCapturing ? '📸 캡처 준비 중...' : '📷 카드 저장 및 공유하기'}
+                    <button onClick={handleCaptureLeague} disabled={isCapturingLeague} className="bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg">
+                        {isCapturingLeague ? '📸 캡처 준비 중...' : '📷 정규 1위 카드 저장'}
                     </button>
                 </div>
 
-                <div ref={championCardRef} className="relative w-full rounded-xl overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
-                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
+                <div ref={leagueChampionCardRef} className={`relative w-full rounded-xl overflow-hidden border-2 ${borderColor} ${glowClass} transform transition-all duration-500 group bg-[#020617]`}>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} to-black z-0`}></div>
                   
-                  <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
-                    <SafeImage src={teamInfo.logo} className="w-[160px] h-[160px] filter drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]" isBg={true} />
+                  <div className={`absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none`}>
+                    <SafeImage src={teamInfo.logo} className={`w-[160px] h-[160px] filter ${dropShadow}`} isBg={true} />
                   </div>
 
                   <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm pb-12">
                     <div className="relative pt-3 shrink-0">
-                      <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
-                      <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
+                      {!isHybridOrCup && <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>}
+                      <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr ${ringGradient} ${ringShadow} relative z-10`}>
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
                           <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
-                      <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
+                      <div className={`absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 ${isHybridOrCup ? 'border-blue-400' : 'border-yellow-400'} z-30`}>
                           <SafeImage src={teamInfo.logo} className="w-full h-full object-contain" />
                       </div>
                     </div>
                     <div className="flex-1 text-center md:text-left">
-                      <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg"><span>🏆</span> LEAGUE CHAMPION</div>
+                      <div className={`inline-flex items-center gap-2 ${badgeBg} px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg`}><span>{badgeIcon}</span> {badgeText}</div>
                       <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{leagueChampTeam.ownerName}</h2>
-                      <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6">With {leagueChampTeam.name}</p>
+                      <p className={`${subTextColor} font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6`}>With {leagueChampTeam.name}</p>
                       
                       <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
-                          <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">RECORD</span>
+                        <div className={`bg-slate-900/80 rounded-xl px-4 py-2.5 border ${boxBorder} min-w-[100px]`}>
+                          <span className={`text-[10px] ${subTextColor} opacity-80 block font-black mb-0.5`}>RECORD</span>
                           <span className="text-lg font-bold text-white tracking-tight">{leagueChampTeam.win}W <span className="text-slate-400">{leagueChampTeam.draw}D</span> <span className="text-red-400">{leagueChampTeam.loss}L</span></span>
                         </div>
-                        <div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]">
-                          <span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">GOAL DIFF</span>
+                        <div className={`bg-slate-900/80 rounded-xl px-4 py-2.5 border ${boxBorder} min-w-[100px]`}>
+                          <span className={`text-[10px] ${subTextColor} opacity-80 block font-black mb-0.5`}>GOAL DIFF</span>
                           <div className="flex items-baseline gap-1">
-                            <span className="text-xl font-black text-yellow-400">{leagueChampTeam.gd > 0 ? `+${leagueChampTeam.gd}` : leagueChampTeam.gd}</span>
+                            <span className={`text-xl font-black ${subTextColor}`}>{leagueChampTeam.gd > 0 ? `+${leagueChampTeam.gd}` : leagueChampTeam.gd}</span>
                             <span className="text-[10px] text-slate-400 font-medium">({leagueChampTeam.gf}득 / {leagueChampTeam.ga}실)</span>
                           </div>
                         </div>
                         {topScorer && (
-                          <div className="bg-gradient-to-r from-yellow-600/20 to-yellow-900/20 rounded-xl px-5 py-2.5 border border-yellow-400/50">
-                            <span className="text-[10px] text-yellow-500 block font-black mb-0.5">TEAM MVP (TOP SCORER)</span>
-                            <span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className="text-sm text-yellow-400 ml-1">({topScorer.goals} Goals)</span></span>
+                          <div className={`bg-slate-900/80 rounded-xl px-5 py-2.5 border ${boxBorder}`}>
+                            <span className={`text-[10px] ${subTextColor} block font-black mb-0.5`}>TEAM MVP (TOP SCORER)</span>
+                            <span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className={`text-sm ${subTextColor} ml-1`}>({topScorer.goals} Goals)</span></span>
                           </div>
                         )}
                       </div>
@@ -713,7 +806,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         disabled={isCapturingTopPoints}
                         className="bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white text-[10px] sm:text-xs font-bold py-1.5 px-4 rounded-full transition-all flex items-center gap-2 border border-slate-700 shadow-lg"
                     >
-                        {isCapturingTopPoints ? '📸 캡처 준비 중...' : '📷 카드 저장 및 공유하기'}
+                        {isCapturingTopPoints ? '📸 캡처 준비 중...' : '📷 포인트 1위 카드 저장'}
                     </button>
                 </div>
                 
@@ -736,7 +829,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                         <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">POINTS</span><span className="text-xl font-black text-emerald-400">{firstOwner.points}</span></div>
                         <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]"><span className="text-[10px] text-slate-400 block font-bold mb-0.5">RECORD</span><span className="text-lg font-bold text-white tracking-tight">{firstOwner.win}W <span className="text-slate-500">{firstOwner.draw}D</span> <span className="text-red-400">{firstOwner.loss}L</span></span></div>
-                        <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
+                        <div className="bg-emerald-900/20 rounded-xl px-5 py-2.5 border border-emerald-500/20"><span className="text-[10px] text-emerald-500 block font-black mb-0.5">TOTAL PRIZE MONEY</span><span className="text-xl font-black text-emerald-400">₩ {displayPrize.toLocaleString()}</span></div>
                       </div>
                     </div>
                   </div>
