@@ -13,7 +13,6 @@ import { AdminRealWorldManager } from './AdminRealWorldManager';
 // 🔥 [Notice] 공지사항 관리자 컴포넌트 추가
 import { AdminNoticeManager } from './AdminNoticeManager';
 
-// 🔥 [Notice] adminTab 타입에 'NOTICE' 추가
 interface AdminViewProps {
     adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL' | 'NOTICE';
     setAdminTab: (tab: any) => void;
@@ -58,21 +57,16 @@ export const AdminView = ({
 
         try {
             const batch = writeBatch(db);
-
-            // 1. 시즌 문서 자체 삭제
             batch.delete(doc(db, "seasons", String(seasonId)));
 
-            // 2. 해당 시즌과 묶인 finance_ledger (장부 데이터) 싹 다 긁어오기
             const ledgerRef = collection(db, 'finance_ledger');
             const q = query(ledgerRef, where("seasonId", "==", String(seasonId)));
             const ledgerDocs = await getDocs(q);
 
-            // 3. 긁어온 장부 데이터들도 삭제 리스트에 추가
             ledgerDocs.forEach((docSnap) => {
                 batch.delete(docSnap.ref);
             });
 
-            // 4. 파이어베이스에 일괄 삭제 처리 쾅!
             await batch.commit();
 
             setAdminTab('NEW');
@@ -103,6 +97,8 @@ export const AdminView = ({
             const playerGoals: Record<string, any> = {};
             const playerAssists: Record<string, any> = {};
 
+            // 1. 경기 통계 취합 (정규 리그 순위 및 개인상 계산용)
+            // 하이브리드/컵 모드의 토너먼트 경기도 개인상(골/어시)에 포함됨!
             season.rounds?.forEach(r => {
                 r.matches?.filter(m => m.status === 'COMPLETED').forEach(m => {
                     const hTeam = m.home; const aTeam = m.away;
@@ -111,13 +107,17 @@ export const AdminView = ({
 
                     const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
 
-                    teamStats[hTeam].gf += hs; teamStats[hTeam].gd += (hs - as);
-                    teamStats[aTeam].gf += as; teamStats[aTeam].gd += (as - hs);
+                    // 리그 승점/득실 계산 (토너먼트 경기인 ROUND_OF_4, SEMI_FINAL, FINAL은 순위 계산에서 제외)
+                    if (!['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name)) {
+                        teamStats[hTeam].gf += hs; teamStats[hTeam].gd += (hs - as);
+                        teamStats[aTeam].gf += as; teamStats[aTeam].gd += (as - hs);
 
-                    if (hs > as) teamStats[hTeam].pts += 3;
-                    else if (as > hs) teamStats[aTeam].pts += 3;
-                    else { teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
+                        if (hs > as) teamStats[hTeam].pts += 3;
+                        else if (as > hs) teamStats[aTeam].pts += 3;
+                        else { teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
+                    }
 
+                    // 골, 어시스트는 모든 경기에서 누적
                     m.homeScorers?.forEach((p: string) => { if(!playerGoals[p]) playerGoals[p] = { owner: m.homeOwner, goals: 0 }; playerGoals[p].goals += 1; });
                     m.awayScorers?.forEach((p: string) => { if(!playerGoals[p]) playerGoals[p] = { owner: m.awayOwner, goals: 0 }; playerGoals[p].goals += 1; });
                     m.homeAssists?.forEach((p: string) => { if(!playerAssists[p]) playerAssists[p] = { owner: m.homeOwner, assists: 0 }; playerAssists[p].assists += 1; });
@@ -126,11 +126,36 @@ export const AdminView = ({
             });
 
             let firstOwner = '', secondOwner = '', thirdOwner = '';
+            let grandChampionOwner = ''; // 🔥 [디벨롭] 최종 우승자 오너 ID (하이브리드/컵 모드 전용)
+
+            // 2. 순위 및 우승자 분리 판별
+            const sortedTeams = Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
             
             if (season.type === 'LEAGUE') {
-                const sortedTeams = Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
-                firstOwner = sortedTeams[0]?.owner || ''; secondOwner = sortedTeams[1]?.owner || ''; thirdOwner = sortedTeams[2]?.owner || '';
+                firstOwner = sortedTeams[0]?.owner || ''; 
+                secondOwner = sortedTeams[1]?.owner || ''; 
+                thirdOwner = sortedTeams[2]?.owner || '';
+            } else if (season.type === 'LEAGUE_PLAYOFF' || season.type === 'CUP') {
+                // 🔥 하이브리드 & 컵 모드: 정규/조별 리그 1,2,3위 그대로 유지
+                firstOwner = sortedTeams[0]?.owner || ''; 
+                secondOwner = sortedTeams[1]?.owner || ''; 
+                thirdOwner = sortedTeams[2]?.owner || '';
+
+                // 🔥 결승전(FINAL) 승자를 찾아 최종 우승자로 선정!
+                let finalMatch: any = null;
+                season.rounds?.forEach(r => r.matches?.forEach(m => {
+                    if (m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER')) {
+                        finalMatch = m;
+                    }
+                }));
+
+                if (finalMatch && finalMatch.status === 'COMPLETED') {
+                    const hs = Number(finalMatch.homeScore); const as = Number(finalMatch.awayScore);
+                    if (hs > as) grandChampionOwner = finalMatch.homeOwner;
+                    else if (as > hs) grandChampionOwner = finalMatch.awayOwner;
+                }
             } else {
+                // 일반 토너먼트 모드 (기존 로직 유지)
                 let finalMatch: any = null;
                 season.rounds?.forEach(r => r.matches?.forEach(m => {
                     if (m.stage === 'FINAL' || m.matchLabel?.toUpperCase().includes('FINAL')) finalMatch = m;
@@ -161,9 +186,21 @@ export const AdminView = ({
                 }
             };
 
-            addPrize(getOwnerId(firstOwner), prizes.first, `${season.name} 우승 🏆`);
-            addPrize(getOwnerId(secondOwner), prizes.second, `${season.name} 준우승 🥈`);
-            addPrize(getOwnerId(thirdOwner), prizes.third, `${season.name} 3위 🥉`);
+            // 3. 상금 쏴주기
+            if (season.type === 'LEAGUE_PLAYOFF' || season.type === 'CUP') {
+                // 🔥 하이브리드 & 컵 모드: 명칭 분리해서 상금 지급!
+                addPrize(getOwnerId(grandChampionOwner), prizes.champion, `👑 ${season.name} 최종 우승`);
+                addPrize(getOwnerId(firstOwner), prizes.first, `🚩 ${season.name} 리그 1위`);
+                addPrize(getOwnerId(secondOwner), prizes.second, `🚩 ${season.name} 리그 2위`);
+                addPrize(getOwnerId(thirdOwner), prizes.third, `🚩 ${season.name} 리그 3위`);
+            } else {
+                // 일반 모드 (기존과 동일)
+                addPrize(getOwnerId(firstOwner), prizes.first, `${season.name} 우승 🏆`);
+                addPrize(getOwnerId(secondOwner), prizes.second, `${season.name} 준우승 🥈`);
+                addPrize(getOwnerId(thirdOwner), prizes.third, `${season.name} 3위 🥉`);
+            }
+
+            // 개인상 지급 (공통)
             addPrize(getOwnerId(topScorer), prizes.scorer, `${season.name} 득점왕 ⚽`);
             addPrize(getOwnerId(topAssist), prizes.assist, `${season.name} 도움왕 🅰️`);
 
@@ -187,7 +224,6 @@ export const AdminView = ({
     return (
         <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
             
-            {/* 🔥 모바일 및 개발자 모드 깨짐 방지: 완벽한 Select UI */}
             <div className="relative mb-8">
                 <select 
                     value={String(adminTab)} 
@@ -208,10 +244,11 @@ export const AdminView = ({
                         {seasons.map(s => (
                             <option key={s.id} value={s.id} className="text-white text-base bg-slate-900 py-2">
                                 {(() => {
-                                    const pureName = s.name.replace(/^(🏆|🏳️|⚔️)\s*/, '');
+                                    const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⭐)\s*/, '');
                                     let icon = '🏳️';
                                     if (s.type === 'CUP') icon = '🏆';
                                     if (s.type === 'TOURNAMENT') icon = '⚔️';
+                                    if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
                                     return `${icon} ${pureName} ${s.status === 'COMPLETED' ? '(마감)' : ''}`;
                                 })()}
                             </option>
@@ -219,7 +256,6 @@ export const AdminView = ({
                     </optgroup>
                 </select>
                 
-                {/* 커스텀 화살표 아이콘 (네이티브 화살표 숨김 대응) */}
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
@@ -227,9 +263,7 @@ export const AdminView = ({
                 </div>
             </div>
 
-            {/* 🔥 [Notice] 라우팅 추가 */}
             {adminTab === 'NOTICE' && <AdminNoticeManager />}
-            
             {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
             {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
             {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
