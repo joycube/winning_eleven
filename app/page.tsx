@@ -3,7 +3,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-// 🔥 [수술 포인트 1] 실시간 동기화를 위해 onSnapshot 훅 추가!
 import { doc, updateDoc, setDoc, addDoc, collection, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Season, Match, Notice } from './types';
 
@@ -38,20 +37,17 @@ export default function FootballLeagueApp() {
   const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
-  // 🔥 [수술 포인트 2] notices 데이터를 부모에서 쥐고 있도록 State 추가
   const [notices, setNotices] = useState<Notice[]>([]);
   const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
-  // 🔥 [수술 포인트 3] onSnapshot을 이용한 실시간 로딩 (로딩 0%의 핵심)
   useEffect(() => {
     const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snap) => {
         const fetchedNotices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
-        setNotices(fetchedNotices); // 데이터 즉시 반영!
+        setNotices(fetchedNotices); 
         
-        // 팝업 티커 세팅
         const popupNotice = fetchedNotices.find(n => n.isPopup);
         if (popupNotice) {
             const hideUntil = localStorage.getItem(`hide_notice_${popupNotice.id}`);
@@ -68,10 +64,9 @@ export default function FootballLeagueApp() {
         console.error("🚨 Error fetching notices:", error);
     });
 
-    return () => unsubscribe(); // 언마운트 시 메모리 누수 방지
+    return () => unsubscribe(); 
   }, []);
 
-  // 🔥 [수술 포인트 4] N 뱃지 로직 최적화 (뷰가 바뀌거나 공지가 올라올 때 즉시 판별)
   useEffect(() => {
       if (currentView === 'NOTICE') {
           localStorage.setItem('lastCheckedNoticeTime', String(Date.now()));
@@ -208,43 +203,95 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // 🔥 [핵심 디벨롭] 토너먼트 매치 저장 및 자동 진출 알고리즘 완벽 탑재
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
+      // 1. 순수 토너먼트 모드일 경우의 특수 알고리즘 (Tournament Tree Algorithm)
+      if (s.type === 'TOURNAMENT') {
+          let newRounds = JSON.parse(JSON.stringify(s.rounds)); // 깊은 복사
+          let matches = newRounds[0].matches; // 토너먼트는 보통 round 1개 안에 매치를 다 때려넣음
+          
+          // 승자 결정 로직 (부전승, 수동 선택, 혹은 점수차)
+          let winningTeam: {name: string, logo: string, owner: string} | null = null;
+          const h = Number(hScore); const a = Number(aScore);
+          
+          if (editingMatch.away === 'BYE') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          else if (editingMatch.home === 'BYE') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          else return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
+
+          // 1-1. 현재 경기(자신) 상태를 업데이트
+          const currentMatchIndex = matches.findIndex((m: any) => m.id === matchId);
+          if (currentMatchIndex === -1) return;
+
+          matches[currentMatchIndex] = {
+              ...matches[currentMatchIndex],
+              homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+              homeScorers: records.homeScorers, awayScorers: records.awayScorers,
+              homeAssists: records.homeAssists, awayAssists: records.awayAssists
+          };
+
+          // 1-2. 다음 라운드(결승 등) 진출 로직!
+          // 토너먼트 인덱스 공식: 내 인덱스가 i일 때, 다음 경기(부모 노드)의 인덱스는 (전체경기수/2 + Math.floor(i/2))
+          const totalMatches = matches.length;
+          
+          // 대진표의 절반이 1라운드(예: 4강이면 2경기, 8강이면 4경기).
+          // 현재 구현된 scheduler.ts를 보면 3인(4강 사이즈)일 때 총 3경기가 생성됨. (0번, 1번이 1라운드 / 2번이 결승)
+          
+          // 승자가 올라가야 할 다음 경기 인덱스 계산 (트리 구조)
+          // 0번 경기와 1번 경기의 승자는 -> 2번 경기(결승)로 감.
+          // 공식: 총 경기수가 3이면, 1라운드는 인덱스 0, 1. 결승은 2.
+          let nextMatchIndex = -1;
+          let isNextMatchHomeSide = currentMatchIndex % 2 === 0;
+
+          if (totalMatches === 3) { // 4강(3인/4인) 셋업
+              if (currentMatchIndex === 0 || currentMatchIndex === 1) nextMatchIndex = 2;
+          } else if (totalMatches === 7) { // 8강 셋업
+              if (currentMatchIndex >= 0 && currentMatchIndex <= 3) nextMatchIndex = 4 + Math.floor(currentMatchIndex / 2);
+              else if (currentMatchIndex === 4 || currentMatchIndex === 5) nextMatchIndex = 6;
+          } else if (totalMatches === 15) { // 16강 셋업
+              if (currentMatchIndex >= 0 && currentMatchIndex <= 7) nextMatchIndex = 8 + Math.floor(currentMatchIndex / 2);
+              else if (currentMatchIndex >= 8 && currentMatchIndex <= 11) nextMatchIndex = 12 + Math.floor((currentMatchIndex - 8) / 2);
+              else if (currentMatchIndex === 12 || currentMatchIndex === 13) nextMatchIndex = 14;
+          }
+
+          // 다음 경기가 존재한다면, 승자를 TBD 자리에 꽂아넣기!
+          if (nextMatchIndex !== -1 && winningTeam) {
+              if (isNextMatchHomeSide) {
+                  matches[nextMatchIndex].home = winningTeam.name;
+                  matches[nextMatchIndex].homeLogo = winningTeam.logo;
+                  matches[nextMatchIndex].homeOwner = winningTeam.owner;
+              } else {
+                  matches[nextMatchIndex].away = winningTeam.name;
+                  matches[nextMatchIndex].awayLogo = winningTeam.logo;
+                  matches[nextMatchIndex].awayOwner = winningTeam.owner;
+              }
+              // 만약 결승전에 상대방이 TBD가 아니라면 (둘 다 결정됐다면) 매치 상태를 '준비 완료'로 냅둠.
+          }
+
+          newRounds[0].matches = matches;
+          await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
+          setEditingMatch(null);
+          return; // 토너먼트 로직 끝! 밑으로 안 내려감.
+      }
+
+
+      // 2. 토너먼트가 아닌 모드 (일반 리그, 하이브리드, 컵 모드 조별리그 등) 기존 저장 로직
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
-
-      const isVirtual = matchId.startsWith('v-');
-      let vTargetRIdx = -1;
-      let vTargetMIdx = 0;
-
-      if (isVirtual) {
-          if (matchId === 'v-final') vTargetRIdx = 2;
-          else if (matchId.includes('r4')) { vTargetRIdx = 1; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
-          else if (matchId.includes('r8')) { vTargetRIdx = 0; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
-
-          while (newRounds.length <= vTargetRIdx) {
-              const nextRnd = newRounds.length + 1;
-              newRounds.push({ 
-                round: nextRnd, 
-                name: nextRnd === 3 ? 'Final' : nextRnd === 2 ? 'Semi-Final' : 'Quarter-Final',
-                seasonId: viewSeasonId,
-                matches: [] 
-              });
-          }
-      }
 
       const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData, masterTeams);
 
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
-          let found = false;
-
           matches = matches.map((m) => {
               if (m.id === matchId) {
-                  found = true;
                   currentRoundIndex = rIdx;
                   return { 
                       ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -256,30 +303,16 @@ export default function FootballLeagueApp() {
               }
               return m;
           });
-
-          if (!found && isVirtual && rIdx === vTargetRIdx) {
-              currentRoundIndex = rIdx;
-              const newMatchData: Match = {
-                  ...editingMatch,
-                  id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
-                  homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-                  homeAssists: records.homeAssists, awayAssists: records.awayAssists,
-                  homePredictRate: predictionSnapshot.homePredictRate,
-                  awayPredictRate: predictionSnapshot.awayPredictRate
-              };
-              if (matches[vTargetMIdx]) matches[vTargetMIdx] = { ...matches[vTargetMIdx], ...newMatchData, id: matches[vTargetMIdx].id };
-              else matches[vTargetMIdx] = newMatchData;
-          }
           return { ...r, matches };
       });
 
-      if ((s.type === 'TOURNAMENT' || s.type === 'CUP') && currentRoundIndex !== -1) {
+      // 컵 대회 넉아웃 스테이지(가상 뷰) 연동 로직 (기존 유지)
+      if (s.type === 'CUP' && currentRoundIndex !== -1) {
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); const a = Number(aScore);
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
 
-          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          if (editingMatch.away === 'BYE') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
@@ -296,13 +329,7 @@ export default function FootballLeagueApp() {
                               ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner }
                               : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner };
                           
-                          return { 
-                              ...m, 
-                              ...update,
-                              homeScore: '',
-                              awayScore: '',
-                              status: 'UPCOMING'
-                          };
+                          return { ...m, ...update, homeScore: '', awayScore: '', status: 'UPCOMING' };
                       }
                       return m;
                   })
@@ -376,13 +403,10 @@ export default function FootballLeagueApp() {
                       onClick={() => {
                           setCurrentView('NOTICE');
                           if (typeof window !== 'undefined') {
-                              // 🔥 [수술 포인트 5] 팝업 클릭 시 탭 이동 + 다이렉트 뷰로 점프!
                               const params = new URLSearchParams(window.location.search);
                               params.set('view', 'NOTICE');
                               params.set('noticeId', latestPopupNotice.id);
-                              // replaceState -> pushState로 변경하여 확실히 URL을 밀어넣음
                               window.history.pushState(null, '', `?${params.toString()}`);
-                              // 커스텀 이벤트 발송 (NoticeView가 이걸 듣고 즉각 반응함)
                               window.dispatchEvent(new Event('forceNoticeCheck'));
                           }
                       }} 
@@ -413,7 +437,6 @@ export default function FootballLeagueApp() {
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
         {currentView === 'NOTICE' && (
-            // 🔥 [수술 포인트 6] notices 배열을 Props로 던져줘서 즉시 렌더링되게 함
             <NoticeView owners={owners} notices={notices} />
         )}
 
