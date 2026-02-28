@@ -25,7 +25,8 @@ import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 
-const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
+// 🔥 [디벨롭] 전역 엑스박스 방지! 절대 안 깨지는 안전한 SVG 방패 로고로 교체
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 export default function FootballLeagueApp() {
   const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
@@ -112,20 +113,20 @@ export default function FootballLeagueApp() {
     };
 
     const getTeamMeta = (name: string) => {
-        if (!name || name === 'TBD') return { logo: TBD_LOGO, owner: '-' };
-        if (name === 'BYE') return { logo: TBD_LOGO, owner: 'SYSTEM' };
+        if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-' };
+        if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM' };
         const normName = name.toLowerCase().trim();
         const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
         const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
         return {
-            logo: stats?.logo || (master as any)?.logo || TBD_LOGO,
+            logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
             owner: stats?.ownerName || (master as any)?.ownerName || 'CPU'
         };
     };
 
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
-        seasonId: viewSeasonId, homeLogo: TBD_LOGO, awayLogo: TBD_LOGO, homeOwner: '-', awayOwner: '-',
+        seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
         homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
         homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
     } as Match);
@@ -203,33 +204,31 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // 🔥 [핵심 디벨롭] 토너먼트 매치 저장 및 자동 진출 알고리즘 완벽 탑재
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
-      // 1. 순수 토너먼트 모드일 경우의 특수 알고리즘 (Tournament Tree Algorithm)
+      // 🔥 [완벽 디벨롭] 토너먼트 모드: 승자 자동 계산 및 트리 진출 알고리즘
       if (s.type === 'TOURNAMENT') {
-          let newRounds = JSON.parse(JSON.stringify(s.rounds)); // 깊은 복사
-          let matches = newRounds[0].matches; // 토너먼트는 보통 round 1개 안에 매치를 다 때려넣음
+          let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
+          let matches = newRounds[0].matches; 
           
-          // 승자 결정 로직 (부전승, 수동 선택, 혹은 점수차)
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); const a = Number(aScore);
           
-          if (editingMatch.away === 'BYE') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (editingMatch.home === 'BYE') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          else if (editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
-          // 1-1. 현재 경기(자신) 상태를 업데이트
           const currentMatchIndex = matches.findIndex((m: any) => m.id === matchId);
           if (currentMatchIndex === -1) return;
 
+          // 1. 현재 매치 상태 완료(COMPLETED)로 업데이트
           matches[currentMatchIndex] = {
               ...matches[currentMatchIndex],
               homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -237,31 +236,23 @@ export default function FootballLeagueApp() {
               homeAssists: records.homeAssists, awayAssists: records.awayAssists
           };
 
-          // 1-2. 다음 라운드(결승 등) 진출 로직!
-          // 토너먼트 인덱스 공식: 내 인덱스가 i일 때, 다음 경기(부모 노드)의 인덱스는 (전체경기수/2 + Math.floor(i/2))
+          // 2. 트리 진출 공식 (다음 라운드 TBD 자리 찾아가기)
           const totalMatches = matches.length;
-          
-          // 대진표의 절반이 1라운드(예: 4강이면 2경기, 8강이면 4경기).
-          // 현재 구현된 scheduler.ts를 보면 3인(4강 사이즈)일 때 총 3경기가 생성됨. (0번, 1번이 1라운드 / 2번이 결승)
-          
-          // 승자가 올라가야 할 다음 경기 인덱스 계산 (트리 구조)
-          // 0번 경기와 1번 경기의 승자는 -> 2번 경기(결승)로 감.
-          // 공식: 총 경기수가 3이면, 1라운드는 인덱스 0, 1. 결승은 2.
           let nextMatchIndex = -1;
           let isNextMatchHomeSide = currentMatchIndex % 2 === 0;
 
-          if (totalMatches === 3) { // 4강(3인/4인) 셋업
-              if (currentMatchIndex === 0 || currentMatchIndex === 1) nextMatchIndex = 2;
-          } else if (totalMatches === 7) { // 8강 셋업
-              if (currentMatchIndex >= 0 && currentMatchIndex <= 3) nextMatchIndex = 4 + Math.floor(currentMatchIndex / 2);
-              else if (currentMatchIndex === 4 || currentMatchIndex === 5) nextMatchIndex = 6;
-          } else if (totalMatches === 15) { // 16강 셋업
-              if (currentMatchIndex >= 0 && currentMatchIndex <= 7) nextMatchIndex = 8 + Math.floor(currentMatchIndex / 2);
-              else if (currentMatchIndex >= 8 && currentMatchIndex <= 11) nextMatchIndex = 12 + Math.floor((currentMatchIndex - 8) / 2);
-              else if (currentMatchIndex === 12 || currentMatchIndex === 13) nextMatchIndex = 14;
+          if (totalMatches === 3) { // 4강 (3,4인)
+              if (currentMatchIndex <= 1) nextMatchIndex = 2;
+          } else if (totalMatches === 7) { // 8강
+              if (currentMatchIndex <= 3) nextMatchIndex = 4 + Math.floor(currentMatchIndex / 2);
+              else if (currentMatchIndex <= 5) nextMatchIndex = 6;
+          } else if (totalMatches === 15) { // 16강
+              if (currentMatchIndex <= 7) nextMatchIndex = 8 + Math.floor(currentMatchIndex / 2);
+              else if (currentMatchIndex <= 11) nextMatchIndex = 12 + Math.floor((currentMatchIndex - 8) / 2);
+              else if (currentMatchIndex <= 13) nextMatchIndex = 14;
           }
 
-          // 다음 경기가 존재한다면, 승자를 TBD 자리에 꽂아넣기!
+          // 3. 찾은 다음 자리에 승자 데이터 강제 꽂아넣기
           if (nextMatchIndex !== -1 && winningTeam) {
               if (isNextMatchHomeSide) {
                   matches[nextMatchIndex].home = winningTeam.name;
@@ -272,26 +263,49 @@ export default function FootballLeagueApp() {
                   matches[nextMatchIndex].awayLogo = winningTeam.logo;
                   matches[nextMatchIndex].awayOwner = winningTeam.owner;
               }
-              // 만약 결승전에 상대방이 TBD가 아니라면 (둘 다 결정됐다면) 매치 상태를 '준비 완료'로 냅둠.
           }
 
           newRounds[0].matches = matches;
           await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
           setEditingMatch(null);
-          return; // 토너먼트 로직 끝! 밑으로 안 내려감.
+          return; 
       }
 
-
-      // 2. 토너먼트가 아닌 모드 (일반 리그, 하이브리드, 컵 모드 조별리그 등) 기존 저장 로직
+      // -------------------------------------------------------------
+      // 이하 일반 리그 / 컵 모드 로직 (기존 유지)
+      // -------------------------------------------------------------
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
+
+      const isVirtual = matchId.startsWith('v-');
+      let vTargetRIdx = -1;
+      let vTargetMIdx = 0;
+
+      if (isVirtual) {
+          if (matchId === 'v-final') vTargetRIdx = 2;
+          else if (matchId.includes('r4')) { vTargetRIdx = 1; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
+          else if (matchId.includes('r8')) { vTargetRIdx = 0; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
+
+          while (newRounds.length <= vTargetRIdx) {
+              const nextRnd = newRounds.length + 1;
+              newRounds.push({ 
+                round: nextRnd, 
+                name: nextRnd === 3 ? 'Final' : nextRnd === 2 ? 'Semi-Final' : 'Quarter-Final',
+                seasonId: viewSeasonId,
+                matches: [] 
+              });
+          }
+      }
 
       const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData, masterTeams);
 
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
+          let found = false;
+
           matches = matches.map((m) => {
               if (m.id === matchId) {
+                  found = true;
                   currentRoundIndex = rIdx;
                   return { 
                       ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -303,16 +317,30 @@ export default function FootballLeagueApp() {
               }
               return m;
           });
+
+          if (!found && isVirtual && rIdx === vTargetRIdx) {
+              currentRoundIndex = rIdx;
+              const newMatchData: Match = {
+                  ...editingMatch,
+                  id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+                  homeScorers: records.homeScorers, awayScorers: records.awayScorers,
+                  homeAssists: records.homeAssists, awayAssists: records.awayAssists,
+                  homePredictRate: predictionSnapshot.homePredictRate,
+                  awayPredictRate: predictionSnapshot.awayPredictRate
+              };
+              if (matches[vTargetMIdx]) matches[vTargetMIdx] = { ...matches[vTargetMIdx], ...newMatchData, id: matches[vTargetMIdx].id };
+              else matches[vTargetMIdx] = newMatchData;
+          }
           return { ...r, matches };
       });
 
-      // 컵 대회 넉아웃 스테이지(가상 뷰) 연동 로직 (기존 유지)
       if (s.type === 'CUP' && currentRoundIndex !== -1) {
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); const a = Number(aScore);
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
 
-          if (editingMatch.away === 'BYE') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
           else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
           else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
@@ -329,7 +357,13 @@ export default function FootballLeagueApp() {
                               ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner }
                               : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner };
                           
-                          return { ...m, ...update, homeScore: '', awayScore: '', status: 'UPCOMING' };
+                          return { 
+                              ...m, 
+                              ...update,
+                              homeScore: '',
+                              awayScore: '',
+                              status: 'UPCOMING'
+                          };
                       }
                       return m;
                   })
