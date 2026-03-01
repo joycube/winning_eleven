@@ -10,7 +10,6 @@ import { toPng } from 'html-to-image';
 // @ts-ignore
 import download from 'downloadjs';
 
-// 🔥 [디벨롭] 외부 링크 차단(엑스박스)을 원천 봉쇄하는 절대 안 깨지는 내장 SVG 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
@@ -42,7 +41,6 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
     const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
         const isTbd = teamName === 'TBD' || !teamName;
         const isBye = teamName === 'BYE';
-        // 🔥 [디벨롭] DB에 저장된 나쁜 로고를 무시하고 안전한 로고 렌더링
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         const dispOwner = owner || '-';
 
@@ -50,7 +48,14 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" />
+                        {/* 🔥 [사파리 완벽 우회] 대진표에 들어가는 국기 이미지에 referrerPolicy 적용! */}
+                        <img 
+                            src={displayLogo} 
+                            className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
+                            alt="" 
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
+                        />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
                         <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -160,7 +165,7 @@ export const ScheduleView = ({
                  await navigator.share({ title: '🔥 Match Result', text: `${home} vs ${away} 경기 결과!`, files: [file] });
              } catch (shareErr) { }
         } else alert('📷 기기에 매치카드가 저장되었습니다!');
-    } catch (error: any) { alert(`이미지 캡처에 실패했습니다.\nPC 환경에서 시도해주세요!`);
+    } catch (error: any) { alert(`이미지 캡처에 실패했습니다.\n사파리 환경일 경우 접근 권한 문제일 수 있습니다.`);
     } finally { setCapturingMatchId(null); }
   };
 
@@ -249,7 +254,12 @@ export const ScheduleView = ({
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
         ) : viewMode === 'LEAGUE_PLAYOFF' ? (
             <div className="space-y-12">
-                {/* ... (하이브리드 모드 대진표 영역 유지) ... */}
+                <style dangerouslySetInnerHTML={{ __html: `
+                    .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
+                    .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
+                    .no-scrollbar::-webkit-scrollbar { display: none; }
+                `}} />
+
                 <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                     <div className="min-w-max md:min-w-[760px] px-2">
                         <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
@@ -279,7 +289,6 @@ export const ScheduleView = ({
                                                     if (m.matchLabel && m.matchLabel.includes('PO')) customMatchLabel = m.matchLabel; else if (m.matchLabel && m.matchLabel.includes('결승전')) customMatchLabel = m.matchLabel;
                                                     const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                     
-                                                    // 🔥 [디벨롭] 하이브리드 카드 렌더링 전 나쁜 링크 정화
                                                     const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                     const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
                                                     const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
@@ -326,7 +335,6 @@ export const ScheduleView = ({
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                 const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                 
-                                                // 🔥 [디벨롭] 토너먼트/리그 매치카드 렌더링 전 나쁜 링크 정화
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                 const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
                                                 const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };

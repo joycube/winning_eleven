@@ -5,7 +5,6 @@ import { MatchCard } from './MatchCard';
 
 // 🔥 캡처 라이브러리 추가
 import { toPng } from 'html-to-image';
-// 🔥 [에러 해결] Vercel 빌드 시 TypeScript 예외 처리
 // @ts-ignore
 import download from 'downloadjs';
 
@@ -17,60 +16,36 @@ declare module 'react' {
   }
 }
 
-// 💣 [궁극의 SafeImage V6] 특정 오너 프사 까맣게 나오는 현상 100% 픽스! (Direct -> Proxy -> Unsafe Fallback)
-const SafeImage = ({ src, className, isBg = false, uid = '' }: { src: string, className?: string, isBg?: boolean, uid?: string }) => {
-  const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
-  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
+// 🔥 TBD 전용 플레이스홀더 이미지 (방패)
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
+
+// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰 완벽 통일)
+const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
+  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
 
   useEffect(() => {
-    if (!src) {
-      setImgSrc(FALLBACK_IMG);
-      setCors(undefined);
-      return;
-    }
-    if (src.startsWith('data:') || src.startsWith('blob:')) {
-      setImgSrc(src);
-      setCors(undefined);
-      return;
-    }
-    // 🔥 1단계: 무조건 원본(Direct)으로 먼저 시도!
-    setImgSrc(src);
-    setCors("anonymous");
+    setImgSrc(src || FALLBACK_IMG);
   }, [src]);
-
-  const handleError = () => {
-    if (cors === "anonymous" && imgSrc === src) {
-      // 🔥 2단계: 원본 접근이 막히면 캡처 전용 프록시 서버로 우회!
-      setImgSrc(`https://wsrv.nl/?url=${encodeURIComponent(src)}&output=png&uid=${uid}`);
-    } else if (cors === "anonymous" && imgSrc !== src) {
-      // 🔥 3단계: 프록시마저 실패하면, UI 깨짐 방지를 위해 보안 제약을 풀고 강제 렌더링
-      setImgSrc(src);
-      setCors(undefined);
-    } else {
-      // 🔥 4단계: 다 안 되면 기본 폴백 이미지 표시
-      setImgSrc(FALLBACK_IMG);
-    }
-  };
 
   if (isBg) {
     return (
-      <>
-        {/* 배경 이미지 에러 추적용 투명 태그 */}
-        <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
-        <div 
-          className={className} 
-          style={{ 
-            backgroundImage: `url(${imgSrc})`, 
-            backgroundSize: 'contain', 
-            backgroundPosition: 'center', 
-            backgroundRepeat: 'no-repeat' 
-          }} 
-        />
-      </>
+      <div 
+        className={className} 
+        style={{ backgroundImage: `url(${imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
+      ></div>
     );
   }
 
-  return <img src={imgSrc} className={className} alt="" crossOrigin={cors} onError={handleError} />;
+  return (
+    <img 
+      src={imgSrc} 
+      className={className} 
+      alt="" 
+      crossOrigin="anonymous" 
+      onError={() => setImgSrc(FALLBACK_IMG)} 
+    />
+  );
 };
 
 // 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
@@ -81,9 +56,6 @@ const getTodayFormatted = () => {
   const day = date.getDate().toString().padStart(2, '0');
   return `${year}.${month}.${day}`;
 };
-
-// 🔥 TBD 전용 플레이스홀더 이미지
-const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
 interface CupScheduleProps {
   seasons: Season[];
@@ -170,11 +142,10 @@ export const CupSchedule = ({
 
   const getTeamExtendedInfo = (teamName: string) => {
       const tbdTeam = {
-          id: 0, name: teamName || 'TBD', logo: TBD_LOGO, ownerName: '-',
+          id: 0, name: teamName || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-',
           region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null
       };
-      if (!teamName || teamName === 'TBD') return tbdTeam;
-      if (teamName === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
+      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return tbdTeam; // BYE나 TBD면 SAFE_TBD_LOGO 고정
 
       const normTarget = normalize(teamName);
       const stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normTarget);
@@ -183,7 +154,7 @@ export const CupSchedule = ({
       return {
           id: stats?.id || master?.id || 0,
           name: teamName,
-          logo: stats?.logo || master?.logo || TBD_LOGO,
+          logo: stats?.logo || master?.logo || SAFE_TBD_LOGO,
           ownerName: stats?.ownerName || master?.ownerName || 'CPU',
           region: master?.region || '',
           tier: master?.tier || 'C',
@@ -213,24 +184,32 @@ export const CupSchedule = ({
     return <div className="px-1 py-[1px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5 shadow-inner"><span className={`text-[10px] font-black ${c.color}`}>{c.icon}</span></div>;
   };
 
-  const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => (
-    <div className="relative w-9 h-9 flex-shrink-0">
-        <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-            <SafeImage 
-              src={logo || TBD_LOGO} 
-              className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
-            />
+  const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
+      // 🔥 [디벨롭] 컵 스케줄 대진표 국기: 순정 태그 + referrerPolicy 적용
+      const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
+      
+      return (
+        <div className="relative w-9 h-9 flex-shrink-0">
+            <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+                <img 
+                  src={displayLogo} 
+                  className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
+                  alt="" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
+                />
+            </div>
+            {!isTbd && getTierBadge(tier)}
         </div>
-        {!isTbd && getTierBadge(tier)}
-    </div>
-  );
+      );
+  };
 
   const internalKnockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
 
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
-        seasonId: viewSeasonId, homeLogo: TBD_LOGO, awayLogo: TBD_LOGO, homeOwner: '-', awayOwner: '-',
+        seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
         homePredictRate: 0, awayPredictRate: 0, 
         stage: stageName, 
         matchLabel: 'TBD', youtubeUrl: '',
@@ -255,11 +234,11 @@ export const CupSchedule = ({
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
-                slots.final[0] = { ...m };
+                slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m };
+                if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("ROUND_OF_8")) {
-                if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m };
+                if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                 hasActualRoundOf8 = true;
             }
         });
@@ -392,41 +371,44 @@ export const CupSchedule = ({
                                     <h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
-                                    {groupMatches.filter(m => m.group === gName).map((m, mIdx) => (
-                                        <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                            <div className="flex justify-end w-full px-1">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                    disabled={capturingMatchId === m.id}
-                                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                    title="결과 캡처 및 공유"
-                                                >
-                                                    {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                </button>
-                                            </div>
+                                    {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
+                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                                        return (
+                                            <div key={m.id} className="relative flex flex-col gap-1 mb-2">
+                                                <div className="flex justify-end w-full px-1">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                        disabled={capturingMatchId === m.id}
+                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                        title="결과 캡처 및 공유"
+                                                    >
+                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                    </button>
+                                                </div>
 
-                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
-                                                <MatchCard 
-                                                  match={{...m, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
-                                                  onClick={onMatchClick} 
-                                                  activeRankingData={activeRankingData} 
-                                                  historyData={historyData} 
-                                                  masterTeams={masterTeams} 
-                                                />
-                                                {m.commentary && (
-                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                            <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
-                                                            {m.commentary}
-                                                        </p>
+                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                    <MatchCard 
+                                                      match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
+                                                      onClick={onMatchClick} 
+                                                      activeRankingData={activeRankingData} 
+                                                      historyData={historyData} 
+                                                      masterTeams={masterTeams} 
+                                                    />
+                                                    {m.commentary && (
+                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                                <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
+                                                                {m.commentary}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                     </div>
-                                                )}
-                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ));
@@ -444,42 +426,45 @@ export const CupSchedule = ({
                                     <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{section.title}</h3>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
-                                    {section.matches.map((m: any, mIdx: number) => (
-                                        <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
-                                            {m.status !== 'UPCOMING' && m.home !== 'TBD' && m.home !== 'BYE' && (
-                                                <div className="flex justify-end w-full px-1">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                        disabled={capturingMatchId === m.id}
-                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                    >
-                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
-                                                <MatchCard 
-                                                    match={{ ...m, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
-                                                    onClick={onMatchClick} 
-                                                    activeRankingData={activeRankingData} 
-                                                    historyData={historyData} 
-                                                    masterTeams={masterTeams} 
-                                                />
-                                                {m.commentary && (
-                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                            <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
-                                                            {m.commentary}
-                                                        </p>
+                                    {section.matches.map((m: any, mIdx: number) => {
+                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                                        return (
+                                            <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
+                                                {m.status !== 'UPCOMING' && m.home !== 'TBD' && m.home !== 'BYE' && (
+                                                    <div className="flex justify-end w-full px-1">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                            disabled={capturingMatchId === m.id}
+                                                            className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                        >
+                                                            {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                        </button>
                                                     </div>
                                                 )}
-                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
+
+                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                    <MatchCard 
+                                                        match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
+                                                        onClick={onMatchClick} 
+                                                        activeRankingData={activeRankingData} 
+                                                        historyData={historyData} 
+                                                        masterTeams={masterTeams} 
+                                                    />
+                                                    {m.commentary && (
+                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                                <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
+                                                                {m.commentary}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )
@@ -494,39 +479,42 @@ export const CupSchedule = ({
                                     <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
-                                    {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => (
-                                        <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                            <div className="flex justify-end w-full px-1">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                    disabled={capturingMatchId === m.id}
-                                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                >
-                                                    {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                </button>
-                                            </div>
+                                    {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
+                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                                        return (
+                                            <div key={m.id} className="relative flex flex-col gap-1 mb-2">
+                                                <div className="flex justify-end w-full px-1">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
+                                                        disabled={capturingMatchId === m.id}
+                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                                                    >
+                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
+                                                    </button>
+                                                </div>
 
-                                            <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
-                                                <MatchCard 
-                                                    match={{ ...m, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
-                                                    onClick={onMatchClick} 
-                                                    activeRankingData={activeRankingData} 
-                                                    historyData={historyData} 
-                                                    masterTeams={masterTeams} 
-                                                />
-                                                {m.commentary && (
-                                                    <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                        <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                            {m.commentary}
-                                                        </p>
+                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                    <MatchCard 
+                                                        match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
+                                                        onClick={onMatchClick} 
+                                                        activeRankingData={activeRankingData} 
+                                                        historyData={historyData} 
+                                                        masterTeams={masterTeams} 
+                                                    />
+                                                    {m.commentary && (
+                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
+                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                                                                {m.commentary}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
+                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                     </div>
-                                                )}
-                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                    {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ))}

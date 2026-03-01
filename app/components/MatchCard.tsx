@@ -4,34 +4,26 @@ import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식 (국기 깨짐 완벽 방지)
+// 🔥 [사파리 완벽 우회 & TBD 방패 통일]
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
 const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
-  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
-  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
+  const [isError, setIsError] = useState(false);
 
-  useEffect(() => {
-    if (!src) {
-      setImgSrc(FALLBACK_IMG);
-      setCors(undefined);
-      return;
-    }
-    // 1단계: 원본 주소 + CORS 허용으로 시도 (위키피디아 국기 등 대부분 여기서 100% 성공)
-    setImgSrc(src);
-    setCors("anonymous");
-  }, [src]);
+  // TBD나 BYE일 경우 무조건 안전한 다크그레이 방패로 렌더링
+  const isTbdOrBye = src === 'TBD' || src === 'BYE' || src?.includes('uefa.com');
+  const finalSrc = isTbdOrBye ? SAFE_TBD_LOGO : (src || FALLBACK_IMG);
 
-  const handleError = () => {
-    if (cors === "anonymous") {
-      // 2단계: CORS 때문에 캡처용 로딩이 막히면, 캡처를 포기하더라도 화면에는 무조건 나오게 보안 설정 해제
-      setImgSrc(src);
-      setCors(undefined);
-    } else {
-      // 3단계: 주소 자체가 박살 났을 때만 기본 로고 표시
-      setImgSrc(FALLBACK_IMG);
-    }
-  };
-
-  return <img src={imgSrc} crossOrigin={cors} onError={handleError} className={className} alt={alt} />;
+  return (
+    <img 
+      src={isError ? FALLBACK_IMG : finalSrc} 
+      className={className} 
+      alt={alt} 
+      referrerPolicy="no-referrer" // 🔥 사파리 국기 차단 방지 (위키피디아 등)
+      crossOrigin="anonymous"      // 🔥 캡처를 위한 최소한의 허용
+      onError={() => setIsError(true)} 
+    />
+  );
 };
 
 interface MatchCardProps {
@@ -50,7 +42,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     return () => clearTimeout(t);
   }, []);
 
-  // 🔥 동적 코멘터리 생성 로직
   const dynamicCommentary = getMatchCommentary(match);
   const displayCommentary = match.commentary || dynamicCommentary;
 
@@ -79,7 +70,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   const homeMaster = getTeamMasterInfo(match.home);
   const awayMaster = getTeamMasterInfo(match.away);
 
-  // 리얼순위 배지
   const getRankBadge = (rank?: number) => {
     if (!rank || rank <= 0) return (
       <span className="px-1 py-[1px] rounded text-[9px] font-black border border-slate-700 bg-slate-800 text-slate-500">R.-</span>
@@ -95,7 +85,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 팀 등급 배지
   const getTierBadge = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
     let colors = 'bg-slate-800 text-slate-400 border-slate-600';
@@ -110,7 +99,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 컨디션 배지
   const getConditionBadge = (condition?: string) => {
     if (!condition) return null;
     const config: any = {
@@ -138,20 +126,22 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className="flex flex-col items-center text-center space-y-3 w-full">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            {/* 🔥 새롭게 적용된 '원본 최우선' SafeImage */}
+            {/* 🔥 사파리 무적 SafeImage 렌더링 (TBD일 경우 다크그레이 방패 강제 적용) */}
             <SafeImage src={logo || FALLBACK_IMG} className="w-full h-full object-contain" />
           </div>
-          {getTierBadge(master?.tier)}
+          {!(name === 'TBD' || name === 'BYE') && getTierBadge(master?.tier)}
         </div>
 
         <div className="flex flex-col items-center space-y-1.5 w-full">
           <span className="text-xs font-black text-white uppercase tracking-tighter truncate w-full max-w-[100px] leading-tight drop-shadow-md">
             {name}
           </span>
-          <div className="flex items-center gap-1">
-            {getRankBadge(master?.real_rank)}
-            {getConditionBadge(master?.condition)}
-          </div>
+          {!(name === 'TBD' || name === 'BYE') && (
+            <div className="flex items-center gap-1">
+              {getRankBadge(master?.real_rank)}
+              {getConditionBadge(master?.condition)}
+            </div>
+          )}
           <p className="text-[9px] font-bold text-slate-500 italic tracking-wide truncate max-w-[90px]">
             {owner || '-'}
           </p>
@@ -205,7 +195,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="flex flex-col items-center px-1">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              <SafeImage src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT" />
+                              <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT" />
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>
@@ -216,7 +206,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 🔥 예상승률 그래프 섹션 */}
         {showGraph && (
             <div className="mt-5 space-y-1.5">
                 <div className="flex justify-between items-end px-1">
@@ -238,7 +227,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
         )}
 
-        {/* 🔥 경기결과 코멘터리 섹션 */}
         {displayCommentary && (
             <div className="mt-5 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl shadow-inner">
                 <div className="flex flex-col items-center text-center">
