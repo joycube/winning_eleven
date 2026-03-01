@@ -16,10 +16,12 @@ declare module 'react' {
   }
 }
 
-// 🔥 TBD 전용 플레이스홀더 이미지 (안 깨지는 방패)
+// 🔥 TBD 전용 플레이스홀더 이미지 (안 깨지는 다크그레이 방패)
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+// 옛날 변수명(TBD_LOGO)을 쓰는 곳들도 모두 새 방패를 가리키도록 강제 연결
+const TBD_LOGO = SAFE_TBD_LOGO;
 
-// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰와 100% 동일)
+// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰와 100% 동일한 통일 로직)
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
 
@@ -47,6 +49,7 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
   );
 };
 
+// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(2);
@@ -165,17 +168,17 @@ export const CupSchedule = ({
   };
 
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
-      // 🔥 [디벨롭] 대진표 국기: 순정 태그 + referrerPolicy (사파리 프리패스)
+      // 🔥 DB에서 넘어온 옛날 uefa 깨진 링크도 여기서 원천 차단 후 SAFE_TBD_LOGO 렌더링
       const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
       
       return (
         <div className="relative w-9 h-9 flex-shrink-0">
             <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+                {/* 🔥 모든 꼼수를 제거한 100% 순정 img 태그로 통일! */}
                 <img 
                   src={displayLogo} 
                   className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
                   alt="" 
-                  referrerPolicy="no-referrer"
                   onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
                 />
             </div>
@@ -187,7 +190,6 @@ export const CupSchedule = ({
   const internalKnockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
 
-    // 🔥 [디벨롭] TBD 상태일 때 로고를 uefa.com이 아닌 무조건 SAFE_TBD_LOGO로 초기화
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
@@ -214,6 +216,7 @@ export const CupSchedule = ({
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
+            // 🔥 배열에 넣을 때부터 uefa.com 링크를 SAFE_TBD_LOGO로 완벽하게 정화!
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
@@ -353,7 +356,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                        // 🔥 조별리그 카드 렌더링 시에도 TBD 체크
+                                        // 🔥 조별리그 카드 렌더링 시에도 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
@@ -409,7 +412,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
-                                        // 🔥 토너먼트 카드 렌더링 시 TBD 체크
+                                        // 🔥 토너먼트 카드 렌더링 시 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
@@ -463,7 +466,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        // 🔥 일반 스케줄 렌더링 시 TBD 체크
+                                        // 🔥 일반 스케줄 렌더링 시 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
