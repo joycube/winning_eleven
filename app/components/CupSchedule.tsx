@@ -1,55 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 
-// 🔥 캡처 라이브러리 추가
-import { toPng } from 'html-to-image';
-// @ts-ignore
-import download from 'downloadjs';
-
-// 🔥 [TS Error Fix] styled-jsx 속성 인식
-declare module 'react' {
-  interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
-    jsx?: boolean;
-    global?: boolean;
-  }
-}
-
-// 🔥 TBD 전용 플레이스홀더 이미지 (안 깨지는 다크그레이 방패)
+// 🔥 TBD 전용 안전한 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
-// 옛날 변수명(TBD_LOGO)을 쓰는 곳들도 모두 새 방패를 가리키도록 강제 연결
-const TBD_LOGO = SAFE_TBD_LOGO;
 
-// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰와 100% 동일한 통일 로직)
-const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
-
-  useEffect(() => {
-    setImgSrc(src || FALLBACK_IMG);
-  }, [src]);
-
-  if (isBg) {
-    return (
-      <div 
-        className={className} 
-        style={{ backgroundImage: `url(${imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
-      ></div>
-    );
-  }
-
-  return (
-    <img 
-      src={imgSrc} 
-      className={className} 
-      alt="" 
-      crossOrigin="anonymous" 
-      onError={() => setImgSrc(FALLBACK_IMG)} 
-    />
-  );
-};
-
-// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(2);
@@ -70,39 +26,13 @@ interface CupScheduleProps {
 }
 
 export const CupSchedule = ({ 
-  seasons, viewSeasonId, onMatchClick, masterTeams, activeRankingData, historyData, owners, knockoutStages 
+  seasons, viewSeasonId, onMatchClick, masterTeams, activeRankingData, historyData, knockoutStages 
 }: CupScheduleProps) => {
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || 'CUP';
 
-  const [capturingMatchId, setCapturingMatchId] = useState<string | null>(null);
-
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
-
-  const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
-    const element = document.getElementById(`cup-match-card-wrap-${matchId}`);
-    if (!element) return;
-    
-    setCapturingMatchId(matchId);
-
-    try {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        const dataUrl = await toPng(element, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { margin: '0' } });
-        const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
-        
-        download(dataUrl, fileName);
-        
-        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
-             try {
-                 const blob = await (await fetch(dataUrl)).blob();
-                 const file = new File([blob], fileName, { type: blob.type });
-                 await navigator.share({ title: '🔥 Match Result', text: `${home} vs ${away} 컵 경기 결과!`, files: [file] });
-             } catch (shareErr) {}
-        } else { alert('📷 기기에 매치카드가 저장되었습니다!'); }
-    } catch (error: any) { alert(`이미지 캡처에 실패했습니다.\nPC 환경에서 시도해주세요!`);
-    } finally { setCapturingMatchId(null); }
-  };
 
   const getWinnerName = (match: Match | null): string => {
       if (!match) return 'TBD';
@@ -168,13 +98,13 @@ export const CupSchedule = ({
   };
 
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
-      // 🔥 DB에서 넘어온 옛날 uefa 깨진 링크도 여기서 원천 차단 후 SAFE_TBD_LOGO 렌더링
+      // 🔥 순정 태그 + 순정 이미지 처리
       const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
       
       return (
         <div className="relative w-9 h-9 flex-shrink-0">
             <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                {/* 🔥 모든 꼼수를 제거한 100% 순정 img 태그로 통일! */}
+                {/* 🔥 캡처 방어막 완전 제거 */}
                 <img 
                   src={displayLogo} 
                   className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
@@ -216,7 +146,6 @@ export const CupSchedule = ({
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
-            // 🔥 배열에 넣을 때부터 uefa.com 링크를 SAFE_TBD_LOGO로 완벽하게 정화!
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
@@ -356,22 +285,11 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                        // 🔥 조별리그 카드 렌더링 시에도 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                <div className="flex justify-end w-full px-1">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                        disabled={capturingMatchId === m.id}
-                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                        title="결과 캡처 및 공유"
-                                                    >
-                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                    </button>
-                                                </div>
-
-                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                {/* 🔥 캡처 버튼 제거 완료 */}
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                     <MatchCard 
                                                       match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
                                                       onClick={onMatchClick} 
@@ -412,23 +330,11 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
-                                        // 🔥 토너먼트 카드 렌더링 시 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
-                                                {m.status !== 'UPCOMING' && m.home !== 'TBD' && m.home !== 'BYE' && (
-                                                    <div className="flex justify-end w-full px-1">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                            disabled={capturingMatchId === m.id}
-                                                            className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                        >
-                                                            {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                {/* 🔥 캡처 버튼 제거 완료 */}
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                     <MatchCard 
                                                         match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
                                                         onClick={onMatchClick} 
@@ -466,21 +372,11 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        // 🔥 일반 스케줄 렌더링 시 TBD/uefa.com 체크해서 방패 강제 적용
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                <div className="flex justify-end w-full px-1">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }}
-                                                        disabled={capturingMatchId === m.id}
-                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                                    >
-                                                        {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                    </button>
-                                                </div>
-
-                                                <div id={`cup-match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                {/* 🔥 캡처 버튼 제거 완료 */}
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                     <MatchCard 
                                                         match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
                                                         onClick={onMatchClick} 

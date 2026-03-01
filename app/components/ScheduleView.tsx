@@ -6,10 +6,7 @@ import { MatchCard } from './MatchCard';
 import { CupSchedule } from './CupSchedule'; 
 import { Season, Match, MasterTeam } from '../types'; 
 
-import { toPng } from 'html-to-image';
-// @ts-ignore
-import download from 'downloadjs';
-
+// 🔥 안 깨지는 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
@@ -48,12 +45,11 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        {/* 🔥 [사파리 완벽 우회] 대진표에 들어가는 국기 이미지에 referrerPolicy 적용! */}
+                        {/* 🔥 캡처 제거: 100% 순정 img 태그 적용 */}
                         <img 
                             src={displayLogo} 
                             className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
                             alt="" 
-                            referrerPolicy="no-referrer"
                             onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
                         />
                     </div>
@@ -103,7 +99,6 @@ export const ScheduleView = ({
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
-  const [capturingMatchId, setCapturingMatchId] = useState<string | null>(null);
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
@@ -147,26 +142,6 @@ export const ScheduleView = ({
     if (matchCount === 2) return '4강 (준결승)';
     if (matchCount === 1) return '🏆 결승전';
     return stage;
-  };
-
-  const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
-    const element = document.getElementById(`match-card-wrap-${matchId}`);
-    if (!element) return;
-    setCapturingMatchId(matchId);
-    try {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        const dataUrl = await toPng(element, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { margin: '0' }});
-        const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
-        download(dataUrl, fileName);
-        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
-             try {
-                 const blob = await (await fetch(dataUrl)).blob();
-                 const file = new File([blob], fileName, { type: blob.type });
-                 await navigator.share({ title: '🔥 Match Result', text: `${home} vs ${away} 경기 결과!`, files: [file] });
-             } catch (shareErr) { }
-        } else alert('📷 기기에 매치카드가 저장되었습니다!');
-    } catch (error: any) { alert(`이미지 캡처에 실패했습니다.\n사파리 환경일 경우 접근 권한 문제일 수 있습니다.`);
-    } finally { setCapturingMatchId(null); }
   };
 
   const getTeamInfo = (teamName: string) => {
@@ -295,10 +270,8 @@ export const ScheduleView = ({
 
                                                     return (
                                                         <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                            <div className="flex justify-end w-full px-1">
-                                                                <button onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }} disabled={capturingMatchId === m.id} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800">{capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}</button>
-                                                            </div>
-                                                            <div id={`match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                            {/* 🔥 캡처 버튼 영역 삭제 */}
+                                                            <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                                 <MatchCard match={safeMatch} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
@@ -341,12 +314,8 @@ export const ScheduleView = ({
 
                                                 return (
                                                     <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                        <div className="flex justify-end w-full px-1">
-                                                            <button onClick={(e) => { e.stopPropagation(); handleCaptureMatch(m.id, m.home, m.away); }} disabled={capturingMatchId === m.id} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800">
-                                                                {capturingMatchId === m.id ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                                            </button>
-                                                        </div>
-                                                        <div id={`match-card-wrap-${m.id}`} className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                                        {/* 🔥 캡처 버튼 영역 삭제 */}
+                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
                                                             <MatchCard match={safeMatch} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>

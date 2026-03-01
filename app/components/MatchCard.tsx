@@ -4,27 +4,8 @@ import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 🔥 [사파리 완벽 우회 & TBD 방패 통일]
+// 🔥 TBD 전용 안전한 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
-
-const SafeImage = ({ src, className, alt = '' }: { src: string, className?: string, alt?: string }) => {
-  const [isError, setIsError] = useState(false);
-
-  // TBD나 BYE일 경우 무조건 안전한 다크그레이 방패로 렌더링
-  const isTbdOrBye = src === 'TBD' || src === 'BYE' || src?.includes('uefa.com');
-  const finalSrc = isTbdOrBye ? SAFE_TBD_LOGO : (src || FALLBACK_IMG);
-
-  return (
-    <img 
-      src={isError ? FALLBACK_IMG : finalSrc} 
-      className={className} 
-      alt={alt} 
-      referrerPolicy="no-referrer" // 🔥 사파리 국기 차단 방지 (위키피디아 등)
-      crossOrigin="anonymous"      // 🔥 캡처를 위한 최소한의 허용
-      onError={() => setIsError(true)} 
-    />
-  );
-};
 
 interface MatchCardProps {
   match: Match;
@@ -118,16 +99,25 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
   const renderTeamContent = (side: 'home' | 'away') => {
     const name = side === 'home' ? match.home : match.away;
-    const logo = side === 'home' ? match.homeLogo : match.awayLogo;
+    const rawLogo = side === 'home' ? match.homeLogo : match.awayLogo;
     const owner = side === 'home' ? match.homeOwner : match.awayOwner;
     const master = side === 'home' ? homeMaster : awayMaster;
+
+    // 🔥 캡처용 꼼수 완전 제거, 순정 이미지 소스만 결정
+    const isTbdOrBye = name === 'TBD' || name === 'BYE' || rawLogo?.includes('uefa.com');
+    const displayLogo = isTbdOrBye ? SAFE_TBD_LOGO : (rawLogo || FALLBACK_IMG);
 
     return (
       <div className="flex flex-col items-center text-center space-y-3 w-full">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            {/* 🔥 사파리 무적 SafeImage 렌더링 (TBD일 경우 다크그레이 방패 강제 적용) */}
-            <SafeImage src={logo || FALLBACK_IMG} className="w-full h-full object-contain" />
+            {/* 🔥 순정 img 태그 적용 (사파리 100% 렌더링 보장) */}
+            <img 
+                src={displayLogo} 
+                className="w-full h-full object-contain" 
+                alt={name}
+                onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
+            />
           </div>
           {!(name === 'TBD' || name === 'BYE') && getTierBadge(master?.tier)}
         </div>
@@ -195,6 +185,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                     <div className="flex flex-col items-center px-1">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
+                              {/* 유튜브 아이콘도 순정으로 렌더링 */}
                               <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT" />
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}

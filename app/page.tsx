@@ -25,7 +25,7 @@ import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 
-// 🔥 [디벨롭] 전역 엑스박스 방지! 절대 안 깨지는 안전한 SVG 방패 로고로 교체
+// 🔥 [디벨롭] 전역 엑스박스 방지! 절대 안 깨지는 안전한 SVG 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 export default function FootballLeagueApp() {
@@ -148,11 +148,11 @@ export default function FootballLeagueApp() {
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
-                slots.final[0] = { ...m };
+                slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                if (idx < 2) slots.roundOf4[idx] = { ...m };
+                if (idx < 2) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("ROUND_OF_8")) {
-                if (idx < 4) slots.roundOf8[idx] = { ...m };
+                if (idx < 4) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                 hasActualRoundOf8 = true;
             }
         });
@@ -209,7 +209,6 @@ export default function FootballLeagueApp() {
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
-      // 🔥 [완벽 디벨롭] 토너먼트 모드: 승자 자동 계산 및 트리 진출 알고리즘
       if (s.type === 'TOURNAMENT') {
           let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
           let matches = newRounds[0].matches; 
@@ -228,7 +227,6 @@ export default function FootballLeagueApp() {
           const currentMatchIndex = matches.findIndex((m: any) => m.id === matchId);
           if (currentMatchIndex === -1) return;
 
-          // 1. 현재 매치 상태 완료(COMPLETED)로 업데이트
           matches[currentMatchIndex] = {
               ...matches[currentMatchIndex],
               homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -236,23 +234,21 @@ export default function FootballLeagueApp() {
               homeAssists: records.homeAssists, awayAssists: records.awayAssists
           };
 
-          // 2. 트리 진출 공식 (다음 라운드 TBD 자리 찾아가기)
           const totalMatches = matches.length;
           let nextMatchIndex = -1;
           let isNextMatchHomeSide = currentMatchIndex % 2 === 0;
 
-          if (totalMatches === 3) { // 4강 (3,4인)
+          if (totalMatches === 3) { 
               if (currentMatchIndex <= 1) nextMatchIndex = 2;
-          } else if (totalMatches === 7) { // 8강
+          } else if (totalMatches === 7) { 
               if (currentMatchIndex <= 3) nextMatchIndex = 4 + Math.floor(currentMatchIndex / 2);
               else if (currentMatchIndex <= 5) nextMatchIndex = 6;
-          } else if (totalMatches === 15) { // 16강
+          } else if (totalMatches === 15) { 
               if (currentMatchIndex <= 7) nextMatchIndex = 8 + Math.floor(currentMatchIndex / 2);
               else if (currentMatchIndex <= 11) nextMatchIndex = 12 + Math.floor((currentMatchIndex - 8) / 2);
               else if (currentMatchIndex <= 13) nextMatchIndex = 14;
           }
 
-          // 3. 찾은 다음 자리에 승자 데이터 강제 꽂아넣기
           if (nextMatchIndex !== -1 && winningTeam) {
               if (isNextMatchHomeSide) {
                   matches[nextMatchIndex].home = winningTeam.name;
@@ -271,9 +267,6 @@ export default function FootballLeagueApp() {
           return; 
       }
 
-      // -------------------------------------------------------------
-      // 이하 일반 리그 / 컵 모드 로직 (기존 유지)
-      // -------------------------------------------------------------
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
 
