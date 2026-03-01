@@ -12,10 +12,11 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [사파리 캐시 무력화 SafeImage - 스마트 업데이트] 
+// 💣 [스마트 SafeImage] 사파리 엑스박스 완벽 방어 및 3단계 렌더링 시스템
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
   const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
+  const [errorCount, setErrorCount] = useState(0);
 
   useEffect(() => {
     if (!src) {
@@ -24,25 +25,39 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
       return;
     }
 
-    // 🔥 [디벨롭] 민감한 외부 URL(구글, 카카오 등)은 파라미터 훼손을 막기 위해 원본 유지!
-    const isSensitiveUrl = src.includes('googleusercontent') || src.includes('kakaocdn') || src.includes('firebasestorage') || src.startsWith('data:') || src.includes('githubusercontent');
-    
-    let safeSrc = src;
-    if (!isSensitiveUrl) {
+    // 🔥 [디벨롭] 위키피디아, 나무위키, 국기 CDN 등 사파리가 싫어하는 도메인은 원본 무검열 패스!
+    const isSensitiveUrl = 
+        src.includes('googleusercontent') || 
+        src.includes('kakaocdn') || 
+        src.includes('firebasestorage') || 
+        src.startsWith('data:') || 
+        src.includes('githubusercontent') ||
+        src.includes('wikipedia.org') ||     // 국기 단골 도메인 1
+        src.includes('wikimedia.org') ||     // 국기 단골 도메인 2
+        src.includes('namu.la') ||           // 나무위키
+        src.includes('flagcdn.com');         // 국기 CDN
+
+    if (isSensitiveUrl) {
+        setImgSrc(src); // 타임스탬프 안 붙임
+        setCors(undefined); // CORS 검열 해제 (사파리 엑스박스 방지)
+    } else {
         const cacheBuster = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
-        safeSrc = `${src}${cacheBuster}`;
+        setImgSrc(`${src}${cacheBuster}`);
+        setCors("anonymous");
     }
-    
-    setImgSrc(safeSrc);
-    setCors("anonymous"); 
+    setErrorCount(0); // 소스가 바뀌면 에러 카운트 초기화
   }, [src]);
 
+  // 🔥 [디벨롭] 에러 발생 시 자동 롤백 시스템
   const handleError = () => {
-    if (cors === "anonymous") {
-      const pureSrc = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
-      setImgSrc(src.startsWith('data:') ? src : `${src}${pureSrc}`);
+    if (errorCount === 0) {
+      // 첫 번째 에러: 사파리가 CORS로 막았을 확률 99%. 
+      // CORS 족쇄를 풀고 원본 순정 URL로 2차 시도!
+      setImgSrc(src);
       setCors(undefined);
+      setErrorCount(1);
     } else {
+      // 두 번째 에러: 진짜 링크가 깨진 경우. 폴백 이미지 노출.
       setImgSrc(FALLBACK_IMG);
     }
   };
@@ -141,7 +156,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  // 🔥 우승 카드 2개 분리를 위한 레퍼런스와 상태값
+  // 우승 카드 2개 분리를 위한 레퍼런스와 상태값
   const grandChampionCardRef = useRef<HTMLDivElement>(null);
   const leagueChampionCardRef = useRef<HTMLDivElement>(null);
   const topPointsCardRef = useRef<HTMLDivElement>(null);
@@ -166,7 +181,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const todayDate = getTodayFormatted();
   const footerText = `시즌 '${seasonName}' / ${todayDate}`;
 
-  // 상금 정책에 champion 속성 추가 연동 (없으면 0)
   const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0 };
 
   const getRankedTeams = (teams: any[]) => {
@@ -204,7 +218,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return { id: stats?.id || master?.id || 0, name: stats?.name || master?.name || teamIdentifier, logo: stats?.logo || master?.logo || TBD_LOGO, ownerName: stats?.ownerName || (master as any)?.ownerName || 'CPU', region: master?.region || '', tier: master?.tier || 'C', realRankScore: master?.realRankScore, realFormScore: master?.realFormScore, condition: master?.condition || 'C', real_rank: master?.real_rank };
   };
 
-  // 최종 결승 우승자 추출 로직 (CUP & LEAGUE_PLAYOFF 공통)
   const grandFinalMatch = useMemo(() => {
       if (!currentSeason?.rounds) return null;
       return currentSeason.rounds.flatMap((r: any) => r.matches).find((m: any) => m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER'));
@@ -216,7 +229,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       const aScore = Number(grandFinalMatch.awayScore);
       if (hScore > aScore) return grandFinalMatch.home;
       if (aScore > hScore) return grandFinalMatch.away;
-      return null; // 무승부면 TBD 유지
+      return null; 
   }, [grandFinalMatch]);
 
   const grandChampionInfo = useMemo(() => {
@@ -224,7 +237,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       return getTeamExtendedInfo(grandChampionName);
   }, [grandChampionName, activeRankingData, masterTeams]);
 
-  // 오너 상금 계산에 최종 우승(champion) 파이 합산 로직 추가!
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
     if (ownerName && ownerName === sortedTeams[0]?.ownerName) totalPrize += (prizeRule.first || 0);
@@ -670,7 +682,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                         <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                           <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                            {/* 🔥 [디벨롭] 오너 프로필은 SafeImage 대신 순정 img 사용으로 무조건 노출되게 강제! */}
                             <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
                           </div>
                         </div>
@@ -756,7 +767,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       {!isHybridOrCup && <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>}
                       <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr ${ringGradient} ${ringShadow} relative z-10`}>
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                          {/* 🔥 [디벨롭] 오너 프로필은 SafeImage 대신 순정 img 사용으로 무조건 노출되게 강제! */}
                           <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
                         </div>
                       </div>
@@ -821,7 +831,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <div className="relative pt-3">
                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                          {/* 🔥 [디벨롭] 오너 프로필은 SafeImage 대신 순정 img 사용으로 무조건 노출되게 강제! */}
                           <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
                         </div>
                       </div>
