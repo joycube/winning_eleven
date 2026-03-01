@@ -47,12 +47,16 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         const lSnap = await getDocs(collection(db, 'finance_ledger'));
         const rawLedgers = lSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // 🔥 [버그 픽스] 삭제된 시즌의 참가비/상금(유령 데이터) 완벽 차단 필터
-        // 1. 현재 존재하는(살아있는) 시즌의 ID 목록을 가져옵니다.
         const activeSeasonIds = new Set(seasons.map(s => String(s.id)));
         
-        // 2. 장부 데이터 중, 살아있는 시즌의 데이터만 남깁니다. (삭제된 시즌 기록은 자동 증발)
-        const validLedgers = rawLedgers.filter((l: any) => activeSeasonIds.has(String(l.seasonId)));
+        // 🔥 [디벨롭] 살아있는 시즌만 필터링한 뒤, '최신 날짜순(내림차순)'으로 완벽 정렬!
+        const validLedgers = rawLedgers
+            .filter((l: any) => activeSeasonIds.has(String(l.seasonId)))
+            .sort((a: any, b: any) => {
+                const dateA = new Date(a.createdAt || 0).getTime();
+                const dateB = new Date(b.createdAt || 0).getTime();
+                return dateB - dateA; // 최신 날짜가 위로 오도록 정렬
+            });
 
         setDbLedgers(validLedgers);
 
@@ -242,6 +246,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
   const rawOwnerDetails = computedFinanceDetails[selectedOwnerId] || { revenues: [], expenses: [] };
 
   const availableSeasons = useMemo(() => {
+    // dbLedgers가 최신순 정렬되어 있으므로 드롭다운의 시즌 순서도 자연스럽게 최신 시즌이 위로 올라오게 됩니다.
     const sSet = new Set(dbLedgers.map(l => seasons.find(s => String(s.id) === l.seasonId)?.name || '기타'));
     return Array.from(sSet);
   }, [dbLedgers, seasons]);
