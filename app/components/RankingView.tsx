@@ -5,72 +5,58 @@ import { db } from '../firebase';
 import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers';
 
-// 🔥 캡처 라이브러리
 import { toPng } from 'html-to-image';
 // @ts-ignore
 import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [스마트 SafeImage] 사파리 엑스박스 완벽 방어 및 3단계 렌더링 시스템
+// 💣 [사파리 완벽 우회 SafeImage] 속성 자체를 렌더링하지 않는 하드코어 최적화
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(FALLBACK_IMG);
-  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
-  const [errorCount, setErrorCount] = useState(0);
+  const [isError, setIsError] = useState(false);
+
+  // 🔥 [핵심] 사파리가 차단하는 도메인들
+  const isPureRequire = useMemo(() => {
+    if (!src) return false;
+    return src.includes('wikimedia.org') || 
+           src.includes('wikipedia.org') || 
+           src.includes('flagcdn.com') || 
+           src.includes('googleusercontent') || 
+           src.includes('kakaocdn') ||
+           src.includes('firebasestorage') ||
+           src.startsWith('data:');
+  }, [src]);
 
   useEffect(() => {
     if (!src) {
       setImgSrc(FALLBACK_IMG);
-      setCors(undefined);
       return;
     }
-
-    // 🔥 [디벨롭] 위키피디아, 나무위키, 국기 CDN 등 사파리가 싫어하는 도메인은 원본 무검열 패스!
-    const isSensitiveUrl = 
-        src.includes('googleusercontent') || 
-        src.includes('kakaocdn') || 
-        src.includes('firebasestorage') || 
-        src.startsWith('data:') || 
-        src.includes('githubusercontent') ||
-        src.includes('wikipedia.org') ||     // 국기 단골 도메인 1
-        src.includes('wikimedia.org') ||     // 국기 단골 도메인 2
-        src.includes('namu.la') ||           // 나무위키
-        src.includes('flagcdn.com');         // 국기 CDN
-
-    if (isSensitiveUrl) {
-        setImgSrc(src); // 타임스탬프 안 붙임
-        setCors(undefined); // CORS 검열 해제 (사파리 엑스박스 방지)
+    // 순수 요구 대상은 캐시 버스터(?cb=)도 달지 않고 원본 유지
+    if (isPureRequire) {
+        setImgSrc(src);
     } else {
         const cacheBuster = src.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
         setImgSrc(`${src}${cacheBuster}`);
-        setCors("anonymous");
     }
-    setErrorCount(0); // 소스가 바뀌면 에러 카운트 초기화
-  }, [src]);
-
-  // 🔥 [디벨롭] 에러 발생 시 자동 롤백 시스템
-  const handleError = () => {
-    if (errorCount === 0) {
-      // 첫 번째 에러: 사파리가 CORS로 막았을 확률 99%. 
-      // CORS 족쇄를 풀고 원본 순정 URL로 2차 시도!
-      setImgSrc(src);
-      setCors(undefined);
-      setErrorCount(1);
-    } else {
-      // 두 번째 에러: 진짜 링크가 깨진 경우. 폴백 이미지 노출.
-      setImgSrc(FALLBACK_IMG);
-    }
-  };
+    setIsError(false);
+  }, [src, isPureRequire]);
 
   if (isBg) {
     return (
-      <div className={className} style={{ backgroundImage: `url(${imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
-        <img src={imgSrc} crossOrigin={cors} onError={handleError} className="absolute opacity-0 pointer-events-none w-0 h-0" alt="" />
-      </div>
+      <div className={className} style={{ backgroundImage: `url(${isError ? FALLBACK_IMG : imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
     );
   }
 
-  return <img src={imgSrc} crossOrigin={cors} onError={handleError} className={className} alt="" />;
+  // 🔥 [완벽 분리 렌더링] 
+  // isPureRequire일 경우 crossOrigin 속성 자체를 아예 빼버림 (관리자 탭과 동일한 원리)
+  if (isPureRequire) {
+      return <img src={isError ? FALLBACK_IMG : imgSrc} className={className} alt="" onError={() => setIsError(true)} />;
+  }
+
+  // 일반 이미지 (캡처용)
+  return <img src={isError ? FALLBACK_IMG : imgSrc} crossOrigin="anonymous" className={className} alt="" onError={() => setIsError(true)} />;
 };
 
 const getTodayFormatted = () => {
@@ -156,7 +142,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  // 우승 카드 2개 분리를 위한 레퍼런스와 상태값
   const grandChampionCardRef = useRef<HTMLDivElement>(null);
   const leagueChampionCardRef = useRef<HTMLDivElement>(null);
   const topPointsCardRef = useRef<HTMLDivElement>(null);
