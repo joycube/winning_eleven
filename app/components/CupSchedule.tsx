@@ -16,11 +16,10 @@ declare module 'react' {
   }
 }
 
-// 🔥 TBD 전용 플레이스홀더 이미지 (방패)
+// 🔥 TBD 전용 플레이스홀더 이미지 (안 깨지는 방패)
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
-const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰 완벽 통일)
+// 💣 [사파리 꼼수 전면 폐기 - 순정 SafeImage] (랭킹뷰/스케줄뷰와 100% 동일)
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
   const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
 
@@ -48,7 +47,6 @@ const SafeImage = ({ src, className, isBg = false }: { src: string, className?: 
   );
 };
 
-// 🔥 오늘 날짜를 'YY.MM.DD' 형식으로 가져오는 헬퍼 함수
 const getTodayFormatted = () => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(2);
@@ -79,7 +77,6 @@ export const CupSchedule = ({
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🔥 매치카드 캡처 전용 함수 (모바일 에러 완벽 차단)
   const handleCaptureMatch = async (matchId: string, home: string, away: string) => {
     const element = document.getElementById(`cup-match-card-wrap-${matchId}`);
     if (!element) return;
@@ -88,14 +85,7 @@ export const CupSchedule = ({
 
     try {
         await new Promise(resolve => setTimeout(resolve, 300));
-
-        const dataUrl = await toPng(element, { 
-            cacheBust: true, 
-            backgroundColor: 'transparent', 
-            pixelRatio: 2, 
-            style: { margin: '0' } 
-        });
-        
+        const dataUrl = await toPng(element, { cacheBust: true, backgroundColor: 'transparent', pixelRatio: 2, style: { margin: '0' } });
         const fileName = `match-${home}-vs-${away}-${Date.now()}.png`;
         
         download(dataUrl, fileName);
@@ -104,21 +94,11 @@ export const CupSchedule = ({
              try {
                  const blob = await (await fetch(dataUrl)).blob();
                  const file = new File([blob], fileName, { type: blob.type });
-                 await navigator.share({
-                     title: '🔥 Match Result',
-                     text: `${home} vs ${away} 컵 경기 결과!`,
-                     files: [file]
-                 });
+                 await navigator.share({ title: '🔥 Match Result', text: `${home} vs ${away} 컵 경기 결과!`, files: [file] });
              } catch (shareErr) {}
-        } else {
-             alert('📷 기기에 매치카드가 저장되었습니다!');
-        }
-    } catch (error: any) {
-        console.error('캡처 실패:', error);
-        alert(`이미지 캡처에 실패했습니다.\n사파리/크롬 모바일의 외부 이미지 보안(CORS) 차단일 수 있습니다.\n\nPC 환경에서 시도해주세요!`);
-    } finally {
-        setCapturingMatchId(null);
-    }
+        } else { alert('📷 기기에 매치카드가 저장되었습니다!'); }
+    } catch (error: any) { alert(`이미지 캡처에 실패했습니다.\nPC 환경에서 시도해주세요!`);
+    } finally { setCapturingMatchId(null); }
   };
 
   const getWinnerName = (match: Match | null): string => {
@@ -145,7 +125,7 @@ export const CupSchedule = ({
           id: 0, name: teamName || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-',
           region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null
       };
-      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return tbdTeam; // BYE나 TBD면 SAFE_TBD_LOGO 고정
+      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return tbdTeam;
 
       const normTarget = normalize(teamName);
       const stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normTarget);
@@ -185,7 +165,7 @@ export const CupSchedule = ({
   };
 
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
-      // 🔥 [디벨롭] 컵 스케줄 대진표 국기: 순정 태그 + referrerPolicy 적용
+      // 🔥 [디벨롭] 대진표 국기: 순정 태그 + referrerPolicy (사파리 프리패스)
       const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
       
       return (
@@ -207,6 +187,7 @@ export const CupSchedule = ({
   const internalKnockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
 
+    // 🔥 [디벨롭] TBD 상태일 때 로고를 uefa.com이 아닌 무조건 SAFE_TBD_LOGO로 초기화
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
@@ -372,6 +353,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
+                                        // 🔥 조별리그 카드 렌더링 시에도 TBD 체크
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
@@ -427,6 +409,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
+                                        // 🔥 토너먼트 카드 렌더링 시 TBD 체크
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
@@ -480,6 +463,7 @@ export const CupSchedule = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
+                                        // 🔥 일반 스케줄 렌더링 시 TBD 체크
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="relative flex flex-col gap-1 mb-2">
