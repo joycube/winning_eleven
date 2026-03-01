@@ -11,33 +11,34 @@ import download from 'downloadjs';
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 
-// 💣 [사파리 완벽 우회] 렌더링 지연(깜빡임)을 없앤 동기식 SafeImage
+// 💣 [사파리 꼼수 전면 폐기!] 
+// flagcdn.com 같은 정상적인 CDN을 위해 캐시버스터, 리퍼러 조작 등 모든 꼼수를 제거한 순정 컴포넌트
 const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [isError, setIsError] = useState(false);
+  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
 
-  // 렌더링 즉시 계산 (useEffect 지연 제거)
-  const isSensitiveUrl = useMemo(() => {
-    if (!src) return false;
-    return src.includes('wikimedia.org') || src.includes('wikipedia.org') || src.includes('flagcdn.com') || 
-           src.includes('googleusercontent') || src.includes('kakaocdn') || src.includes('firebasestorage') || src.startsWith('data:');
+  useEffect(() => {
+    setImgSrc(src || FALLBACK_IMG);
   }, [src]);
 
-  const finalSrc = useMemo(() => {
-    if (!src) return FALLBACK_IMG;
-    if (isSensitiveUrl) return src; // 사파리 차단 도메인은 순정 URL 유지
-    return `${src}${src.includes('?') ? '&' : '?'}cb=${Date.now()}`;
-  }, [src, isSensitiveUrl]);
-
   if (isBg) {
-    return <div className={className} style={{ backgroundImage: `url(${isError ? FALLBACK_IMG : finalSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>;
+    return (
+      <div 
+        className={className} 
+        style={{ backgroundImage: `url(${imgSrc})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
+      ></div>
+    );
   }
 
-  // 민감한 도메인은 crossOrigin 자체를 삭제
-  if (isSensitiveUrl) {
-      return <img src={isError ? FALLBACK_IMG : finalSrc} className={className} alt="" onError={() => setIsError(true)} />;
-  }
-
-  return <img src={isError ? FALLBACK_IMG : finalSrc} crossOrigin="anonymous" className={className} alt="" onError={() => setIsError(true)} />;
+  // 오직 캡처(CORS)에 필요한 최소한의 표준 속성만 남김
+  return (
+    <img 
+      src={imgSrc} 
+      className={className} 
+      alt="" 
+      crossOrigin="anonymous" 
+      onError={() => setImgSrc(FALLBACK_IMG)} 
+    />
+  );
 };
 
 const getTodayFormatted = () => {
@@ -76,8 +77,13 @@ const BracketMatchBox = ({ match, title, highlight = false }: any) => {
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        {/* 🔥 [핵심 롤백 1] 대진표 국기: Admin 탭과 완벽히 동일한 순정 img 태그 적용 */}
-                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                        {/* 🔥 대진표 국기: 어떤 조작도 없는 100% 순정 img 태그 */}
+                        <img 
+                            src={displayLogo} 
+                            className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
+                            alt="" 
+                            onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} 
+                        />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
                         <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -107,7 +113,6 @@ const BracketMatchBox = ({ match, title, highlight = false }: any) => {
         </div>
     );
 };
-
 
 interface RankingViewProps {
   seasons: any[];
@@ -241,8 +246,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       <div className="flex items-center gap-4">
         <div className="relative w-10 h-10 flex-shrink-0">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
-            {/* 🔥 [핵심 롤백 2] 순위표 국기: Admin 탭과 완벽히 동일한 순정 img 태그 적용 */}
-            <img src={info.logo || team.logo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+            {/* 🔥 순위표 국기: Admin 탭과 100% 동일한 순정 태그 사용 (사파리 의심 원천 차단) */}
+            <img 
+                src={info.logo || team.logo} 
+                className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
+                alt="" 
+                onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} 
+            />
           </div>
           {!isTbd && getTierBadge(info.tier)}
         </div>
@@ -376,7 +386,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       return { compSemi1, compSemi2, compPoFinal, displayGrandFinal };
   }, [currentSeason, activeRankingData, masterTeams]);
 
-
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = [...(players || [])]
       .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -416,7 +425,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                    await navigator.share({ title: '👑 Grand Final Champion', text: '최종 우승자입니다! 🔥', files: [file] });
                } catch (shareErr) {}
           } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
-      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      } catch (error) { alert(`이미지 캡처 실패. 브라우저 설정 문제일 수 있습니다.`); } 
       finally { setIsCapturingGrand(false); }
   };
 
@@ -434,7 +443,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                    await navigator.share({ title: '🚩 League 1st', text: '정규리그 1위 달성! 🔥', files: [file] });
                } catch (shareErr) {}
           } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
-      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      } catch (error) { alert(`이미지 캡처 실패. 브라우저 설정 문제일 수 있습니다.`); } 
       finally { setIsCapturingLeague(false); }
   };
 
@@ -452,7 +461,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                    await navigator.share({ title: '🔥 Overall Top Points', text: '현재 누적 승점 1위입니다!', files: [file] });
                } catch (shareErr) {}
           } else { alert('📷 기기에 이미지가 성공적으로 저장되었습니다!'); }
-      } catch (error) { alert(`이미지 캡처 실패. 사파리 보안 제약일 수 있습니다.`); } 
+      } catch (error) { alert(`이미지 캡처 실패. 브라우저 설정 문제일 수 있습니다.`); } 
       finally { setIsCapturingTopPoints(false); }
   };
 
@@ -500,7 +509,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'STANDINGS' && (
         <div className="space-y-12">
           
-          {/* 하이브리드 모드 대진표 */}
           {currentSeason?.type === 'LEAGUE_PLAYOFF' && hybridPlayoffData && (
              <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -527,7 +535,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             </div>
           )}
 
-          {/* 컵 모드 대진표 */}
           {currentSeason?.type === 'CUP' && knockoutStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar">
               <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
@@ -623,7 +630,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           
-          {/* 🔥 👑 GRAND FINAL CHAMPION 카드 */}
           {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF') && grandChampionInfo && (() => {
               const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === grandChampionInfo.ownerName) : null;
               const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
@@ -650,7 +656,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                         <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                           <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                            <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                            <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                           </div>
                         </div>
                         <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30">
@@ -691,7 +697,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               );
           })()}
 
-          {/* 🔥 🚩 REGULAR LEAGUE 1ST */}
           {sortedTeams.length > 0 && currentSeason?.type !== 'TOURNAMENT' && (() => {
             const leagueChampTeam = sortedTeams[0];
             const champOwnerInfo = (owners && owners.length > 0) ? owners.find(o => o.nickname === leagueChampTeam.ownerName) : null;
@@ -735,7 +740,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       {!isHybridOrCup && <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>}
                       <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr ${ringGradient} ${ringShadow} relative z-10`}>
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                          <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                          <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className={`absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 ${isHybridOrCup ? 'border-blue-400' : 'border-yellow-400'} z-30`}>
@@ -799,7 +804,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <div className="relative pt-3">
                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                         <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                          <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                          <SafeImage src={displayPhoto} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
@@ -837,8 +842,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                     <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}>
                       <td className={`p-4 text-center font-bold ${actualRank === 2 ? 'text-slate-300' : actualRank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{actualRank}</td>
                       <td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}>
-                          {/* 🔥 [핵심 롤백 3] 오너 리스트 국기/프로필도 순정 img 태그 적용! */}
-                          <img src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                          {/* 🔥 오너 리스트 국기/프로필: 100% 순정 img 태그 */}
+                          <img 
+                              src={matchedOwner?.photo || FALLBACK_IMG} 
+                              className="w-full h-full object-cover" 
+                              alt="" 
+                              onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} 
+                          />
                       </div><span className="font-bold text-sm whitespace-nowrap">{o.name}</span></div></td>
                       <td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td>
                       <td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td>
@@ -866,8 +876,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                   <td className={`p-3 text-center ${p.rank <= 3 ? 'text-emerald-400 font-bold' : 'text-slate-600'}`}>{p.rank}</td>
                   <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                   <td className="p-3 text-slate-400 flex items-center gap-2">
-                      {/* 🔥 [핵심 롤백 4] 플레이어 탭 팀 로고도 순정 img 적용! */}
-                      <img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                      {/* 🔥 플레이어 탭 팀 로고: 100% 순정 img 태그 */}
+                      <img 
+                          src={p.teamLogo} 
+                          className="w-5 h-5 object-contain rounded-full bg-white p-0.5" 
+                          alt="" 
+                          onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} 
+                      />
                       <span>{p.team}</span>
                   </td>
                   <td className={`p-3 text-right font-bold ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>{rankPlayerMode === 'GOAL' ? p.goals : p.assists}</td>
@@ -883,12 +898,22 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           {(activeRankingData?.highlights || []).map((m: any, idx: number) => (
             <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
               <div className="relative aspect-video">
-                {/* 썸네일과 로고도 순정화 */}
-                <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                {/* 🔥 하이라이트 썸네일: 100% 순정 img 태그 */}
+                <img 
+                    src={getYouTubeThumbnail(m.youtubeUrl)} 
+                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                    alt="" 
+                />
                 <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
               </div>
               <div className="p-3 flex items-center gap-3">
-                <img src={m.winnerLogo || FALLBACK_IMG} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                {/* 🔥 하이라이트 로고: 100% 순정 img 태그 */}
+                <img 
+                    src={m.winnerLogo || FALLBACK_IMG} 
+                    className="w-8 h-8 rounded-full bg-white object-contain p-0.5" 
+                    alt="" 
+                    onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} 
+                />
                 <div className="flex-1 min-w-0"><p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p><p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p></div>
               </div>
             </div>
