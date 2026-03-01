@@ -98,7 +98,6 @@ export const AdminView = ({
             const playerAssists: Record<string, any> = {};
 
             // 1. 경기 통계 취합 (정규 리그 순위 및 개인상 계산용)
-            // 하이브리드/컵 모드의 토너먼트 경기도 개인상(골/어시)에 포함됨!
             season.rounds?.forEach(r => {
                 r.matches?.filter(m => m.status === 'COMPLETED').forEach(m => {
                     const hTeam = m.home; const aTeam = m.away;
@@ -117,11 +116,24 @@ export const AdminView = ({
                         else { teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
                     }
 
-                    // 골, 어시스트는 모든 경기에서 누적
-                    m.homeScorers?.forEach((p: string) => { if(!playerGoals[p]) playerGoals[p] = { owner: m.homeOwner, goals: 0 }; playerGoals[p].goals += 1; });
-                    m.awayScorers?.forEach((p: string) => { if(!playerGoals[p]) playerGoals[p] = { owner: m.awayOwner, goals: 0 }; playerGoals[p].goals += 1; });
-                    m.homeAssists?.forEach((p: string) => { if(!playerAssists[p]) playerAssists[p] = { owner: m.homeOwner, assists: 0 }; playerAssists[p].assists += 1; });
-                    m.awayAssists?.forEach((p: string) => { if(!playerAssists[p]) playerAssists[p] = { owner: m.awayOwner, assists: 0 }; playerAssists[p].assists += 1; });
+                    // 🔥 [버그 픽스 1] 득점/도움 데이터가 객체({name, count})일 때 완벽하게 합산하도록 로직 수정!
+                    const processRecords = (records: any[], targetMap: any, ownerName: string) => {
+                        if (!records || !Array.isArray(records)) return;
+                        records.forEach(p => {
+                            // 이전 데이터(string)와 새로운 데이터(object) 완벽 호환 처리
+                            const pName = typeof p === 'string' ? p : p.name;
+                            const count = typeof p === 'string' ? 1 : (p.count || 1);
+                            if (!pName) return;
+                            
+                            if (!targetMap[pName]) targetMap[pName] = { owner: ownerName, count: 0 };
+                            targetMap[pName].count += count;
+                        });
+                    };
+
+                    processRecords(m.homeScorers, playerGoals, m.homeOwner);
+                    processRecords(m.awayScorers, playerGoals, m.awayOwner);
+                    processRecords(m.homeAssists, playerAssists, m.homeOwner);
+                    processRecords(m.awayAssists, playerAssists, m.awayOwner);
                 });
             });
 
@@ -155,11 +167,14 @@ export const AdminView = ({
                     else if (as > hs) grandChampionOwner = finalMatch.awayOwner;
                 }
             } else {
-                // 일반 토너먼트 모드 (기존 로직 유지)
+                // 🔥 [버그 픽스 2] 순수 토너먼트 모드일 때는 'FINAL' 글자 대신 '가장 마지막 경기'를 결승전으로 추출!
                 let finalMatch: any = null;
-                season.rounds?.forEach(r => r.matches?.forEach(m => {
-                    if (m.stage === 'FINAL' || m.matchLabel?.toUpperCase().includes('FINAL')) finalMatch = m;
-                }));
+                season.rounds?.forEach(r => {
+                    if (r.matches && r.matches.length > 0) {
+                        finalMatch = r.matches[r.matches.length - 1]; // 무조건 배열의 마지막이 결승전임
+                    }
+                });
+
                 if (finalMatch && finalMatch.status === 'COMPLETED') {
                     const hs = Number(finalMatch.homeScore); const as = Number(finalMatch.awayScore);
                     if (hs > as) { firstOwner = finalMatch.homeOwner; secondOwner = finalMatch.awayOwner; }
@@ -169,8 +184,9 @@ export const AdminView = ({
                 thirdOwner = sortedFallback[0]?.owner || '';
             }
 
-            const topScorer = Object.values(playerGoals).sort((a:any, b:any) => b.goals - a.goals)[0]?.owner || '';
-            const topAssist = Object.values(playerAssists).sort((a:any, b:any) => b.assists - a.assists)[0]?.owner || '';
+            // 🔥 [버그 픽스 3] count 기준으로 정렬하도록 수정
+            const topScorer = Object.values(playerGoals).sort((a:any, b:any) => b.count - a.count)[0]?.owner || '';
+            const topAssist = Object.values(playerAssists).sort((a:any, b:any) => b.count - a.count)[0]?.owner || '';
 
             const getOwnerId = (nick: string) => owners.find(o => o.nickname === nick)?.id;
 

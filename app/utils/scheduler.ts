@@ -243,8 +243,12 @@ export const generateRoundsLogic = (season: Season): Round[] => {
         const seeded = distributeTeamsSmartly(teams, nextPowerOf2);
         const matches: Match[] = [];
         
-        for (let i = 0; i < nextPowerOf2 - 1; i++) {
+        // 🔥 [디벨롭] 마지막 경기를 결승전(FINAL)으로 인식하도록 로직 개선
+        const totalMatches = nextPowerOf2 - 1;
+        for (let i = 0; i < totalMatches; i++) {
             const isFirst = i < nextPowerOf2 / 2;
+            const isFinal = i === totalMatches - 1; // 마지막 경기가 곧 결승전
+
             matches.push({
                 id: `${season.id}_M${i}`,
                 seasonId: season.id,
@@ -255,8 +259,15 @@ export const generateRoundsLogic = (season: Season): Round[] => {
                 homeOwner: isFirst ? seeded[i*2].ownerName : 'TBD',
                 awayOwner: isFirst ? seeded[i*2+1].ownerName : 'TBD',
                 status: (isFirst && (seeded[i*2].name === 'BYE' || seeded[i*2+1].name === 'BYE')) ? 'BYE' : 'UPCOMING',
-                homeScore: '', awayScore: '', stage: 'TOURNAMENT', matchLabel: `Match ${i+1}`,
-                youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+                homeScore: '', 
+                awayScore: '', 
+                stage: isFinal ? 'FINAL' : 'TOURNAMENT', // 🔥 결승전 명찰 부착
+                matchLabel: isFinal ? '🏆 결승전' : `Match ${i+1}`, // 🔥 결승전 텍스트 부착
+                youtubeUrl: '', 
+                homeScorers: [], 
+                awayScorers: [], 
+                homeAssists: [], 
+                awayAssists: []
             });
         }
         return [{ round: 1, name: 'Tournament Bracket', seasonId: season.id, matches }];
