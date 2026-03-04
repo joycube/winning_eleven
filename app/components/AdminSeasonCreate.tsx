@@ -93,9 +93,15 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
             newSeason.leagueMode = mode; 
         }
 
-        await setDoc(doc(db, "seasons", String(id)), newSeason);
-        alert(`${type} 시즌 생성 완료!`);
-        onCreateSuccess(id);
+        try {
+            // 🔥 [수정] 파이어베이스 통신 에러를 잡아내는 try-catch 방어막 추가
+            await setDoc(doc(db, "seasons", String(id)), newSeason);
+            alert(`${type} 시즌 생성 완료!`);
+            onCreateSuccess(id);
+        } catch (error: any) {
+            console.error("Season create error:", error);
+            alert(`🚨 시즌 생성 실패\n\n권한이 거부되었습니다. 파이어베이스 Rules의 관리자(ADMIN) 설정을 확인해주세요.\n\n상세: ${error.message}`);
+        }
     };
 
     const hasChampionPrize = type === 'CUP' || type === 'LEAGUE_PLAYOFF';
