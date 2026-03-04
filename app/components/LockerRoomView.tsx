@@ -698,7 +698,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                       <div className="w-full max-w-sm bg-[#0B1120] border border-slate-800 rounded-xl p-3 mt-2 text-center shadow-inner">
                                           <span className="text-[9px] font-bold text-slate-500 block mb-1">경기 요약</span>
                                           <span className="text-[11px] sm:text-xs font-black italic text-emerald-400 break-keep">
-                                              "{getMatchSummary(activePost.matchData.homeScore, activePost.matchData.awayScore)}"
+                                              &quot;{getMatchSummary(activePost.matchData.homeScore, activePost.matchData.awayScore)}&quot;
                                           </span>
                                       </div>
                                   </div>
@@ -845,7 +845,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                       {/* 🔥 [디벨롭 4] 일반 게시글이 없을 때만 상남자 코멘트 노출 */}
                       {visiblePostsList.length === 0 ? (
                           <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
-                              "브로, 그대가 여기 첫번째 작성자가 될 수 있어 🏆"
+                              &quot;브로, 그대가 여기 첫번째 작성자가 될 수 있어 🏆&quot;
                           </div>
                       ) : visiblePostsList.map((post, index) => {
                           const boardNumber = displayPosts.length - index; 
