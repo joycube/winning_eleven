@@ -767,7 +767,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                               ref={commentInputRef}
                                               value={commentText} 
                                               onChange={(e) => setCommentText(e.target.value)} 
-                                              onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(activePost.id); }}
+                                              onKeyDown={(e) => { 
+                                                // 🔥 [이슈 해결] Enter 입력 시 중복 등록 방지 (한글 IME 이슈 대응)
+                                                if (e.key === 'Enter') {
+                                                  if (e.nativeEvent.isComposing) return; // 한글 입력 조합 중이면 무시
+                                                  e.preventDefault(); // 기본 동작(깜빡임 등) 방지
+                                                  handleAddComment(activePost.id); 
+                                                }
+                                              }}
                                               placeholder={replyingTo ? `${replyingTo.authorName}님에게 답글 작성 중...` : "내용을 입력하세요..."}
                                               className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium"
                                           />

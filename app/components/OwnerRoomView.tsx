@@ -238,9 +238,11 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
             await updateDoc(doc(db, 'users', user.uid), { photo: editPhoto });
 
             const oldTeamId = myTeam?.docId || myTeam?.id;
-            if (editTeamId !== oldTeamId) {
-                if (oldTeamId) await updateDoc(doc(db, 'master_teams', oldTeamId), { ownerName: '' });
-                if (editTeamId) await updateDoc(doc(db, 'master_teams', editTeamId), { ownerName: user.mappedOwnerId });
+            
+            // 🔥 [수정] ID값을 문자열로 강제 변환하여 doc() 호출 시 타입 오류 방지
+            if (String(editTeamId) !== String(oldTeamId)) {
+                if (oldTeamId) await updateDoc(doc(db, 'master_teams', String(oldTeamId)), { ownerName: '' });
+                if (editTeamId) await updateDoc(doc(db, 'master_teams', String(editTeamId)), { ownerName: user.mappedOwnerId });
             }
             
             alert('✅ 설정이 성공적으로 저장되었습니다!');
@@ -442,8 +444,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     <div className="w-12 text-right">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
                                 </div>
 
+                                {/* 🔥 [수정] 플레이어 리스트 항목의 높이(min-h-[64px])와 라운딩(rounded-2xl)을 베스트 팀과 동일하게 맞춤 */}
                                 {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-xl p-3 hover:bg-slate-800/60 transition-all">
+                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3 hover:bg-slate-800/60 transition-all min-h-[64px]">
                                         <div className="w-8 text-center text-xs font-black italic text-emerald-500">{idx + 1}</div>
                                         <div className="w-[35%] ml-4 pr-6 min-w-0 overflow-visible">
                                             <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap">{p.name}</span>
