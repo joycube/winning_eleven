@@ -441,7 +441,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
                   <div className="flex gap-3.5">
-                      <img src={comment.authorPhoto || COMMON_DEFAULT_PROFILE} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                      {/* 🔥 [수정 2] 프로필 이미지 빈 값 대응 로직 강화 */}
+                      <img src={comment.authorPhoto?.trim() ? comment.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                           <div className="flex items-baseline gap-2 mb-1.5">
                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{comment.authorName}</span>
@@ -491,7 +492,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                               const isReplyLiked = reply.likes?.includes(user?.uid);
                               return (
                                   <div key={reply.id} className="flex gap-3">
-                                      <img src={reply.authorPhoto || COMMON_DEFAULT_PROFILE} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                                      {/* 🔥 [수정 2] 대댓글 프로필 이미지 빈 값 대응 */}
+                                      <img src={reply.authorPhoto?.trim() ? reply.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
                                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                           <div className="flex items-baseline gap-2 mb-1.5">
                                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{reply.authorName}</span>
@@ -615,15 +617,17 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                   </>
                               ) : (
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                                      {/* 🔥 [수정 1] 게시글 상세 닉네임 짤림 방지 (truncate 제거) */}
                                       <h2 className="text-[18px] sm:text-[20px] font-bold text-white leading-tight truncate">{activePost.title}</h2>
-                                      <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 truncate mt-1 sm:mt-0">{activePost.authorName || '운영진'}</span>
+                                      <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 mt-1 sm:mt-0">{activePost.authorName || '운영진'}</span>
                                   </div>
                               )}
                           </div>
                           
                           <div className="flex items-center justify-between mt-2">
                               <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] text-slate-500 font-medium">
-                                  <img src={activePost.authorPhoto || COMMON_DEFAULT_PROFILE} alt="profile" className="w-4 h-4 rounded-full object-cover border border-slate-700 bg-slate-800" />
+                                  {/* 🔥 [수정 2] 게시글 작성자 프로필 미출력 대응 */}
+                                  <img src={activePost.authorPhoto?.trim() ? activePost.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-4 h-4 rounded-full object-cover border border-slate-700 bg-slate-800" />
                                   <span>•</span>
                                   <span>{formatDate(activePost.createdAt, true)}</span>
                                   {activePost.views !== undefined && !activePost.isMatchTalk && (
@@ -750,8 +754,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                   <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">의견 쓰기</div>
                                   <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                       <div className="flex items-center gap-2 bg-slate-900 p-1.5 px-2.5 rounded-xl border border-slate-700 shrink-0 shadow-inner">
-                                          <img src={user?.photo || user?.photoUrl || COMMON_DEFAULT_PROFILE} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
-                                          <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate max-w-[90px]">
+                                          {/* 🔥 [수정 2] 댓글 입력창 유저 프로필 미출력 대응 */}
+                                          <img src={user?.photo?.trim() ? user.photo : (user?.photoUrl?.trim() ? user.photoUrl : COMMON_DEFAULT_PROFILE)} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
+                                          {/* 🔥 [수정 1] 댓글 입력창 유저 닉네임 짤림 방지 (max-w 해제) */}
+                                          <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">
                                               {user?.mappedOwnerId}
                                           </span>
                                       </div>
