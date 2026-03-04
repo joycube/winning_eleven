@@ -6,7 +6,6 @@ import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { FALLBACK_IMG, Owner, Season } from '../types';
 
-// 🔥 [에러 해결] style 태그의 jsx 속성을 TypeScript가 인식하도록 선언
 declare module 'react' {
   interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
     jsx?: boolean;
@@ -17,6 +16,11 @@ declare module 'react' {
 interface FinanceViewProps {
   owners: Owner[];
   seasons: Season[];
+  user?: {
+    uid: string;
+    mappedOwnerId: string;
+    role: string;
+  } | null;
 }
 
 interface SettlementGroup {
@@ -30,7 +34,7 @@ interface SettlementGroup {
   sumTx: number;
 }
 
-export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
+export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   const [activeTab, setActiveTab] = useState<'STATEMENT' | 'SETTLEMENT' | 'HALL_OF_FAME'>('HALL_OF_FAME');
   
   const [dbLedgers, setDbLedgers] = useState<any[]>([]);
@@ -42,6 +46,17 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
   const [statementSeason, setStatementSeason] = useState<string>('ALL');
 
   useEffect(() => {
+    if (!user) {
+      setActiveTab('HALL_OF_FAME');
+    } else {
+      const myOwner = owners.find(o => o.nickname === user.mappedOwnerId);
+      if (myOwner) {
+        setSelectedOwnerId(String(myOwner.id));
+      }
+    }
+  }, [user, owners]);
+
+  useEffect(() => {
     const fetchFinanceData = async () => {
       try {
         const lSnap = await getDocs(collection(db, 'finance_ledger'));
@@ -49,20 +64,15 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
 
         const activeSeasonIds = new Set(seasons.map(s => String(s.id)));
         
-        // 🔥 [디벨롭] 살아있는 시즌만 필터링한 뒤, '최신 날짜순(내림차순)'으로 완벽 정렬!
         const validLedgers = rawLedgers
             .filter((l: any) => activeSeasonIds.has(String(l.seasonId)))
             .sort((a: any, b: any) => {
                 const dateA = new Date(a.createdAt || 0).getTime();
                 const dateB = new Date(b.createdAt || 0).getTime();
-                return dateB - dateA; // 최신 날짜가 위로 오도록 정렬
+                return dateB - dateA; 
             });
 
         setDbLedgers(validLedgers);
-
-        if (owners.length > 0 && !selectedOwnerId) {
-            setSelectedOwnerId(String(owners[0].id));
-        }
       } catch (error) {
         console.error("🚨 Finance data fetch error:", error);
       } finally {
@@ -70,16 +80,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
       }
     };
     fetchFinanceData();
-  }, [owners, seasons, selectedOwnerId]);
-
-  const formatDate = (isoString: string) => {
-    if (!isoString) return '-';
-    const d = new Date(isoString);
-    const yy = String(d.getFullYear()).slice(-2);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yy}.${mm}.${dd}`;
-  };
+  }, [seasons]);
 
   const computedOwners = useMemo(() => {
     return owners.map(owner => {
@@ -129,6 +130,15 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         };
     });
   }, [owners, seasons, dbLedgers]);
+
+  const formatDate = (isoString: string) => {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    const yy = String(d.getFullYear()).slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yy}.${mm}.${dd}`;
+  };
 
   const computedFinanceDetails = useMemo(() => {
     const details: Record<string, any> = {};
@@ -246,7 +256,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
   const rawOwnerDetails = computedFinanceDetails[selectedOwnerId] || { revenues: [], expenses: [] };
 
   const availableSeasons = useMemo(() => {
-    // dbLedgers가 최신순 정렬되어 있으므로 드롭다운의 시즌 순서도 자연스럽게 최신 시즌이 위로 올라오게 됩니다.
     const sSet = new Set(dbLedgers.map(l => seasons.find(s => String(s.id) === l.seasonId)?.name || '기타'));
     return Array.from(sSet);
   }, [dbLedgers, seasons]);
@@ -286,20 +295,30 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         </div>
         <div className="flex gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
           {[
-            { id: 'STATEMENT', label: '재무제표' },
-            { id: 'SETTLEMENT', label: '정산소' },
-            { id: 'HALL_OF_FAME', label: '명예의 전당' }
+            { id: 'STATEMENT', label: '재무제표', disabled: !user },
+            { id: 'SETTLEMENT', label: '정산소', disabled: !user }, 
+            { id: 'HALL_OF_FAME', label: '명예의 전당', disabled: false }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'text-slate-500 hover:text-slate-300'}`}>{tab.label}</button>
+            <button 
+              key={tab.id} 
+              disabled={tab.disabled}
+              onClick={() => setActiveTab(tab.id as any)} 
+              className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : tab.disabled ? 'text-slate-700 cursor-not-allowed opacity-30' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {tab.label}
+              {tab.disabled && <span className="block text-[8px] font-normal not-italic mt-0.5">🔒 로그인 필요</span>}
+            </button>
           ))}
         </div>
       </div>
 
       {/* 공통: 기준 구단주 선택기 */}
-      {(activeTab === 'STATEMENT' || activeTab === 'SETTLEMENT') && (
+      {(activeTab === 'STATEMENT' || activeTab === 'SETTLEMENT') && user && (
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2 px-1 border-b border-slate-800/50 mb-2">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap shrink-0">Base Owner :</span>
-          {computedOwners.map(owner => (
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap shrink-0">Selected Owner :</span>
+          {computedOwners
+            .filter(o => user.role === 'ADMIN' || o.nickname === user.mappedOwnerId)
+            .map(owner => (
             <div key={owner.id} onClick={() => { setSelectedOwnerId(owner.id); setTargetOwnerId('ALL'); setSettlementSeason('ALL'); setStatementSeason('ALL'); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all border whitespace-nowrap shrink-0 ${selectedOwnerId === owner.id ? 'bg-slate-800 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'}`}>
               <img src={owner.photo} className="w-5 h-5 rounded-full object-cover" alt="" /><span className={`text-[11px] font-bold ${selectedOwnerId === owner.id ? 'text-white' : 'text-slate-500'}`}>{owner.nickname}</span>
             </div>
@@ -307,9 +326,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         </div>
       )}
 
-      {/* ==========================================
-          [탭 1] 재무제표 (STATEMENT)
-      ========================================== */}
+      {/* [탭 1] 재무제표 (STATEMENT) */}
       {activeTab === 'STATEMENT' && activeOwner && (
         <div className="space-y-4 animate-in slide-in-from-left-4">
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
@@ -319,7 +336,6 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
               <div className="flex-1 text-center md:text-left w-full">
                 <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-1">{activeOwner.nickname}</h3>
                 <p className="text-xs text-yellow-500 font-bold tracking-widest uppercase mb-4">Total Trophies: {activeOwner.trophies} 🏆</p>
-                
                 <div className="grid grid-cols-3 w-full max-w-lg mx-auto md:mx-0 gap-2">
                   <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 flex flex-col items-center justify-center">
                     <span className="block text-[8px] sm:text-[9px] text-slate-500 font-bold mb-0.5 uppercase">Record</span>
@@ -355,32 +371,28 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
 
           <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
             <div className="grid grid-cols-2 divide-x divide-slate-800/50">
-              <div className="flex flex-col p-4 sm:p-6">
-                <div className="mb-4 text-left">
-                  <h4 className="text-[10px] sm:text-xs font-black text-emerald-500 uppercase tracking-widest mb-1 flex items-center gap-1">🟢 수익 (REV)</h4>
-                  <div className="text-xl sm:text-2xl font-black text-white tracking-tighter">+{statementData.totalRev.toLocaleString()}</div>
-                </div>
+              <div className="flex flex-col p-4 sm:p-6 text-left">
+                <h4 className="text-[10px] sm:text-xs font-black text-emerald-500 uppercase tracking-widest mb-1">🟢 수익 (REV)</h4>
+                <div className="text-xl sm:text-2xl font-black text-white tracking-tighter mb-4">+{statementData.totalRev.toLocaleString()}</div>
                 <div className="w-full h-[1px] bg-slate-800/60 mb-4"></div>
                 <div className="space-y-3 min-h-[120px]">
-                  {statementData.filteredRevenues.length === 0 ? <p className="text-[10px] text-slate-600 italic py-2">수익 내역이 없습니다.</p> : statementData.filteredRevenues.map((item: any) => (
-                    <div key={item.id} className="flex justify-between items-center w-full border-b border-slate-800/30 pb-2 last:border-0 last:pb-0 gap-2">
-                      <div className="flex flex-col text-left"><span className="text-[10px] sm:text-xs font-bold text-slate-300 leading-tight">{item.title}</span><span className="text-[9px] text-slate-500 mt-0.5">{item.date}</span></div>
-                      <span className="text-[11px] sm:text-sm font-black text-emerald-400 shrink-0">+{item.amount.toLocaleString()}</span>
+                  {statementData.filteredRevenues.length === 0 ? <p className="text-[10px] text-slate-600 italic py-2">내역 없음</p> : statementData.filteredRevenues.map((item: any) => (
+                    <div key={item.id} className="flex justify-between items-center w-full border-b border-slate-800/30 pb-2">
+                      <div className="flex flex-col"><span className="text-[10px] sm:text-xs font-bold text-slate-300 leading-tight">{item.title}</span><span className="text-[9px] text-slate-500 mt-0.5">{item.date}</span></div>
+                      <span className="text-[11px] sm:text-sm font-black text-emerald-400">+{item.amount.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col p-4 sm:p-6 bg-slate-900/20">
-                <div className="mb-4 text-left">
-                  <h4 className="text-[10px] sm:text-xs font-black text-red-500 uppercase tracking-widest mb-1 flex items-center gap-1">🔴 지출 (EXP)</h4>
-                  <div className="text-xl sm:text-2xl font-black text-white tracking-tighter">-{statementData.totalExp.toLocaleString()}</div>
-                </div>
+              <div className="flex flex-col p-4 sm:p-6 bg-slate-900/20 text-left">
+                <h4 className="text-[10px] sm:text-xs font-black text-red-500 uppercase tracking-widest mb-1">🔴 지출 (EXP)</h4>
+                <div className="text-xl sm:text-2xl font-black text-white tracking-tighter mb-4">-{statementData.totalExp.toLocaleString()}</div>
                 <div className="w-full h-[1px] bg-slate-800/60 mb-4"></div>
                 <div className="space-y-3 min-h-[120px]">
-                  {statementData.filteredExpenses.length === 0 ? <p className="text-[10px] text-slate-600 italic py-2">지출 내역이 없습니다.</p> : statementData.filteredExpenses.map((item: any) => (
-                    <div key={item.id} className="flex justify-between items-center w-full border-b border-slate-800/30 pb-2 last:border-0 last:pb-0 gap-2">
-                      <div className="flex flex-col text-left"><span className="text-[10px] sm:text-xs font-bold text-slate-400 leading-tight">{item.title}</span><span className="text-[9px] text-slate-600 mt-0.5">{item.date}</span></div>
-                      <span className="text-[11px] sm:text-sm font-black text-red-400 shrink-0">-{item.amount.toLocaleString()}</span>
+                  {statementData.filteredExpenses.length === 0 ? <p className="text-[10px] text-slate-600 italic py-2">내역 없음</p> : statementData.filteredExpenses.map((item: any) => (
+                    <div key={item.id} className="flex justify-between items-center w-full border-b border-slate-800/30 pb-2">
+                      <div className="flex flex-col"><span className="text-[10px] sm:text-xs font-bold text-slate-400 leading-tight">{item.title}</span><span className="text-[9px] text-slate-600 mt-0.5">{item.date}</span></div>
+                      <span className="text-[11px] sm:text-sm font-black text-red-400">-{item.amount.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -388,7 +400,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
             </div>
             <div className={`p-5 sm:p-6 border-t ${statementData.netProfit > 0 ? 'bg-emerald-900/20 border-emerald-900/50' : statementData.netProfit < 0 ? 'bg-red-900/20 border-red-900/50' : 'bg-slate-900/20 border-slate-800/50'}`}>
               <div className="flex justify-between items-end">
-                <div className="flex flex-col"><span className="text-[10px] font-black uppercase tracking-widest mb-1 text-slate-400">{statementSeason === 'ALL' ? '누적 순이익' : '당기 순이익'}</span><span className={`text-[10px] sm:text-xs font-bold ${statementData.netProfit > 0 ? 'text-emerald-500' : statementData.netProfit < 0 ? 'text-red-500' : 'text-slate-500'}`}>{statementData.netProfit > 0 ? '흑자 달성 🎉' : statementData.netProfit < 0 ? '자본 잠식 🚨' : '손익 분기점'}</span></div>
+                <div className="flex flex-col"><span className="text-[10px] font-black uppercase tracking-widest mb-1 text-slate-400">{statementSeason === 'ALL' ? '누적 순이익' : '당기 순이익'}</span></div>
                 <span className={`text-2xl sm:text-4xl font-black italic tracking-tighter ${statementData.netProfit > 0 ? 'text-emerald-400' : statementData.netProfit < 0 ? 'text-red-500' : 'text-slate-400'}`}>{statementData.netProfit > 0 ? '+' : ''}₩ {statementData.netProfit.toLocaleString()}</span>
               </div>
             </div>
@@ -396,9 +408,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         </div>
       )}
 
-      {/* ==========================================
-          [탭 2] 정산소 (SETTLEMENT)
-      ========================================== */}
+      {/* [탭 2] 정산소 (SETTLEMENT) */}
       {activeTab === 'SETTLEMENT' && activeOwner && (
         <div className="space-y-4 animate-in slide-in-from-right-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
@@ -456,16 +466,16 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                             📊 정산 근거 (P&L)
                         </div>
                         <div className="grid grid-cols-2 divide-x divide-slate-800/50">
-                          <div className="flex flex-col p-3 sm:p-4 space-y-3">
-                            {data.rev.length === 0 ? <p className="text-[10px] text-slate-600 italic text-center py-1">상금 없음</p> : data.rev.map((item:any, i:number) => (
+                          <div className="flex flex-col p-3 sm:p-4 space-y-3 text-left">
+                            {data.rev.length === 0 ? <p className="text-[10px] text-slate-600 italic py-1">상금 없음</p> : data.rev.map((item:any, i:number) => (
                               <div key={i} className="flex justify-between items-center w-full gap-2">
                                 <span className="text-[10px] sm:text-xs font-bold text-slate-300 truncate">{item.title}</span>
                                 <span className="text-[11px] sm:text-sm font-black text-emerald-400">+{Number(item.amount).toLocaleString()}</span>
                               </div>
                             ))}
                           </div>
-                          <div className="flex flex-col bg-slate-900/10 p-3 sm:p-4 space-y-3">
-                            {data.exp.length === 0 ? <p className="text-[10px] text-slate-600 italic text-center py-1">지출 없음</p> : data.exp.map((item:any, i:number) => (
+                          <div className="flex flex-col bg-slate-900/10 p-3 sm:p-4 space-y-3 text-left">
+                            {data.exp.length === 0 ? <p className="text-[10px] text-slate-600 italic py-1">지출 없음</p> : data.exp.map((item:any, i:number) => (
                               <div key={i} className="flex justify-between items-center w-full gap-2">
                                 <span className="text-[10px] sm:text-xs font-bold text-slate-400 truncate">{item.title}</span>
                                 <span className="text-[11px] sm:text-sm font-black text-red-400">-{Number(item.amount).toLocaleString()}</span>
@@ -490,16 +500,16 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
                             </div>
                         )}
                         <div className="grid grid-cols-2 divide-x divide-slate-800/50">
-                          <div className="flex flex-col p-3 sm:p-4 space-y-3">
-                            {data.p2pRx.length === 0 ? <p className="text-[10px] text-slate-600 italic text-center py-1">받을 돈 없음</p> : data.p2pRx.map((item:any, i:number) => (
+                          <div className="flex flex-col p-3 sm:p-4 space-y-3 text-left">
+                            {data.p2pRx.length === 0 ? <p className="text-[10px] text-slate-600 italic py-1">받을 돈 없음</p> : data.p2pRx.map((item:any, i:number) => (
                               <div key={i} className="flex justify-between items-center w-full gap-2 bg-emerald-900/10 p-2 rounded-lg border border-emerald-900/30">
                                 <span className="text-[10px] sm:text-xs font-bold text-blue-300 truncate">{item.text}</span>
                                 <span className="text-[11px] sm:text-sm font-black text-emerald-400">+{Number(item.amount).toLocaleString()}</span>
                               </div>
                             ))}
                           </div>
-                          <div className="flex flex-col bg-slate-900/10 p-3 sm:p-4 space-y-3">
-                            {data.p2pTx.length === 0 ? <p className="text-[10px] text-slate-600 italic text-center py-1">보낼 돈 없음</p> : data.p2pTx.map((item:any, i:number) => (
+                          <div className="flex flex-col bg-slate-900/10 p-3 sm:p-4 space-y-3 text-left">
+                            {data.p2pTx.length === 0 ? <p className="text-[10px] text-slate-600 italic py-1">보낼 돈 없음</p> : data.p2pTx.map((item:any, i:number) => (
                               <div key={i} className="flex justify-between items-center w-full gap-2 bg-red-900/10 p-2 rounded-lg border border-red-900/30">
                                 <span className="text-[10px] sm:text-xs font-bold text-pink-300 truncate">{item.text}</span>
                                 <span className="text-[11px] sm:text-sm font-black text-red-400">-{Number(item.amount).toLocaleString()}</span>
@@ -524,8 +534,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
             
             <div className="bg-slate-950 p-5 border-t border-slate-700">
               <div className="flex justify-between items-end px-1 sm:px-2">
-                <div className="flex flex-col">
-                  {/* 🔥 타겟 필터에 맞춰 최종 합계 안내 텍스트 완벽 분기 */}
+                <div className="flex flex-col text-left">
                   <span className="text-xs sm:text-sm text-white font-black uppercase tracking-widest">
                     {targetOwnerId === 'ALL' 
                       ? (settlementSeason === 'ALL' ? '전체 최종 수입 (잔액)' : '선택 시즌 수입 합계')
@@ -548,9 +557,7 @@ export const FinanceView = ({ owners, seasons }: FinanceViewProps) => {
         </div>
       )}
 
-      {/* ==========================================
-          [탭 3] 명예의 전당 (HALL OF FAME)
-      ========================================== */}
+      {/* [탭 3] 명예의 전당 (HALL OF FAME) */}
       {activeTab === 'HALL_OF_FAME' && (
         <div className="space-y-6 animate-in slide-in-from-right-4">
           

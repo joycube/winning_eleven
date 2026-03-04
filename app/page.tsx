@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Season, Match, Notice } from './types';
 
 // 컴포넌트들
@@ -14,24 +14,25 @@ import { Footer } from './components/Footer';
 import { RankingView } from './components/RankingView';
 import { ScheduleView } from './components/ScheduleView';
 import { HistoryView } from './components/HistoryView';
-import { TutorialView } from './components/TutorialView';
 import { AdminView } from './components/AdminView';
 import { MatchEditModal } from './components/MatchEditModal';
 import { FinanceView } from './components/FinanceView'; 
-import { NoticeView } from './components/NoticeView';
+import LockerRoomView from './components/LockerRoomView';
+import OwnerRoomView from './components/OwnerRoomView'; 
 
-// 훅 (데이터 가져오는 엔진)
+// 훅
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
+import { useAuth } from './hooks/useAuth';
 
-// 🔥 [디벨롭] 전역 엑스박스 방지! 절대 안 깨지는 안전한 SVG 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 export default function FootballLeagueApp() {
   const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
+  const { authUser, isLoading: isAuthLoading } = useAuth();
   
-  const [currentView, setCurrentView] = useState<'NOTICE' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'ADMIN' | 'TUTORIAL'>('NOTICE');
+  const [currentView, setCurrentView] = useState<'LOCKERROOM' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'OWNERROOM' | 'ADMIN'>('LOCKERROOM');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
   const [adminTab, setAdminTab] = useState<any>('NEW'); 
   
@@ -42,6 +43,15 @@ export default function FootballLeagueApp() {
   const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
+
+  useEffect(() => {
+    if (currentView === 'ADMIN' && !isAuthLoading) {
+      if (authUser?.role !== 'ADMIN') {
+        alert('🚫 관리자 권한이 없습니다. 마스터 계정으로 로그인해주세요.');
+        setCurrentView('LOCKERROOM');
+      }
+    }
+  }, [currentView, authUser, isAuthLoading]);
 
   useEffect(() => {
     const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
@@ -69,7 +79,7 @@ export default function FootballLeagueApp() {
   }, []);
 
   useEffect(() => {
-      if (currentView === 'NOTICE') {
+      if (currentView === 'LOCKERROOM') {
           localStorage.setItem('lastCheckedNoticeTime', String(Date.now()));
           setHasNewNotice(false);
       } else {
@@ -188,7 +198,7 @@ export default function FootballLeagueApp() {
     const params = new URLSearchParams(window.location.search);
     const paramView = params.get('view');
     const paramSeasonId = Number(params.get('season'));
-    if (paramView && ['NOTICE', 'RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
+    if (paramView && ['LOCKERROOM', 'RANKING', 'SCHEDULE', 'HISTORY', 'FINANCE', 'OWNERROOM', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
     if (paramSeasonId && seasons.find(s => s.id === paramSeasonId)) setViewSeasonId(paramSeasonId);
     else if (viewSeasonId === 0 && seasons.length > 0) setViewSeasonId(seasons[0].id);
   }, [seasons]);
@@ -428,10 +438,10 @@ export default function FootballLeagueApp() {
                   <div 
                       className="flex-1 overflow-hidden cursor-pointer flex"
                       onClick={() => {
-                          setCurrentView('NOTICE');
+                          setCurrentView('LOCKERROOM'); 
                           if (typeof window !== 'undefined') {
                               const params = new URLSearchParams(window.location.search);
-                              params.set('view', 'NOTICE');
+                              params.set('view', 'LOCKERROOM');
                               params.set('noticeId', latestPopupNotice.id);
                               window.history.pushState(null, '', `?${params.toString()}`);
                               window.dispatchEvent(new Event('forceNoticeCheck'));
@@ -457,14 +467,20 @@ export default function FootballLeagueApp() {
           </div>
       )}
 
-      <div className="relative"><BannerSlider banners={banners || []} /><TopBar /></div>
+      <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={setCurrentView} /></div>
       
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} hasNewNotice={hasNewNotice} />
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
-        {currentView === 'NOTICE' && (
-            <NoticeView owners={owners} notices={notices} />
+        {/* 🔥 [해결] LockerRoomView 호출 시 seasons와 masterTeams 전달! */}
+        {currentView === 'LOCKERROOM' && (
+            <LockerRoomView 
+                user={authUser as any} 
+                notices={notices} 
+                seasons={seasons} 
+                masterTeams={masterTeams} 
+            />
         )}
 
         {currentView === 'RANKING' && (
@@ -485,11 +501,34 @@ export default function FootballLeagueApp() {
         {currentView === 'HISTORY' && <HistoryView historyData={historyData} owners={owners} />}
         
         {currentView === 'FINANCE' && (
-            <FinanceView owners={owners} seasons={seasons} />
+            <FinanceView owners={owners} seasons={seasons} user={authUser as any} />
         )}
 
-        {currentView === 'TUTORIAL' && <TutorialView />}
-        {currentView === 'ADMIN' && <AdminView adminTab={adminTab} setAdminTab={setAdminTab} seasons={seasons} owners={owners} leagues={leagues} masterTeams={masterTeams} banners={banners || []} onAdminLogin={(pw) => pw === '0705'} onCreateSeason={handleCreateSeason} onSaveOwner={handleSaveOwner} onNavigateToSchedule={handleNavigateToSchedule} />}
+        {currentView === 'OWNERROOM' && (
+            <OwnerRoomView 
+                user={authUser as any} 
+                masterTeams={masterTeams} 
+                historyData={historyData} 
+                seasons={seasons} 
+                owners={owners} 
+            />
+        )}
+
+        {currentView === 'ADMIN' && authUser?.role === 'ADMIN' && (
+          <AdminView 
+            adminTab={adminTab} 
+            setAdminTab={setAdminTab} 
+            seasons={seasons} 
+            owners={owners} 
+            leagues={leagues} 
+            masterTeams={masterTeams} 
+            banners={banners || []} 
+            onAdminLogin={() => true} 
+            onCreateSeason={handleCreateSeason} 
+            onSaveOwner={handleSaveOwner} 
+            onNavigateToSchedule={handleNavigateToSchedule} 
+          />
+        )}
       </main>
       <Footer />
       {editingMatch && <MatchEditModal match={editingMatch} onClose={() => setEditingMatch(null)} onSave={handleSaveMatchResult} isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'} teamPlayers={getTeamPlayers} />}

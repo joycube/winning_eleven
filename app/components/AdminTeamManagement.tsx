@@ -5,27 +5,34 @@ import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from 'fireb
 import { League, MasterTeam, FALLBACK_IMG } from '../types'; 
 import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../utils/helpers'; 
 
-// 🔥 TierSelector 컴포넌트: D등급 추가 및 레이아웃 깨짐 방지 완벽 적용
+// 🔥 TierSelector: 대소문자/공백 꼬임 방지 및 값 매칭 강제화 적용
 const TierSelector = ({ value, onChange, isMini = false }: { value: string, onChange: (t: string) => void, isMini?: boolean }) => {
-    const tiers = ['S', 'A', 'B', 'C', 'D']; // D 추가!
+    const tiers = ['S', 'A', 'B', 'C', 'D'];
+    
+    // DB에 혹시 모를 소문자나 공백이 들어있어도 완벽하게 대문자로 치환하여 매칭합니다.
+    const safeValue = value ? value.toString().toUpperCase().trim() : 'D';
+
     return (
-        // isMini일 때 gap을 줄이고 flex-wrap 방지로 무조건 1줄에 예쁘게 맞춤
         <div className={`flex items-center justify-center w-full ${isMini ? 'gap-[2px] mt-2' : 'gap-1'}`}>
             {tiers.map(t => {
-                // helpers.ts에 D등급 색상이 없을 경우를 대비한 안전장치
                 const badgeClass = getTierBadgeColor(t) || 'bg-slate-700 text-slate-300 border-slate-600'; 
+                const isSelected = safeValue === t; // 🔥 안전하게 정제된 값으로 선택 여부 판별
+
                 return (
                     <button 
                         key={t} 
-                        onClick={(e) => { e.stopPropagation(); onChange(t); }}
+                        type="button" // 폼 제출 오작동 방지
+                        onClick={(e) => { 
+                            e.preventDefault(); 
+                            e.stopPropagation(); 
+                            onChange(t); 
+                        }}
                         className={`font-bold transition-all border flex items-center justify-center ${
                             isMini 
-                            // 🔥 빠른 등급설정 (미니): 5개가 넘어가도 안 깨지게 flex-1과 작은 크기 적용
                             ? 'flex-1 h-5 rounded-[3px] text-[9px] p-0' 
-                            // 기본 등급설정: flex-1로 5개 공간 균등 분할
                             : 'flex-1 py-2 rounded-lg text-xs'
                         } ${
-                            value === t 
+                            isSelected 
                             ? badgeClass + ' ring-1 ring-white z-10' 
                             : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
                         }`} 
@@ -147,38 +154,63 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     const [tName, setTName] = useState('');
     const [tLogo, setTLogo] = useState('');
     const [tRegion, setTRegion] = useState('');
-    // 🔥 기본값을 'C'에서 'D'로 변경
     const [tTier, setTTier] = useState('D'); 
     const [editTeamId, setEditTeamId] = useState<string | null>(null);
 
     const handleSaveTeam = async () => {
         if(!tName || !tRegion) return alert("팀 이름과 리그를 선택하세요.");
-        const leagueInfo = leagues.find(l => l.name === tRegion);
-        const teamData = { name: tName, logo: tLogo, region: tRegion, tier: tTier, category: leagueInfo?.category || 'CLUB' };
+        
+        try {
+            const leagueInfo = leagues.find(l => l.name === tRegion);
+            // 🔥 저장 시 무조건 대문자/공백제거 처리하여 깨끗한 데이터만 넘김
+            const cleanTier = tTier ? tTier.toUpperCase().trim() : 'D';
+            const teamData = { name: tName, logo: tLogo, region: tRegion, tier: cleanTier, category: leagueInfo?.category || 'CLUB' };
 
-        if (editTeamId) {
-            await updateDoc(doc(db, "master_teams", editTeamId), teamData);
+            if (editTeamId) {
+                await updateDoc(doc(db, "master_teams", editTeamId), teamData);
+                alert("수정 완료");
+            } else {
+                await addDoc(collection(db, "master_teams"), { id: Date.now(), ...teamData });
+                alert("생성 완료");
+            }
+            
+            // 🔥 폼 리셋 및 닫기 처리
             setEditTeamId(null);
-            alert("수정 완료");
-        } else {
-            await addDoc(collection(db, "master_teams"), { id: Date.now(), ...teamData });
-            alert("생성 완료");
+            setTName(''); setTLogo(''); setTTier('D'); 
+            setIsEditOpen(false); 
+        } catch (error: any) {
+            console.error("저장 실패:", error);
+            alert(`🚨 DB 업데이트 실패 (파이어베이스 권한문제일 수 있습니다): ${error.message}`);
         }
-        // 🔥 생성/수정 후 폼 초기화 시에도 'D' 적용
-        setTName(''); setTLogo(''); setTTier('D');
     };
 
     const handleDeleteTeam = async (id: string) => { if(confirm("정말 삭제하시겠습니까?")) await deleteDoc(doc(db,"master_teams",id)); };
-    const handleQuickTierUpdate = async (teamId: string, newTier: string) => { await updateDoc(doc(db, "master_teams", teamId), { tier: newTier }); };
+    
+    const handleQuickTierUpdate = async (teamId: string, newTier: string) => { 
+        try {
+            // 🔥 빠른 설정에서도 깨끗한 데이터로 강제 변환
+            const cleanTier = newTier ? newTier.toUpperCase().trim() : 'D';
+            await updateDoc(doc(db, "master_teams", teamId), { tier: cleanTier }); 
+        } catch (error: any) {
+            console.error("빠른 등급 업데이트 실패:", error);
+            alert(`🚨 업데이트 실패: ${error.message}\n(보안 규칙 문제이거나 네트워크를 확인하세요)`);
+        }
+    };
     
     const handleBulkTier = async (targetTier: string) => {
         if (!selectedLeague) return alert("리그를 먼저 선택해주세요.");
         if (!confirm(`'${selectedLeague}'의 모든 팀 등급을 '${targetTier}'로 변경하시겠습니까?`)) return;
-        const targets = masterTeams.filter(t => t.region === selectedLeague);
-        const batch = writeBatch(db);
-        targets.forEach(t => { if(t.docId) batch.update(doc(db, "master_teams", t.docId), { tier: targetTier }); });
-        await batch.commit();
-        alert("일괄 변경 완료");
+        try {
+            const cleanTier = targetTier ? targetTier.toUpperCase().trim() : 'D';
+            const targets = masterTeams.filter(t => t.region === selectedLeague);
+            const batch = writeBatch(db);
+            targets.forEach(t => { if(t.docId) batch.update(doc(db, "master_teams", t.docId), { tier: cleanTier }); });
+            await batch.commit();
+            alert("일괄 변경 완료");
+        } catch (error: any) {
+            console.error("일괄 변경 실패:", error);
+            alert(`🚨 일괄 업데이트 실패: ${error.message}`);
+        }
     };
 
     const handleSelectTeamToEdit = (team: MasterTeam) => {
@@ -187,7 +219,8 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
         setTName(team.name);
         setTLogo(team.logo);
         setTRegion(team.region);
-        setTTier(team.tier);
+        // 🔥 기존 데이터를 불러올 때도 대문자/공백제거 정제 처리
+        setTTier(team.tier ? team.tier.toUpperCase().trim() : 'D'); 
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -236,11 +269,13 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                     {sortedLeagueNames.map(name => <option key={name} value={name}>{name}</option>)}
                                 </select>
                             </div>
-                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Tier Setting</label><TierSelector value={tTier} onChange={setTTier} /></div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-slate-500 font-bold">Tier Setting</label>
+                                <TierSelector value={tTier} onChange={setTTier} />
+                            </div>
                         </div>
                         <div className="flex gap-2 pt-2">
                             <button onClick={handleSaveTeam} className={`flex-1 py-3 rounded font-bold shadow-lg transition-all ${editTeamId ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>{editTeamId ? 'Update Team' : 'Add Team'}</button>
-                            {/* 🔥 취소 버튼 시에도 D로 초기화 */}
                             {editTeamId && <button onClick={()=>{setEditTeamId(null); setTName(''); setTLogo(''); setTTier('D'); setIsEditOpen(false);}} className="px-6 bg-slate-800 rounded text-slate-400 text-sm hover:text-white">Cancel</button>}
                         </div>
                     </div>
@@ -252,7 +287,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                     <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`h-9 px-4 text-xs rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
                     {selectedLeague ? (
                          <div className="flex gap-2 ml-auto">
-                             {/* 🔥 C -> D 로 인자값 및 버튼 텍스트 변경 완벽 적용! */}
                              <button onClick={()=>handleBulkTier('D')} className="h-9 px-4 bg-slate-800 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">일괄 D등급 변경</button>
                              <button onClick={()=>setSelectedLeague('')} className="h-9 w-9 flex items-center justify-center bg-slate-800 rounded-lg text-white border border-slate-700 hover:bg-slate-700 font-bold">↩</button>
                          </div>

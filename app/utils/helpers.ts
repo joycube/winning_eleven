@@ -30,6 +30,7 @@ export const getTierBadgeColor = (tier: string) => {
         case 'A': return 'bg-emerald-600 text-white border-emerald-400';
         case 'B': return 'bg-blue-600 text-white border-blue-400';
         case 'C': return 'bg-slate-600 text-white border-slate-400';
+        case 'D': return 'bg-orange-700 text-white border-orange-500';
         default: return 'bg-slate-800 text-slate-500';
     }
 };

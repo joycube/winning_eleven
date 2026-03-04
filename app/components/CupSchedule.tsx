@@ -1,9 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore'; 
+import { db } from '../firebase'; 
 import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
+import { MessageSquare } from 'lucide-react';
 
-// 🔥 TBD 전용 안전한 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 const getTodayFormatted = () => {
@@ -12,6 +14,46 @@ const getTodayFormatted = () => {
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   return `${year}.${month}.${day}`;
+};
+
+const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: () => void }) => {
+    const [latestComment, setLatestComment] = useState<any>(null);
+    const [commentCount, setCommentCount] = useState(0);
+
+    useEffect(() => {
+        if (!matchId) return;
+        const q = query(collection(db, 'match_comments'), where('matchId', '==', matchId));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            const docs = snap.docs.map(d => d.data());
+            setCommentCount(docs.length);
+            if (docs.length > 0) {
+                docs.sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
+                setLatestComment(docs[docs.length - 1]);
+            } else {
+                setLatestComment(null);
+            }
+        });
+        return () => unsubscribe();
+    }, [matchId]);
+
+    if (commentCount === 0) return null;
+
+    return (
+        <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
+            <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            {/* 🔥 공간을 max-w-[120px]로 대폭 늘리고 잘림을 우아하게 처리 */}
+            <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
+                {latestComment?.authorName}
+            </div>
+            {/* 🔥 댓글 내용도 안전한 line-clamp-1 적용 */}
+            <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
+                {latestComment?.text}
+            </div>
+            <div className="bg-slate-900 px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-500 border border-slate-700 shrink-0 shadow-inner flex items-center leading-none ml-1">
+                +{commentCount}
+            </div>
+        </div>
+    );
 };
 
 interface CupScheduleProps {
@@ -98,13 +140,11 @@ export const CupSchedule = ({
   };
 
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
-      // 🔥 순정 태그 + 순정 이미지 처리
       const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
       
       return (
         <div className="relative w-9 h-9 flex-shrink-0">
             <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                {/* 🔥 캡처 방어막 완전 제거 */}
                 <img 
                   src={displayLogo} 
                   className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
@@ -272,7 +312,7 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
-                    {/* 조별리그 */}
+                    {/* 1. 조별리그 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
@@ -287,12 +327,11 @@ export const CupSchedule = ({
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
-                                            <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                {/* 🔥 캡처 버튼 제거 완료 */}
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                            <div key={m.id} className="flex flex-col mb-2">
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                     <MatchCard 
                                                       match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
-                                                      onClick={onMatchClick} 
+                                                      onClick={() => onMatchClick(safeMatch)} 
                                                       activeRankingData={activeRankingData} 
                                                       historyData={historyData} 
                                                       masterTeams={masterTeams} 
@@ -309,6 +348,7 @@ export const CupSchedule = ({
                                                         {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                     </div>
                                                 </div>
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
                                             </div>
                                         );
                                     })}
@@ -317,7 +357,7 @@ export const CupSchedule = ({
                         ));
                     })}
 
-                    {/* 토너먼트 리스트 */}
+                    {/* 2. 토너먼트 리스트 */}
                     {[
                         { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
                         { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },
@@ -332,12 +372,11 @@ export const CupSchedule = ({
                                     {section.matches.map((m: any, mIdx: number) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
-                                            <div key={m.id || `${section.id}-${mIdx}`} className="relative flex flex-col gap-1 mb-2">
-                                                {/* 🔥 캡처 버튼 제거 완료 */}
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                            <div key={m.id || `${section.id}-${mIdx}`} className="flex flex-col mb-2">
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                     <MatchCard 
                                                         match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
-                                                        onClick={onMatchClick} 
+                                                        onClick={() => onMatchClick(safeMatch)} 
                                                         activeRankingData={activeRankingData} 
                                                         historyData={historyData} 
                                                         masterTeams={masterTeams} 
@@ -354,6 +393,7 @@ export const CupSchedule = ({
                                                         {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                     </div>
                                                 </div>
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
                                             </div>
                                         );
                                     })}
@@ -363,6 +403,7 @@ export const CupSchedule = ({
                     ))}
                 </>
             ) : (
+                /* 3. 기본 라운드 형태 */
                 currentSeason?.rounds?.map((r, rIdx) => (
                     <div key={rIdx} className="space-y-8">
                          {Array.from(new Set(r.matches.map(m => m.stage))).map((stageName) => (
@@ -374,12 +415,11 @@ export const CupSchedule = ({
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
-                                            <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                {/* 🔥 캡처 버튼 제거 완료 */}
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
+                                            <div key={m.id} className="flex flex-col mb-2">
+                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                     <MatchCard 
                                                         match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
-                                                        onClick={onMatchClick} 
+                                                        onClick={() => onMatchClick(safeMatch)} 
                                                         activeRankingData={activeRankingData} 
                                                         historyData={historyData} 
                                                         masterTeams={masterTeams} 
@@ -395,6 +435,7 @@ export const CupSchedule = ({
                                                         {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
                                                     </div>
                                                 </div>
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
                                             </div>
                                         );
                                     })}

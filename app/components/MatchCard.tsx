@@ -4,7 +4,6 @@ import { Match, MasterTeam, FALLBACK_IMG } from '../types';
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
-// 🔥 TBD 전용 안전한 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface MatchCardProps {
@@ -103,50 +102,42 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     const owner = side === 'home' ? match.homeOwner : match.awayOwner;
     const master = side === 'home' ? homeMaster : awayMaster;
 
-    // 🔥 캡처용 꼼수 완전 제거, 순정 이미지 소스만 결정
     const isTbdOrBye = name === 'TBD' || name === 'BYE' || rawLogo?.includes('uefa.com');
     const displayLogo = isTbdOrBye ? SAFE_TBD_LOGO : (rawLogo || FALLBACK_IMG);
 
     return (
-      <div className="flex flex-col items-center text-center space-y-3 w-full">
+      <div className="flex flex-col items-center text-center space-y-2.5 w-full min-w-0">
         <div className="relative">
           <div className="w-14 h-14 rounded-full bg-white p-2 shadow-xl ring-2 ring-slate-900 group-hover:ring-emerald-500/20 transition-all flex items-center justify-center overflow-hidden">
-            {/* 🔥 순정 img 태그 적용 (사파리 100% 렌더링 보장) */}
-            <img 
-                src={displayLogo} 
-                className="w-full h-full object-contain" 
-                alt={name}
-                onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
-            />
+            <img src={displayLogo} className="w-full h-full object-contain" alt={name} onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
           </div>
           {!(name === 'TBD' || name === 'BYE') && getTierBadge(master?.tier)}
         </div>
 
-        <div className="flex flex-col items-center space-y-1.5 w-full">
-          <span className="text-xs font-black text-white uppercase tracking-tighter truncate w-full max-w-[100px] leading-tight drop-shadow-md">
+        <div className="flex flex-col items-center space-y-1.5 w-full min-w-0">
+          {/* 🔥 공간을 max-w-[120px]로 넉넉하게, line-clamp-1로 깔끔하게 처리 */}
+          <div className="text-xs font-black text-white uppercase tracking-tighter w-full max-w-[120px] line-clamp-1 break-all drop-shadow-md px-1">
             {name}
-          </span>
+          </div>
+          
           {!(name === 'TBD' || name === 'BYE') && (
             <div className="flex items-center gap-1">
               {getRankBadge(master?.real_rank)}
               {getConditionBadge(master?.condition)}
             </div>
           )}
-          <p className="text-[9px] font-bold text-slate-500 italic tracking-wide truncate max-w-[90px]">
+          
+          {/* 🔥 오너 닉네임 공간 확보 및 정석적인 line-clamp-1 처리 */}
+          <div className="text-[10px] font-bold text-slate-500 italic tracking-wide w-full max-w-[120px] line-clamp-1 break-all px-1 mt-0.5">
             {owner || '-'}
-          </p>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div 
-      onClick={() => onClick(match)} 
-      className={`group relative bg-slate-950 p-4 rounded-2xl border transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl cursor-pointer ${
-        isCompleted ? 'border-slate-800' : 'border-slate-700 hover:border-emerald-500/50'
-      }`}
-    >
+    <div onClick={() => onClick(match)} className={`group relative bg-slate-950 p-4 rounded-2xl border transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl cursor-pointer ${isCompleted ? 'border-slate-800' : 'border-slate-700 hover:border-emerald-500/50'}`}>
         <div className="flex justify-center mb-4">
             <span className="px-3 py-1 bg-slate-900 border border-slate-800 rounded-full text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-400 transition-colors shadow-inner">
                 {match.matchLabel || 'Match Fixture'}
@@ -179,19 +170,28 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || match.youtubeUrl) && (
             <div className="mt-4 pt-3 border-t border-slate-900/50">
                 <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
-                    <div className="space-y-0.5 text-right">
-                        {(match.homeScorers || []).map((s:any, idx:number)=><div key={`h-${idx}`} className="text-[9px] text-slate-400 font-medium truncate">{s.name} ⚽ <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span></div>)}
+                    <div className="flex flex-col text-right w-full min-w-0">
+                        {/* 🔥 득점자도 truncate 대신 line-clamp-1 적용 */}
+                        {(match.homeScorers || []).map((s:any, idx:number)=>(
+                            <div key={`h-${idx}`} className="text-[10px] text-slate-400 font-medium line-clamp-1 break-all w-full">
+                                {s.name} ⚽ <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
+                            </div>
+                        ))}
                     </div>
-                    <div className="flex flex-col items-center px-1">
+                    <div className="flex flex-col items-center px-1 pt-0.5">
                       {match.youtubeUrl ? (
                           <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors group/yt shadow-lg" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              {/* 유튜브 아이콘도 순정으로 렌더링 */}
                               <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 group-hover/yt:scale-110 transition-transform" alt="YT" />
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>
-                    <div className="space-y-0.5 text-left">
-                        {(match.awayScorers || []).map((s:any, idx:number)=><div key={`a-${idx}`} className="text-[9px] text-slate-400 font-medium truncate">⚽ {s.name} <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span></div>)}
+                    <div className="flex flex-col text-left w-full min-w-0">
+                        {/* 🔥 득점자도 truncate 대신 line-clamp-1 적용 */}
+                        {(match.awayScorers || []).map((s:any, idx:number)=>(
+                            <div key={`a-${idx}`} className="text-[10px] text-slate-400 font-medium line-clamp-1 break-all w-full">
+                                ⚽ {s.name} <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

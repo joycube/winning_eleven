@@ -1,5 +1,6 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAWo7owWvLFLcj1i9LGatdZkFgdrdvvS1k",
@@ -7,12 +8,15 @@ const firebaseConfig = {
   projectId: "efootball-29514",
   storageBucket: "efootball-29514.firebasestorage.app",
   messagingSenderId: "692761560044",
-  appId: "1:692761560044:web:3a8b22fa7801bf49ca36c9",
-  measurementId: "G-3MLDC56W29"
+  appId: "1:692761560044:web:3a8b22fa7801bf49ca36c9"
+  // measurementId는 로그인/DB에 당장 필요 없으므로 생략했습니다.
 };
 
-// 앱이 이미 초기화되었는지 확인 (중복 방지)
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const db = getFirestore(app);
 
-// 데이터베이스 내보내기
-export const db = getFirestore(app);
+// 🔥 구글 로그인 인증 모듈
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+
+export { db, auth, googleProvider };

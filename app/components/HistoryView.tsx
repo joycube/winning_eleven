@@ -1,55 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
-
-// 🔥 캡처 라이브러리 추가
-import { toPng } from 'html-to-image';
-// @ts-ignore
-import download from 'downloadjs';
-
-// 💣 [기본에 충실한 SafeImage] 프록시 제거! 순수 원본 로딩 방식
-const SafeImage = ({ src, className, isBg = false }: { src: string, className?: string, isBg?: boolean }) => {
-  const [imgSrc, setImgSrc] = useState<string>(src || FALLBACK_IMG);
-  const [cors, setCors] = useState<"anonymous" | undefined>("anonymous");
-
-  useEffect(() => {
-    if (!src) {
-      setImgSrc(FALLBACK_IMG);
-      setCors(undefined);
-      return;
-    }
-    // 1단계: 캡처를 염두에 두고 원본 주소 + CORS 허용으로 시도
-    setImgSrc(src);
-    setCors("anonymous");
-  }, [src]);
-
-  const handleError = () => {
-    if (cors === "anonymous") {
-      // 2단계: CORS 때문에 브라우저가 원본 로딩을 막으면, 보안 설정을 풀고 단순 화면 표시용으로 재시도
-      setImgSrc(src);
-      setCors(undefined);
-    } else {
-      // 3단계: 그래도 에러 나면 기본 이미지 표시
-      setImgSrc(FALLBACK_IMG);
-    }
-  };
-
-  if (isBg) {
-    return (
-      <div 
-        className={className} 
-        style={{ 
-          backgroundImage: `url(${imgSrc})`, 
-          backgroundSize: 'contain', 
-          backgroundPosition: 'center', 
-          backgroundRepeat: 'no-repeat' 
-        }} 
-      />
-    );
-  }
-
-  return <img src={imgSrc} className={className} alt="" crossOrigin={cors} onError={handleError} />;
-};
 
 const getTodayFormatted = () => {
   const date = new Date();
@@ -67,9 +18,6 @@ interface HistoryViewProps {
 export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
-
-  const legendCardRef = useRef<HTMLDivElement>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
 
   const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
     if (b.points !== a.points) return b.points - a.points;      
@@ -103,47 +51,6 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   };
 
   const rankedPlayers = getPlayerRanking(historyData.players || []);
-
-  const handleCaptureLegend = async () => {
-    if (!legendCardRef.current) return;
-    setIsCapturing(true);
-
-    try {
-        // 모바일 환경 렌더링 딜레이 대기
-        await new Promise(resolve => setTimeout(resolve, 400));
-
-        const dataUrl = await toPng(legendCardRef.current, { 
-            cacheBust: true, 
-            backgroundColor: 'transparent', 
-            pixelRatio: 2, 
-            style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' }
-        });
-        
-        const fileName = `hall-of-fame-legend-${Date.now()}.png`;
-        
-        download(dataUrl, fileName);
-        
-        if (navigator.share && /mobile|android|iphone/i.test(navigator.userAgent)) {
-             try {
-                 const blob = await (await fetch(dataUrl)).blob();
-                 const file = new File([blob], fileName, { type: blob.type });
-                 await navigator.share({
-                     title: '👑 Hall of Fame Legend',
-                     text: '역대 통합 랭킹 1위 레전드입니다!',
-                     files: [file]
-                 });
-             } catch (shareErr) {}
-        } else {
-             alert('📷 기기에 레전드 카드가 저장되었습니다!');
-        }
-    } catch (error: any) {
-        console.error('캡처 실패:', error);
-        // 🔥 프록시 없이 캡처가 막혔을 때, 정확한 원인 안내
-        alert(`이미지 캡처에 실패했습니다.\n오너 프로필 사진이 외부 보안이 강한 링크로 등록되어 있어 캡처가 차단되었습니다. (사파리/크롬 모바일 보안 제약)\n\nPC 환경에서 시도하시거나, 해당 오너의 프로필 사진을 일반적인 이미지 링크로 변경해 주세요.`);
-    } finally {
-        setIsCapturing(false);
-    }
-  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -218,17 +125,8 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
                     return (
                         <div className="mb-6 relative flex flex-col">
-                            <div className="flex justify-end w-full px-1 mb-2">
-                                <button 
-                                    onClick={handleCaptureLegend} 
-                                    disabled={isCapturing}
-                                    className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-emerald-400 transition-colors bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                                >
-                                    {isCapturing ? '⏳ 캡처 중...' : '📸 이미지로 저장'}
-                                </button>
-                            </div>
-
-                            <div id="legend-card-wrap" ref={legendCardRef} className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-[#0f172a]">
+                            {/* 🔥 캡처 버튼 영역 삭제됨 */}
+                            <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-[#0f172a]">
                                 <div className="absolute inset-0 green-neon-bg z-0"></div>
                                 <div className="green-sweep-beam z-0"></div>
                                 
@@ -237,8 +135,8 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                                         <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
                                         <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-900 shadow-2xl relative z-10">
                                             <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 grayscale-[0.2]">
-                                                {/* 💣 SafeImage 적용! */}
-                                                <SafeImage src={displayPhoto} className="w-full h-full object-cover"/>
+                                                {/* 🔥 순정 img 태그로 롤백 */}
+                                                <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                             </div>
                                         </div>
                                         <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">

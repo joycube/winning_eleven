@@ -17,30 +17,51 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
         const playerStatsMap = new Map<string, any>(); 
         
         targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
-          // 🔥 [수정 1] 데이터 안전성 확보 (부전승/TBD 상황에서 배열이 없어도 크래시 방지)
+          // 데이터 안전성 확보 (부전승/TBD 상황에서 배열이 없어도 크래시 방지)
           const homeScorers = m.homeScorers || [];
           const awayScorers = m.awayScorers || [];
           const homeAssists = m.homeAssists || [];
           const awayAssists = m.awayAssists || [];
 
-          // 🔥 [수정 2] FINISHED -> COMPLETED 변경 및 부전승 로직 안정화
-          if(m.status === 'COMPLETED' || m.status === 'BYE') {
-            const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
-            const ht = teamStats.get(m.home); 
-            const at = teamStats.get(m.away);
+          // 🔥 [핵심 픽스] 이 경기가 토너먼트 경기인지 확인합니다.
+          // (결승, 4강, 8강, 16강, 32강, 플레이오프, 3/4위전 등 정규 리그가 아닌 경기들)
+          const stageUpper = (m.stage || '').toUpperCase();
+          const matchLabelUpper = (m.matchLabel || '').toUpperCase();
+          
+          const isKnockoutMatch = 
+              stageUpper.includes('FINAL') || 
+              stageUpper.includes('SEMI') || 
+              stageUpper.includes('QUARTER') || 
+              stageUpper.includes('ROUND_OF') || // ROUND_OF_16 등
+              stageUpper.includes('PO') || // 플레이오프
+              stageUpper.includes('34') || // 3/4위전
+              matchLabelUpper.includes('FINAL') ||
+              matchLabelUpper.includes('SEMI') ||
+              matchLabelUpper.includes('PO');
 
-            if(ht) { 
-                ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; 
-                if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } 
-            }
-            // 부전승(BYE)이 아닐 때만 어웨이 팀 스탯 계산
-            if(at && m.away !== 'BYE' && m.away !== 'BYE (부전승)') { 
-                at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; 
-                if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } 
+          // FINISHED -> COMPLETED 변경 및 부전승 로직 안정화
+          if(m.status === 'COMPLETED' || m.status === 'BYE') {
+            
+            // 🔥 [핵심 픽스 적용] 토너먼트 경기가 '아닐 때만' 팀 순위(승점, 득실차)에 반영합니다!
+            // 즉, 조별 리그(GROUP)나 일반 정규 리그(LEAGUE) 경기만 이 블록을 통과합니다.
+            if (!isKnockoutMatch) {
+                const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
+                const ht = teamStats.get(m.home); 
+                const at = teamStats.get(m.away);
+
+                if(ht) { 
+                    ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; 
+                    if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } 
+                }
+                // 부전승(BYE)이 아닐 때만 어웨이 팀 스탯 계산
+                if(at && m.away !== 'BYE' && m.away !== 'BYE (부전승)') { 
+                    at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; 
+                    if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } 
+                }
             }
           }
           
-          // 🔥 [수정 3] FINISHED -> COMPLETED 변경 및 이미지 Fallback 적용
+          // 🔥 단, 선수의 개인 득점/어시스트 스탯은 토너먼트 경기도 포함하여 모두 누적합니다.
           if(m.status === 'COMPLETED') {
             [...homeScorers, ...awayScorers].forEach(s => { 
                 const isHome = homeScorers.includes(s);
@@ -98,7 +119,7 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
             o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0);
         });
         
-        // 🔥 [수정 4] 하이라이트 승자 로고 처리 (TBD/Null 일 때 FALLBACK_IMG)
+        // 하이라이트 승자 로고 처리 (TBD/Null 일 때 FALLBACK_IMG)
         const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl).map(m => {
             const isHomeWin = Number(m.homeScore) > Number(m.awayScore);
             const isAwayWin = Number(m.awayScore) > Number(m.homeScore);
@@ -124,17 +145,33 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number) => {
             s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
             
             s.rounds?.forEach(r => r.matches.forEach(m => {
-                // 🔥 [수정 5] 데이터 안전성 확보 (통합 기록)
                 const homeScorers = m.homeScorers || [];
                 const awayScorers = m.awayScorers || [];
                 const homeAssists = m.homeAssists || [];
                 const awayAssists = m.awayAssists || [];
 
+                // 🔥 [핵심 픽스] 역대 통합 기록에서도 토너먼트 경기는 승/무/패 스탯에 반영하지 않습니다!
+                const stageUpper = (m.stage || '').toUpperCase();
+                const matchLabelUpper = (m.matchLabel || '').toUpperCase();
+                
+                const isKnockoutMatch = 
+                    stageUpper.includes('FINAL') || 
+                    stageUpper.includes('SEMI') || 
+                    stageUpper.includes('QUARTER') || 
+                    stageUpper.includes('ROUND_OF') || 
+                    stageUpper.includes('PO') || 
+                    stageUpper.includes('34') || 
+                    matchLabelUpper.includes('FINAL') ||
+                    matchLabelUpper.includes('SEMI') ||
+                    matchLabelUpper.includes('PO');
+
                 if(m.status === 'COMPLETED' || m.status === 'BYE') {
-                    const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
-                    const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
-                    if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
-                    if(at && m.away!=='BYE' && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
+                    if (!isKnockoutMatch) {
+                        const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
+                        const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
+                        if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
+                        if(at && m.away!=='BYE' && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
+                    }
                 }
                 
                 if(m.status === 'COMPLETED') {

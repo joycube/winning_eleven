@@ -1,12 +1,12 @@
 // components/ScheduleView.tsx
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query } from 'firebase/firestore'; 
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
 import { MatchCard } from './MatchCard'; 
 import { CupSchedule } from './CupSchedule'; 
 import { Season, Match, MasterTeam } from '../types'; 
+import { MessageSquare } from 'lucide-react';
 
-// 🔥 안 깨지는 다크그레이 방패 로고
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
@@ -16,6 +16,46 @@ const getTodayFormatted = () => {
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   return `${year}.${month}.${day}`;
+};
+
+const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: () => void }) => {
+    const [latestComment, setLatestComment] = useState<any>(null);
+    const [commentCount, setCommentCount] = useState(0);
+
+    useEffect(() => {
+        if (!matchId) return;
+        const q = query(collection(db, 'match_comments'), where('matchId', '==', matchId));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            const docs = snap.docs.map(d => d.data());
+            setCommentCount(docs.length);
+            if (docs.length > 0) {
+                docs.sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
+                setLatestComment(docs[docs.length - 1]);
+            } else {
+                setLatestComment(null);
+            }
+        });
+        return () => unsubscribe();
+    }, [matchId]);
+
+    if (commentCount === 0) return null;
+
+    return (
+        <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
+            <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            {/* 🔥 공간을 max-w-[120px]로 대폭 늘리고 잘림을 우아하게 처리 */}
+            <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
+                {latestComment?.authorName}
+            </div>
+            {/* 🔥 댓글 내용도 안전한 line-clamp-1 적용 */}
+            <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
+                {latestComment?.text}
+            </div>
+            <div className="bg-slate-900 px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-500 border border-slate-700 shrink-0 shadow-inner flex items-center leading-none ml-1">
+                +{commentCount}
+            </div>
+        </div>
+    );
 };
 
 const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }: any) => {
@@ -45,13 +85,7 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        {/* 🔥 캡처 제거: 100% 순정 img 태그 적용 */}
-                        <img 
-                            src={displayLogo} 
-                            className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
-                            alt="" 
-                            onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
-                        />
+                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
                         <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -81,7 +115,6 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
         </div>
     );
 };
-
 
 interface ScheduleViewProps {
   seasons: Season[];
@@ -269,12 +302,12 @@ export const ScheduleView = ({
                                                     const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
 
                                                     return (
-                                                        <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                            {/* 🔥 캡처 버튼 영역 삭제 */}
-                                                            <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
-                                                                <MatchCard match={safeMatch} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                        <div key={m.id} className="flex flex-col mb-2">
+                                                            <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                                <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
+                                                            <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
                                                         </div>
                                                     );
                                                 })}
@@ -313,12 +346,12 @@ export const ScheduleView = ({
                                                 const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
 
                                                 return (
-                                                    <div key={m.id} className="relative flex flex-col gap-1 mb-2">
-                                                        {/* 🔥 캡처 버튼 영역 삭제 */}
-                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg">
-                                                            <MatchCard match={safeMatch} onClick={onMatchClick} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                    <div key={m.id} className="flex flex-col mb-2">
+                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                            <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
+                                                        <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
                                                     </div>
                                                 );
                                             })}
