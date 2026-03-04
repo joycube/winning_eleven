@@ -12,15 +12,39 @@ interface UserData {
   mappedOwnerId: string;
   role: 'ADMIN' | 'USER';
   photoUrl?: string;
+  photoURL?: string; 
   photo?: string;
 }
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[] }) => {
+// 🔥 1순위: 오너 커스텀 프사, 2순위: 구글 프사, 3순위: 디폴트 프사
+const getBestProfileImage = (userObj: any | null, ownersList: any[] | undefined, savedPhoto?: string, authorName?: string) => {
+    const targetName = authorName || (userObj ? userObj.mappedOwnerId : null);
+    if (targetName && ownersList) {
+        const ownerData = ownersList.find(o => o.nickname === targetName);
+        if (ownerData && ownerData.photo && ownerData.photo.trim() !== '') {
+            return ownerData.photo;
+        }
+    }
+
+    if (userObj) {
+        if (userObj.photoURL && userObj.photoURL.trim() !== '') return userObj.photoURL;
+        if (userObj.photoUrl && userObj.photoUrl.trim() !== '') return userObj.photoUrl;
+    }
+
+    if (savedPhoto && savedPhoto.trim() !== '') {
+        return savedPhoto;
+    }
+
+    return COMMON_DEFAULT_PROFILE;
+};
+
+const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[], owners?: any[] }) => {
   const [posts, setPosts] = useState<any[]>([]);
-  // 🔥 기본 선택 탭을 매치톡으로 변경할 수도 있지만, 일단 기존대로 유지
-  const [category, setCategory] = useState('매치톡');
+  
+  // 🔥 [수정] 락커룸 진입 시 기본 선택 탭을 '매치톡'에서 '전체'로 변경 (초기 렌더링 부하 감소)
+  const [category, setCategory] = useState('전체');
   
   const [viewMode, setViewMode] = useState<'LIST' | 'WRITE' | 'EDIT'>('LIST');
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -262,7 +286,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
             youtubeId: extractYoutubeId(postForm.youtubeUrl), 
             authorId: user.uid,
             authorName: user.mappedOwnerId || '미배정 오너',
-            authorPhoto: user.photo || user.photoUrl || '', 
+            authorPhoto: getBestProfileImage(user, owners), 
             createdAt: serverTimestamp(),
             isPinned: false,
             isEdited: false,
@@ -330,13 +354,15 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
       const post = posts.find(p => p.id === postId) || matchTalkPosts.find(m => m.id === postId);
       if (!post) return;
 
+      const currentAuthorPhoto = getBestProfileImage(user, owners);
+
       try {
           if (post.isMatchTalk) {
               await addDoc(collection(db, 'match_comments'), {
                   matchId: post.realMatchId,
                   authorId: user.uid,
                   authorName: user.mappedOwnerId || '미배정 오너',
-                  authorPhoto: user.photo || user.photoUrl || '', 
+                  authorPhoto: currentAuthorPhoto, 
                   text: commentText.trim(),
                   createdAt: Date.now(),
               });
@@ -355,7 +381,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                   id: `cmt_${Date.now()}`,
                   authorId: user.uid,
                   authorName: user.mappedOwnerId || '미배정 오너',
-                  authorPhoto: user.photo || user.photoUrl || '', 
+                  authorPhoto: currentAuthorPhoto, 
                   text: commentText.trim(),
                   createdAt: Date.now(),
                   parentId: replyingTo ? replyingTo.id : null,
@@ -438,11 +464,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
           const replies = comments.filter(c => c.parentId === comment.id);
           const isLiked = comment.likes?.includes(user?.uid);
 
+          const authorProfileImg = getBestProfileImage(null, owners, comment.authorPhoto, comment.authorName);
+
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
                   <div className="flex gap-3.5">
-                      {/* 🔥 [수정 2] 프로필 이미지 빈 값 대응 로직 강화 */}
-                      <img src={comment.authorPhoto?.trim() ? comment.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                      <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                           <div className="flex items-baseline gap-2 mb-1.5">
                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{comment.authorName}</span>
@@ -490,10 +517,11 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                       <div className="mt-4 space-y-4 pl-4 sm:pl-12 border-l-2 border-slate-800/50">
                           {replies.map(reply => {
                               const isReplyLiked = reply.likes?.includes(user?.uid);
+                              const replyAuthorProfileImg = getBestProfileImage(null, owners, reply.authorPhoto, reply.authorName);
+
                               return (
                                   <div key={reply.id} className="flex gap-3">
-                                      {/* 🔥 [수정 2] 대댓글 프로필 이미지 빈 값 대응 */}
-                                      <img src={reply.authorPhoto?.trim() ? reply.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                                      <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
                                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                           <div className="flex items-baseline gap-2 mb-1.5">
                                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{reply.authorName}</span>
@@ -617,7 +645,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                   </>
                               ) : (
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-                                      {/* 🔥 [수정 1] 게시글 상세 닉네임 짤림 방지 (truncate 제거) */}
                                       <h2 className="text-[18px] sm:text-[20px] font-bold text-white leading-tight truncate">{activePost.title}</h2>
                                       <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 mt-1 sm:mt-0">{activePost.authorName || '운영진'}</span>
                                   </div>
@@ -626,8 +653,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                           
                           <div className="flex items-center justify-between mt-2">
                               <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] text-slate-500 font-medium">
-                                  {/* 🔥 [수정 2] 게시글 작성자 프로필 미출력 대응 */}
-                                  <img src={activePost.authorPhoto?.trim() ? activePost.authorPhoto : COMMON_DEFAULT_PROFILE} alt="profile" className="w-4 h-4 rounded-full object-cover border border-slate-700 bg-slate-800" />
+                                  <img src={getBestProfileImage(null, owners, activePost.authorPhoto, activePost.authorName)} alt="profile" className="w-4 h-4 rounded-full object-cover border border-slate-700 bg-slate-800" />
                                   <span>•</span>
                                   <span>{formatDate(activePost.createdAt, true)}</span>
                                   {activePost.views !== undefined && !activePost.isMatchTalk && (
@@ -754,9 +780,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                   <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">의견 쓰기</div>
                                   <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                       <div className="flex items-center gap-2 bg-slate-900 p-1.5 px-2.5 rounded-xl border border-slate-700 shrink-0 shadow-inner">
-                                          {/* 🔥 [수정 2] 댓글 입력창 유저 프로필 미출력 대응 */}
-                                          <img src={user?.photo?.trim() ? user.photo : (user?.photoUrl?.trim() ? user.photoUrl : COMMON_DEFAULT_PROFILE)} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
-                                          {/* 🔥 [수정 1] 댓글 입력창 유저 닉네임 짤림 방지 (max-w 해제) */}
+                                          <img src={getBestProfileImage(user, owners)} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
                                           <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">
                                               {user?.mappedOwnerId}
                                           </span>
@@ -768,10 +792,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                                               value={commentText} 
                                               onChange={(e) => setCommentText(e.target.value)} 
                                               onKeyDown={(e) => { 
-                                                // 🔥 [이슈 해결] Enter 입력 시 중복 등록 방지 (한글 IME 이슈 대응)
                                                 if (e.key === 'Enter') {
-                                                  if (e.nativeEvent.isComposing) return; // 한글 입력 조합 중이면 무시
-                                                  e.preventDefault(); // 기본 동작(깜빡임 등) 방지
+                                                  if (e.nativeEvent.isComposing) return;
+                                                  e.preventDefault(); 
                                                   handleAddComment(activePost.id); 
                                                 }
                                               }}
@@ -798,7 +821,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
               </div>
           ) : (
               <>
-                  {/* 🔥 [디벨롭] 말머리 UI: 매치톡 맨 앞 배치, 너비 가변 적용(flex-1 제거, px-4) */}
                   <div className="bg-slate-900/80 p-5 sm:p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-5 mb-4">
                       <div className="flex items-center gap-3">
                           <div className="w-2 h-6 sm:h-7 bg-emerald-500 rounded-sm"></div>
@@ -808,7 +830,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                           </div>
                       </div>
                       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                          {/* 공지사항 렌더링 조건을 변경했으므로 말머리 자체에는 매치톡과 일반 항목만 둡니다. */}
                           {['🏆 매치톡', '전체', '축구', '이풋볼', '자유', '기타'].map(cat => {
                             const catValue = cat.replace('🏆 ', '');
                             const isSelected = category === catValue;
@@ -837,7 +858,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
 
                   <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
                       
-                      {/* 🔥 [디벨롭 1] 공지사항 무조건 전체 탭에서 노출되도록 조건 변경 */}
                       {notices.map((notice) => {
                           return (
                           <div key={notice.id} onClick={() => handlePostClick(notice)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
@@ -855,7 +875,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [] }: 
                           )
                       })}
 
-                      {/* 🔥 [디벨롭 4] 일반 게시글이 없을 때만 상남자 코멘트 노출 */}
                       {visiblePostsList.length === 0 ? (
                           <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
                               &quot;브로, 그대가 여기 첫번째 작성자가 될 수 있어 🏆&quot;
