@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'; 
 import { db } from '../firebase';
-import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { Owner } from '../types';
 import { UserCheck, UserPlus, Trash2, Search } from 'lucide-react';
 
@@ -52,7 +52,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
       resetForm();
   }, [activeTab]);
 
-  // 🔥 [핵심 해결] 과거 기록의 화석 텍스트를 강제로 긁어와서 현재 오너 이름으로 덮어씌우는 로직
+  // 🔥 [궁극의 복구 툴] 파이어베이스의 "모든" 컬렉션을 뒤져서 옛날 이름을 새 이름으로 완벽 치환
   const runForceMigration = async () => {
       if (!legacyName.trim() || !targetOwnerDocId) return alert("지워야 할 과거 이름과 변경할 대상을 모두 선택해주세요.");
       
@@ -60,11 +60,131 @@ export const AdminOwnerManager = ({ owners }: Props) => {
       if (!targetOwner) return alert("대상 오너를 찾을 수 없습니다.");
       
       const newName = targetOwner.nickname;
-      if (!window.confirm(`🚨 주의: 과거 경기 기록지에서 '${legacyName}'(으)로 기록된 모든 데이터를 찾아 '${newName}'(으)로 영구 병합합니다.\n\n(명예의 전당, 팀 소유권, 오너룸 전적이 복구됩니다)\n진행하시겠습니까?`)) return;
+      if (!window.confirm(`🚨 최후의 보루: 파이어베이스의 '모든' 컬렉션(히스토리, 장부, 공지사항, 시즌 등)을 뒤져서 '${legacyName}'을(를) '${newName}'(으)로 100% 영구 병합합니다.\n진행하시겠습니까?`)) return;
 
       setIsLoading(true);
       try {
-          // 1. Seasons (과거 경기 결과 기록지) 덮어쓰기
+          // 1. History Data (명예의 전당 강제 치환)
+          const historySnap = await getDocs(collection(db, 'history_data'));
+          for (const d of historySnap.docs) {
+              const hData = d.data();
+              let hModified = false;
+              let updatePayload: any = {};
+
+              if (hData.owners && Array.isArray(hData.owners)) {
+                  updatePayload.owners = hData.owners.map((o:any) => {
+                      if (o.name === legacyName) { hModified = true; return {...o, name: newName}; }
+                      return o;
+                  });
+              }
+              if (hData.teams && Array.isArray(hData.teams)) {
+                  updatePayload.teams = hData.teams.map((t:any) => {
+                      let tMod = false;
+                      const newT = {...t};
+                      if (newT.owner === legacyName) { newT.owner = newName; tMod = true; }
+                      if (newT.name && newT.name.includes(legacyName)) { newT.name = newT.name.replace(legacyName, newName); tMod = true; }
+                      if(tMod) hModified = true;
+                      return newT;
+                  });
+              }
+              if (hData.players && Array.isArray(hData.players)) {
+                  updatePayload.players = hData.players.map((p:any) => {
+                      let pMod = false;
+                      const newP = {...p};
+                      if (newP.owner === legacyName) { newP.owner = newName; pMod = true; }
+                      if (newP.team && newP.team.includes(legacyName)) { newP.team = newP.team.replace(legacyName, newName); pMod = true; }
+                      if(pMod) hModified = true;
+                      return newP;
+                  });
+              }
+              if (hModified) await updateDoc(d.ref, updatePayload);
+          }
+
+          // 2. Finance Ledger (정산 장부 강제 치환)
+          const ledgerSnap = await getDocs(collection(db, 'finance_ledger'));
+          for (const d of ledgerSnap.docs) {
+              const lData = d.data();
+              let lModified = false;
+              let updatePayload: any = {};
+              
+              if (lData.ownerId === legacyName || lData.ownerName === legacyName) {
+                  if(lData.ownerName) updatePayload.ownerName = newName;
+                  lModified = true;
+              }
+              if (lData.title && typeof lData.title === 'string' && lData.title.includes(legacyName)) {
+                  updatePayload.title = lData.title.replace(legacyName, newName);
+                  lModified = true;
+              }
+              if (lData.targetId === legacyName) { updatePayload.targetId = newName; lModified = true; }
+              if (lData.targetOwnerName === legacyName) { updatePayload.targetOwnerName = newName; lModified = true; }
+
+              if (lModified && Object.keys(updatePayload).length > 0) await updateDoc(d.ref, updatePayload);
+          }
+
+          // 3. Notices (공지사항 댓글 강제 치환 - 스크린샷 대응)
+          const noticesSnap = await getDocs(collection(db, 'notices'));
+          for (const d of noticesSnap.docs) {
+              const nData = d.data();
+              let nModified = false;
+              let updatePayload: any = {};
+
+              const updateReplies = (repliesArray: any[]) => {
+                  return repliesArray.map((r: any) => {
+                      let rMod = false;
+                      const newR = { ...r };
+                      if (newR.authorName === legacyName || newR.ownerName === legacyName) {
+                          if (newR.authorName !== undefined) newR.authorName = newName;
+                          if (newR.ownerName !== undefined) newR.ownerName = newName;
+                          rMod = true;
+                      }
+                      if (rMod) nModified = true;
+                      return newR;
+                  });
+              };
+
+              if (nData.comments && Array.isArray(nData.comments)) {
+                  updatePayload.comments = updateReplies(nData.comments);
+              }
+              if (nData.replies && Array.isArray(nData.replies)) {
+                  updatePayload.replies = updateReplies(nData.replies);
+              }
+              if (nModified && Object.keys(updatePayload).length > 0) await updateDoc(d.ref, updatePayload);
+          }
+
+          // 4. Posts & Match Comments (일반 게시글/댓글 치환)
+          const postsSnap = await getDocs(collection(db, 'posts'));
+          for (const d of postsSnap.docs) {
+              const pData = d.data();
+              let pMod = false;
+              let pUpdate: any = {};
+              if (pData.authorName === legacyName) { pUpdate.authorName = newName; pMod = true; }
+              if (pData.comments && Array.isArray(pData.comments)) {
+                  pUpdate.comments = pData.comments.map((c:any) => {
+                      const newC = {...c};
+                      if (newC.authorName === legacyName) { newC.authorName = newName; pMod = true; }
+                      if (newC.replies && Array.isArray(newC.replies)) {
+                          newC.replies = newC.replies.map((r:any) => {
+                              if (r.authorName === legacyName) { r.authorName = newName; pMod = true; }
+                              return r;
+                          });
+                      }
+                      return newC;
+                  });
+              }
+              if (pMod) await updateDoc(d.ref, pUpdate);
+          }
+
+          const matchComSnap = await getDocs(collection(db, 'match_comments'));
+          for (const d of matchComSnap.docs) {
+              if (d.data().authorName === legacyName || d.data().ownerName === legacyName) {
+                  const uData: any = {};
+                  if (d.data().authorName !== undefined) uData.authorName = newName;
+                  if (d.data().ownerName !== undefined) uData.ownerName = newName;
+                  await updateDoc(d.ref, uData);
+              }
+          }
+
+          // 5. Seasons (과거 경기 결과 기록지)
           const seasonsSnap = await getDocs(collection(db, 'seasons'));
           for (const d of seasonsSnap.docs) {
               const data = d.data();
@@ -76,46 +196,43 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                           let matchMod = false;
                           const newM = { ...m };
                           
-                          // 오너 이름 치환
                           if (newM.homeOwner === legacyName) { newM.homeOwner = newName; matchMod = true; }
                           if (newM.awayOwner === legacyName) { newM.awayOwner = newName; matchMod = true; }
-                          
-                          // 팀 이름 안에 괄호로 박힌 (강원주) 같은 텍스트 치환
-                          if (newM.home && newM.home.includes(legacyName)) { 
-                              newM.home = newM.home.replace(legacyName, newName); 
-                              matchMod = true; 
-                          }
-                          if (newM.away && newM.away.includes(legacyName)) { 
-                              newM.away = newM.away.replace(legacyName, newName); 
-                              matchMod = true; 
-                          }
+                          if (newM.home && newM.home.includes(legacyName)) { newM.home = newM.home.replace(legacyName, newName); matchMod = true; }
+                          if (newM.away && newM.away.includes(legacyName)) { newM.away = newM.away.replace(legacyName, newName); matchMod = true; }
 
+                          if(newM.homeScorers) {
+                              newM.homeScorers = newM.homeScorers.map((s:any) => {
+                                  if(typeof s === 'object' && s.owner === legacyName) { matchMod = true; return {...s, owner: newName}; }
+                                  return s;
+                              });
+                          }
+                          if(newM.awayScorers) {
+                              newM.awayScorers = newM.awayScorers.map((s:any) => {
+                                  if(typeof s === 'object' && s.owner === legacyName) { matchMod = true; return {...s, owner: newName}; }
+                                  return s;
+                              });
+                          }
+                          
                           if (matchMod) isModified = true;
                           return newM;
                       });
                       return { ...r, matches: newMatches };
                   });
-                  if (isModified) {
-                      await updateDoc(d.ref, { rounds: newRounds });
-                  }
+                  if (isModified) await updateDoc(d.ref, { rounds: newRounds });
               }
           }
 
-          // 2. Master Teams 소유권 덮어쓰기
+          // 6. Master Teams & User Accounts
           const teamsQ = query(collection(db, 'master_teams'), where('ownerName', '==', legacyName));
           const teamsSnap = await getDocs(teamsQ);
-          for (const d of teamsSnap.docs) {
-              await updateDoc(d.ref, { ownerName: newName });
-          }
+          for (const d of teamsSnap.docs) { await updateDoc(d.ref, { ownerName: newName }); }
 
-          // 3. User Accounts 맵핑 덮어쓰기
           const accountsQ = query(collection(db, 'user_accounts'), where('mappedOwnerId', '==', legacyName));
           const accountsSnap = await getDocs(accountsQ);
-          for (const d of accountsSnap.docs) {
-              await updateDoc(d.ref, { mappedOwnerId: newName });
-          }
+          for (const d of accountsSnap.docs) { await updateDoc(d.ref, { mappedOwnerId: newName }); }
 
-          alert(`🎉 완벽합니다! 과거 '${legacyName}'의 모든 잃어버린 전적이 '${newName}'(으)로 100% 병합되었습니다.`);
+          alert(`🎉 완벽합니다! '${legacyName}'의 모든 잃어버린 데이터(명예의전당/장부/게시판/시즌)가 '${newName}'(으)로 100% 병합되었습니다.`);
           setLegacyName('');
           setTargetOwnerDocId('');
       } catch (error: any) {
@@ -367,16 +484,16 @@ export const AdminOwnerManager = ({ owners }: Props) => {
         </div>
       </div>
 
-      {/* 🔥 [핵심 추가] 데이터 꼬임 방지: 과거 이름 강제 병합 복구 툴 */}
+      {/* 🔥 [최종판] 명예의 전당, 재무장부, 공지사항 댓글까지 싹 다 치환하는 마이그레이션 툴 */}
       {activeTab === 'EXISTING' && (
           <div className="mt-4 mb-8 bg-red-950/20 border border-red-900/50 p-5 rounded-2xl shadow-inner animate-in fade-in">
               <p className="text-xs text-red-400 font-bold mb-3 flex items-center gap-1.5">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                  [에러 복구용] 잃어버린 과거 데이터 강제 병합기
+                  [최후의 수단] 파이어베이스 전체 기록 강제 병합기
               </p>
               <p className="text-[10px] text-slate-400 mb-4 leading-relaxed">
-                  명예의 전당이나 전적에 <strong>옛날 이름(강원주 등)</strong>이 화석처럼 굳어서 남아있을 때 사용하세요.<br/>
-                  입력하신 옛날 이름을 파이어베이스 전체 기록지에서 싹 긁어모아 현재의 오너에게 100% 병합(Merge)시킵니다.
+                  명예의 전당, 재무장부, 공지사항 댓글 등에 <strong>과거 이름(강원주, NO.7 베컴 등)</strong>이 남아있을 때 사용하세요.<br/>
+                  모든 컬렉션을 뒤져서 선택한 오너로 100% 흡수 병합시킵니다.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input
@@ -400,7 +517,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                       disabled={isLoading || !legacyName || !targetOwnerDocId}
                       className="bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:bg-slate-800 disabled:text-slate-500 text-white px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-lg"
                   >
-                      {isLoading ? '병합 작업 진행 중...' : '데이터 병합 실행 🚀'}
+                      {isLoading ? '병합 작업 진행 중...' : '데이터 완벽 병합 실행 🚀'}
                   </button>
               </div>
           </div>
