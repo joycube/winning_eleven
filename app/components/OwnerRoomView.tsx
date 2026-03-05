@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings } from 'lucide-react';
+import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 
 export default function OwnerRoomView({ user, masterTeams, historyData, seasons, owners }: any) {
@@ -14,6 +14,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const [isSaving, setIsSaving] = useState(false);
 
     const [playerTab, setPlayerTab] = useState<'GOAL' | 'ASSIST'>('GOAL');
+    const [h2hFilter, setH2HFilter] = useState<'TEAM' | 'OWNER'>('TEAM');
 
     if (!user) {
         return (
@@ -128,37 +129,39 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     };
     const trophies = getTrophies();
 
-    const recentForm = myMatches.slice(-5).map(m => {
-        const isHome = m.homeOwner === user.mappedOwnerId;
-        const opponentName = isHome ? m.away : m.home;
-        const opponentTeamData = masterTeams?.find((t:any) => t.name === opponentName);
-        const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
-        const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
-        
-        let result = 'D';
-        if (myScore > opScore) result = 'W';
-        else if (myScore < opScore) result = 'L';
-
-        return { result, myScore, opScore, opponentName, opponentLogo: opponentTeamData?.logo || FALLBACK_IMG, opponentTier: opponentTeamData?.tier || 'C' };
-    });
-
     const getH2HStats = () => {
-        const stats: Record<string, { name: string, logo: string, tier: string, w: number, d: number, l: number, total: number }> = {};
+        const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
+        
         myMatches.forEach(m => {
             const isHome = m.homeOwner === user.mappedOwnerId;
-            const opponentName = isHome ? m.away : m.home;
-            const opponentTeamData = masterTeams?.find((t:any) => t.name === opponentName);
+            const targetName = isHome ? (h2hFilter === 'TEAM' ? m.away : m.awayOwner) : (h2hFilter === 'TEAM' ? m.home : m.homeOwner);
             
-            if (!stats[opponentName]) {
-                stats[opponentName] = { name: opponentName, logo: opponentTeamData?.logo || FALLBACK_IMG, tier: opponentTeamData?.tier || 'C', w: 0, d: 0, l: 0, total: 0 };
+            if (!targetName || targetName === 'SYSTEM' || targetName === 'CPU') return;
+
+            let logo = FALLBACK_IMG;
+            let tier = 'C';
+
+            if (h2hFilter === 'TEAM') {
+                const opTeamData = masterTeams?.find((t:any) => t.name === targetName);
+                logo = opTeamData?.logo || FALLBACK_IMG;
+                tier = opTeamData?.tier || 'C';
+            } else {
+                const opOwnerData = owners?.find((o:any) => o.nickname === targetName);
+                logo = opOwnerData?.photo || FALLBACK_IMG;
+                tier = 'O'; 
             }
+
+            if (!stats[targetName]) {
+                stats[targetName] = { name: targetName, logo, tier, w: 0, d: 0, l: 0, total: 0 };
+            }
+            
             const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
             const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
             
-            stats[opponentName].total += 1;
-            if (myScore > opScore) stats[opponentName].w += 1;
-            else if (myScore < opScore) stats[opponentName].l += 1;
-            else stats[opponentName].d += 1;
+            stats[targetName].total += 1;
+            if (myScore > opScore) stats[targetName].w += 1;
+            else if (myScore < opScore) stats[targetName].l += 1;
+            else stats[targetName].d += 1;
         });
 
         const statArray = Object.values(stats).filter(s => s.total > 0);
@@ -235,21 +238,13 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const handleSaveSettings = async () => {
         setIsSaving(true);
         try {
-            // 🔥 [에러 완벽 해결] user.uid가 아닌, 파이어베이스 명부(users)의 실제 문서 ID를 찾아냅니다.
             const targetOwnerDocId = myOwnerData?.docId || myOwnerData?.id;
-            
-            if (targetOwnerDocId) {
-                await updateDoc(doc(db, 'users', String(targetOwnerDocId)), { photo: editPhoto });
-            }
-
+            if (targetOwnerDocId) await updateDoc(doc(db, 'users', String(targetOwnerDocId)), { photo: editPhoto });
             const oldTeamId = myTeam?.docId || myTeam?.id;
-            
-            // 🔥 ID값을 문자열로 강제 변환하여 doc() 호출 시 타입 오류 방지
             if (String(editTeamId) !== String(oldTeamId)) {
                 if (oldTeamId) await updateDoc(doc(db, 'master_teams', String(oldTeamId)), { ownerName: '' });
                 if (editTeamId) await updateDoc(doc(db, 'master_teams', String(editTeamId)), { ownerName: user.mappedOwnerId });
             }
-            
             alert('✅ 설정이 성공적으로 저장되었습니다!');
             setIsEditing(false);
         } catch (e: any) {
@@ -269,61 +264,61 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in pb-10 mt-4 relative">
+        <div className="space-y-6 animate-in fade-in pb-10 mt-4 relative text-left">
             
-            {/* 1. 구단주 프로필 헤더 */}
-            <div className="bg-gradient-to-br from-slate-900 to-[#0B1120] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+            <div className="bg-[#050609] border border-slate-700/50 rounded-3xl p-6 sm:p-9 shadow-2xl relative overflow-hidden group">
+                <div className="absolute inset-0 bg-[url('/img/metal_pattern.png')] opacity-10 pointer-events-none"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-[#0B1120] to-black pointer-events-none"></div>
+                
+                <div className="absolute -left-10 -top-10 w-60 h-60 bg-emerald-600/20 rounded-full blur-[80px] pointer-events-none group-hover:scale-110 transition-transform duration-700"></div>
+                <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-600/10 rounded-full blur-[80px] pointer-events-none"></div>
 
-                <div className="absolute top-4 right-5 sm:top-6 sm:right-8 flex gap-1.5 z-10 pointer-events-none">
-                    {Array.from({length: trophies.gold}).map((_, i) => <Trophy key={`g-${i}`} size={20} className="text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)]" />)}
-                    {Array.from({length: trophies.silver}).map((_, i) => <Trophy key={`s-${i}`} size={18} className="text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.4)] mt-0.5" />)}
+                <div className="absolute top-4 right-5 sm:top-7 sm:right-9 flex gap-1.5 z-20 pointer-events-none">
+                    {Array.from({length: trophies.gold}).map((_, i) => <Trophy key={`g-${i}`} size={22} className="text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.7)]" />)}
+                    {Array.from({length: trophies.silver}).map((_, i) => <Trophy key={`s-${i}`} size={20} className="text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.5)] mt-0.5" />)}
+                    {trophies.gold === 0 && trophies.silver === 0 && <div className="text-[10px] text-slate-700 font-bold italic tracking-wider">NO TROPHIES YET</div>}
                 </div>
 
-                <div className="flex items-center gap-5 relative z-10">
-                    <div className="relative shrink-0">
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white flex items-center justify-center p-1.5 shadow-[0_0_20px_rgba(52,211,153,0.15)] ring-2 ring-emerald-500/30 overflow-hidden">
-                            <img src={profileImage} alt="logo" className="w-full h-full object-contain rounded-full" />
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 p-1.5 rounded-full border-2 border-[#0B1120] shadow-lg">
-                            <CheckCircle2 size={14} className="stroke-[3]" />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-6 relative z-10">
+                    <div className="relative shrink-0 flex justify-center">
+                        <div className="relative">
+                            <div className="absolute inset-0 rounded-full blur-md bg-emerald-500/30 scale-105 group-hover:bg-emerald-500/50 transition-colors"></div>
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-700 via-white to-slate-700 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
+                                <div className="w-full h-full rounded-full bg-[#050b14] p-1 flex items-center justify-center overflow-hidden">
+                                    <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" />
+                                    <div className="absolute top-0 left-0 w-full h-[45%] bg-gradient-to-b from-white/20 to-transparent rounded-t-full"></div>
+                                </div>
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 p-1.5 sm:p-2 rounded-full border-2 border-[#0B1120] shadow-xl z-20">
+                                <CheckCircle2 size={16} className="stroke-[3.5]" />
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex flex-col min-w-0 pt-2 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-2">
-                                <span className="flex items-center gap-1 text-emerald-400 font-black text-[10px] tracking-[0.2em] uppercase">
-                                    <ShieldCheck size={12} /> Verified Owner
-                                </span>
-                                <span className={`px-2 py-0.5 text-[9px] font-black rounded-full border bg-slate-950/50 ${playStyle.color} ${playStyle.border}`}>
-                                    {playStyle.label}
-                                </span>
-                            </div>
-                            
-                            <button 
-                                onClick={openEditModal}
-                                className="flex items-center gap-1 text-[10px] sm:text-xs font-black text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-all shadow-sm"
-                            >
-                                <Settings size={12} /> <span className="hidden sm:inline">설정</span>
-                            </button>
+                    <div className="flex flex-col min-w-0 flex-1 pt-1">
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-2.5">
+                            <span className="flex items-center gap-1.5 text-emerald-300 font-black text-[11px] tracking-[0.15em] uppercase bg-emerald-950/70 px-3 py-1.5 rounded-lg border border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]">
+                                <ShieldCheck size={14} className="text-emerald-400"/> VERIFIED OWNER
+                            </span>
+                            <span className={`px-3 py-1.5 text-[10px] font-black rounded-lg border shadow-[0_0_10px_rgba(0,0,0,0.3)] flex items-center gap-1 bg-[#0f172a] ${playStyle.color} ${playStyle.border}`}>
+                                <Sparkles size={12}/> {playStyle.label}
+                            </span>
                         </div>
-
-                        <h2 className="text-2xl sm:text-3xl font-black text-white italic tracking-tighter drop-shadow-md pr-10 overflow-visible">
+                        <h2 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] overflow-visible text-center sm:text-left break-all pr-0 sm:pr-10">
                             {user.mappedOwnerId}
                         </h2>
-                        
-                        <div className="flex flex-wrap items-center mt-1.5 gap-x-2 gap-y-1.5 pr-8">
-                            <p className="text-slate-400 text-xs sm:text-sm font-bold break-keep">
-                                {myTeam?.name || '소속 구단 없음'}
-                            </p>
-                            {myTeam && <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border shadow-sm ${getTierBadgeColor(myTeam.tier)}`}>{myTeam.tier} Tier</span>}
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2 gap-x-2 gap-y-1.5">
+                            <p className="text-slate-300 text-sm sm:text-base font-bold break-keep">{myTeam?.name || '소속 구단 없음'}</p>
+                            {myTeam && <span className={`px-2 py-1 rounded text-[11px] font-black border shadow-[0_2px_5px_rgba(0,0,0,0.3)] ${getTierBadgeColor(myTeam.tier)}`}>{myTeam.tier} Tier</span>}
                         </div>
                     </div>
+
+                    <button onClick={openEditModal} className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 flex items-center gap-1.5 text-[10px] sm:text-xs font-black text-slate-500 hover:text-white bg-black/40 hover:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-800 hover:border-slate-700 transition-all shadow-inner z-20">
+                        <Settings size={13} /> <span>EDIT</span>
+                    </button>
                 </div>
             </div>
 
-            {/* 2. 통산 지표 */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Trophy size={80} /></div>
@@ -333,9 +328,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Activity size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><Activity size={12} className="text-blue-400" /> 통산 전적</span>
-                    <span className="text-lg sm:text-2xl font-black text-slate-200 italic tracking-tight relative z-10">
-                        <span className="text-emerald-400">{wins}W</span> - {draws}D - <span className="text-red-400">{losses}L</span>
-                    </span>
+                    <span className="text-lg sm:text-2xl font-black text-slate-200 italic tracking-tight relative z-10"><span className="text-emerald-400">{wins}W</span> - {draws}D - <span className="text-red-400">{losses}L</span></span>
                 </div>
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><TrendingUp size={80} /></div>
@@ -345,48 +338,66 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Coins size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><Coins size={12} className="text-yellow-400" /> 누적 상금</span>
-                    <span className="text-lg sm:text-2xl font-black text-white italic relative z-10">
-                        ₩ {prizeMoney.toLocaleString()}
-                    </span>
+                    <span className="text-lg sm:text-2xl font-black text-white italic relative z-10">₩ {prizeMoney.toLocaleString()}</span>
                 </div>
             </div>
 
-            {/* 3. 복구된 나의 맛집/천적/라이벌 카드 섹션 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-                {[
-                    { title: 'FAVORITE', sub: '나의 맛집', data: mostWins, icon: <Flame size={14}/>, color: 'text-emerald-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 승률 ${((d.w/d.total)*100).toFixed(0)}%` },
-                    { title: 'NEMESIS', sub: '나의 천적', data: mostLosses, icon: <Skull size={14}/>, color: 'text-red-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 패배율 ${((d.l/d.total)*100).toFixed(0)}%` },
-                    { title: 'RIVALRY', sub: '영원의 라이벌', data: rival, icon: <Crosshair size={14}/>, color: 'text-purple-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | ${d.total}번의 혈투` }
-                ].map((card, i) => (
-                    <div key={i} className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-center text-left">
-                        <div className="absolute -right-2 -bottom-2 opacity-5 scale-150">{card.icon}</div>
-                        <h3 className={`text-[11px] font-black ${card.color} uppercase tracking-widest mb-4 flex items-center gap-1.5`}>{card.icon} {card.title} <span className="text-slate-500 ml-1 text-[9px]">{card.sub}</span></h3>
-                        {card.data ? (
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className="relative shrink-0">
-                                    <div className="w-14 h-14 bg-white rounded-full p-1 shadow-md flex items-center justify-center"><img src={card.data.logo} className="w-full h-full object-contain" alt="logo" /></div>
-                                    <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[8px] font-black rounded border shadow-sm ${getTierBadgeColor(card.data.tier)}`}>{card.data.tier}</div>
-                                </div>
-                                <div className="flex flex-col min-w-0 pr-10 overflow-visible">
-                                    <span className="text-base font-black text-white italic leading-tight whitespace-nowrap">{card.data.name}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 mt-1 whitespace-nowrap">{card.label(card.data)}</span>
-                                </div>
-                            </div>
-                        ) : <div className="text-xs text-slate-600 font-bold italic py-2">기록 부족</div>}
+            <div className="pt-2">
+                <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                        <Swords size={18} className="text-emerald-400" />
+                        <h3 className="text-[13px] sm:text-[15px] font-black text-white italic tracking-widest uppercase">상성 분석기</h3>
                     </div>
-                ))}
+                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800 shadow-inner">
+                        <button onClick={() => setH2HFilter('TEAM')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'TEAM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><ShieldCheck size={12}/> 구단 기준</button>
+                        <button onClick={() => setH2HFilter('OWNER')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'OWNER' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12}/> 구단주 기준</button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {[
+                        { title: 'FAVORITE', sub: '나의 맛집', data: mostWins, icon: <Flame size={14}/>, color: 'text-emerald-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 승률 ${((d.w/d.total)*100).toFixed(0)}%` },
+                        { title: 'NEMESIS', sub: '나의 천적', data: mostLosses, icon: <Skull size={14}/>, color: 'text-red-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 패배율 ${((d.l/d.total)*100).toFixed(0)}%` },
+                        { title: 'RIVALRY', sub: '영원의 라이벌', data: rival, icon: <Crosshair size={14}/>, color: 'text-purple-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | ${d.total}번의 혈투` }
+                    ].map((card, i) => (
+                        <div key={i} className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-center text-left transition-all duration-300 hover:border-slate-600 shadow-sm hover:shadow-xl">
+                            <div className="absolute -right-2 -bottom-2 opacity-5 scale-150">{card.icon}</div>
+                            <h3 className={`text-[11px] font-black ${card.color} uppercase tracking-widest mb-4 flex items-center gap-1.5`}>{card.icon} {card.title} <span className="text-slate-500 ml-1 text-[9px]">{card.sub}</span></h3>
+                            {card.data ? (
+                                <div className="flex items-center gap-4 relative z-10">
+                                    <div className="relative shrink-0">
+                                        <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
+                                            <img src={card.data.logo} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" />
+                                        </div>
+                                        <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[8px] font-black rounded border shadow-sm ${h2hFilter === 'OWNER' ? 'bg-slate-800 text-white border-slate-600' : getTierBadgeColor(card.data.tier)}`}>
+                                            {h2hFilter === 'OWNER' ? 'O' : card.data.tier}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col min-w-0 pr-10 overflow-visible">
+                                        <span className="text-base font-black text-white italic leading-tight whitespace-nowrap">{card.data.name}</span>
+                                        <span className="text-[10px] font-bold text-slate-400 mt-1 whitespace-nowrap">{card.label(card.data)}</span>
+                                    </div>
+                                </div>
+                            ) : <div className="text-xs text-slate-600 font-bold italic py-2">기록 부족</div>}
+                        </div>
+                    ))}
+                </div>
             </div>
 
             {/* 4. 베스트 팀 & 플레이어 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+                
                 {/* --- 4-1. MY BEST TEAMS --- */}
-                <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
-                    <div className="bg-slate-900/50 px-5 py-4 border-b border-slate-800 flex items-center gap-2">
-                        <div className="w-1.5 h-5 bg-blue-500 rounded-full"></div>
-                        <h3 className="text-base font-black text-white italic tracking-tighter uppercase text-left">MY BEST TEAMS</h3>
+                <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col">
+                    {/* 🔥 헤더 높이를 우측 탭 메뉴와 똑같이 맞춤 (py-4, border-b-2 흉내) */}
+                    <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-900/50">
+                        <div className="py-4 px-5 flex items-center gap-2 w-full border-b-2 border-transparent">
+                            <div className="w-1.5 h-5 bg-blue-500 rounded-full"></div>
+                            <h3 className="text-base font-black text-white italic tracking-tighter uppercase text-left leading-none">MY BEST TEAMS</h3>
+                        </div>
                     </div>
                     
-                    <div className="p-4 space-y-2">
+                    <div className="p-4 flex-1 space-y-2">
                         {topTeams.length > 0 ? (
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 mb-1 text-left">
@@ -398,8 +409,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     </div>
                                 </div>
                                 
+                                {/* 🔥 p-3.5 로 통일, 높이 min-h-[64px] 강제 고정 */}
                                 {topTeams.map((team:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3 hover:bg-slate-800/60 transition-all text-left">
+                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left min-h-[64px]">
                                         <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
                                             {idx + 1}
                                         </div>
@@ -413,7 +425,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                 </div>
                                             </div>
                                             <div className="flex flex-col min-w-0">
-                                                <span className="text-sm font-black text-white italic leading-none whitespace-nowrap pr-2">{team.name}</span>
+                                                <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap pr-2">{team.name}</span>
                                                 <span className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-wider">WIN RATE {team.winRate}%</span>
                                             </div>
                                         </div>
@@ -427,16 +439,16 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 ))}
                             </div>
                         ) : (
-                            <div className="py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
+                            <div className="h-full flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
                         )}
                     </div>
                 </div>
 
-                {/* --- 4-2. MY BEST PLAYERS (팀 컬럼 포함) --- */}
+                {/* --- 4-2. MY BEST PLAYERS --- */}
                 <div className="bg-[#0B1120] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col">
                     <div className="flex border-b border-slate-800">
-                        <button onClick={() => setPlayerTab('GOAL')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300'}`}>⚽ TOP SCORERS</button>
-                        <button onClick={() => setPlayerTab('ASSIST')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300'}`}>🅰️ TOP ASSISTS</button>
+                        <button onClick={() => setPlayerTab('GOAL')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
+                        <button onClick={() => setPlayerTab('ASSIST')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
                     </div>
 
                     <div className="p-4 flex-1">
@@ -449,16 +461,16 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     <div className="w-12 text-right">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
                                 </div>
 
-                                {/* 🔥 플레이어 리스트 항목의 높이(min-h-[64px])와 라운딩(rounded-2xl)을 베스트 팀과 동일하게 맞춤 */}
+                                {/* 🔥 p-3.5 로 통일, 높이 min-h-[64px] 강제 고정 */}
                                 {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3 hover:bg-slate-800/60 transition-all min-h-[64px]">
-                                        <div className="w-8 text-center text-xs font-black italic text-emerald-500">{idx + 1}</div>
+                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all min-h-[64px]">
+                                        <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
                                         <div className="w-[35%] ml-4 pr-6 min-w-0 overflow-visible">
                                             <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap">{p.name}</span>
                                         </div>
-                                        {/* TEAM 컬럼: 엠블럼 + 팀명 (좌측 정렬) */}
                                         <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-8 overflow-visible ml-2">
-                                            <div className="w-6 h-6 bg-white rounded-full p-0.5 flex shrink-0 items-center justify-center shadow-sm">
+                                            {/* 🔥 팀 리스트와 동일한 사이즈감 부여 (w-8 h-8) */}
+                                            <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
                                                 <img src={p.logo} alt="logo" className="w-full h-full object-contain" />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-400 italic whitespace-nowrap">{p.team}</span>
@@ -476,7 +488,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
             </div>
             
-            {/* 하단 안내 */}
             <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-5 text-center shadow-inner mt-4">
                 <p className="text-emerald-400 text-xs sm:text-sm font-bold leading-relaxed break-keep">
                     ✨ 구단주실 세팅이 완료되었습니다!<br/>
@@ -484,7 +495,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </p>
             </div>
 
-            {/* 설정 모달 */}
             {isEditing && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020617]/90 backdrop-blur-md px-4 animate-in fade-in">
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl">
