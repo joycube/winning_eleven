@@ -369,8 +369,14 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                         <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
                                             <img src={card.data.logo} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" />
                                         </div>
-                                        <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[8px] font-black rounded border shadow-sm ${h2hFilter === 'OWNER' ? 'bg-slate-800 text-white border-slate-600' : getTierBadgeColor(card.data.tier)}`}>
-                                            {h2hFilter === 'OWNER' ? 'O' : card.data.tier}
+                                        {/* 🔥 구단주 기준일 때 O 뱃지 대신 상황에 맞는 아이콘(불꽃/해골/타겟) 출력 */}
+                                        <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border shadow-sm flex items-center justify-center 
+                                            ${h2hFilter === 'OWNER' 
+                                                ? (i === 0 ? 'bg-emerald-950 border-emerald-500/50 text-emerald-400' 
+                                                 : i === 1 ? 'bg-red-950 border-red-500/50 text-red-400' 
+                                                 : 'bg-purple-950 border-purple-500/50 text-purple-400') 
+                                                : getTierBadgeColor(card.data.tier)}`}>
+                                            {h2hFilter === 'OWNER' ? React.cloneElement(card.icon as React.ReactElement, { size: 10, strokeWidth: 3 }) : <span className="px-0.5 text-[8px] font-black">{card.data.tier}</span>}
                                         </div>
                                     </div>
                                     <div className="flex flex-col min-w-0 pr-10 overflow-visible">
@@ -389,7 +395,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 
                 {/* --- 4-1. MY BEST TEAMS --- */}
                 <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col">
-                    {/* 🔥 헤더 높이를 우측 탭 메뉴와 똑같이 맞춤 (py-4, border-b-2 흉내) */}
                     <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-900/50">
                         <div className="py-4 px-5 flex items-center gap-2 w-full border-b-2 border-transparent">
                             <div className="w-1.5 h-5 bg-blue-500 rounded-full"></div>
@@ -409,7 +414,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     </div>
                                 </div>
                                 
-                                {/* 🔥 p-3.5 로 통일, 높이 min-h-[64px] 강제 고정 */}
                                 {topTeams.map((team:any, idx:number) => (
                                     <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left min-h-[64px]">
                                         <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
@@ -461,7 +465,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     <div className="w-12 text-right">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
                                 </div>
 
-                                {/* 🔥 p-3.5 로 통일, 높이 min-h-[64px] 강제 고정 */}
                                 {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => (
                                     <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all min-h-[64px]">
                                         <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
@@ -469,7 +472,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                             <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap">{p.name}</span>
                                         </div>
                                         <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-8 overflow-visible ml-2">
-                                            {/* 🔥 팀 리스트와 동일한 사이즈감 부여 (w-8 h-8) */}
                                             <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
                                                 <img src={p.logo} alt="logo" className="w-full h-full object-contain" />
                                             </div>
