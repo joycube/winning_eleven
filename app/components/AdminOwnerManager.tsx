@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { Owner } from '../types';
-import { UserCheck, UserPlus, Trash2, Search } from 'lucide-react';
+import { UserCheck, UserPlus, Trash2, Search, Wrench, ShieldAlert } from 'lucide-react';
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
@@ -15,6 +15,8 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState('');
+  // 🔥 [핵심 추가] 권한(role) 상태 관리
+  const [role, setRole] = useState<'USER' | 'ADMIN'>('USER'); 
   const [editId, setEditId] = useState<string | null>(null);
   const [oldNickname, setOldNickname] = useState('');
   const [pendingEmail, setPendingEmail] = useState<string | null>(null); 
@@ -23,7 +25,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   const [userAccounts, setUserAccounts] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 🔥 [에러 복구용 툴 상태]
+  // [에러 복구용 툴 상태]
   const [legacyName, setLegacyName] = useState('');
   const [targetOwnerDocId, setTargetOwnerDocId] = useState('');
 
@@ -43,6 +45,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   const resetForm = () => {
     setName('');
     setPhoto('');
+    setRole('USER');
     setEditId(null);
     setOldNickname('');
     setPendingEmail(null);
@@ -52,7 +55,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
       resetForm();
   }, [activeTab]);
 
-  // 🔥 [궁극의 복구 툴] 파이어베이스의 "모든" 컬렉션을 뒤져서 옛날 이름을 새 이름으로 완벽 치환
+  // [궁극의 복구 툴] 파이어베이스의 "모든" 컬렉션을 뒤져서 옛날 이름을 새 이름으로 완벽 치환
   const runForceMigration = async () => {
       if (!legacyName.trim() || !targetOwnerDocId) return alert("지워야 할 과거 이름과 변경할 대상을 모두 선택해주세요.");
       
@@ -64,7 +67,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
 
       setIsLoading(true);
       try {
-          // 1. History Data (명예의 전당 강제 치환)
+          // 1. History Data
           const historySnap = await getDocs(collection(db, 'history_data'));
           for (const d of historySnap.docs) {
               const hData = d.data();
@@ -100,7 +103,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
               if (hModified) await updateDoc(d.ref, updatePayload);
           }
 
-          // 2. Finance Ledger (정산 장부 강제 치환)
+          // 2. Finance Ledger
           const ledgerSnap = await getDocs(collection(db, 'finance_ledger'));
           for (const d of ledgerSnap.docs) {
               const lData = d.data();
@@ -121,7 +124,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
               if (lModified && Object.keys(updatePayload).length > 0) await updateDoc(d.ref, updatePayload);
           }
 
-          // 3. Notices (공지사항 댓글 강제 치환 - 스크린샷 대응)
+          // 3. Notices
           const noticesSnap = await getDocs(collection(db, 'notices'));
           for (const d of noticesSnap.docs) {
               const nData = d.data();
@@ -151,7 +154,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
               if (nModified && Object.keys(updatePayload).length > 0) await updateDoc(d.ref, updatePayload);
           }
 
-          // 4. Posts & Match Comments (일반 게시글/댓글 치환)
+          // 4. Posts & Match Comments
           const postsSnap = await getDocs(collection(db, 'posts'));
           for (const d of postsSnap.docs) {
               const pData = d.data();
@@ -184,7 +187,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
               }
           }
 
-          // 5. Seasons (과거 경기 결과 기록지)
+          // 5. Seasons
           const seasonsSnap = await getDocs(collection(db, 'seasons'));
           for (const d of seasonsSnap.docs) {
               const data = d.data();
@@ -322,13 +325,14 @@ export const AdminOwnerManager = ({ owners }: Props) => {
             await runCascadeUpdate();
         }
 
-        const updatePayload: any = { nickname: name };
+        // 🔥 업데이트 항목에 role(권한) 추가
+        const updatePayload: any = { nickname: name, role: role };
         if (photo.trim() !== '') {
             updatePayload.photo = photo.trim();
         }
 
         await updateDoc(doc(db, 'users', editId), updatePayload);
-        alert(oldNickname !== name ? '🔥 기록 일괄 업데이트 완료!' : '수정되었습니다!');
+        alert(oldNickname !== name ? '🔥 기록 일괄 업데이트 완료!' : `✅ [${name}]님의 정보 및 권한(${role})이 수정되었습니다!`);
 
       } else if (activeTab === 'PENDING' && pendingEmail) {
         const targetAcc = userAccounts.find(acc => acc.email === pendingEmail);
@@ -345,12 +349,14 @@ export const AdminOwnerManager = ({ owners }: Props) => {
         const finalPhoto = photo.trim() || targetAcc.photoUrl || COMMON_DEFAULT_PROFILE;
 
         if (existingOwner && existingOwner.docId) {
-            const updatePayload: any = { nickname: name };
+            // 🔥 업데이트 항목에 role(권한) 추가
+            const updatePayload: any = { nickname: name, role: role };
             if (photo.trim() !== '') updatePayload.photo = photo.trim(); 
             await updateDoc(doc(db, 'users', String(existingOwner.docId)), updatePayload);
         } else if (!existingOwner) {
+            // 🔥 신규 생성 시 role(권한) 추가
             await addDoc(collection(db, 'users'), {
-              id: Date.now(), nickname: name, photo: finalPhoto, win: 0, draw: 0, loss: 0
+              id: Date.now(), nickname: name, photo: finalPhoto, win: 0, draw: 0, loss: 0, role: role
             });
         }
 
@@ -358,7 +364,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
             await updateDoc(doc(db, 'user_accounts', String(targetAcc.docId)), { mappedOwnerId: name });
         }
         
-        alert(`✅ [${name}] 구단주 연동 처리가 완료되었습니다!`);
+        alert(`✅ [${name}] 구단주 연동 및 권한 처리가 완료되었습니다!`);
       }
       
       await fetchUserAccounts(); 
@@ -395,7 +401,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
       
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            👑 오너 관리
+            👑 오너 & 권한 관리
           </h2>
           
           <div className="relative w-full sm:w-64">
@@ -425,13 +431,13 @@ export const AdminOwnerManager = ({ owners }: Props) => {
           </button>
       </div>
 
-      <div className={`flex flex-col gap-3 mb-6 p-4 sm:p-5 rounded-xl border shadow-inner ${activeTab === 'PENDING' ? 'bg-blue-950/20 border-blue-900/30' : 'bg-slate-950 border-slate-800'}`}>
+      <div className={`flex flex-col gap-4 mb-6 p-4 sm:p-5 rounded-xl border shadow-inner ${activeTab === 'PENDING' ? 'bg-blue-950/20 border-blue-900/30' : 'bg-slate-950 border-slate-800'}`}>
         
-        <div className="mb-2 border-b border-slate-800/50 pb-2">
+        <div className="mb-1 border-b border-slate-800/50 pb-2">
             {activeTab === 'EXISTING' ? (
-                <p className="text-[11px] text-slate-400 font-bold">👇 수정할 오너를 아래 명부에서 선택하세요.</p>
+                <p className="text-[11px] text-slate-400 font-bold">👇 유저 선택 후 닉네임/프사/권한을 변경하세요.</p>
             ) : (
-                <p className="text-[11px] text-blue-400 font-bold">👇 연동/수정할 G메일 유저를 아래에서 선택하세요.</p>
+                <p className="text-[11px] text-blue-400 font-bold">👇 연동할 G메일 유저를 아래에서 선택하세요.</p>
             )}
         </div>
 
@@ -451,7 +457,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
             </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input 
             value={name} 
             onChange={(e) => setName(e.target.value)}
@@ -462,13 +468,28 @@ export const AdminOwnerManager = ({ owners }: Props) => {
           <input 
             value={photo} 
             onChange={(e) => setPhoto(e.target.value)}
-            placeholder="프로필 사진 URL (빈칸 시 기존 프사 유지)"
+            placeholder="프로필 사진 URL (빈칸 시 유지)"
             disabled={activeTab === 'PENDING' && !pendingEmail}
             className="w-full bg-[#0B1120] border border-slate-700 p-3 rounded-xl text-white text-sm outline-none focus:border-emerald-500 disabled:opacity-50 transition-colors"
           />
+          {/* 🔥 권한 설정 드롭다운 (Admin일 경우 빨간색으로 시인성 강화) */}
+          <div className="relative">
+              <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as 'USER' | 'ADMIN')}
+                  disabled={activeTab === 'PENDING' && !pendingEmail}
+                  className={`w-full p-3 pr-10 rounded-xl text-sm font-bold outline-none disabled:opacity-50 transition-all appearance-none cursor-pointer shadow-inner ${role === 'ADMIN' ? 'bg-red-950/20 border border-red-900/50 text-red-400 focus:border-red-500' : 'bg-[#0B1120] border border-slate-700 text-slate-300 focus:border-emerald-500'}`}
+              >
+                  <option value="USER" className="bg-slate-900 text-white">👤 일반 오너 (USER)</option>
+                  <option value="ADMIN" className="bg-red-900 text-white">👑 최고 관리자 (ADMIN)</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                  ▼
+              </div>
+          </div>
         </div>
         
-        <div className="flex justify-end gap-2 mt-2">
+        <div className="flex justify-end gap-2 mt-1">
           {(editId || pendingEmail) && (
               <button onClick={resetForm} className="px-5 py-2.5 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 rounded-xl transition-colors">
                   취소
@@ -477,14 +498,13 @@ export const AdminOwnerManager = ({ owners }: Props) => {
           <button 
             onClick={handleSave} 
             disabled={isLoading || (!editId && !pendingEmail)}
-            className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all text-white disabled:opacity-50 ${activeTab === 'PENDING' ? 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_15px_rgba(52,211,153,0.4)]'}`}
+            className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all text-white disabled:opacity-50 flex items-center gap-1.5 ${activeTab === 'PENDING' ? 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_15px_rgba(52,211,153,0.4)]'}`}
           >
-            {isLoading ? '처리 중...' : (activeTab === 'PENDING' ? '연동 및 정보 업데이트' : '정보 일괄 수정')}
+            {isLoading ? '처리 중...' : (activeTab === 'PENDING' ? '연동 및 설정 저장' : <><ShieldAlert size={16}/> 설정 저장</>)}
           </button>
         </div>
       </div>
 
-      {/* 🔥 [최종판] 명예의 전당, 재무장부, 공지사항 댓글까지 싹 다 치환하는 마이그레이션 툴 */}
       {activeTab === 'EXISTING' && (
           <div className="mt-4 mb-8 bg-red-950/20 border border-red-900/50 p-5 rounded-2xl shadow-inner animate-in fade-in">
               <p className="text-xs text-red-400 font-bold mb-3 flex items-center gap-1.5">
@@ -531,17 +551,30 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                 {filteredOwners.map(o => {
                   const linkedAccount = userAccounts.find(acc => acc.mappedOwnerId === o.nickname);
                   const isSelected = editId === o.docId;
+                  const isAdmin = (o as any).role === 'ADMIN';
 
                   return (
                     <div 
                         key={o.id} 
-                        onClick={() => { setEditId(o.docId || ''); setName(o.nickname); setOldNickname(o.nickname); setPhoto(''); }}
-                        className={`relative p-3 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer border transition-all hover:-translate-y-1 bg-slate-900 ${isSelected ? 'border-emerald-500 shadow-[0_0_15px_rgba(52,211,153,0.2)]' : 'border-slate-800 hover:border-slate-600'}`}
+                        onClick={() => { 
+                            setEditId(o.docId || ''); 
+                            setName(o.nickname); 
+                            setOldNickname(o.nickname); 
+                            setPhoto(''); 
+                            setRole(isAdmin ? 'ADMIN' : 'USER'); // 🔥 클릭 시 해당 유저의 권한을 폼에 세팅
+                        }}
+                        className={`relative p-3 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer border transition-all hover:-translate-y-1 bg-slate-900 ${isSelected ? 'border-emerald-500 shadow-[0_0_15px_rgba(52,211,153,0.2)]' : isAdmin ? 'border-red-900/40 shadow-inner hover:border-red-500/50' : 'border-slate-800 hover:border-slate-600'}`}
                     >
                         <button onClick={(e) => { e.stopPropagation(); handleDelete(o.docId); }} className="absolute top-2 right-2 text-slate-600 hover:text-red-500 transition-colors" title="삭제"><Trash2 size={14} /></button>
-                        <img src={o.photo || 'https://via.placeholder.com/64'} className="w-14 h-14 rounded-full object-cover bg-black shadow-md border border-slate-700" alt="" />
-                        <div className="flex flex-col items-center w-full min-w-0"> 
-                            <span className="font-black text-white text-sm truncate w-full text-center">{o.nickname}</span>
+                        
+                        <div className="relative">
+                            <img src={o.photo || 'https://via.placeholder.com/64'} className={`w-14 h-14 rounded-full object-cover bg-black shadow-md border ${isAdmin ? 'border-red-500' : 'border-slate-700'}`} alt="" />
+                            {/* 🔥 최고 관리자일 경우 왕관 뱃지 표시 */}
+                            {isAdmin && <span className="absolute -bottom-1 -right-1 bg-red-600 text-[10px] rounded-full w-5 h-5 flex items-center justify-center border border-slate-900 shadow-lg" title="최고 관리자">👑</span>}
+                        </div>
+
+                        <div className="flex flex-col items-center w-full min-w-0 mt-1"> 
+                            <span className={`font-black text-sm truncate w-full text-center ${isAdmin ? 'text-red-400' : 'text-white'}`}>{o.nickname}</span>
                             
                             {linkedAccount ? (
                                 <span className="text-[9px] text-emerald-400 truncate w-full text-center mt-0.5 font-bold">{linkedAccount.email}</span>
@@ -574,6 +607,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                                       setName(acc.mappedOwnerId || acc.displayName || ''); 
                                       setOldNickname(acc.mappedOwnerId || ''); 
                                       setPhoto('');
+                                      setRole('USER'); // 신규 가입자는 기본 USER 할당
                                   }}
                                   className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-blue-900/20 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.2)]' : 'bg-slate-900 border-slate-800 hover:border-slate-600'}`}
                               >
