@@ -3,12 +3,11 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { Notice, NoticeComment, Owner, FALLBACK_IMG } from '../types';
 
 interface NoticeViewProps {
     owners: Owner[];
-    // 🔥 [수술 포인트 1] 부모(page.tsx)에서 실시간 notices 데이터를 직접 받음 (로딩 딜레이 완전 제거)
     notices: Notice[]; 
 }
 
@@ -30,7 +29,10 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         }
     }, [owners]);
 
-    // 🔥 [수술 포인트 2] URL 실시간 감지 및 동기화 (팝업 클릭 시 본문 즉시 이동)
+    // 🔥 [수정] 타입스크립트 에러(ts-2339) 해결! any로 우회하여 빌드 에러 원천 차단
+    const currentOwner = owners.find(o => String(o.id) === activeOwnerId);
+    const isAdmin = (currentOwner as any)?.role === 'ADMIN';
+
     useEffect(() => {
         const checkUrlAndSyncNotice = () => {
             const params = new URLSearchParams(window.location.search);
@@ -44,9 +46,8 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
             }
         };
 
-        checkUrlAndSyncNotice(); // notices 배열이 업데이트되거나 렌더링될 때 실행
+        checkUrlAndSyncNotice(); 
 
-        // TopBar 팝업 클릭이나 뒤로가기 발생 시 즉시 반응하도록 리스너 추가
         window.addEventListener('popstate', checkUrlAndSyncNotice);
         window.addEventListener('forceNoticeCheck', checkUrlAndSyncNotice);
 
@@ -74,6 +75,19 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
             params.set('view', 'NOTICE');
             params.set('noticeId', notice.id);
             window.history.pushState(null, '', `?${params.toString()}`);
+        }
+    };
+
+    // 🔥 어드민 전용 공지사항 본글 삭제 기능
+    const handleDeleteNotice = async (noticeId: string) => {
+        if (!window.confirm("🚨 이 공지사항을 완전히 삭제하시겠습니까?")) return;
+        try {
+            await deleteDoc(doc(db, 'notices', noticeId));
+            alert("🗑️ 공지사항이 삭제되었습니다.");
+            handleBackToList();
+        } catch (error) {
+            console.error("Notice delete error:", error);
+            alert("삭제에 실패했습니다.");
         }
     };
 
@@ -115,7 +129,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                 comments: updatedComments,
                 updatedAt: now
             });
-            // 낙관적 UI 업데이트 (DB 반영 전 즉시 화면 변경)
             setSelectedNotice({ ...selectedNotice, comments: updatedComments, updatedAt: now });
         } catch (error) {
             console.error(error);
@@ -196,7 +209,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
     };
 
     const handleDeleteComment = async (commentId: string, parentId?: string) => {
-        if (!confirm("정말 삭제하시겠습니까?")) return;
+        if (!window.confirm("정말 삭제하시겠습니까?")) return;
         let updatedComments = [...(selectedNotice?.comments || [])];
         if (parentId) {
             updatedComments = updatedComments.map(c => c.id === parentId ? { ...c, replies: (c.replies||[]).filter(r => r.id !== commentId) } : c);
@@ -222,25 +235,38 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         setEditingCommentId(null);
     };
 
-    const renderComment = (cmt: NoticeComment, parentId?: string) => {
-        const isMyComment = cmt.ownerId === activeOwnerId;
+    const renderComment = (cmt: any, parentId?: string) => {
+        const rawId = cmt.ownerId || cmt.authorId;
+        const rawName = cmt.ownerName || cmt.authorName || '알 수 없음';
+        const rawPhoto = cmt.ownerPhoto || cmt.authorPhoto;
+
+        const matchedOwner = owners.find(o => String(o.id) === String(rawId) || o.docId === rawId || o.nickname === rawName);
+        const displayName = matchedOwner ? matchedOwner.nickname : rawName;
+        const displayPhoto = (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : (rawPhoto || FALLBACK_IMG);
+
+        const isMyComment = String(rawId) === String(activeOwnerId);
+        const canEdit = isMyComment;
+        const canDelete = isMyComment || isAdmin; 
+        
         const isEditing = cmt.id === editingCommentId;
         const isReply = !!parentId;
 
         return (
-            <div key={cmt.id} className={`flex gap-3 py-3 sm:py-4 group transition-colors ${isReply ? 'ml-8 sm:ml-12 pl-3 sm:pl-4 border-l-2 border-slate-700/60' : 'border-b border-slate-800/50 last:border-0'}`}>
-                <img src={cmt.ownerPhoto} alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5" />
+            <div key={cmt.id} className={`flex gap-3 py-3 sm:py-4 transition-colors ${isReply ? 'ml-8 sm:ml-12 pl-3 sm:pl-4 border-l-2 border-slate-700/60' : 'border-b border-slate-800/50 last:border-0'}`}>
+                <img src={displayPhoto} alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5 bg-slate-800" />
                 
                 <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-start justify-between leading-tight mb-1">
                         <div className="flex items-center gap-2">
-                            <span className="text-[11px] sm:text-xs font-bold text-emerald-400">{cmt.ownerName}</span>
+                            <span className="text-[11px] sm:text-xs font-bold text-emerald-400">{displayName}</span>
                             <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium">{formatDate(cmt.createdAt, true)}</span>
+                            {cmt.isEdited && <span className="text-slate-600 text-[9px] italic">(수정됨)</span>}
                         </div>
-                        {isMyComment && !isEditing && (
-                            <div className="hidden group-hover:flex items-center gap-2.5">
-                                <button onClick={() => startEditingComment(cmt, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>
-                                <button onClick={() => handleDeleteComment(cmt.id, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-red-400 transition-colors">삭제</button>
+                        {/* 🔥 모바일에서도 잘 보이게 상시 노출로 변경 */}
+                        {(canEdit || canDelete) && !isEditing && (
+                            <div className="flex items-center gap-2.5">
+                                {canEdit && <button onClick={() => startEditingComment(cmt, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>}
+                                {canDelete && <button onClick={() => handleDeleteComment(cmt.id, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-red-400 transition-colors">삭제</button>}
                             </div>
                         )}
                     </div>
@@ -262,6 +288,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                         <p className="text-xs sm:text-sm text-slate-300 leading-normal whitespace-pre-wrap mb-1.5">{cmt.text}</p>
                     )}
                     
+                    {/* 🔥 좋아요/답글 버튼 */}
                     <div className="flex items-center gap-3 mt-1">
                         <button onClick={() => handleCommentReaction(cmt.id, parentId)} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${(cmt.likedBy || []).includes(activeOwnerId) ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
                             👍 {(cmt.likedBy || []).length > 0 ? (cmt.likedBy || []).length : '좋아요'}
@@ -290,6 +317,20 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                 </div>
             </div>
         );
+    };
+
+    // 🔥 공지사항 본문 작성자(Author) 정보 동기화 로직
+    const getNoticeAuthorData = () => {
+        if (!selectedNotice) return { name: '운영진', photo: FALLBACK_IMG };
+        const rawName = (selectedNotice as any).authorName || (selectedNotice as any).ownerName || '운영진';
+        const rawPhoto = (selectedNotice as any).authorPhoto || (selectedNotice as any).ownerPhoto || FALLBACK_IMG;
+        const rawId = (selectedNotice as any).authorId || (selectedNotice as any).ownerId;
+        
+        const matchedOwner = owners.find(o => o.nickname === rawName || String(o.id) === String(rawId));
+        return {
+            name: matchedOwner?.nickname || rawName,
+            photo: (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : rawPhoto
+        };
     };
 
     return (
@@ -346,11 +387,28 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
 
                     <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
                         <div className="p-6 sm:p-8 border-b border-slate-800">
-                            <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mb-4">{selectedNotice.title}</h2>
+                            
+                            <div className="flex justify-between items-start mb-4">
+                                <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">{selectedNotice.title}</h2>
+                                {/* 🔥 어드민 전용 게시글 삭제 버튼 노출 */}
+                                {isAdmin && (
+                                    <button onClick={() => handleDeleteNotice(selectedNotice.id)} className="bg-slate-900 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 px-3 py-1.5 rounded-lg font-bold text-[10px] shrink-0 ml-4 transition-all">
+                                        🗑️ 삭제
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* 🔥 공지사항 본문 작성자 정보 깔끔하게 렌더링 */}
                             <div className="flex items-center justify-between">
-                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
-                                    {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
-                                    <span>{formatDate(selectedNotice.createdAt, true)}</span>
+                                <div className="flex items-center gap-3">
+                                    <img src={getNoticeAuthorData().photo} alt="" className="w-9 h-9 rounded-full border border-slate-700 object-cover bg-slate-800" />
+                                    <div className="flex flex-col">
+                                        <span className="text-emerald-400 font-bold text-xs sm:text-sm">{getNoticeAuthorData().name}</span>
+                                        <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5">
+                                            <span>{formatDate(selectedNotice.createdAt, true)}</span>
+                                            {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
+                                        </div>
+                                    </div>
                                 </div>
                                 <button onClick={handleShareLink} className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors border border-slate-700 shadow-sm shrink-0">
                                     🔗 공유하기
@@ -385,6 +443,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                             </div>
                         </div>
 
+                        {/* 🔥 게시글 본문 좋아요/싫어요 기능 */}
                         <div className="bg-slate-900/50 p-5 sm:p-6 flex justify-center gap-4 border-b border-slate-800">
                             <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(activeOwnerId) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👍 좋아요 {(selectedNotice.likedBy || []).length}
@@ -403,10 +462,10 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                 {(selectedNotice.comments || []).length === 0 && (
                                     <p className="text-xs text-slate-500 italic py-4">가장 먼저 댓글을 남겨보세요!</p>
                                 )}
-                                {(selectedNotice.comments || []).map(cmt => (
+                                {(selectedNotice.comments || []).map((cmt: any) => (
                                     <React.Fragment key={cmt.id}>
                                         {renderComment(cmt)}
-                                        {(cmt.replies || []).map(reply => renderComment(reply, cmt.id))}
+                                        {(cmt.replies || []).map((reply: any) => renderComment(reply, cmt.id))}
                                     </React.Fragment>
                                 ))}
                             </div>
