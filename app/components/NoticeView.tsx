@@ -11,6 +11,67 @@ interface NoticeViewProps {
     notices: Notice[]; 
 }
 
+const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
+const normalizeName = (str?: string | null): string => {
+    return (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
+};
+
+const isBadImage = (url?: string | null): boolean => {
+    return !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
+};
+
+// 🔥 [공지사항 전용] 프로필 이미지 & 이름 추출기
+// 작성자가 '운영진'이거나 없을 경우, 관리자 권한을 가진 오너(ADMIN)의 정보를 강제로 끌어옵니다.
+const getNoticeAuthorData = (notice: any, ownersList: Owner[]) => {
+    if (!notice) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
+    
+    const rawName = notice.authorName || notice.ownerName;
+    const rawId = notice.authorId || notice.ownerId;
+    const rawPhoto = notice.authorPhoto || notice.ownerPhoto;
+
+    let matchedOwner = null;
+
+    // 1. 작성자 이름이나 ID로 명부 매칭 시도 (띄어쓰기 무시)
+    if (rawName || rawId) {
+        const targetFuzzy = normalizeName(rawName);
+        matchedOwner = ownersList.find(o => 
+            normalizeName(o.nickname) === targetFuzzy || 
+            String(o.id) === String(rawId)
+        );
+    }
+
+    // 2. 매칭 실패 시 & 이름이 '운영진'인 경우, 최고 관리자(ADMIN)를 찾아서 매핑
+    if (!matchedOwner && (!rawName || rawName === '운영진')) {
+        matchedOwner = ownersList.find((o: any) => o.role === 'ADMIN');
+    }
+
+    const finalName = matchedOwner?.nickname || rawName || '운영진';
+    let finalPhoto = COMMON_DEFAULT_PROFILE;
+
+    if (matchedOwner && !isBadImage(matchedOwner.photo)) {
+        finalPhoto = matchedOwner.photo as string;
+    } else if (!isBadImage(rawPhoto)) {
+        finalPhoto = rawPhoto;
+    }
+
+    return { name: finalName, photo: finalPhoto };
+};
+
+// 🔥 [공지사항 댓글 전용] 프로필 이미지 추출기
+const getCommentProfileImage = (rawName: string, rawPhoto: string, ownersList: Owner[]) => {
+    const targetFuzzy = normalizeName(rawName);
+    const matchedOwner = ownersList.find(o => normalizeName(o.nickname) === targetFuzzy);
+    
+    if (matchedOwner && !isBadImage(matchedOwner.photo)) {
+        return String(matchedOwner.photo);
+    }
+    if (!isBadImage(rawPhoto)) {
+        return String(rawPhoto);
+    }
+    return COMMON_DEFAULT_PROFILE;
+};
+
 export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
     const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
 
@@ -29,7 +90,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         }
     }, [owners]);
 
-    // 🔥 [수정] 타입스크립트 에러(ts-2339) 해결! any로 우회하여 빌드 에러 원천 차단
     const currentOwner = owners.find(o => String(o.id) === activeOwnerId);
     const isAdmin = (currentOwner as any)?.role === 'ADMIN';
 
@@ -78,7 +138,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         }
     };
 
-    // 🔥 어드민 전용 공지사항 본글 삭제 기능
     const handleDeleteNotice = async (noticeId: string) => {
         if (!window.confirm("🚨 이 공지사항을 완전히 삭제하시겠습니까?")) return;
         try {
@@ -165,7 +224,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         if (!owner) return;
 
         const newComment: NoticeComment = {
-            id: `cmt_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || FALLBACK_IMG, text: commentText, createdAt: new Date().toISOString()
+            id: `cmt_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || COMMON_DEFAULT_PROFILE, text: commentText, createdAt: new Date().toISOString()
         };
         const updatedComments = [...(selectedNotice.comments || []), newComment];
         await updateCommentsInDB(updatedComments);
@@ -180,7 +239,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         if (!owner) return;
 
         const newReply: NoticeComment = {
-            id: `reply_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || FALLBACK_IMG, text: replyText, createdAt: new Date().toISOString()
+            id: `reply_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || COMMON_DEFAULT_PROFILE, text: replyText, createdAt: new Date().toISOString()
         };
 
         const updatedComments = [...(selectedNotice.comments || [])].map(c => 
@@ -240,9 +299,13 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         const rawName = cmt.ownerName || cmt.authorName || '알 수 없음';
         const rawPhoto = cmt.ownerPhoto || cmt.authorPhoto;
 
-        const matchedOwner = owners.find(o => String(o.id) === String(rawId) || o.docId === rawId || o.nickname === rawName);
+        // 🔥 [공지 댓글 전용] 프사 최적화 로직 적용
+        const displayPhoto = getCommentProfileImage(rawName, rawPhoto, owners);
+        
+        // 화면에 보여줄 이름 정리
+        const targetFuzzy = normalizeName(rawName);
+        const matchedOwner = owners.find(o => normalizeName(o.nickname) === targetFuzzy);
         const displayName = matchedOwner ? matchedOwner.nickname : rawName;
-        const displayPhoto = (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : (rawPhoto || FALLBACK_IMG);
 
         const isMyComment = String(rawId) === String(activeOwnerId);
         const canEdit = isMyComment;
@@ -253,7 +316,12 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
 
         return (
             <div key={cmt.id} className={`flex gap-3 py-3 sm:py-4 transition-colors ${isReply ? 'ml-8 sm:ml-12 pl-3 sm:pl-4 border-l-2 border-slate-700/60' : 'border-b border-slate-800/50 last:border-0'}`}>
-                <img src={displayPhoto} alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5 bg-slate-800" />
+                <img 
+                    src={displayPhoto} 
+                    alt="" 
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5 bg-slate-800" 
+                    onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} 
+                />
                 
                 <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-start justify-between leading-tight mb-1">
@@ -262,7 +330,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                             <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium">{formatDate(cmt.createdAt, true)}</span>
                             {cmt.isEdited && <span className="text-slate-600 text-[9px] italic">(수정됨)</span>}
                         </div>
-                        {/* 🔥 모바일에서도 잘 보이게 상시 노출로 변경 */}
                         {(canEdit || canDelete) && !isEditing && (
                             <div className="flex items-center gap-2.5">
                                 {canEdit && <button onClick={() => startEditingComment(cmt, parentId)} className="text-[10px] font-bold text-slate-500 hover:text-yellow-400 transition-colors">수정</button>}
@@ -288,7 +355,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                         <p className="text-xs sm:text-sm text-slate-300 leading-normal whitespace-pre-wrap mb-1.5">{cmt.text}</p>
                     )}
                     
-                    {/* 🔥 좋아요/답글 버튼 */}
                     <div className="flex items-center gap-3 mt-1">
                         <button onClick={() => handleCommentReaction(cmt.id, parentId)} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${(cmt.likedBy || []).includes(activeOwnerId) ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
                             👍 {(cmt.likedBy || []).length > 0 ? (cmt.likedBy || []).length : '좋아요'}
@@ -319,20 +385,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         );
     };
 
-    // 🔥 공지사항 본문 작성자(Author) 정보 동기화 로직
-    const getNoticeAuthorData = () => {
-        if (!selectedNotice) return { name: '운영진', photo: FALLBACK_IMG };
-        const rawName = (selectedNotice as any).authorName || (selectedNotice as any).ownerName || '운영진';
-        const rawPhoto = (selectedNotice as any).authorPhoto || (selectedNotice as any).ownerPhoto || FALLBACK_IMG;
-        const rawId = (selectedNotice as any).authorId || (selectedNotice as any).ownerId;
-        
-        const matchedOwner = owners.find(o => o.nickname === rawName || String(o.id) === String(rawId));
-        return {
-            name: matchedOwner?.nickname || rawName,
-            photo: (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : rawPhoto
-        };
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in pb-10 max-w-4xl mx-auto px-2 sm:px-4">
             {!selectedNotice ? (
@@ -356,13 +408,17 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                     const commentCount = notice.comments?.length || 0;
                                     const likeCount = notice.likedBy?.length || 0;
                                     const boardNumber = notices.length - index; 
+                                    
+                                    // 🔥 리스트에서도 작성자 정보 정상 렌더링
+                                    const authorData = getNoticeAuthorData(notice, owners);
 
                                     return (
                                         <div key={notice.id} onClick={() => handleNoticeClick(notice)} className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-800/40 transition-colors cursor-pointer group">
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
                                                 <span className="text-slate-600 font-black text-[11px] sm:text-xs w-5 text-center shrink-0">{boardNumber}</span>
                                                 {notice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-2 py-[2px] rounded uppercase tracking-widest border border-yellow-500/30 shrink-0">전체 공지</span>}
-                                                <span className="text-white font-bold text-sm sm:text-base truncate group-hover:text-emerald-400 transition-colors">{notice.title}</span>
+                                                <span className="text-white font-bold text-sm sm:text-base truncate group-hover:text-emerald-400 transition-colors pr-2">{notice.title}</span>
+                                                <span className="text-slate-500 text-[10px] hidden sm:inline truncate shrink-0">by {authorData.name}</span>
                                             </div>
                                             <div className="flex items-center gap-4 shrink-0 ml-4">
                                                 <div className="flex items-center gap-3 text-[11px] text-slate-400 font-bold">
@@ -390,7 +446,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                             
                             <div className="flex justify-between items-start mb-4">
                                 <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">{selectedNotice.title}</h2>
-                                {/* 🔥 어드민 전용 게시글 삭제 버튼 노출 */}
                                 {isAdmin && (
                                     <button onClick={() => handleDeleteNotice(selectedNotice.id)} className="bg-slate-900 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 px-3 py-1.5 rounded-lg font-bold text-[10px] shrink-0 ml-4 transition-all">
                                         🗑️ 삭제
@@ -398,12 +453,19 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                 )}
                             </div>
 
-                            {/* 🔥 공지사항 본문 작성자 정보 깔끔하게 렌더링 */}
+                            {/* 🔥 공지사항 본문 작성자 정보 완벽 연동 */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <img src={getNoticeAuthorData().photo} alt="" className="w-9 h-9 rounded-full border border-slate-700 object-cover bg-slate-800" />
+                                    <img 
+                                        src={getNoticeAuthorData(selectedNotice, owners).photo} 
+                                        alt="" 
+                                        className="w-9 h-9 rounded-full border border-slate-700 object-cover bg-slate-800" 
+                                        onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }}
+                                    />
                                     <div className="flex flex-col">
-                                        <span className="text-emerald-400 font-bold text-xs sm:text-sm">{getNoticeAuthorData().name}</span>
+                                        <span className="text-emerald-400 font-bold text-xs sm:text-sm">
+                                            {getNoticeAuthorData(selectedNotice, owners).name}
+                                        </span>
                                         <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5">
                                             <span>{formatDate(selectedNotice.createdAt, true)}</span>
                                             {selectedNotice.isPopup && <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">전체 공지</span>}
@@ -443,7 +505,6 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                             </div>
                         </div>
 
-                        {/* 🔥 게시글 본문 좋아요/싫어요 기능 */}
                         <div className="bg-slate-900/50 p-5 sm:p-6 flex justify-center gap-4 border-b border-slate-800">
                             <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(activeOwnerId) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👍 좋아요 {(selectedNotice.likedBy || []).length}
@@ -474,7 +535,12 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">댓글 쓰기</div>
                                 <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                     <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700 shrink-0">
-                                        <img src={owners.find(o => String(o.id) === activeOwnerId)?.photo || FALLBACK_IMG} className="w-6 h-6 rounded-full object-cover border border-slate-800" alt="" />
+                                        <img 
+                                            src={owners.find(o => String(o.id) === activeOwnerId)?.photo || COMMON_DEFAULT_PROFILE} 
+                                            className="w-6 h-6 rounded-full object-cover border border-slate-800" 
+                                            alt="" 
+                                            onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }}
+                                        />
                                         <select 
                                             value={activeOwnerId} 
                                             onChange={(e) => setActiveOwnerId(e.target.value)}

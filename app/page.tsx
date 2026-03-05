@@ -473,13 +473,14 @@ export default function FootballLeagueApp() {
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
-        {/* 🔥 [해결] LockerRoomView 호출 시 seasons와 masterTeams 전달! */}
+        {/* 🔥 [해결] 락커룸에 명부 정보(owners)를 주입합니다! */}
         {currentView === 'LOCKERROOM' && (
             <LockerRoomView 
                 user={authUser as any} 
                 notices={notices} 
                 seasons={seasons} 
                 masterTeams={masterTeams} 
+                owners={owners} 
             />
         )}
 

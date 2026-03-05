@@ -19,36 +19,67 @@ interface UserData {
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-const getBestProfileImage = (userObj?: any | null, ownersList?: any[] | null, savedPhoto?: string | null, authorName?: string | null) => {
-    const targetName = authorName || (userObj ? userObj.mappedOwnerId : null);
-    if (targetName && ownersList && Array.isArray(ownersList)) {
-        const ownerData = ownersList.find(o => o.nickname === targetName);
-        if (ownerData && ownerData.photo && ownerData.photo.trim() !== '') return ownerData.photo;
+// 💡 [클린 코드] 반복되는 띄어쓰기/특수기호 무시 로직 유틸 함수
+const normalizeName = (str?: string | null): string => {
+    return (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
+};
+
+// 💡 [클린 코드] 불량 이미지(라인 스티커 등) 판독기
+const isBadImage = (url?: string | null): boolean => {
+    return !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
+};
+
+// 💡 [TS 에러 픽스] 무조건 문자열(string)을 반환하도록 타입 명시하여 ts(2322) 차단
+const getBestProfileImage = (
+    userObj?: any | null, 
+    ownersList?: any[] | null, 
+    savedPhoto?: string | null, 
+    authorName?: string | null
+): string => {
+    const targetName = authorName || userObj?.mappedOwnerId;
+
+    if (userObj && targetName === userObj.mappedOwnerId && !isBadImage(userObj.photo)) {
+        return String(userObj.photo);
     }
-    if (userObj) {
-        if (userObj.photoURL && userObj.photoURL.trim() !== '') return userObj.photoURL;
-        if (userObj.photoUrl && userObj.photoUrl.trim() !== '') return userObj.photoUrl;
+
+    if (targetName && ownersList && ownersList.length > 0) {
+        const targetFuzzy = normalizeName(targetName);
+        const matchedOwner = ownersList.find(o => normalizeName(o.nickname) === targetFuzzy);
+        if (matchedOwner && !isBadImage(matchedOwner.photo)) {
+            return String(matchedOwner.photo);
+        }
     }
-    if (savedPhoto && typeof savedPhoto === 'string' && savedPhoto.trim() !== '') return savedPhoto;
+
+    if (userObj && targetName === userObj.mappedOwnerId) {
+        if (!isBadImage(userObj.photoURL)) return String(userObj.photoURL);
+        if (!isBadImage(userObj.photoUrl)) return String(userObj.photoUrl);
+    }
+
+    if (!isBadImage(savedPhoto)) {
+        return String(savedPhoto);
+    }
+
     return COMMON_DEFAULT_PROFILE;
 };
 
-const formatDate = (ts: any, includeTime = false) => {
+// 💡 [TS 에러 픽스] null 반환을 제거하고 빈 문자열('')을 반환하도록 강제
+const getValidYoutubeId = (url?: string, id?: string): string => {
+    let finalId = id || '';
+    if (!finalId || finalId === 'undefined' || finalId === 'null') {
+        const match = url?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
+        finalId = match ? match[1] : '';
+    }
+    return (finalId && finalId !== 'undefined' && finalId !== 'null' && finalId.trim() !== '') ? finalId : '';
+};
+
+const formatDate = (ts: any, includeTime = false): string => {
     if (!ts) return '방금 전';
-    let d: Date;
-    if (typeof ts === 'number') d = new Date(ts);
-    else if (typeof ts.toDate === 'function') d = ts.toDate();
-    else if (typeof ts === 'string') d = new Date(ts);
-    else return '방금 전';
+    let d = typeof ts === 'number' ? new Date(ts) : typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+    if (isNaN(d.getTime())) return '방금 전';
+    
     const datePart = `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
     const timePart = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     return includeTime ? `${datePart} ${timePart}` : datePart;
-};
-
-const extractYoutubeId = (url: string) => {
-    if (!url) return '';
-    const match = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : '';
 };
 
 const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[], owners?: any[] }) => {
@@ -70,17 +101,21 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
   const isMaster = useMemo(() => {
       if (!user) return false;
-      return owners.some(o => (o.nickname === user.mappedOwnerId || String(o.id) === user.uid) && (o as any).role === 'ADMIN');
+      if (user.role === 'ADMIN') return true; 
+      
+      const targetFuzzy = normalizeName(user.mappedOwnerId);
+      return owners.some(o => {
+          const isNameMatch = normalizeName(o.nickname) === targetFuzzy;
+          const isIdMatch = String(o.id) === user.uid || String((o as any).docId) === user.uid;
+          return (isNameMatch || isIdMatch) && (o as any).role === 'ADMIN';
+      });
   }, [user, owners]);
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetchedPosts.sort((a: any, b: any) => {
-          if (a.isPinned === b.isPinned) return 0;
-          return a.isPinned ? -1 : 1;
-      });
+      fetchedPosts.sort((a: any, b: any) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
       setPosts(fetchedPosts);
     });
     return () => unsubscribe();
@@ -97,7 +132,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
     };
     syncState();
     window.addEventListener('popstate', syncState);
-    return () => { window.removeEventListener('popstate', syncState); };
+    return () => window.removeEventListener('popstate', syncState);
   }, [selectedPostId]);
 
   const handlePostClick = async (post: any) => {
@@ -133,8 +168,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       if (!user || !post.id) return alert("🚨 로그인이 필요합니다.");
       try {
           const isNotice = !!notices.find(n => n.id === post.id);
-          const colName = isNotice ? 'notices' : 'posts';
-          const postRef = doc(db, colName, post.id);
+          const postRef = doc(db, isNotice ? 'notices' : 'posts', post.id);
           const postSnap = await getDoc(postRef);
           if (!postSnap.exists()) return;
           
@@ -150,22 +184,22 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); }
           }
 
-          if (isNotice) await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes });
-          else await updateDoc(postRef, { likes, dislikes });
+          await updateDoc(postRef, isNotice ? { likedBy: likes, dislikedBy: dislikes } : { likes, dislikes });
       } catch (error) { console.error(error); }
   };
 
   const handleWritePost = async () => {
     if (!user) return alert("🚨 로그인이 필요합니다!");
-    if (!postForm.title.trim()) return alert("🚨 제목을 입력해주세요!");
-    if (!postForm.content.trim()) return alert("🚨 내용을 입력해주세요!");
+    if (!postForm.title.trim() || !postForm.content.trim()) return alert("🚨 제목과 내용을 모두 입력해주세요!");
 
     try {
       if (viewMode === 'WRITE') {
           const docRef = await addDoc(collection(db, 'posts'), {
             title: postForm.title, content: postForm.content, cat: postForm.cat,
-            imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', youtubeId: extractYoutubeId(postForm.youtubeUrl), 
-            authorId: user.uid, authorName: user.mappedOwnerId || '미배정 오너', authorPhoto: getBestProfileImage(user, owners), 
+            imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', 
+            youtubeId: getValidYoutubeId(postForm.youtubeUrl, ''), 
+            authorId: user.uid, authorName: user.mappedOwnerId || '미배정 오너', 
+            authorPhoto: getBestProfileImage(user, owners, user.photoURL, user.mappedOwnerId), 
             createdAt: serverTimestamp(), isPinned: false, isEdited: false, views: 0, likes: [], dislikes: [], comments: []
           });
           alert("✅ 게시글이 등록되었습니다!");
@@ -176,7 +210,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       } else if (viewMode === 'EDIT' && editingPostId) {
           await updateDoc(doc(db, 'posts', editingPostId), {
             title: postForm.title, content: postForm.content, cat: postForm.cat,
-            imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', youtubeId: extractYoutubeId(postForm.youtubeUrl), isEdited: true
+            imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', 
+            youtubeId: getValidYoutubeId(postForm.youtubeUrl, ''), isEdited: true
           });
           alert("✅ 게시글이 수정되었습니다!");
           setViewMode('LIST'); setEditingPostId(null); setPostForm({ title: '', content: '', cat: '자유', imageUrl: '', youtubeUrl: '' });
@@ -199,81 +234,47 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       } catch (e) { alert("삭제 실패"); }
   };
 
-  const handleAddComment = async (postId: string) => {
+  const submitComment = async (postId: string, isReply: boolean) => {
       if (!user) return alert("🚨 로그인이 필요합니다.");
-      if (!commentText.trim()) return alert("댓글 내용을 입력해주세요.");
+      const textToSubmit = isReply ? replyText.trim() : commentText.trim();
+      if (!textToSubmit) return alert("내용을 입력해주세요.");
+      if (isReply && !replyingTo) return;
 
       const isNotice = !!notices.find(n => n.id === postId);
       const post = posts.find(p => p.id === postId) || notices.find(n => n.id === postId);
       if (!post) return;
 
-      const currentAuthorPhoto = getBestProfileImage(user, owners);
-      const currentAuthorName = user.mappedOwnerId || '미배정 오너';
+      const authorName = user.mappedOwnerId || '미배정 오너';
+      const authorPhoto = getBestProfileImage(user, owners, user.photoURL, authorName);
 
       try {
           if (isNotice) {
               let updatedComments = [...(post.replies || post.comments || [])];
-              updatedComments.push({
-                  id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: currentAuthorName,
-                  ownerPhoto: currentAuthorPhoto, text: commentText.trim(), createdAt: new Date().toISOString(),
-                  likedBy: [], isEdited: false
-              });
-              await updateDoc(doc(db, 'notices', postId), { replies: updatedComments, comments: updatedComments });
-          } else {
-              let updatedComments = [...(post.comments || [])];
-              updatedComments.push({
-                  id: `cmt_${Date.now()}`, authorId: user.uid, authorName: currentAuthorName,
-                  authorPhoto: currentAuthorPhoto, text: commentText.trim(), createdAt: Date.now(), 
-                  parentId: null, likes: [], isEdited: false
-              });
-              await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
-          }
-          setCommentText('');
-      } catch (e) { alert("댓글 처리 실패"); }
-  };
-
-  const handleAddReply = async (postId: string) => {
-      if (!user) return alert("🚨 로그인이 필요합니다.");
-      if (!replyText.trim()) return alert("답글 내용을 입력해주세요.");
-      if (!replyingTo) return;
-
-      const isNotice = !!notices.find(n => n.id === postId);
-      const post = posts.find(p => p.id === postId) || notices.find(n => n.id === postId);
-      if (!post) return;
-
-      const currentAuthorPhoto = getBestProfileImage(user, owners);
-      const currentAuthorName = user.mappedOwnerId || '미배정 오너';
-      const safeParentId = replyingTo.parentId; 
-
-      try {
-          if (isNotice) {
-              let updatedComments = [...(post.replies || post.comments || [])];
-              const newNoticeComment = {
-                  id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: currentAuthorName,
-                  ownerPhoto: currentAuthorPhoto, text: replyText.trim(), createdAt: new Date().toISOString(),
-                  likedBy: [], isEdited: false
+              const newComment = {
+                  id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, 
+                  text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false
               };
-              updatedComments = updatedComments.map((c:any) => c.id === safeParentId ? { ...c, replies: [...(c.replies || []), newNoticeComment] } : c);
+              if (isReply) {
+                  updatedComments = updatedComments.map((c:any) => c.id === replyingTo!.parentId ? { ...c, replies: [...(c.replies || []), newComment] } : c);
+              } else {
+                  updatedComments.push(newComment);
+              }
               await updateDoc(doc(db, 'notices', postId), { replies: updatedComments, comments: updatedComments });
           } else {
               let updatedComments = [...(post.comments || [])];
               updatedComments.push({
-                  id: `cmt_${Date.now()}`, authorId: user.uid, authorName: currentAuthorName,
-                  authorPhoto: currentAuthorPhoto, text: replyText.trim(), createdAt: Date.now(), 
-                  parentId: safeParentId, likes: [], isEdited: false
+                  id: `cmt_${Date.now()}`, authorId: user.uid, authorName: authorName, authorPhoto: authorPhoto, 
+                  text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false
               });
               await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
           }
-          setReplyText('');
-          setReplyingTo(null);
-      } catch (e) { alert("답글 처리 실패"); }
+          isReply ? setReplyText('') : setCommentText('');
+          if (isReply) setReplyingTo(null);
+      } catch (e) { alert("처리 실패"); }
   };
 
   const handleSaveEdit = async (postId: string) => {
-      if (!user) return;
-      if (!editCommentText.trim()) return alert("수정할 내용을 입력해주세요.");
-      if (!editingCommentId) return;
-
+      if (!user || !editCommentText.trim() || !editingCommentId) return;
       const isNotice = !!notices.find(n => n.id === postId);
       const post = posts.find(p => p.id === postId) || notices.find(n => n.id === postId);
       if (!post) return;
@@ -292,8 +293,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               updatedComments = updatedComments.map((c:any) => c.id === editingCommentId ? { ...c, text: editCommentText.trim(), isEdited: true } : c);
               await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
           }
-          setEditCommentText('');
-          setEditingCommentId(null);
+          setEditCommentText(''); setEditingCommentId(null);
       } catch (e) { alert("수정 처리 실패"); }
   };
 
@@ -307,20 +307,15 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           if (isNotice) {
               let rootArray = [...(post.replies || post.comments || [])];
               const toggleLike = (arr: string[]) => arr.includes(user.uid) ? arr.filter(id => id !== user.uid) : [...arr, user.uid];
-
               if (parentId) {
-                  rootArray = rootArray.map((c:any) => c.id === parentId ? {
-                      ...c, replies: (c.replies||[]).map((r:any) => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r)
-                  } : c);
+                  rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).map((r:any) => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r) } : c);
               } else {
                   rootArray = rootArray.map((c:any) => c.id === commentId ? { ...c, likedBy: toggleLike(c.likedBy||[]) } : c);
               }
               await updateDoc(doc(db, 'notices', postId), { replies: rootArray, comments: rootArray });
           } else {
               let updatedComments = [...(post.comments || [])];
-              updatedComments = updatedComments.map((c:any) => c.id === commentId ? {
-                  ...c, likes: c.likes?.includes(user.uid) ? c.likes.filter((id: string) => id !== user.uid) : [...(c.likes||[]), user.uid]
-              } : c);
+              updatedComments = updatedComments.map((c:any) => c.id === commentId ? { ...c, likes: c.likes?.includes(user.uid) ? c.likes.filter((id: string) => id !== user.uid) : [...(c.likes||[]), user.uid] } : c);
               await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
           }
       } catch (e) { console.error(e); }
@@ -329,43 +324,23 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const handleDeleteComment = async (postId: string, commentId: string, parentId?: string) => {
       if (!window.confirm("댓글을 삭제하시겠습니까? (답글이 있다면 함께 삭제됩니다)")) return;
       const isNotice = !!notices.find(n => n.id === postId);
-      const post = posts.find(p => p.id === postId) || notices.find(n => n.id === postId);
-      if (!post) return;
       
       if (isNotice) {
-          let rootArray = [...(post.replies || post.comments || [])];
-          if (parentId) {
-              rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).filter((r:any) => r.id !== commentId) } : c);
-          } else {
-              rootArray = rootArray.filter((c:any) => c.id !== commentId);
-          }
+          const post = notices.find(n => n.id === postId);
+          let rootArray = [...(post?.replies || post?.comments || [])];
+          if (parentId) rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).filter((r:any) => r.id !== commentId) } : c);
+          else rootArray = rootArray.filter((c:any) => c.id !== commentId);
           await updateDoc(doc(db, 'notices', postId), { replies: rootArray, comments: rootArray });
       } else {
-          let updatedComments = [...(post.comments || [])];
-          updatedComments = updatedComments.filter((c: any) => c.id !== commentId && c.parentId !== commentId);
+          const post = posts.find(p => p.id === postId);
+          let updatedComments = [...(post?.comments || [])].filter((c: any) => c.id !== commentId && c.parentId !== commentId);
           await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
       }
   };
 
-  const handleEditCommentSetup = (comment: any) => { 
-      setEditingCommentId(comment.id); 
-      setReplyingTo(null); 
-      setEditCommentText(comment.text); 
-  };
-  
-  const handleReplySetup = (parentId: string, targetId: string, authorName: string) => { 
-      setReplyingTo({ parentId, targetId, authorName }); 
-      setEditingCommentId(null); 
-      setReplyText(''); 
-      setTimeout(() => commentInputRef.current?.focus(), 100); 
-  };
-
-  const handleCancelAction = () => { 
-      setReplyingTo(null); 
-      setEditingCommentId(null); 
-      setReplyText(''); 
-      setEditCommentText(''); 
-  };
+  const handleEditCommentSetup = (comment: any) => { setEditingCommentId(comment.id); setReplyingTo(null); setEditCommentText(comment.text); };
+  const handleReplySetup = (parentId: string, targetId: string, authorName: string) => { setReplyingTo({ parentId, targetId, authorName }); setEditingCommentId(null); setReplyText(''); setTimeout(() => commentInputRef.current?.focus(), 100); };
+  const handleCancelAction = () => { setReplyingTo(null); setEditingCommentId(null); setReplyText(''); setEditCommentText(''); };
 
   const activePost = useMemo(() => {
       if (!selectedPostId || selectedPostId.startsWith('match_')) return null;
@@ -376,26 +351,33 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const visiblePostsList = filteredPosts.slice(0, visibleCount);
   const hasMore = visiblePostsList.length < filteredPosts.length;
 
-  const getNoticeAuthorData = (post: any) => {
+  // 🔥 [완벽 픽스] 공지사항 작성자가 '운영진'이거나 없을 경우, 최고 관리자(ADMIN)의 프로필을 강제로 연결
+  const getNoticeAuthorData = (post: any): { name: string; photo: string } => {
       if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
       
-      let rawName = post.authorName || post.ownerName;
-      let rawPhoto = post.authorPhoto || post.ownerPhoto;
+      const rawName = post.authorName || post.ownerName;
       const rawId = post.authorId || post.ownerId;
+      const rawPhoto = post.authorPhoto || post.ownerPhoto;
 
-      let matchedOwner = owners.find(o => (rawName && o.nickname === rawName) || (rawId && String(o.id) === String(rawId)));
-      
+      let matchedOwner = null;
+
+      // 1. 작성자 이름이나 ID가 있으면 명부에서 매칭 시도
+      if (rawName || rawId) {
+          const targetFuzzy = normalizeName(rawName);
+          matchedOwner = owners.find(o => 
+              normalizeName(o.nickname) === targetFuzzy || 
+              String(o.id) === String(rawId)
+          );
+      }
+
+      // 2. 작성자가 없거나 '운영진'인 경우 무조건 최고 관리자(ADMIN) 계정을 찾아서 덮어씌움
       if (!matchedOwner && (!rawName || rawName === '운영진')) {
-          const adminOwner = owners.find((o: any) => o.role === 'ADMIN');
-          if (adminOwner) matchedOwner = adminOwner;
+          matchedOwner = owners.find((o: any) => o.role === 'ADMIN');
       }
 
+      // 3. 최종 이름과 사진 추출 (불타는 베컴 프사 적용)
       const finalName = matchedOwner?.nickname || rawName || '운영진';
-      let finalPhoto = (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : rawPhoto;
-      
-      if (!finalPhoto || finalPhoto.trim() === '' || finalPhoto === FALLBACK_IMG) {
-          finalPhoto = COMMON_DEFAULT_PROFILE;
-      }
+      const finalPhoto = getBestProfileImage(user, owners, rawPhoto, finalName);
 
       return { name: finalName, photo: finalPhoto };
   };
@@ -408,16 +390,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       return topLevel.map((comment: any) => {
           const replies = isNotice ? (comment.replies || []) : commentsList.filter((c: any) => c.parentId === comment.id);
           const isLiked = isNotice ? comment.likedBy?.includes(user?.uid) : comment.likes?.includes(user?.uid);
-
           const cName = comment.authorName || comment.ownerName || '알 수 없음';
-          const cPhoto = comment.authorPhoto || comment.ownerPhoto;
-          const cId = comment.authorId || comment.ownerId;
-          const authorProfileImg = getBestProfileImage(null, owners, cPhoto, cName);
+          const authorProfileImg = getBestProfileImage(user, owners, comment.authorPhoto || comment.ownerPhoto, cName);
+          const isMyComment = user?.uid === comment.authorId || user?.uid === comment.ownerId;
 
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
                   <div className="flex gap-3.5">
-                      <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
+                      <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} />
                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                           <div className="flex items-baseline gap-2 mb-1.5">
                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{cName}</span>
@@ -439,15 +419,11 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                           {!editingCommentId && (
                               <div className="flex items-center gap-4 text-[12px] text-slate-400 font-bold mt-1">
-                                  <button onClick={() => handleCommentReaction(postId, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}>
-                                      <ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}
-                                  </button>
-                                  <button onClick={() => handleReplySetup(comment.id, comment.id, cName)} className="flex items-center gap-1 hover:text-white transition-colors">
-                                      <MessageSquare size={13}/> 답글 {replies.length > 0 ? replies.length : ''}
-                                  </button>
-                                  {(user?.uid === cId || isMaster) && (
+                                  <button onClick={() => handleCommentReaction(postId, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}><ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}</button>
+                                  <button onClick={() => handleReplySetup(comment.id, comment.id, cName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={13}/> 답글 {replies.length > 0 ? replies.length : ''}</button>
+                                  {(isMyComment || isMaster) && (
                                       <div className="flex items-center gap-3 ml-auto text-[11px]">
-                                          {user?.uid === cId && <button onClick={() => handleEditCommentSetup(comment)} className="hover:text-blue-400">수정</button>}
+                                          {isMyComment && <button onClick={() => handleEditCommentSetup(comment)} className="hover:text-blue-400">수정</button>}
                                           <button onClick={() => handleDeleteComment(postId, comment.id)} className="hover:text-red-400">삭제</button>
                                       </div>
                                   )}
@@ -456,17 +432,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                           {replyingTo?.targetId === comment.id && !editingCommentId && (
                               <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
-                                  <input 
-                                      ref={commentInputRef}
-                                      value={replyText} 
-                                      onChange={(e) => setReplyText(e.target.value)} 
-                                      onKeyDown={(e) => { 
-                                          if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddReply(postId); }
-                                      }}
-                                      placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`}
-                                      className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner"
-                                  />
-                                  <button onClick={() => handleAddReply(postId)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
+                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner" />
+                                  <button onClick={() => submitComment(postId, true)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
                                   <button onClick={handleCancelAction} className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
                               </div>
                           )}
@@ -478,13 +445,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           {replies.map((reply: any) => {
                               const isReplyLiked = isNotice ? reply.likedBy?.includes(user?.uid) : reply.likes?.includes(user?.uid);
                               const rName = reply.authorName || reply.ownerName || '알 수 없음';
-                              const rPhoto = reply.authorPhoto || reply.ownerPhoto;
-                              const rId = reply.authorId || reply.ownerId;
-                              const replyAuthorProfileImg = getBestProfileImage(null, owners, rPhoto, rName);
+                              const replyAuthorProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, rName);
+                              const isMyReply = user?.uid === reply.authorId || user?.uid === reply.ownerId;
 
                               return (
                                   <div key={reply.id} className="flex gap-3">
-                                      <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
+                                      <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} />
                                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                           <div className="flex items-baseline gap-2 mb-1.5">
                                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{rName}</span>
@@ -506,15 +472,11 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                                           {!editingCommentId && (
                                               <div className="flex items-center gap-4 text-[11px] text-slate-400 font-bold mt-1">
-                                                  <button onClick={() => handleCommentReaction(postId, reply.id, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isReplyLiked ? 'text-emerald-400' : ''}`}>
-                                                      <ThumbsUp size={12} className={isReplyLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}
-                                                  </button>
-                                                  <button onClick={() => handleReplySetup(comment.id, reply.id, rName)} className="flex items-center gap-1 hover:text-white transition-colors">
-                                                      <MessageSquare size={12}/> 답글
-                                                  </button>
-                                                  {(user?.uid === rId || isMaster) && (
+                                                  <button onClick={() => handleCommentReaction(postId, reply.id, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isReplyLiked ? 'text-emerald-400' : ''}`}><ThumbsUp size={12} className={isReplyLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}</button>
+                                                  <button onClick={() => handleReplySetup(comment.id, reply.id, rName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={12}/> 답글</button>
+                                                  {(isMyReply || isMaster) && (
                                                       <div className="flex items-center gap-3 ml-auto">
-                                                          {user?.uid === rId && <button onClick={() => handleEditCommentSetup(reply)} className="hover:text-blue-400">수정</button>}
+                                                          {isMyReply && <button onClick={() => handleEditCommentSetup(reply)} className="hover:text-blue-400">수정</button>}
                                                           <button onClick={() => handleDeleteComment(postId, reply.id, comment.id)} className="hover:text-red-400">삭제</button>
                                                       </div>
                                                   )}
@@ -523,17 +485,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                                           {replyingTo?.targetId === reply.id && !editingCommentId && (
                                               <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
-                                                  <input 
-                                                      ref={commentInputRef}
-                                                      value={replyText} 
-                                                      onChange={(e) => setReplyText(e.target.value)} 
-                                                      onKeyDown={(e) => { 
-                                                          if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddReply(postId); }
-                                                      }}
-                                                      placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`}
-                                                      className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner"
-                                                  />
-                                                  <button onClick={() => handleAddReply(postId)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
+                                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner" />
+                                                  <button onClick={() => submitComment(postId, true)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
                                                   <button onClick={handleCancelAction} className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
                                               </div>
                                           )}
@@ -634,7 +587,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               
                               <div className="flex items-center justify-between mt-4">
                                   <div className="flex items-center gap-2.5">
-                                      <img src={getNoticeAuthorData(activePost).photo} onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
+                                      <img src={getNoticeAuthorData(activePost).photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
                                       <div className="flex flex-col">
                                           <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">
                                               {getNoticeAuthorData(activePost).name}
@@ -654,16 +607,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               <div className="h-px w-full bg-slate-800/60 my-5"></div>
                               
                               <div className="space-y-5 mb-6">
-                                  {activePost.youtubeId && (
+                                  {getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId) && (
                                       <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black">
-                                          <iframe src={`https://www.youtube.com/embed/${activePost.youtubeId}`} className="w-full h-full" allowFullScreen></iframe>
+                                          <iframe src={`https://www.youtube.com/embed/${getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId)}`} className="w-full h-full" allowFullScreen></iframe>
                                       </div>
                                   )}
-                                  {(activePost.imageUrl || activePost.youtubeUrl) && !activePost.youtubeId && (
-                                      <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black">
-                                          <iframe src={`https://www.youtube.com/embed/${extractYoutubeId(activePost.youtubeUrl)}`} className="w-full h-full" allowFullScreen></iframe>
-                                      </div>
-                                  )}
+                                  
                                   {activePost.imageUrl && (
                                       <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black/20">
                                           <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[500px]" />
@@ -702,7 +651,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                           <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">새로운 의견 남기기</div>
                                           <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                               <div className="flex items-center gap-2 bg-slate-900 p-1.5 px-2.5 rounded-xl border border-slate-700 shrink-0 shadow-inner">
-                                                  <img src={getBestProfileImage(user, owners)} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
+                                                  <img src={getBestProfileImage(user, owners, user?.photoURL, user?.mappedOwnerId)} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
                                                   <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">
                                                       {user?.mappedOwnerId}
                                                   </span>
@@ -713,12 +662,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                                       value={commentText} 
                                                       onChange={(e) => setCommentText(e.target.value)} 
                                                       onKeyDown={(e) => { 
-                                                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddComment(activePost.id); }
+                                                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(activePost.id, false); }
                                                       }}
                                                       placeholder="내용을 입력하세요..."
                                                       className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium"
                                                   />
-                                                  <button onClick={() => handleAddComment(activePost.id)} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">
+                                                  <button onClick={() => submitComment(activePost.id, false)} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">
                                                       등록 <Send size={14} className="ml-1.5" />
                                                   </button>
                                               </div>
@@ -809,6 +758,11 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               </div>
                           ) : visiblePostsList.map((post, index) => {
                               const boardNumber = filteredPosts.length - index; 
+                              const ytId = getValidYoutubeId(post.youtubeUrl, post.youtubeId);
+                              const hasImg = !!post.imageUrl;
+                              const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
+                              const commentCount = post.comments?.length || 0;
+
                               return (
                               <div key={post.id} onClick={() => handlePostClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group ${selectedPostId === post.id ? 'bg-slate-800/30' : ''}`}>
                                   <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pl-1 pr-8">
@@ -821,19 +775,21 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                       
                                       <h3 className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors leading-normal pr-6 overflow-visible">
                                           {post.title}
-                                          {(post.imageUrl || post.youtubeId) && <span className="text-emerald-500 text-[9px] ml-1.5 font-black uppercase tracking-tighter shrink-0 align-middle">{post.youtubeId ? 'Y' : 'I'}</span>}
+                                          {(ytId || hasImg) && (
+                                              <span className="text-emerald-500 text-[9px] ml-1.5 font-black uppercase tracking-tighter shrink-0 align-middle">
+                                                  {ytId ? 'Y' : 'I'}
+                                              </span>
+                                          )}
                                       </h3>
                                   </div>
                                   
                                   <div className="flex items-center gap-2.5 shrink-0 ml-2">
-                                      {(post.imageUrl || post.youtubeId) && (
-                                          <img src={post.imageUrl || `https://img.youtube.com/vi/${post.youtubeId}/mqdefault.jpg`} alt="thumb" className="w-[36px] h-[40px] rounded-lg object-cover border border-slate-700 block shrink-0" />
+                                      {thumbSrc && (
+                                          <img src={thumbSrc} alt="thumb" className="w-[36px] h-[40px] rounded-lg object-cover border border-slate-700 block shrink-0" />
                                       )}
-                                      <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${post.comments?.length > 0 ? 'bg-emerald-950/50 border border-emerald-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
-                                          <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${post.comments?.length > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{post.comments?.length || 0}</span>
-                                          <span className={`text-[8px] font-bold leading-none ${post.comments?.length > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>
-                                              댓글
-                                          </span>
+                                      <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${commentCount > 0 ? 'bg-emerald-950/50 border border-emerald-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
+                                          <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${commentCount > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{commentCount}</span>
+                                          <span className={`text-[8px] font-bold leading-none ${commentCount > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>댓글</span>
                                       </div>
                                   </div>
                               </div>
