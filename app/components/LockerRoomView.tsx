@@ -449,16 +449,32 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const visiblePostsList = displayPosts.slice(0, visibleCount);
   const hasMore = visiblePostsList.length < displayPosts.length;
 
+  // 🔥 [핵심 복구] 공지사항 DB에 작성자가 없을 경우 어드민(ADMIN) 유저를 강제로 찾아 매핑하는 로직
   const getNoticeAuthorData = (post: any) => {
-      if (!post) return { name: '운영진', photo: FALLBACK_IMG };
-      const rawName = post.authorName || post.ownerName || '운영진';
-      const rawPhoto = post.authorPhoto || post.ownerPhoto || FALLBACK_IMG;
+      if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
+      
+      let rawName = post.authorName || post.ownerName;
+      let rawPhoto = post.authorPhoto || post.ownerPhoto;
       const rawId = post.authorId || post.ownerId;
-      const matchedOwner = owners.find(o => o.nickname === rawName || String(o.id) === String(rawId));
-      return {
-          name: matchedOwner?.nickname || rawName,
-          photo: (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : rawPhoto
-      };
+
+      let matchedOwner = owners.find(o => (rawName && o.nickname === rawName) || (rawId && String(o.id) === String(rawId)));
+      
+      // 작성자 데이터가 빈칸인 과거 공지사항의 경우, 명부의 어드민(No.7 베컴 등)을 작성자로 소환
+      if (!matchedOwner && (!rawName || rawName === '운영진')) {
+          const adminOwner = owners.find((o: any) => o.role === 'ADMIN');
+          if (adminOwner) {
+              matchedOwner = adminOwner;
+          }
+      }
+
+      const finalName = matchedOwner?.nickname || rawName || '운영진';
+      let finalPhoto = (matchedOwner && matchedOwner.photo && matchedOwner.photo.trim() !== '') ? matchedOwner.photo : rawPhoto;
+      
+      if (!finalPhoto || finalPhoto.trim() === '' || finalPhoto === FALLBACK_IMG) {
+          finalPhoto = COMMON_DEFAULT_PROFILE;
+      }
+
+      return { name: finalName, photo: finalPhoto };
   };
 
   const renderComments = (rawComments: any[], postId: string, isMatchTalk: boolean = false) => {
@@ -478,7 +494,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
                   <div className="flex gap-3.5">
-                      <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                      <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                           <div className="flex items-baseline gap-2 mb-1.5">
                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{cName}</span>
@@ -519,7 +535,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               </div>
                           )}
 
-                          {/* 🔥 [에러 완전 차단!] 옵셔널 체이닝(?.)을 사용하여 ts(18047) 에러 박멸 */}
                           {replyingTo?.targetId === comment.id && !editingCommentId && (
                               <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
                                   <input 
@@ -550,7 +565,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                               return (
                                   <div key={reply.id} className="flex gap-3">
-                                      <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" />
+                                      <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
                                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                           <div className="flex items-baseline gap-2 mb-1.5">
                                               <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{rName}</span>
@@ -587,7 +602,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                               </div>
                                           )}
 
-                                          {/* 🔥 [에러 완전 차단!] 옵셔널 체이닝(?.)을 사용하여 ts(18047) 에러 박멸 */}
                                           {replyingTo?.targetId === reply.id && !editingCommentId && (
                                               <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
                                                   <input 
@@ -696,7 +710,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           <div className="flex items-center justify-between mt-4">
                               {!activePost.isMatchTalk ? (
                                   <div className="flex items-center gap-2.5">
-                                      <img src={getNoticeAuthorData(activePost).photo} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
+                                      <img src={getNoticeAuthorData(activePost).photo} onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
                                       <div className="flex flex-col">
                                           <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">
                                               {getNoticeAuthorData(activePost).name}
@@ -814,7 +828,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               {(activePost.comments || activePost.replies) && (activePost.comments || activePost.replies).length > 0 && renderComments(activePost.comments || activePost.replies, activePost.id, activePost.isMatchTalk)}
                           </div>
 
-                          {/* 🔥 기본 맨 밑 댓글창은 항상 살아있습니다! */}
                           {user ? (
                               <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
                                   <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">새로운 의견 남기기</div>
