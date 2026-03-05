@@ -1,6 +1,7 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-// 🔥 [Finance] 마이그레이션(삭제)을 위한 파이어베이스 함수 추가
 import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Banner } from '../types';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
@@ -10,15 +11,16 @@ import { AdminOwnerManager } from './AdminOwnerManager';
 import { AdminTeamMatching } from './AdminTeamMatching';
 import { AdminCupSetup } from './AdminCupSetup';
 import { AdminRealWorldManager } from './AdminRealWorldManager';
-// 🔥 [Notice] 공지사항 관리자 컴포넌트 추가
 import { AdminNoticeManager } from './AdminNoticeManager';
 
-// 🔥 [에러 해결] IDE가 파일을 못 찾는 증상을 해결하기 위해 경로 체크를 강제 통과시킵니다.
+// 🔥 [에러 해결] Trash2 (휴지통 아이콘) import 추가 완료!
+import { PlusCircle, UserCheck, Megaphone, Flag, Shield, Crown, Image as ImageIcon, Globe, ArrowLeft, Trophy, Settings, Trash2 } from 'lucide-react';
+
 // @ts-ignore
 import { AdminUserTracker } from './AdminUserTracker';
 
 interface AdminViewProps {
-    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL' | 'NOTICE' | 'USERS';
+    adminTab: number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS' | 'REAL' | 'NOTICE' | 'USERS' | 'SYSTEM_MENU' | 'SEASON_MENU' | 'CREATE_SEASON' | string;
     setAdminTab: (tab: any) => void;
     seasons: Season[];
     owners: Owner[];
@@ -53,7 +55,7 @@ export const AdminView = ({
 
             await batch.commit();
 
-            setAdminTab('NEW');
+            setAdminTab('SEASON_MENU');
             alert("✅ 시즌 및 연관된 재무 기록까지 깔끔하게 파기 완료되었습니다!");
         } catch (error) {
             console.error("🚨 시즌 삭제 오류:", error);
@@ -195,97 +197,169 @@ export const AdminView = ({
 
             await batch.commit();
             alert(`🎉 [${season.name}] 마감 및 상금 지급 완료!`);
-            setAdminTab('NEW'); 
+            setAdminTab('SEASON_MENU'); 
         } catch (error) {
             console.error("🚨 정산 오류:", error);
             alert("정산 중 오류가 발생했습니다.");
         }
     };
 
-    const handleTabChange = (val: string) => {
-        setAdminTab(isNaN(Number(val)) ? val : Number(val));
-    };
+    const isSeasonView = typeof adminTab === 'number' || adminTab === 'SEASON_MENU';
+    const activeTopTab = isSeasonView ? 'SEASON' : 'SYSTEM';
+
+    const SystemCard = ({ title, subtitle, icon, color, onClick }: any) => (
+        <div 
+            onClick={onClick} 
+            className={`relative overflow-hidden rounded-3xl p-6 cursor-pointer transition-all hover:scale-105 hover:shadow-2xl hover:shadow-emerald-900/20 group border border-slate-700/50 bg-gradient-to-br ${color} h-[130px] sm:h-[150px] flex flex-col justify-between`}
+        >
+            <div className="absolute -right-4 -bottom-4 opacity-20 transform group-hover:scale-125 transition-transform duration-500">
+                {icon}
+            </div>
+            <div className="text-white drop-shadow-md">
+                {icon}
+            </div>
+            <div className="relative z-10">
+                <h3 className="text-white font-black text-[16px] sm:text-lg drop-shadow-md leading-tight">{title}</h3>
+                {subtitle && <p className="text-white/70 text-[10px] sm:text-[11px] font-bold mt-1 tracking-widest uppercase">{subtitle}</p>}
+            </div>
+        </div>
+    );
 
     return (
-        <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
-            <div className="relative mb-8">
-                <select 
-                    value={String(adminTab)} 
-                    onChange={(e) => handleTabChange(e.target.value)}
-                    className="w-full bg-slate-950 text-white text-base font-bold py-4 px-5 rounded-xl border border-slate-700 shadow-xl appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
+        <div className="bg-[#0B1120] p-3 sm:p-6 rounded-3xl border border-slate-800 shadow-2xl animate-in fade-in">
+            
+            {/* 🔥 상단 토글 탭 */}
+            <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 mb-6 sm:mb-8 shadow-inner">
+                <button
+                    onClick={() => setAdminTab('SYSTEM_MENU')}
+                    className={`flex-1 py-3 sm:py-4 text-[13px] sm:text-[15px] font-black rounded-xl transition-all flex items-center justify-center gap-2 ${activeTopTab === 'SYSTEM' ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}
                 >
-                    <optgroup label="⚙️ System Management" className="bg-slate-800 text-slate-400 font-bold text-sm">
-                        <option value="NEW" className="text-white text-base bg-slate-900 py-2">➕ Create New Season</option>
-                        <option value="USERS" className="text-white text-base bg-emerald-950/30 py-2 text-emerald-400">👤 가입 승인 관리 (NEW)</option>
-                        <option value="NOTICE" className="text-white text-base bg-slate-900 py-2">📢 Notice Management</option>
-                        <option value="LEAGUES" className="text-white text-base bg-slate-900 py-2">🏳️ League Management</option>
-                        <option value="TEAMS" className="text-white text-base bg-slate-900 py-2">🛡️ Team Management</option>
-                        <option value="OWNER" className="text-white text-base bg-slate-900 py-2">👤 Owner Management</option>
-                        <option value="BANNER" className="text-white text-base bg-slate-900 py-2">🖼️ Banner Management</option>
-                        <option value="REAL" className="text-white text-base bg-slate-900 py-2">🌏 Real-World Data Patch</option>
-                    </optgroup>
-                    
-                    <optgroup label="📋 Select Season to Manage" className="bg-slate-800 text-slate-400 font-bold text-sm">
-                        {seasons.map(s => (
-                            <option key={s.id} value={s.id} className="text-white text-base bg-slate-900 py-2">
-                                {(() => {
-                                    const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⭐)\s*/, '');
-                                    let icon = '🏳️';
-                                    if (s.type === 'CUP') icon = '🏆';
-                                    if (s.type === 'TOURNAMENT') icon = '⚔️';
-                                    if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
-                                    return `${icon} ${pureName} ${s.status === 'COMPLETED' ? '(마감)' : ''}`;
-                                })()}
-                            </option>
-                        ))}
-                    </optgroup>
-                </select>
-                
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                </div>
+                    <Settings size={18} /> 시스템 관리
+                </button>
+                <button
+                    onClick={() => setAdminTab('SEASON_MENU')}
+                    className={`flex-1 py-3 sm:py-4 text-[13px] sm:text-[15px] font-black rounded-xl transition-all flex items-center justify-center gap-2 ${activeTopTab === 'SEASON' ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}
+                >
+                    <Trophy size={18} /> 시즌 관리
+                </button>
             </div>
 
-            {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
-            {adminTab === 'NOTICE' && <AdminNoticeManager />}
-            {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
-            {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
-            {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
-            {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
-            {adminTab === 'NEW' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
-            {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
-
-            {typeof adminTab === 'number' && (() => {
-                const targetSeason = seasons.find(s => s.id === adminTab);
-                if (!targetSeason) return <div>Season Not Found</div>;
-                return (
-                    <div className="space-y-6">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 border-b border-slate-800 pb-4">
-                            <button onClick={() => setAdminTab('NEW')} className="text-slate-500 hover:text-white shrink-0">← Back</button>
-                            <div className="flex items-center flex-1 justify-center">
-                                <h2 className="text-lg md:text-xl font-bold text-emerald-400 truncate">
-                                    Manage: {targetSeason.name} 
-                                    {targetSeason.status === 'COMPLETED' && <span className="text-[10px] text-yellow-500 ml-2 border border-yellow-500/50 px-2 py-0.5 rounded-full uppercase tracking-widest align-middle">Closed</span>}
-                                </h2>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0 justify-end">
-                                {targetSeason.status !== 'COMPLETED' && (
-                                    <button onClick={() => handleCloseSeason(targetSeason)} className="bg-yellow-600 px-3 py-1.5 rounded-lg text-xs font-black italic hover:bg-yellow-500 text-white shadow-[0_0_15px_rgba(202,138,4,0.4)] transition-all">💰 마감/정산</button>
-                                )}
-                                <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-900/80 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 text-red-200 transition-all">Delete</button>
-                            </div>
+            {/* 🔥 시스템 관리 영역 */}
+            {activeTopTab === 'SYSTEM' && (
+                <>
+                    {(adminTab === 'SYSTEM_MENU' || adminTab === 'NEW') ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 animate-in slide-in-from-bottom-4">
+                            <SystemCard title="시즌 생성" subtitle="Create Season" icon={<PlusCircle size={36}/>} color="from-emerald-500 to-teal-800" onClick={() => setAdminTab('CREATE_SEASON')} />
+                            <SystemCard title="가입 승인" subtitle="User Approval" icon={<UserCheck size={36}/>} color="from-blue-500 to-indigo-800" onClick={() => setAdminTab('USERS')} />
+                            <SystemCard title="공지 관리" subtitle="Notice Board" icon={<Megaphone size={36}/>} color="from-purple-500 to-fuchsia-800" onClick={() => setAdminTab('NOTICE')} />
+                            <SystemCard title="리그 관리" subtitle="League Setup" icon={<Flag size={36}/>} color="from-cyan-500 to-blue-800" onClick={() => setAdminTab('LEAGUES')} />
+                            <SystemCard title="팀 DB 관리" subtitle="Team Setup" icon={<Shield size={36}/>} color="from-red-500 to-rose-800" onClick={() => setAdminTab('TEAMS')} />
+                            <SystemCard title="오너 명부" subtitle="Owner Roster" icon={<Crown size={36}/>} color="from-orange-500 to-amber-800" onClick={() => setAdminTab('OWNER')} />
+                            <SystemCard title="배너 관리" subtitle="Main Banners" icon={<ImageIcon size={36}/>} color="from-pink-500 to-rose-700" onClick={() => setAdminTab('BANNER')} />
+                            <SystemCard title="실축 데이터" subtitle="Real-World Data" icon={<Globe size={36}/>} color="from-yellow-500 to-orange-700" onClick={() => setAdminTab('REAL')} />
                         </div>
-                        
-                        {targetSeason.type === 'CUP' ? (
-                            <AdminCupSetup targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} />
-                        ) : (
-                            <AdminTeamMatching targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)} />
-                        )}
-                    </div>
-                );
-            })()}
+                    ) : (
+                        <div className="space-y-4 animate-in slide-in-from-right-4">
+                            <div className="mb-4 pb-4 border-b border-slate-800">
+                                <button onClick={() => setAdminTab('SYSTEM_MENU')} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold w-max transition-colors shadow-inner">
+                                    <ArrowLeft size={16} /> <span>시스템 메뉴로 돌아가기</span>
+                                </button>
+                            </div>
+                            
+                            {adminTab === 'CREATE_SEASON' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
+                            {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
+                            {adminTab === 'NOTICE' && <AdminNoticeManager />}
+                            {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
+                            {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
+                            {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
+                            {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
+                            {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* 🔥 시즌 관리 영역 */}
+            {activeTopTab === 'SEASON' && (
+                <>
+                    {adminTab === 'SEASON_MENU' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-in slide-in-from-bottom-4">
+                            {seasons.slice().sort((a, b) => b.id - a.id).map(s => {
+                                const isCompleted = s.status === 'COMPLETED';
+                                return (
+                                    <div 
+                                        key={s.id} 
+                                        onClick={() => setAdminTab(s.id)} 
+                                        className={`p-5 sm:p-6 rounded-3xl cursor-pointer transition-all hover:-translate-y-1.5 shadow-xl group border ${isCompleted ? 'bg-slate-900 border-slate-800 hover:border-slate-600' : 'bg-slate-800/80 border-blue-900/50 hover:border-blue-500/50 hover:bg-slate-800'}`}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <span className="text-3xl bg-slate-950 p-3 rounded-2xl border border-slate-800 shadow-inner group-hover:scale-110 transition-transform">
+                                                {s.type === 'CUP' ? '🏆' : s.type === 'TOURNAMENT' ? '⚔️' : s.type === 'LEAGUE_PLAYOFF' ? '⭐' : '🏳️'}
+                                            </span>
+                                            <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-sm ${isCompleted ? 'bg-slate-950 text-slate-500 border border-slate-800' : 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/30'}`}>
+                                                {isCompleted ? '마감됨' : '진행중'}
+                                            </span>
+                                        </div>
+                                        <h3 className={`font-black text-lg sm:text-xl leading-tight mb-2 transition-colors line-clamp-2 ${isCompleted ? 'text-slate-400 group-hover:text-slate-200' : 'text-white group-hover:text-blue-400'}`}>
+                                            {s.name}
+                                        </h3>
+                                        <div className="flex items-center gap-3 mt-4 text-[11px] font-bold text-slate-500">
+                                            <span className="bg-slate-950 px-2.5 py-1 rounded-md border border-slate-800">
+                                                {s.type}
+                                            </span>
+                                            <span>• 참가 {s.teams?.length || 0}팀</span>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                            {seasons.length === 0 && (
+                                <div className="col-span-full py-16 text-center text-slate-500 font-bold bg-slate-900 rounded-3xl border border-slate-800 border-dashed">
+                                    생성된 시즌이 없습니다.<br/>시스템 관리에서 새로운 시즌을 생성해보세요!
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="space-y-6 animate-in slide-in-from-right-4">
+                            {(() => {
+                                const targetSeason = seasons.find(s => s.id === adminTab);
+                                if (!targetSeason) return <div className="text-center text-red-400 py-10">시즌 정보를 찾을 수 없습니다.</div>;
+                                return (
+                                    <>
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 border-b border-slate-800 pb-5 bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-inner">
+                                            <button onClick={() => setAdminTab('SEASON_MENU')} className="flex items-center gap-2 text-slate-400 hover:text-blue-400 bg-[#0B1120] border border-slate-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold w-max transition-colors shrink-0">
+                                                <ArrowLeft size={16} /> <span>시즌 목록으로</span>
+                                            </button>
+                                            <div className="flex flex-col items-center flex-1 justify-center min-w-0">
+                                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Manage Season</span>
+                                                <h2 className="text-lg md:text-xl font-black text-blue-400 truncate w-full text-center px-4">
+                                                    {targetSeason.name} 
+                                                    {targetSeason.status === 'COMPLETED' && <span className="text-[10px] text-yellow-500 ml-2 border border-yellow-500/50 bg-yellow-950/30 px-2.5 py-1 rounded-md uppercase tracking-widest align-middle">Closed</span>}
+                                                </h2>
+                                            </div>
+                                            <div className="flex items-center justify-end gap-2 shrink-0">
+                                                {targetSeason.status !== 'COMPLETED' && (
+                                                    <button onClick={() => handleCloseSeason(targetSeason)} className="bg-yellow-600 hover:bg-yellow-500 px-4 py-2.5 rounded-xl text-xs font-black text-white shadow-[0_0_15px_rgba(202,138,4,0.3)] transition-all flex items-center gap-1.5">
+                                                        💰 마감/정산
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-950/50 hover:bg-red-600 border border-red-900/50 hover:border-red-500 px-4 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-white transition-all flex items-center gap-1.5">
+                                                    <Trash2 size={14} /> 파기
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        {targetSeason.type === 'CUP' ? (
+                                            <AdminCupSetup targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} />
+                                        ) : (
+                                            <AdminTeamMatching targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)} />
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
 };
