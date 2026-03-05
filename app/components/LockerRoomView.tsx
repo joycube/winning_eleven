@@ -18,32 +18,36 @@ interface UserData {
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-// 🔥 1순위: 오너 커스텀 프사, 2순위: 구글 프사, 3순위: 디폴트 프사
-const getBestProfileImage = (userObj: any | null, ownersList: any[] | undefined, savedPhoto?: string, authorName?: string) => {
+// 🔥 [에러 해결] 매개변수에 ?와 null 허용 처리를 추가하여 타입스크립트 에러(ts-2345) 원천 차단
+const getBestProfileImage = (userObj?: any | null, ownersList?: any[] | null, savedPhoto?: string | null, authorName?: string | null) => {
     const targetName = authorName || (userObj ? userObj.mappedOwnerId : null);
-    if (targetName && ownersList) {
+    
+    // 1순위: 명부(users) 데이터 우선
+    if (targetName && ownersList && Array.isArray(ownersList)) {
         const ownerData = ownersList.find(o => o.nickname === targetName);
         if (ownerData && ownerData.photo && ownerData.photo.trim() !== '') {
             return ownerData.photo;
         }
     }
 
+    // 2순위: 구글 연동 사진
     if (userObj) {
         if (userObj.photoURL && userObj.photoURL.trim() !== '') return userObj.photoURL;
         if (userObj.photoUrl && userObj.photoUrl.trim() !== '') return userObj.photoUrl;
     }
 
-    if (savedPhoto && savedPhoto.trim() !== '') {
+    // 3순위: 과거 캡처된 사진
+    if (savedPhoto && typeof savedPhoto === 'string' && savedPhoto.trim() !== '') {
         return savedPhoto;
     }
 
+    // 4순위: 기본 아이콘
     return COMMON_DEFAULT_PROFILE;
 };
 
 const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[], owners?: any[] }) => {
   const [posts, setPosts] = useState<any[]>([]);
   
-  // 🔥 [수정] 락커룸 진입 시 기본 선택 탭을 '매치톡'에서 '전체'로 변경 (초기 렌더링 부하 감소)
   const [category, setCategory] = useState('전체');
   
   const [viewMode, setViewMode] = useState<'LIST' | 'WRITE' | 'EDIT'>('LIST');

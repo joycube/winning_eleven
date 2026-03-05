@@ -102,8 +102,21 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                       const newMatches = r.matches.map((m:any) => {
                           let matchChanged = false;
                           const newM = { ...m };
+                          
+                          // 1. 오너 이름 치환
                           if (newM.homeOwner === oldNickname) { newM.homeOwner = name; matchChanged = true; }
                           if (newM.awayOwner === oldNickname) { newM.awayOwner = name; matchChanged = true; }
+                          
+                          // 🔥 [핵심 디벨롭] 2. 팀 이름 자체에 과거 오너 이름이 박혀있는 경우(예: MAN CITY (강원주)) 텍스트 치환
+                          if (newM.home && newM.home.includes(oldNickname)) { 
+                              newM.home = newM.home.replace(oldNickname, name); 
+                              matchChanged = true; 
+                          }
+                          if (newM.away && newM.away.includes(oldNickname)) { 
+                              newM.away = newM.away.replace(oldNickname, name); 
+                              matchChanged = true; 
+                          }
+
                           if (matchChanged) changed = true;
                           return newM;
                       });
@@ -295,7 +308,6 @@ export const AdminOwnerManager = ({ owners }: Props) => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[500px] overflow-y-auto no-scrollbar">
                 {filteredOwners.length === 0 && <div className="col-span-full py-10 text-center text-slate-500 text-sm font-bold">검색 결과가 없습니다.</div>}
                 {filteredOwners.map(o => {
-                  {/* 🔥 [추가 로직] 명부 관리 탭에서 G메일 연동 정보 찾기 */}
                   const linkedAccount = userAccounts.find(acc => acc.mappedOwnerId === o.nickname);
                   const isSelected = editId === o.docId;
 
@@ -310,7 +322,6 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                         <div className="flex flex-col items-center w-full min-w-0"> 
                             <span className="font-black text-white text-sm truncate w-full text-center">{o.nickname}</span>
                             
-                            {/* 🔥 [기능 추가] 연동된 G메일 표시 */}
                             {linkedAccount ? (
                                 <span className="text-[9px] text-emerald-400 truncate w-full text-center mt-0.5 font-bold">{linkedAccount.email}</span>
                             ) : (
