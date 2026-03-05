@@ -23,6 +23,10 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   const [userAccounts, setUserAccounts] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // 🔥 [에러 복구용 툴 상태]
+  const [legacyName, setLegacyName] = useState('');
+  const [targetOwnerDocId, setTargetOwnerDocId] = useState('');
+
   const fetchUserAccounts = async () => {
       try {
           const snap = await getDocs(collection(db, 'user_accounts'));
@@ -47,6 +51,80 @@ export const AdminOwnerManager = ({ owners }: Props) => {
   useEffect(() => {
       resetForm();
   }, [activeTab]);
+
+  // 🔥 [핵심 해결] 과거 기록의 화석 텍스트를 강제로 긁어와서 현재 오너 이름으로 덮어씌우는 로직
+  const runForceMigration = async () => {
+      if (!legacyName.trim() || !targetOwnerDocId) return alert("지워야 할 과거 이름과 변경할 대상을 모두 선택해주세요.");
+      
+      const targetOwner = owners.find(o => o.docId === targetOwnerDocId);
+      if (!targetOwner) return alert("대상 오너를 찾을 수 없습니다.");
+      
+      const newName = targetOwner.nickname;
+      if (!window.confirm(`🚨 주의: 과거 경기 기록지에서 '${legacyName}'(으)로 기록된 모든 데이터를 찾아 '${newName}'(으)로 영구 병합합니다.\n\n(명예의 전당, 팀 소유권, 오너룸 전적이 복구됩니다)\n진행하시겠습니까?`)) return;
+
+      setIsLoading(true);
+      try {
+          // 1. Seasons (과거 경기 결과 기록지) 덮어쓰기
+          const seasonsSnap = await getDocs(collection(db, 'seasons'));
+          for (const d of seasonsSnap.docs) {
+              const data = d.data();
+              let isModified = false;
+              if (data.rounds && Array.isArray(data.rounds)) {
+                  const newRounds = data.rounds.map((r:any) => {
+                      if (!r.matches) return r;
+                      const newMatches = r.matches.map((m:any) => {
+                          let matchMod = false;
+                          const newM = { ...m };
+                          
+                          // 오너 이름 치환
+                          if (newM.homeOwner === legacyName) { newM.homeOwner = newName; matchMod = true; }
+                          if (newM.awayOwner === legacyName) { newM.awayOwner = newName; matchMod = true; }
+                          
+                          // 팀 이름 안에 괄호로 박힌 (강원주) 같은 텍스트 치환
+                          if (newM.home && newM.home.includes(legacyName)) { 
+                              newM.home = newM.home.replace(legacyName, newName); 
+                              matchMod = true; 
+                          }
+                          if (newM.away && newM.away.includes(legacyName)) { 
+                              newM.away = newM.away.replace(legacyName, newName); 
+                              matchMod = true; 
+                          }
+
+                          if (matchMod) isModified = true;
+                          return newM;
+                      });
+                      return { ...r, matches: newMatches };
+                  });
+                  if (isModified) {
+                      await updateDoc(d.ref, { rounds: newRounds });
+                  }
+              }
+          }
+
+          // 2. Master Teams 소유권 덮어쓰기
+          const teamsQ = query(collection(db, 'master_teams'), where('ownerName', '==', legacyName));
+          const teamsSnap = await getDocs(teamsQ);
+          for (const d of teamsSnap.docs) {
+              await updateDoc(d.ref, { ownerName: newName });
+          }
+
+          // 3. User Accounts 맵핑 덮어쓰기
+          const accountsQ = query(collection(db, 'user_accounts'), where('mappedOwnerId', '==', legacyName));
+          const accountsSnap = await getDocs(accountsQ);
+          for (const d of accountsSnap.docs) {
+              await updateDoc(d.ref, { mappedOwnerId: newName });
+          }
+
+          alert(`🎉 완벽합니다! 과거 '${legacyName}'의 모든 잃어버린 전적이 '${newName}'(으)로 100% 병합되었습니다.`);
+          setLegacyName('');
+          setTargetOwnerDocId('');
+      } catch (error: any) {
+          console.error("Migration Error: ", error);
+          alert("병합 처리 중 오류가 발생했습니다: " + error.message);
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   const handleSave = async () => {
     if (!name) return alert('닉네임을 입력하세요');
@@ -102,21 +180,8 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                       const newMatches = r.matches.map((m:any) => {
                           let matchChanged = false;
                           const newM = { ...m };
-                          
-                          // 1. 오너 이름 치환
                           if (newM.homeOwner === oldNickname) { newM.homeOwner = name; matchChanged = true; }
                           if (newM.awayOwner === oldNickname) { newM.awayOwner = name; matchChanged = true; }
-                          
-                          // 🔥 [핵심 디벨롭] 2. 팀 이름 자체에 과거 오너 이름이 박혀있는 경우(예: MAN CITY (강원주)) 텍스트 치환
-                          if (newM.home && newM.home.includes(oldNickname)) { 
-                              newM.home = newM.home.replace(oldNickname, name); 
-                              matchChanged = true; 
-                          }
-                          if (newM.away && newM.away.includes(oldNickname)) { 
-                              newM.away = newM.away.replace(oldNickname, name); 
-                              matchChanged = true; 
-                          }
-
                           if (matchChanged) changed = true;
                           return newM;
                       });
@@ -301,6 +366,45 @@ export const AdminOwnerManager = ({ owners }: Props) => {
           </button>
         </div>
       </div>
+
+      {/* 🔥 [핵심 추가] 데이터 꼬임 방지: 과거 이름 강제 병합 복구 툴 */}
+      {activeTab === 'EXISTING' && (
+          <div className="mt-4 mb-8 bg-red-950/20 border border-red-900/50 p-5 rounded-2xl shadow-inner animate-in fade-in">
+              <p className="text-xs text-red-400 font-bold mb-3 flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                  [에러 복구용] 잃어버린 과거 데이터 강제 병합기
+              </p>
+              <p className="text-[10px] text-slate-400 mb-4 leading-relaxed">
+                  명예의 전당이나 전적에 <strong>옛날 이름(강원주 등)</strong>이 화석처럼 굳어서 남아있을 때 사용하세요.<br/>
+                  입력하신 옛날 이름을 파이어베이스 전체 기록지에서 싹 긁어모아 현재의 오너에게 100% 병합(Merge)시킵니다.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                      value={legacyName}
+                      onChange={e => setLegacyName(e.target.value)}
+                      placeholder="사라진 옛날 이름 정확히 입력 (예: 강원주)"
+                      className="w-full bg-[#0B1120] border border-red-900/50 p-3 rounded-xl text-white text-sm outline-none focus:border-red-500 transition-colors placeholder:text-slate-600"
+                  />
+                  <select
+                      value={targetOwnerDocId}
+                      onChange={e => setTargetOwnerDocId(e.target.value)}
+                      className="w-full bg-[#0B1120] border border-red-900/50 p-3 rounded-xl text-white text-sm outline-none focus:border-red-500 transition-colors cursor-pointer"
+                  >
+                      <option value="" className="text-slate-500">-- 데이터를 흡수할 현재 오너 선택 --</option>
+                      {owners.map(o => <option key={o.docId} value={o.docId!}>{o.nickname}</option>)}
+                  </select>
+              </div>
+              <div className="flex justify-end mt-4">
+                  <button
+                      onClick={runForceMigration}
+                      disabled={isLoading || !legacyName || !targetOwnerDocId}
+                      className="bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:bg-slate-800 disabled:text-slate-500 text-white px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-lg"
+                  >
+                      {isLoading ? '병합 작업 진행 중...' : '데이터 병합 실행 🚀'}
+                  </button>
+              </div>
+          </div>
+      )}
 
       <div className="bg-[#0B1120] p-4 rounded-xl border border-slate-800/80 shadow-inner min-h-[200px]">
           
