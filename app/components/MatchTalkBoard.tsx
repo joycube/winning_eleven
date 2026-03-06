@@ -7,7 +7,6 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from
 import { ArrowLeft, Send, Trash2, Trophy } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 
-// 🔥 [에러 해결] 컴포넌트 이름 지정 내보내기(export const)에 맞춰 중괄호 추가 완료!
 import { MatchCard } from './MatchCard'; 
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
@@ -38,7 +37,6 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-// 🔥 상태 뱃지 (목록에서 사용)
 const StatusBadge = ({ status }: { status?: string }) => {
     if (!status) return null;
     const s = status.toUpperCase();
@@ -52,12 +50,13 @@ interface MatchTalkBoardProps {
     seasons: any[];
     masterTeams: any[];
     owners: any[];
+    activeRankingData?: any; 
     selectedMatchId: string | null;
     onSelectMatch: (matchId: string) => void;
     onClose: () => void;
 }
 
-const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, onSelectMatch, onClose }: MatchTalkBoardProps) => {
+const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData, selectedMatchId, onSelectMatch, onClose }: MatchTalkBoardProps) => {
     const [allMatchComments, setAllMatchComments] = useState<any[]>([]);
     const [commentText, setCommentText] = useState('');
     const [visibleCount, setVisibleCount] = useState(10);
@@ -84,45 +83,62 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, o
             s.rounds?.forEach((r: any) => {
                 r.matches?.forEach((m: any) => {
                     if (m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
-                        const hTeam = masterTeams?.find((t:any) => t.name === m.home);
-                        const aTeam = masterTeams?.find((t:any) => t.name === m.away);
+                        
+                        const homeNorm = (m.home || '').toLowerCase().trim();
+                        const awayNorm = (m.away || '').toLowerCase().trim();
+                        
+                        const hTeam = masterTeams?.find((t:any) => (t.name || t.teamName || '').toLowerCase().trim() === homeNorm);
+                        const aTeam = masterTeams?.find((t:any) => (t.name || t.teamName || '').toLowerCase().trim() === awayNorm);
+                        
+                        const hStat = activeRankingData?.teams?.find((t:any) => (t.name || t.teamName || '').toLowerCase().trim() === homeNorm);
+                        const aStat = activeRankingData?.teams?.find((t:any) => (t.name || t.teamName || '').toLowerCase().trim() === awayNorm);
+
                         const matchComments = allMatchComments.filter(c => c.matchId === m.id).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
                         let hPR = m.homePredictRate;
                         let aPR = m.awayPredictRate;
                         if (hPR === undefined || aPR === undefined) {
                             const weights: any = { S: 4, A: 3, B: 2, C: 1 };
-                            const hw = weights[m.homeTier || hTeam?.tier] || 1;
-                            const aw = weights[m.awayTier || aTeam?.tier] || 1;
+                            const hw = weights[m.homeTier || hTeam?.tier || hStat?.tier] || 1;
+                            const aw = weights[m.awayTier || aTeam?.tier || aStat?.tier] || 1;
                             hPR = Math.round((hw / (hw + aw)) * 100);
                             aPR = 100 - hPR;
                         }
 
+                        // 매치카드에 넘겨줄 필수 데이터 병합
+                        const finalMatchData = { 
+                            ...m, 
+                            seasonId: s.id, 
+                            homeLogo: m.homeLogo || hTeam?.logo || hStat?.logo, 
+                            awayLogo: m.awayLogo || aTeam?.logo || aStat?.logo, 
+                            homeOwner: m.homeOwner || hTeam?.ownerName || hStat?.ownerName, 
+                            awayOwner: m.awayOwner || aTeam?.ownerName || aStat?.ownerName,
+                            homePredictRate: hPR,
+                            awayPredictRate: aPR,
+                            roundName: m.matchLabel || r.name, 
+                            seasonName: s.name,
+                        };
+
                         items.push({
-                            id: `match_${m.id}`, realMatchId: m.id, isMatchTalk: true,
-                            subTitle: `${s.name} | ${m.matchLabel || r.name}`, title: `${m.home} VS ${m.away}`,
+                            id: `match_${m.id}`, 
+                            realMatchId: m.id, 
+                            isMatchTalk: true,
+                            subTitle: `${s.name} | ${m.matchLabel || r.name}`, 
+                            title: `${m.home} VS ${m.away}`,
                             cat: '매치톡', 
-                            matchData: { 
-                                ...m, 
-                                seasonId: s.id, 
-                                homeLogo: m.homeLogo || hTeam?.logo, 
-                                awayLogo: m.awayLogo || aTeam?.logo, 
-                                homeTier: m.homeTier || hTeam?.tier, 
-                                awayTier: m.awayTier || aTeam?.tier, 
-                                homeOwner: m.homeOwner || hTeam?.ownerName, 
-                                awayOwner: m.awayOwner || aTeam?.ownerName,
-                                homePredictRate: hPR,
-                                awayPredictRate: aPR
-                            },
-                            createdAt: m.timestamp || s.id || Date.now(), comments: matchComments, views: m.talkViews || 0,
-                            authorName: 'SYSTEM', authorPhoto: COMMON_DEFAULT_PROFILE
+                            matchData: finalMatchData, 
+                            createdAt: m.timestamp || s.id || Date.now(), 
+                            comments: matchComments, 
+                            views: m.talkViews || 0,
+                            authorName: 'SYSTEM', 
+                            authorPhoto: COMMON_DEFAULT_PROFILE
                         });
                     }
                 });
             });
         });
         return items.sort((a, b) => b.createdAt - a.createdAt);
-    }, [seasons, masterTeams, allMatchComments]);
+    }, [seasons, masterTeams, allMatchComments, activeRankingData]); 
     
     const filteredMatchTalkPosts = useMemo(() => {
         if (selectedSeasonFilter === 'ALL') return matchTalkPosts;
@@ -176,7 +192,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, o
         } catch (e) { console.error(e); }
     };
 
-    // 🔥 매치톡 상세 화면 (매치카드 재사용)
     if (activePost) {
         return (
             <div className="animate-in slide-in-from-bottom-4 space-y-4">
@@ -188,7 +203,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, o
 
                 <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
                     <div className="p-4 sm:p-7 border-b border-slate-800">
-                        {/* 헤더 타이틀 영역 */}
                         <div className="flex items-center gap-2 mb-2">
                             <span className="bg-blue-400/10 text-blue-400 border-blue-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
                                 <Trophy size={12}/> 매치톡
@@ -200,10 +214,14 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, o
                             <span>{formatDate(activePost.createdAt, true)}</span>
                         </div>
                         
-                        {/* 🔥 중복 코드를 전부 날리고 <MatchCard /> 단 한 줄로 교체! */}
                         <div className="mb-2 pointer-events-none"> 
-                            {/* pointer-events-none: 매치톡 안에서는 카드를 눌러도 수정 모달이 뜨지 않도록 클릭 방지 */}
-                            <MatchCard match={activePost.matchData} onClick={() => {}} />
+                            {/* 🔥 [핵심 해결 포인트] MatchCard에게 팀 정보(masterTeams)와 순위 정보(activeRankingData)를 전달합니다! */}
+                            <MatchCard 
+                                match={activePost.matchData} 
+                                onClick={() => {}} 
+                                masterTeams={masterTeams}
+                                activeRankingData={activeRankingData}
+                            />
                         </div>
                         
                     </div>
@@ -281,7 +299,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, selectedMatchId, o
         );
     }
 
-    // 🔥 매치톡 목록 리스트 화면
     return (
         <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
              <div className="p-3 sm:p-4 bg-slate-900 border-b border-slate-800 flex justify-end">

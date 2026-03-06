@@ -519,6 +519,7 @@ export default function FootballLeagueApp() {
                 seasons={seasons} 
                 masterTeams={masterTeams} 
                 owners={owners} 
+                activeRankingData={activeRankingData} // 🔥 실시간 랭킹 데이터 배관 연결 완료!
             />
         )}
 

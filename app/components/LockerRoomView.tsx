@@ -17,6 +17,16 @@ interface UserData {
   photo?: string;
 }
 
+// 🔥 [에러 방지] 락커룸 뷰가 받을 데이터 규격을 명확히 지정
+interface LockerRoomViewProps {
+  user: UserData | null;
+  notices: any[];
+  seasons?: any[];
+  masterTeams?: any[];
+  owners?: any[];
+  activeRankingData?: any; 
+}
+
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
 const normalizeName = (str?: string | null): string => {
@@ -34,28 +44,17 @@ const getBestProfileImage = (
     authorName?: string | null
 ): string => {
     const targetName = authorName || userObj?.mappedOwnerId;
-
-    if (userObj && targetName === userObj.mappedOwnerId && !isBadImage(userObj.photo)) {
-        return String(userObj.photo);
-    }
-
+    if (userObj && targetName === userObj.mappedOwnerId && !isBadImage(userObj.photo)) return String(userObj.photo);
     if (targetName && ownersList && ownersList.length > 0) {
         const targetFuzzy = normalizeName(targetName);
         const matchedOwner = ownersList.find(o => normalizeName(o.nickname) === targetFuzzy);
-        if (matchedOwner && !isBadImage(matchedOwner.photo)) {
-            return String(matchedOwner.photo);
-        }
+        if (matchedOwner && !isBadImage(matchedOwner.photo)) return String(matchedOwner.photo);
     }
-
     if (userObj && targetName === userObj.mappedOwnerId) {
         if (!isBadImage(userObj.photoURL)) return String(userObj.photoURL);
         if (!isBadImage(userObj.photoUrl)) return String(userObj.photoUrl);
     }
-
-    if (!isBadImage(savedPhoto)) {
-        return String(savedPhoto);
-    }
-
+    if (!isBadImage(savedPhoto)) return String(savedPhoto);
     return COMMON_DEFAULT_PROFILE;
 };
 
@@ -72,55 +71,32 @@ const formatDate = (ts: any, includeTime = false): string => {
     if (!ts) return '방금 전';
     let d = typeof ts === 'number' ? new Date(ts) : typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
     if (isNaN(d.getTime())) return '방금 전';
-    
     const datePart = `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
     const timePart = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-// 🔥 [성능 최적화] 유튜브 로딩 지연(Facade 패턴) 컴포넌트 추가!
-// 클릭하기 전까지는 가벼운 썸네일 이미지만 보여주어 웹사이트 속도를 폭발적으로 향상시킵니다.
 const LiteYouTubeEmbed = ({ videoId }: { videoId: string }) => {
     const [isPlaying, setIsPlaying] = useState(false);
-
     return (
-        <div 
-            className="relative aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black cursor-pointer group"
-            onClick={() => setIsPlaying(true)}
-        >
+        <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black cursor-pointer group" onClick={() => setIsPlaying(true)}>
             {!isPlaying ? (
                 <>
-                    {/* 가벼운 유튜브 썸네일 이미지 먼저 로드 */}
-                    <img 
-                        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} 
-                        alt="YouTube Video Thumbnail" 
-                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                        loading="lazy"
-                    />
-                    {/* 유튜브 플레이 버튼 UI 흉내내기 */}
+                    <img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="YouTube Video Thumbnail" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" loading="lazy" />
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="w-16 h-12 bg-red-600/90 rounded-2xl flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.5)] group-hover:bg-red-500 transition-all group-hover:scale-110">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-7 h-7 ml-1">
-                                <path d="M8 5v14l11-7z" />
-                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-7 h-7 ml-1"><path d="M8 5v14l11-7z" /></svg>
                         </div>
                     </div>
                 </>
             ) : (
-                /* 클릭 시 진짜 유튜브 플레이어로 교체 후 자동 재생 */
-                <iframe 
-                    src={`https://www.youtube.com/embed/${videoId}?autoplay=1`} 
-                    className="w-full h-full border-none" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowFullScreen
-                ></iframe>
+                <iframe src={`https://www.youtube.com/embed/${videoId}?autoplay=1`} className="w-full h-full border-none" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
             )}
         </div>
     );
 };
 
-
-const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[], owners?: any[] }) => {
+const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData }: LockerRoomViewProps) => {
   const [posts, setPosts] = useState<any[]>([]);
   const [category, setCategory] = useState('전체');
   const [viewMode, setViewMode] = useState<'LIST' | 'WRITE' | 'EDIT'>('LIST');
@@ -140,9 +116,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const isMaster = useMemo(() => {
       if (!user) return false;
       if (user.role === 'ADMIN') return true; 
-      
       const targetFuzzy = normalizeName(user.mappedOwnerId);
-      return owners.some(o => {
+      return owners?.some(o => {
           const isNameMatch = normalizeName(o.nickname) === targetFuzzy;
           const isIdMatch = String(o.id) === user.uid || String((o as any).docId) === user.uid;
           return (isNameMatch || isIdMatch) && (o as any).role === 'ADMIN';
@@ -181,7 +156,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
         window.history.pushState(null, '', `?${params.toString()}`);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-
     if (post.id && posts.find(p => p.id === post.id)) {
         try {
             const postRef = doc(db, 'posts', post.id);
@@ -222,12 +196,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               if (dislikes.includes(user.uid)) dislikes = dislikes.filter((uid: string) => uid !== user.uid);
               else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); }
           }
-
-          if (isNotice) {
-              await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() });
-          } else {
-              await updateDoc(postRef, { likes, dislikes });
-          }
+          if (isNotice) await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() });
+          else await updateDoc(postRef, { likes, dislikes });
       } catch (error) { console.error(error); alert("처리 실패: " + (error as Error).message); }
   };
 
@@ -274,7 +244,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           await deleteDoc(doc(db, isNotice ? 'notices' : 'posts', postId));
           alert("🗑️ 삭제되었습니다."); 
           if (selectedPostId === postId) handleCloseView(); 
-      } catch (e) { alert("삭제 실패"); }
+      } catch (e: any) { alert("삭제 실패: 권한이 부족하거나 통신 에러입니다. (" + e.message + ")"); }
   };
 
   const submitComment = async (postId: string, isReply: boolean) => {
@@ -293,23 +263,13 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       try {
           if (isNotice) {
               let updatedComments = [...(post.comments || post.replies || [])];
-              const newComment = {
-                  id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, 
-                  text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false
-              };
-              
-              if (isReply) {
-                  updatedComments = updatedComments.map((c:any) => c.id === replyingTo!.parentId ? { ...c, replies: [...(c.replies || []), newComment] } : c);
-              } else {
-                  updatedComments.push(newComment);
-              }
+              const newComment = { id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false };
+              if (isReply) updatedComments = updatedComments.map((c:any) => c.id === replyingTo!.parentId ? { ...c, replies: [...(c.replies || []), newComment] } : c);
+              else updatedComments.push(newComment);
               await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
-              updatedComments.push({
-                  id: `cmt_${Date.now()}`, authorId: user.uid, authorName: authorName, authorPhoto: authorPhoto, 
-                  text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false
-              });
+              updatedComments.push({ id: `cmt_${Date.now()}`, authorId: user.uid, authorName: authorName, authorPhoto: authorPhoto, text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false });
               await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
           }
           isReply ? setReplyText('') : setCommentText('');
@@ -351,11 +311,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           if (isNotice) {
               let rootArray = [...(post.comments || post.replies || [])];
               const toggleLike = (arr: string[]) => arr.includes(user.uid) ? arr.filter(id => id !== user.uid) : [...arr, user.uid];
-              if (parentId) {
-                  rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).map((r:any) => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r) } : c);
-              } else {
-                  rootArray = rootArray.map((c:any) => c.id === commentId ? { ...c, likedBy: toggleLike(c.likedBy||[]) } : c);
-              }
+              if (parentId) rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).map((r:any) => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r) } : c);
+              else rootArray = rootArray.map((c:any) => c.id === commentId ? { ...c, likedBy: toggleLike(c.likedBy||[]) } : c);
               await updateDoc(doc(db, 'notices', postId), { comments: rootArray, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
@@ -368,7 +325,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const handleDeleteComment = async (postId: string, commentId: string, parentId?: string) => {
       if (!window.confirm("댓글을 삭제하시겠습니까? (답글이 있다면 함께 삭제됩니다)")) return;
       const isNotice = !!notices.find(n => n.id === postId);
-      
       if (isNotice) {
           const post = notices.find(n => n.id === postId);
           let rootArray = [...(post?.comments || post?.replies || [])];
@@ -397,28 +353,17 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
   const getNoticeAuthorData = (post: any): { name: string; photo: string } => {
       if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
-      
       const rawName = post.authorName || post.ownerName;
       const rawId = post.authorId || post.ownerId;
       const rawPhoto = post.authorPhoto || post.ownerPhoto;
-
       let matchedOwner = null;
-
       if (rawName || rawId) {
           const targetFuzzy = normalizeName(rawName);
-          matchedOwner = owners.find(o => 
-              normalizeName(o.nickname) === targetFuzzy || 
-              String(o.id) === String(rawId)
-          );
+          matchedOwner = owners?.find(o => normalizeName(o.nickname) === targetFuzzy || String(o.id) === String(rawId));
       }
-
-      if (!matchedOwner && (!rawName || rawName === '운영진')) {
-          matchedOwner = owners.find((o: any) => o.role === 'ADMIN');
-      }
-
+      if (!matchedOwner && (!rawName || rawName === '운영진')) matchedOwner = owners?.find((o: any) => o.role === 'ADMIN');
       const finalName = matchedOwner?.nickname || rawName || '운영진';
       const finalPhoto = getBestProfileImage(user, owners, rawPhoto, finalName);
-
       return { name: finalName, photo: finalPhoto };
   };
 
@@ -454,7 +399,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   </div>
                               </div>
                           ) : (
-                              <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap mb-2.5 font-medium tracking-tight">{comment.text}</p>
+                              <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium tracking-tight">{comment.text}</p>
                           )}
 
                           {!editingCommentId && (
@@ -507,7 +452,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                                   </div>
                                               </div>
                                           ) : (
-                                              <p className="text-[14px] sm:text-[15px] text-slate-300 leading-snug whitespace-pre-wrap mb-2.5 font-medium">{reply.text}</p>
+                                              <p className="text-[14px] sm:text-[15px] text-slate-300 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium">{reply.text}</p>
                                           )}
 
                                           {!editingCommentId && (
@@ -543,7 +488,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
   return (
     <div className="max-w-[700px] mx-auto p-0 sm:p-2 space-y-6 pb-20">
-      
       {(viewMode === 'WRITE' || viewMode === 'EDIT') && (
         <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl p-6 sm:p-8 animate-in slide-in-from-bottom-4">
             <div className="flex items-center justify-between mb-5 border-b border-slate-800 pb-4">
@@ -552,7 +496,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                 </h2>
                 <button onClick={() => { setViewMode('LIST'); setPostForm({ title: '', content: '', cat: '자유', imageUrl: '', youtubeUrl: '' }); setEditingPostId(null); }} className="text-slate-400 hover:text-white text-[11px] font-bold bg-slate-800 px-3 py-1.5 rounded-lg transition-colors">✕ 취소</button>
             </div>
-            
             <div className="space-y-3">
                 <div className="flex gap-2">
                   <select value={postForm.cat} onChange={e => setPostForm({...postForm, cat: e.target.value})} className="bg-slate-900 text-emerald-400 px-3 py-2.5 rounded-xl border border-slate-700 text-[12px] font-black outline-none focus:border-emerald-500 cursor-pointer shrink-0 shadow-inner">
@@ -560,7 +503,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                   </select>
                   <input placeholder="제목을 입력하세요 (최대 50자)" className="flex-1 bg-slate-900 text-white px-4 py-2.5 rounded-xl border border-slate-700 text-[13px] sm:text-[14px] font-bold outline-none focus:border-emerald-500 placeholder:font-normal shadow-inner" value={postForm.title} onChange={e => setPostForm({...postForm, title: e.target.value})} />
                 </div>
-                
                 <div className="flex flex-col sm:flex-row gap-2">
                    <div className="flex-1 flex items-center bg-slate-900 px-3 rounded-xl border border-slate-700 focus-within:border-emerald-500 transition-colors shadow-inner">
                        <ImageIcon size={14} className="text-slate-500 mr-2 shrink-0" />
@@ -571,9 +513,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                        <input placeholder="유튜브 링크 (선택)" className="w-full bg-transparent text-white py-2.5 text-[12px] sm:text-[13px] outline-none" value={postForm.youtubeUrl} onChange={e => setPostForm({...postForm, youtubeUrl: e.target.value})} />
                    </div>
                 </div>
-                
                 <textarea placeholder="자유롭게 소통해 보세요! (욕설 및 비방은 제재 대상이 될 수 있습니다)" className="w-full h-64 bg-slate-900 text-slate-200 p-4 rounded-xl border border-slate-700 text-[13px] sm:text-[14px] outline-none focus:border-emerald-500 resize-none leading-relaxed shadow-inner" value={postForm.content} onChange={e => setPostForm({...postForm, content: e.target.value})}></textarea>
-                
                 <div className="pt-2 flex justify-end">
                   <button onClick={handleWritePost} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl text-[12px] sm:text-[13px] font-black transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] tracking-widest">
                       {viewMode === 'WRITE' ? '등록 완료' : '수정 완료'}
@@ -589,6 +529,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               selectedPostId.startsWith('match_') ? (
                   <MatchTalkBoard 
                       user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} 
+                      activeRankingData={activeRankingData} // 🔥 실시간 랭킹 배관 1 연결!
                       selectedMatchId={selectedPostId} 
                       onSelectMatch={(id) => {
                           setSelectedPostId(id);
@@ -614,80 +555,56 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   </span>
                                   {(user?.uid === (activePost.authorId || activePost.ownerId) || isMaster) && (
                                       <div className="flex gap-2 text-[10px] font-bold">
+                                          {!notices.some(n => n.id === activePost.id) && (
+                                              <button onClick={() => handleOpenEdit(activePost)} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-blue-400 transition-all shadow-sm">✏️ 수정</button>
+                                          )}
                                           <button onClick={() => handleDeletePost(activePost.id)} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-red-400 transition-all shadow-sm">🗑️ 삭제</button>
                                       </div>
                                   )}
                               </div>
-                              
                               <div className="flex flex-col mb-3 pr-6 overflow-visible">
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
                                       <h2 className="text-[18px] sm:text-[20px] font-bold text-white leading-tight break-keep">{activePost.title}</h2>
                                   </div>
                               </div>
-                              
                               <div className="flex items-center justify-between mt-4">
                                   <div className="flex items-center gap-2.5">
                                       <img src={getNoticeAuthorData(activePost).photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
                                       <div className="flex flex-col">
-                                          <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">
-                                              {getNoticeAuthorData(activePost).name}
-                                          </span>
+                                          <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">{getNoticeAuthorData(activePost).name}</span>
                                           <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
                                               <span>{formatDate(activePost.createdAt, true)}</span>
                                               {activePost.views !== undefined && <span>• 조회 {activePost.views}</span>}
                                           </div>
                                       </div>
                                   </div>
-
-                                  <button onClick={handleShareLink} className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors border border-slate-700 shadow-sm shrink-0">
-                                      🔗 공유하기
-                                  </button>
+                                  <button onClick={handleShareLink} className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors border border-slate-700 shadow-sm shrink-0">🔗 공유하기</button>
                               </div>
-                              
                               <div className="h-px w-full bg-slate-800/60 my-5"></div>
-                              
                               <div className="space-y-5 mb-6">
-                                  {/* 🔥 [성능 최적화] 라이트 유튜브 렌더링 */}
                                   {(() => {
                                       const ytId = getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId);
                                       if (!ytId) return null;
-                                      return (
-                                          <LiteYouTubeEmbed videoId={ytId} />
-                                      );
+                                      return <LiteYouTubeEmbed videoId={ytId} />;
                                   })()}
-                                  
                                   {activePost.imageUrl && (
-                                      <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black/20">
-                                          <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[500px]" />
+                                      <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black/20 flex justify-center">
+                                          <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[500px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
                                       </div>
                                   )}
-                                  <div className="text-slate-300 text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap font-medium not-italic">
-                                      {activePost.content}
-                                  </div>
+                                  <div className="text-slate-300 text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">{activePost.content}</div>
                               </div>
                           </div>
-
                           <div className="bg-slate-900/50 p-4 sm:p-5 flex justify-center gap-3 border-b border-slate-800">
-                              <button onClick={() => handleReaction(activePost, 'LIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.likes || activePost.likedBy)?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
-                                  👍 좋아요 {(activePost.likes || activePost.likedBy)?.length || 0}
-                              </button>
-                              <button onClick={() => handleReaction(activePost, 'DISLIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.dislikes || activePost.dislikedBy)?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
-                                  👎 싫어요 {(activePost.dislikes || activePost.dislikedBy)?.length || 0}
-                              </button>
+                              <button onClick={() => handleReaction(activePost, 'LIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.likes || activePost.likedBy)?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👍 좋아요 {(activePost.likes || activePost.likedBy)?.length || 0}</button>
+                              <button onClick={() => handleReaction(activePost, 'DISLIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.dislikes || activePost.dislikedBy)?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👎 싫어요 {(activePost.dislikes || activePost.dislikedBy)?.length || 0}</button>
                           </div>
-
                           <div className="p-4 sm:p-6 bg-slate-950/30">
-                              <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">
-                                  💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span>
-                              </h4>
-                              
+                              <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span></h4>
                               <div className="mb-6 border-t border-slate-800/50">
-                                  {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && (
-                                      <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>
-                                  )}
+                                  {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>}
                                   {(activePost.comments || activePost.replies) && (activePost.comments || activePost.replies).length > 0 && renderComments(activePost.comments || activePost.replies, activePost.id)}
                               </div>
-
                               {user ? (
                                   !replyingTo && (
                                       <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
@@ -695,32 +612,17 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                           <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                               <div className="flex items-center gap-2 bg-slate-900 p-1.5 px-2.5 rounded-xl border border-slate-700 shrink-0 shadow-inner">
                                                   <img src={getBestProfileImage(user, owners, user?.photoURL, user?.mappedOwnerId)} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
-                                                  <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">
-                                                      {user?.mappedOwnerId}
-                                                  </span>
+                                                  <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">{user?.mappedOwnerId}</span>
                                               </div>
-
                                               <div className="flex flex-1 items-stretch gap-2">
-                                                  <input 
-                                                      value={commentText} 
-                                                      onChange={(e) => setCommentText(e.target.value)} 
-                                                      onKeyDown={(e) => { 
-                                                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(activePost.id, false); }
-                                                      }}
-                                                      placeholder="내용을 입력하세요..."
-                                                      className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium"
-                                                  />
-                                                  <button onClick={() => submitComment(activePost.id, false)} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">
-                                                      등록 <Send size={14} className="ml-1.5" />
-                                                  </button>
+                                                  <input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(activePost.id, false); } }} placeholder="내용을 입력하세요..." className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium" />
+                                                  <button onClick={() => submitComment(activePost.id, false)} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">등록 <Send size={14} className="ml-1.5" /></button>
                                               </div>
                                           </div>
                                       </div>
                                   )
                               ) : (
-                                  <div className="bg-slate-900/50 border border-slate-800/80 text-slate-500 text-[11px] font-bold p-4 rounded-xl text-center shadow-inner">
-                                      로그인 후 참여할 수 있습니다.
-                                  </div>
+                                  <div className="bg-slate-900/50 border border-slate-800/80 text-slate-500 text-[11px] font-bold p-4 rounded-xl text-center shadow-inner">로그인 후 참여할 수 있습니다.</div>
                               )}
                           </div>
                       </div>
@@ -741,24 +643,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                             const catValue = cat.replace('🏆 ', '');
                             const isSelected = category === catValue;
                             const isMatchTalk = catValue === '매치톡';
-                            
                             let btnClass = "py-2.5 px-4 sm:px-5 rounded-xl text-[11px] sm:text-xs font-black transition-all shrink-0 whitespace-nowrap uppercase tracking-widest border";
-                            
-                            if (isSelected) {
-                                btnClass += isMatchTalk 
-                                    ? " bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40" 
-                                    : " bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-900/40";
-                            } else {
-                                btnClass += isMatchTalk 
-                                    ? " bg-slate-800/80 text-blue-400 border-slate-700/50 hover:bg-slate-700 hover:text-blue-300" 
-                                    : " bg-slate-800/80 text-slate-500 border-slate-700/50 hover:bg-slate-700 hover:text-slate-300";
-                            }
-
-                            return (
-                            <button key={catValue} onClick={() => { setCategory(catValue); setVisibleCount(10); }} className={btnClass}>
-                                {cat}
-                            </button>
-                            )
+                            if (isSelected) btnClass += isMatchTalk ? " bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40" : " bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-900/40";
+                            else btnClass += isMatchTalk ? " bg-slate-800/80 text-blue-400 border-slate-700/50 hover:bg-slate-700 hover:text-blue-300" : " bg-slate-800/80 text-slate-500 border-slate-700/50 hover:bg-slate-700 hover:text-slate-300";
+                            return <button key={catValue} onClick={() => { setCategory(catValue); setVisibleCount(10); }} className={btnClass}>{cat}</button>
                           })}
                       </div>
                   </div>
@@ -766,6 +654,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                   {category === '매치톡' ? (
                       <MatchTalkBoard 
                           user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} 
+                          activeRankingData={activeRankingData} // 🔥 실시간 랭킹 배관 2 연결!
                           selectedMatchId={null} 
                           onSelectMatch={(id) => {
                               setSelectedPostId(id);
@@ -809,28 +698,15 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               return (
                               <div key={post.id} onClick={() => handlePostClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group ${selectedPostId === post.id ? 'bg-slate-800/30' : ''}`}>
                                   <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pl-1 pr-8">
-                                      <span className={`text-slate-500 font-black italic text-[11px] sm:text-xs w-6 text-center shrink-0`}>
-                                          {boardNumber}
-                                      </span>
-                                      <span className={`text-[9px] sm:text-[10px] font-black px-2 py-[2px] rounded uppercase shrink-0 border transition-colors bg-slate-800 text-slate-400 border-slate-700 shadow-inner group-hover:border-emerald-500/50 group-hover:text-emerald-400`}>
-                                          {post.cat}
-                                      </span>
-                                      
+                                      <span className={`text-slate-500 font-black italic text-[11px] sm:text-xs w-6 text-center shrink-0`}>{boardNumber}</span>
+                                      <span className={`text-[9px] sm:text-[10px] font-black px-2 py-[2px] rounded uppercase shrink-0 border transition-colors bg-slate-800 text-slate-400 border-slate-700 shadow-inner group-hover:border-emerald-500/50 group-hover:text-emerald-400`}>{post.cat}</span>
                                       <h3 className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors leading-normal pr-6 overflow-visible">
                                           {post.title}
-                                          {(ytId || hasImg) && (
-                                              <span className="text-emerald-500 text-[9px] ml-1.5 font-black uppercase tracking-tighter shrink-0 align-middle">
-                                                  {ytId ? 'Y' : 'I'}
-                                              </span>
-                                          )}
+                                          {(ytId || hasImg) && <span className="text-emerald-500 text-[9px] ml-1.5 font-black uppercase tracking-tighter shrink-0 align-middle">{ytId ? 'Y' : 'I'}</span>}
                                       </h3>
                                   </div>
-                                  
                                   <div className="flex items-center gap-2.5 shrink-0 ml-2">
-                                      {/* 🔥 라이트 썸네일 안전 렌더링 */}
-                                      {thumbSrc && (
-                                          <img src={thumbSrc} alt="thumb" className="w-[36px] h-[40px] rounded-lg object-cover border border-slate-700 block shrink-0" />
-                                      )}
+                                      {thumbSrc && <img src={thumbSrc} alt="thumb" className="w-[36px] h-[40px] rounded-lg object-cover border border-slate-700 block shrink-0" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />}
                                       <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${commentCount > 0 ? 'bg-emerald-950/50 border border-emerald-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
                                           <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${commentCount > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{commentCount}</span>
                                           <span className={`text-[8px] font-bold leading-none ${commentCount > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>댓글</span>
@@ -839,12 +715,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               </div>
                               )
                           })}
-                          
                           {hasMore && (
                               <div className="p-3 border-t border-slate-800/50 flex justify-center bg-slate-900/30">
-                                  <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-5 py-2.5 bg-slate-800 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-lg">
-                                      더 보기 ▼
-                                  </button>
+                                  <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-5 py-2.5 bg-slate-800 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-lg">더 보기 ▼</button>
                               </div>
                           )}
                       </div>
@@ -852,12 +725,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
                   {user && category !== '매치톡' && (
                       <div className="flex justify-end pt-5 pb-8">
-                        <button 
-                            onClick={() => { setViewMode('WRITE'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl text-[12px] sm:text-[13px] font-black transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95 tracking-widest uppercase"
-                        >
-                            <Edit3 size={16} />
-                            <span>글쓰기</span>
+                        <button onClick={() => { setViewMode('WRITE'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl text-[12px] sm:text-[13px] font-black transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95 tracking-widest uppercase">
+                            <Edit3 size={16} /><span>글쓰기</span>
                         </button>
                       </div>
                   )}
