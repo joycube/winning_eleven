@@ -25,7 +25,6 @@ import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
 
 // 🔥 [성능 최적화] 탭 전환 시에만 필요한 뷰 코드를 지연 로딩(Lazy Loading)하도록 전면 교체!
-// 초기 접속 시 수 MB에 달하는 자바스크립트 다운로드를 막아 속도를 비약적으로 높입니다.
 const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
 const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
 const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
@@ -52,6 +51,34 @@ export default function FootballLeagueApp() {
   const [latestPopupNotice, setLatestPopupNotice] = useState<Notice | null>(null);
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
+
+  // 🔥 [UX 디벨롭] 탭 클릭 시 화면 상태를 강제 초기화(리셋) 하는 중앙 통제 함수
+  const handleViewChange = (newView: any) => {
+      setCurrentView(newView);
+      
+      if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          params.set('view', newView);
+
+          if (newView === 'LOCKERROOM') {
+              // 락커룸 탭 클릭: 게시글 읽던 중이라도 무조건 메인 목록으로 강제 복귀
+              params.delete('postId');
+              params.delete('noticeId');
+              window.history.pushState(null, '', `?${params.toString()}`);
+              window.dispatchEvent(new Event('popstate')); // 락커룸 내부에 상태 리셋 신호 쏘기
+          } else if (newView === 'RANKING' || newView === 'SCHEDULE') {
+              // 시즌, 스케줄 탭 클릭: 과거 시즌 보던 중이라도 무조건 최신 시즌(seasons[0])으로 강제 복귀
+              if (seasons && seasons.length > 0) {
+                  const latestSeasonId = seasons[0].id;
+                  setViewSeasonId(latestSeasonId);
+                  params.set('season', String(latestSeasonId));
+              }
+              window.history.pushState(null, '', `?${params.toString()}`);
+          } else {
+              window.history.pushState(null, '', `?${params.toString()}`);
+          }
+      }
+  };
 
   useEffect(() => {
     if (currentView === 'ADMIN' && !isAuthLoading) {
@@ -423,7 +450,7 @@ export default function FootballLeagueApp() {
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       
-      {/* 🔥 [보안 최적화] 가장 최상단에서 인앱 브라우저를 감시하고 튕겨냅니다! */}
+      {/* 🔥 카카오톡 등 인앱 브라우저 접속 시 팝업 띄우는 문지기 */}
       <InAppBrowserGuard />
 
       {latestPopupNotice && !hideTicker && (
@@ -479,9 +506,9 @@ export default function FootballLeagueApp() {
           </div>
       )}
 
-      <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={setCurrentView} /></div>
-      
-      <NavTabs currentView={currentView} setCurrentView={setCurrentView} hasNewNotice={hasNewNotice} />
+      {/* 🔥 [UX 디벨롭] TopBar와 NavTabs에 우리가 만든 '강제 초기화용 중앙 통제 함수'를 물려줍니다! */}
+      <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} /></div>
+      <NavTabs currentView={currentView} setCurrentView={handleViewChange} hasNewNotice={hasNewNotice} />
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
