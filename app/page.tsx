@@ -6,25 +6,31 @@ import { db } from './firebase';
 import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Season, Match, Notice } from './types';
 
-// 컴포넌트들
+// 🔥 [성능 최적화] Next.js Dynamic Import 불러오기
+import dynamic from 'next/dynamic';
+
+// 껍데기(항상 보이는) 컴포넌트들은 기존처럼 즉시 로딩
 import { TopBar } from './components/TopBar';
 import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
-import { RankingView } from './components/RankingView';
-import { ScheduleView } from './components/ScheduleView';
-import { HistoryView } from './components/HistoryView';
-import { AdminView } from './components/AdminView';
-import { MatchEditModal } from './components/MatchEditModal';
-import { FinanceView } from './components/FinanceView'; 
-import LockerRoomView from './components/LockerRoomView';
-import OwnerRoomView from './components/OwnerRoomView'; 
 
 // 훅
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
+
+// 🔥 [성능 최적화] 탭 전환 시에만 필요한 뷰 코드를 지연 로딩(Lazy Loading)하도록 전면 교체!
+// 초기 접속 시 수 MB에 달하는 자바스크립트 다운로드를 막아 속도를 비약적으로 높입니다.
+const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
+const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
+const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
+const ScheduleView = dynamic(() => import('./components/ScheduleView').then(mod => mod.ScheduleView));
+const HistoryView = dynamic(() => import('./components/HistoryView').then(mod => mod.HistoryView));
+const FinanceView = dynamic(() => import('./components/FinanceView').then(mod => mod.FinanceView));
+const AdminView = dynamic(() => import('./components/AdminView').then(mod => mod.AdminView));
+const MatchEditModal = dynamic(() => import('./components/MatchEditModal').then(mod => mod.MatchEditModal));
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -473,7 +479,6 @@ export default function FootballLeagueApp() {
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
-        {/* 🔥 [해결] 락커룸에 명부 정보(owners)를 주입합니다! */}
         {currentView === 'LOCKERROOM' && (
             <LockerRoomView 
                 user={authUser as any} 
