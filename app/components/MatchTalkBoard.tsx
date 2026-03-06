@@ -37,12 +37,13 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
+// 🔥 [수정] 기존 StatusBadge 복구 및 색상 서로 변경 (COMPLETED: 녹색, UPCOMING: 회색)
 const StatusBadge = ({ status }: { status?: string }) => {
     if (!status) return null;
     const s = status.toUpperCase();
-    if (s === 'COMPLETED') return <span className="bg-slate-800 text-slate-400 border-slate-700 text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border whitespace-nowrap w-full text-center">COMPLETED</span>;
+    if (s === 'COMPLETED') return <span className="bg-emerald-900/40 text-emerald-400 border-emerald-500/50 text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border whitespace-nowrap w-full text-center">COMPLETED</span>;
     if (s === 'LIVE') return <span className="bg-red-900/40 text-red-400 border-red-500/50 text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border whitespace-nowrap w-full text-center animate-pulse">LIVE</span>;
-    return <span className="bg-emerald-900/40 text-emerald-400 border-emerald-500/50 text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border whitespace-nowrap w-full text-center">UPCOMING</span>;
+    return <span className="bg-slate-800 text-slate-400 border-slate-700 text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border whitespace-nowrap w-full text-center">UPCOMING</span>;
 };
 
 interface MatchTalkBoardProps {
@@ -105,7 +106,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                             aPR = 100 - hPR;
                         }
 
-                        // 매치카드에 넘겨줄 필수 데이터 병합
                         const finalMatchData = { 
                             ...m, 
                             seasonId: s.id, 
@@ -215,7 +215,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                         </div>
                         
                         <div className="mb-2 pointer-events-none"> 
-                            {/* 🔥 [핵심 해결 포인트] MatchCard에게 팀 정보(masterTeams)와 순위 정보(activeRankingData)를 전달합니다! */}
                             <MatchCard 
                                 match={activePost.matchData} 
                                 onClick={() => {}} 
@@ -321,17 +320,34 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
             ) : visiblePostsList.map((post) => (
                 <div key={post.id} onClick={() => handleMatchClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
                     <div className="flex flex-col items-center justify-center shrink-0 mr-3 sm:mr-4 w-[60px] sm:w-[68px]">
+                         {/* 🔥 [수정] 복구된 StatusBadge 배치 */}
                          <StatusBadge status={post.matchData.status} />
                     </div>
                     <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-6">
-                        <span className="bg-blue-900/30 text-blue-400 border-blue-500/30 group-hover:border-blue-500/60 text-[9px] sm:text-[10px] font-black px-2 py-[2px] rounded uppercase shrink-0 border transition-colors hidden sm:block">
-                            {post.cat}
-                        </span>
                         <div className="flex flex-col min-w-0 flex-1 overflow-visible pr-2">
                             <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
-                            <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic mt-0.5">
-                                {post.title}
-                            </h3>
+                            
+                            {/* 🔥 [수정] A VS B 텍스트 우측에 전광판 스타일 스코어 추가 */}
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
+                                    {post.title}
+                                </h3>
+                                
+                                {post.matchData.status?.toUpperCase() === 'COMPLETED' ? (
+                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-emerald-900/40 text-emerald-400 border-emerald-500/40 shadow-inner">
+                                        {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                    </span>
+                                ) : post.matchData.status?.toUpperCase() === 'LIVE' ? (
+                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-red-900/40 text-red-400 border-red-500/40 shadow-inner animate-pulse">
+                                        {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                    </span>
+                                ) : (
+                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-slate-800 text-slate-500 border-slate-700 shadow-inner">
+                                        - : -
+                                    </span>
+                                )}
+                            </div>
+
                         </div>
                     </div>
                     <div className="flex items-center gap-2.5 shrink-0 ml-1">
