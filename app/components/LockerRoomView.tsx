@@ -19,17 +19,14 @@ interface UserData {
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-// 💡 [클린 코드] 반복되는 띄어쓰기/특수기호 무시 로직 유틸 함수
 const normalizeName = (str?: string | null): string => {
     return (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 };
 
-// 💡 [클린 코드] 불량 이미지(라인 스티커 등) 판독기
 const isBadImage = (url?: string | null): boolean => {
     return !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 };
 
-// 💡 [TS 에러 픽스] 무조건 문자열(string)을 반환하도록 타입 명시하여 ts(2322) 차단
 const getBestProfileImage = (
     userObj?: any | null, 
     ownersList?: any[] | null, 
@@ -62,7 +59,6 @@ const getBestProfileImage = (
     return COMMON_DEFAULT_PROFILE;
 };
 
-// 💡 [TS 에러 픽스] null 반환을 제거하고 빈 문자열('')을 반환하도록 강제
 const getValidYoutubeId = (url?: string, id?: string): string => {
     let finalId = id || '';
     if (!finalId || finalId === 'undefined' || finalId === 'null') {
@@ -168,7 +164,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       if (!user || !post.id) return alert("🚨 로그인이 필요합니다.");
       try {
           const isNotice = !!notices.find(n => n.id === post.id);
-          const postRef = doc(db, isNotice ? 'notices' : 'posts', post.id);
+          const colName = isNotice ? 'notices' : 'posts';
+          const postRef = doc(db, colName, post.id);
           const postSnap = await getDoc(postRef);
           if (!postSnap.exists()) return;
           
@@ -184,8 +181,13 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); }
           }
 
-          await updateDoc(postRef, isNotice ? { likedBy: likes, dislikedBy: dislikes } : { likes, dislikes });
-      } catch (error) { console.error(error); }
+          // 🔥 [픽스] 공지사항 업데이트 시 파이어베이스 규칙에 맞게 updatedAt 추가
+          if (isNotice) {
+              await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() });
+          } else {
+              await updateDoc(postRef, { likes, dislikes });
+          }
+      } catch (error) { console.error(error); alert("처리 실패: " + (error as Error).message); }
   };
 
   const handleWritePost = async () => {
@@ -234,6 +236,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       } catch (e) { alert("삭제 실패"); }
   };
 
+  // 🔥 [픽스] 공지사항 댓글 저장 시 불필요한 replies 필드 제외 및 updatedAt 추가
   const submitComment = async (postId: string, isReply: boolean) => {
       if (!user) return alert("🚨 로그인이 필요합니다.");
       const textToSubmit = isReply ? replyText.trim() : commentText.trim();
@@ -249,17 +252,20 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
       try {
           if (isNotice) {
-              let updatedComments = [...(post.replies || post.comments || [])];
+              // notices는 오직 comments 필드 하나로만 관리
+              let updatedComments = [...(post.comments || post.replies || [])];
               const newComment = {
                   id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, 
                   text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false
               };
+              
               if (isReply) {
                   updatedComments = updatedComments.map((c:any) => c.id === replyingTo!.parentId ? { ...c, replies: [...(c.replies || []), newComment] } : c);
               } else {
                   updatedComments.push(newComment);
               }
-              await updateDoc(doc(db, 'notices', postId), { replies: updatedComments, comments: updatedComments });
+              // 🔥 replies 필드 제거, updatedAt 추가
+              await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
               updatedComments.push({
@@ -270,7 +276,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           }
           isReply ? setReplyText('') : setCommentText('');
           if (isReply) setReplyingTo(null);
-      } catch (e) { alert("처리 실패"); }
+      } catch (e) { alert("처리 실패: " + (e as Error).message); }
   };
 
   const handleSaveEdit = async (postId: string) => {
@@ -281,13 +287,13 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
       try {
           if (isNotice) {
-              let updatedComments = [...(post.replies || post.comments || [])];
+              let updatedComments = [...(post.comments || post.replies || [])];
               updatedComments = updatedComments.map((c:any) => {
                   if (c.id === editingCommentId) return { ...c, text: editCommentText.trim(), isEdited: true };
                   if (c.replies) c.replies = c.replies.map((r:any) => r.id === editingCommentId ? { ...r, text: editCommentText.trim(), isEdited: true } : r);
                   return c;
               });
-              await updateDoc(doc(db, 'notices', postId), { replies: updatedComments, comments: updatedComments });
+              await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
               updatedComments = updatedComments.map((c:any) => c.id === editingCommentId ? { ...c, text: editCommentText.trim(), isEdited: true } : c);
@@ -305,14 +311,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
       try {
           if (isNotice) {
-              let rootArray = [...(post.replies || post.comments || [])];
+              let rootArray = [...(post.comments || post.replies || [])];
               const toggleLike = (arr: string[]) => arr.includes(user.uid) ? arr.filter(id => id !== user.uid) : [...arr, user.uid];
               if (parentId) {
                   rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).map((r:any) => r.id === commentId ? { ...r, likedBy: toggleLike(r.likedBy||[]) } : r) } : c);
               } else {
                   rootArray = rootArray.map((c:any) => c.id === commentId ? { ...c, likedBy: toggleLike(c.likedBy||[]) } : c);
               }
-              await updateDoc(doc(db, 'notices', postId), { replies: rootArray, comments: rootArray });
+              await updateDoc(doc(db, 'notices', postId), { comments: rootArray, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
               updatedComments = updatedComments.map((c:any) => c.id === commentId ? { ...c, likes: c.likes?.includes(user.uid) ? c.likes.filter((id: string) => id !== user.uid) : [...(c.likes||[]), user.uid] } : c);
@@ -327,10 +333,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       
       if (isNotice) {
           const post = notices.find(n => n.id === postId);
-          let rootArray = [...(post?.replies || post?.comments || [])];
+          let rootArray = [...(post?.comments || post?.replies || [])];
           if (parentId) rootArray = rootArray.map((c:any) => c.id === parentId ? { ...c, replies: (c.replies||[]).filter((r:any) => r.id !== commentId) } : c);
           else rootArray = rootArray.filter((c:any) => c.id !== commentId);
-          await updateDoc(doc(db, 'notices', postId), { replies: rootArray, comments: rootArray });
+          await updateDoc(doc(db, 'notices', postId), { comments: rootArray, updatedAt: new Date().toISOString() });
       } else {
           const post = posts.find(p => p.id === postId);
           let updatedComments = [...(post?.comments || [])].filter((c: any) => c.id !== commentId && c.parentId !== commentId);
@@ -351,7 +357,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const visiblePostsList = filteredPosts.slice(0, visibleCount);
   const hasMore = visiblePostsList.length < filteredPosts.length;
 
-  // 🔥 [완벽 픽스] 공지사항 작성자가 '운영진'이거나 없을 경우, 최고 관리자(ADMIN)의 프로필을 강제로 연결
   const getNoticeAuthorData = (post: any): { name: string; photo: string } => {
       if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
       
@@ -361,7 +366,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
       let matchedOwner = null;
 
-      // 1. 작성자 이름이나 ID가 있으면 명부에서 매칭 시도
       if (rawName || rawId) {
           const targetFuzzy = normalizeName(rawName);
           matchedOwner = owners.find(o => 
@@ -370,12 +374,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           );
       }
 
-      // 2. 작성자가 없거나 '운영진'인 경우 무조건 최고 관리자(ADMIN) 계정을 찾아서 덮어씌움
       if (!matchedOwner && (!rawName || rawName === '운영진')) {
           matchedOwner = owners.find((o: any) => o.role === 'ADMIN');
       }
 
-      // 3. 최종 이름과 사진 추출 (불타는 베컴 프사 적용)
       const finalName = matchedOwner?.nickname || rawName || '운영진';
       const finalPhoto = getBestProfileImage(user, owners, rawPhoto, finalName);
 
