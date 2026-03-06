@@ -15,6 +15,9 @@ import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
 
+// 🔥 [보안 최적화] 카카오톡 등 인앱 브라우저 접속 시 강제 탈출시키는 문지기 컴포넌트 추가
+import InAppBrowserGuard from './components/InAppBrowserGuard';
+
 // 훅
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
@@ -420,6 +423,9 @@ export default function FootballLeagueApp() {
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       
+      {/* 🔥 [보안 최적화] 가장 최상단에서 인앱 브라우저를 감시하고 튕겨냅니다! */}
+      <InAppBrowserGuard />
+
       {latestPopupNotice && !hideTicker && (
           <div className="w-full bg-[#050b14] border-b border-emerald-500/30 py-2.5 px-4 flex items-center justify-between z-50">
               <style>{`
