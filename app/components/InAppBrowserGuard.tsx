@@ -2,14 +2,14 @@
 import React, { useEffect, useState } from 'react';
 
 export default function InAppBrowserGuard() {
-    const [isIOSInApp, setIsIOSInApp] = useState(false);
+    const [showIOSPopup, setShowIOSPopup] = useState(false);
 
     useEffect(() => {
         // 유저가 접속한 브라우저 정보 가져오기
         const userAgent = navigator.userAgent.toLowerCase();
         const targetUrl = window.location.href;
 
-        // 대표적인 인앱 브라우저 키워드 감지 (카톡, 인스타, 네이버, 라인, 다음)
+        // 대표적인 인앱 브라우저 키워드 감지 (카톡, 인스타, 네이버, 라인, 다음 등)
         const isInApp = /kakaotalk|instagram|naver|line|daum/i.test(userAgent);
 
         if (isInApp) {
@@ -17,43 +17,45 @@ export default function InAppBrowserGuard() {
             const isIOS = /iphone|ipad|ipod/i.test(userAgent);
 
             if (isAndroid) {
-                // 🚀 안드로이드: 크롬 브라우저로 강제 탈출 (Intent URI)
+                // 🚀 안드로이드: 묻지도 따지지도 않고 크롬 브라우저로 강제 납치 (Intent URI)
                 const intentUrl = `intent://${targetUrl.replace(/https?:\/\//i, '')}#Intent;scheme=https;package=com.android.chrome;end;`;
                 window.location.href = intentUrl;
             } else if (isIOS) {
-                // 🍎 iOS: 강제 탈출이 불가능하므로 안내 화면 띄우기
-                setIsIOSInApp(true);
+                // 🍎 iOS: 화면을 막지 않고, 부드러운 안내 팝업만 띄우기
+                setShowIOSPopup(true);
             }
         }
     }, []);
 
-    // 인앱 브라우저가 아니거나 안드로이드면 이 컴포넌트는 화면에 아무것도 그리지 않음 (투명 망토)
-    if (!isIOSInApp) return null;
+    // 인앱 브라우저가 아니거나(일반 사파리/크롬), 안드로이드면 화면에 아무것도 그리지 않음
+    if (!showIOSPopup) return null;
 
-    // 아이폰 인앱 브라우저 유저에게만 보여지는 강력한 차단막 화면
+    // 아이폰 인앱 브라우저 유저에게만 하단에 띄워주는 부드러운 팝업
     return (
-        <div className="fixed inset-0 z-[99999] bg-[#0f172a] flex flex-col items-center justify-center p-6 text-center">
-            <div className="text-6xl mb-6">🚨</div>
-            <h2 className="text-2xl font-black text-white italic tracking-tighter mb-4 leading-tight">
-                현재 카카오톡 화면에서는<br/>구글 로그인이 차단됩니다!
-            </h2>
-            <div className="bg-slate-800 border border-slate-700 p-5 rounded-2xl mb-8 shadow-xl">
-                <p className="text-slate-300 text-sm font-medium leading-relaxed">
-                    구글의 보안 정책으로 인해<br/>
-                    앱 내부 화면에서는 로그인이 불가능합니다.<br/><br/>
-                    화면 우측 하단(또는 상단)의 <strong className="text-emerald-400">점 세개(⋮)</strong>나 <br/>
-                    <strong className="text-emerald-400">나침반 모양 아이콘</strong>을 누른 후<br/><br/>
-                    <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 px-2 py-1 rounded font-black">
-                        [다른 브라우저로 열기]
-                    </span> 또는<br/>
-                    <span className="bg-blue-500/20 text-blue-400 border border-blue-500/50 px-2 py-1 rounded font-black mt-2 inline-block">
-                        [Safari로 열기]
-                    </span> 를<br/>
-                    선택해 주세요!
-                </p>
+        <div className="fixed bottom-6 left-4 right-4 z-[99999] bg-[#0f172a] border border-slate-700 p-5 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-5">
+            <div className="flex justify-between items-start mb-3">
+                <h3 className="text-yellow-500 font-black text-[13px] flex items-center gap-1.5 tracking-tighter">
+                    <span>🚨</span> 브라우저 환경 안내
+                </h3>
+                <button 
+                    onClick={() => setShowIOSPopup(false)} 
+                    className="text-slate-400 hover:text-white bg-slate-800 rounded-full w-6 h-6 flex items-center justify-center text-[10px] font-bold shadow-inner"
+                    title="닫기"
+                >
+                    ✕
+                </button>
             </div>
-            <div className="animate-bounce mt-4">
-                <span className="text-4xl">👇</span>
+            <p className="text-slate-300 text-[12px] font-medium leading-relaxed mb-4 break-keep">
+                인앱 상태에서는 구글 로그인에 제한이 있을 수도 있습니다.<br/>
+                화면 하단의 <span className="text-emerald-400 font-bold">나침반 아이콘(또는 점 세개)</span>을 눌러 외부 브라우저(Safari)를 사용하시면 더 쾌적하게 이용할 수 있습니다.
+            </p>
+            <div className="flex gap-2">
+                <button 
+                    onClick={() => setShowIOSPopup(false)} 
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-white text-[12px] font-bold py-3 rounded-xl transition-colors border border-slate-700 shadow-sm"
+                >
+                    팝업 닫고 그냥 구경하기
+                </button>
             </div>
         </div>
     );
