@@ -78,6 +78,48 @@ const formatDate = (ts: any, includeTime = false): string => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
+// 🔥 [성능 최적화] 유튜브 로딩 지연(Facade 패턴) 컴포넌트 추가!
+// 클릭하기 전까지는 가벼운 썸네일 이미지만 보여주어 웹사이트 속도를 폭발적으로 향상시킵니다.
+const LiteYouTubeEmbed = ({ videoId }: { videoId: string }) => {
+    const [isPlaying, setIsPlaying] = useState(false);
+
+    return (
+        <div 
+            className="relative aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black cursor-pointer group"
+            onClick={() => setIsPlaying(true)}
+        >
+            {!isPlaying ? (
+                <>
+                    {/* 가벼운 유튜브 썸네일 이미지 먼저 로드 */}
+                    <img 
+                        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} 
+                        alt="YouTube Video Thumbnail" 
+                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                        loading="lazy"
+                    />
+                    {/* 유튜브 플레이 버튼 UI 흉내내기 */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-16 h-12 bg-red-600/90 rounded-2xl flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.5)] group-hover:bg-red-500 transition-all group-hover:scale-110">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-7 h-7 ml-1">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                        </div>
+                    </div>
+                </>
+            ) : (
+                /* 클릭 시 진짜 유튜브 플레이어로 교체 후 자동 재생 */
+                <iframe 
+                    src={`https://www.youtube.com/embed/${videoId}?autoplay=1`} 
+                    className="w-full h-full border-none" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen
+                ></iframe>
+            )}
+        </div>
+    );
+};
+
+
 const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], owners = [] }: { user: UserData | null, notices: any[], seasons?: any[], masterTeams?: any[], owners?: any[] }) => {
   const [posts, setPosts] = useState<any[]>([]);
   const [category, setCategory] = useState('전체');
@@ -181,7 +223,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); }
           }
 
-          // 🔥 [픽스] 공지사항 업데이트 시 파이어베이스 규칙에 맞게 updatedAt 추가
           if (isNotice) {
               await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() });
           } else {
@@ -236,7 +277,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       } catch (e) { alert("삭제 실패"); }
   };
 
-  // 🔥 [픽스] 공지사항 댓글 저장 시 불필요한 replies 필드 제외 및 updatedAt 추가
   const submitComment = async (postId: string, isReply: boolean) => {
       if (!user) return alert("🚨 로그인이 필요합니다.");
       const textToSubmit = isReply ? replyText.trim() : commentText.trim();
@@ -252,7 +292,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
       try {
           if (isNotice) {
-              // notices는 오직 comments 필드 하나로만 관리
               let updatedComments = [...(post.comments || post.replies || [])];
               const newComment = {
                   id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, 
@@ -264,7 +303,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               } else {
                   updatedComments.push(newComment);
               }
-              // 🔥 replies 필드 제거, updatedAt 추가
               await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
@@ -609,11 +647,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               <div className="h-px w-full bg-slate-800/60 my-5"></div>
                               
                               <div className="space-y-5 mb-6">
-                                  {getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId) && (
-                                      <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black">
-                                          <iframe src={`https://www.youtube.com/embed/${getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId)}`} className="w-full h-full" allowFullScreen></iframe>
-                                      </div>
-                                  )}
+                                  {/* 🔥 [성능 최적화] 라이트 유튜브 렌더링 */}
+                                  {(() => {
+                                      const ytId = getValidYoutubeId(activePost.youtubeUrl, activePost.youtubeId);
+                                      if (!ytId) return null;
+                                      return (
+                                          <LiteYouTubeEmbed videoId={ytId} />
+                                      );
+                                  })()}
                                   
                                   {activePost.imageUrl && (
                                       <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black/20">
@@ -786,6 +827,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   </div>
                                   
                                   <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                                      {/* 🔥 라이트 썸네일 안전 렌더링 */}
                                       {thumbSrc && (
                                           <img src={thumbSrc} alt="thumb" className="w-[36px] h-[40px] rounded-lg object-cover border border-slate-700 block shrink-0" />
                                       )}

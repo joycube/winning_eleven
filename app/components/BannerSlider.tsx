@@ -1,12 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo } from 'react';
+import Image from 'next/image'; // 🔥 [추가] Next.js 강력한 이미지 최적화 컴포넌트 임포트
 import { Banner } from '../types';
 
 interface BannerSliderProps {
   banners: Banner[];
 }
 
-// 🔥 [추가] 유튜브 ID 추출 헬퍼 함수 (다양한 URL 포맷 대응)
+// 유튜브 ID 추출 헬퍼 함수
 const getYouTubeId = (url: string | undefined) => {
     if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -14,11 +15,11 @@ const getYouTubeId = (url: string | undefined) => {
     return (match && match[2].length === 11) ? match[2] : null;
 };
 
-// 🔥 [추가] 유튜브 썸네일 추출 헬퍼 함수 (어드민 리스트 등에서 사용 가능)
+// 유튜브 썸네일 추출 헬퍼 함수
 export const getYouTubeThumbnail = (url: string) => {
     const vId = getYouTubeId(url);
     if (vId) return `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
-    return url; // 유튜브가 아니면 원래 URL 반환
+    return url; 
 };
 
 export const BannerSlider = ({ banners }: BannerSliderProps) => {
@@ -29,10 +30,9 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
   const renderBannerContent = (b: Banner) => {
     const url = b.url || '';
-    const vId = getYouTubeId(url); // 🔥 [수정] 헬퍼 함수 사용하여 ID 추출 안정화
+    const vId = getYouTubeId(url); 
 
     if (vId) {
-        // 🔥 [수정] 유튜브 영상 재생을 위한 Embed URL 구성 (자동재생, 음소거 필수)
         const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
         
         return (
@@ -43,38 +43,41 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
                     allow="autoplay; encrypted-media; gyroscope; picture-in-picture" 
                     title={b.description || 'Banner Video'} 
                  />
-                 {/* 터치 스크롤 등을 위한 오버레이 */}
                  <div className="absolute inset-0 z-20" />
             </div>
         );
     } else {
-        // 🔥 [수정] 일반 이미지의 경우 그대로 노출
-        return <img src={url} className="w-full h-full object-cover opacity-60" alt={b.description || 'Banner'} />;
+        // 🔥 [수정] 무거운 원본 <img> 태그 대신 Next.js <Image> 컴포넌트 적용 (자동 압축, 리사이징, 최우선 로딩)
+        return (
+            <Image 
+                src={url} 
+                alt={b.description || 'Banner'} 
+                fill // 부모 요소를 꽉 채우도록 설정 (기존 w-full h-full 대체)
+                priority // 최상단 배너이므로 브라우저가 최우선으로 로딩하도록 강제
+                sizes="(max-width: 768px) 100vw, 1200px" // 모바일과 PC 화면에 맞게 최적화된 용량만 다운로드
+                className="object-cover opacity-60" 
+            />
+        );
     }
   };
 
   const sortedBannersDisplay = useMemo(() => {
       if (!banners) return [];
-      // 🔥 [수정] "아무 영상이나 먼저 노출 후 랜덤" 요구사항을 위해 강제 정렬 로직 제거
-      // 원본 배열 순서를 유지하거나 섞어서 사용해야 인덱스 관리가 용이함
       return [...banners];
   }, [banners]);
 
   useEffect(() => {
     if (!sortedBannersDisplay || sortedBannersDisplay.length === 0) return;
 
-    // 🔥 [수정] 초기 진입 시 로직: 영상이 있으면 영상 먼저 랜덤 노출
     if (!isBannerInitialized) {
         const videoIndices = sortedBannersDisplay.map((b, i) => {
             return getYouTubeId(b.url) ? i : -1;
         }).filter(i => i !== -1);
 
         if (videoIndices.length > 0) {
-            // 영상이 하나라도 있으면 그 중 하나 랜덤 선택
             const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
             setBannerIdx(randomVideoIdx);
         } else {
-            // 영상 없으면 전체 중 랜덤
             setBannerIdx(Math.floor(Math.random() * sortedBannersDisplay.length));
         }
         setIsBannerInitialized(true);
@@ -85,14 +88,10 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
     if (!currentBanner) return;
 
     const isVideo = !!getYouTubeId(currentBanner.url);
-    // 🔥 [수정] 영상은 15초, 이미지는 5초 노출
     const delay = isVideo ? 15000 : 5000; 
 
     const t = setTimeout(() => {
-        // 🔥 [수정] 이후에는 전체 배너 중 랜덤 노출
         let nextIdx = Math.floor(Math.random() * sortedBannersDisplay.length);
-        
-        // 배너가 여러 개일 경우, 같은 배너가 연속으로 나오는 것 방지 (선택 사항)
         if (sortedBannersDisplay.length > 1 && nextIdx === bannerIdx) {
             nextIdx = (nextIdx + 1) % sortedBannersDisplay.length;
         }
