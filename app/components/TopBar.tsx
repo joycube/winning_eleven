@@ -18,7 +18,7 @@ export const TopBar = ({ setCurrentView }: TopBarProps) => {
                 <Trophy className="text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px]" />
                 {/* 🔥 폰트 크기를 키우고, 이탤릭체 텍스트 끝부분이 깎이지 않도록 pr-2 (우측 여백) 추가 */}
                 <h1 className="text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2">
-                    eFOOTBALL LIVE EVOLUTION
+                    eFOOTBALL   Live   EVOLUTION™
                 </h1>
             </div>
 
