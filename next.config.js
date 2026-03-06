@@ -1,18 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['undici'],
-  // 🔥 [이미지 최적화 설정 추가] 외부 도메인에서 가져오는 이미지를 Next.js 서버가 압축할 수 있도록 허용
+  // 🔥 외부 도메인 이미지 허용 화이트리스트
   images: {
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**', // 모든 https 이미지 허용
-      },
-      {
-        protocol: 'http',
-        hostname: '**', // 모든 http 이미지 허용
-      },
+      { protocol: 'https', hostname: 'lootlevelchill.com' }, // 에러가 발생한 배너 사이트
+      { protocol: 'https', hostname: 'www.konami.com' },     // 코나미
+      { protocol: 'https', hostname: 'img.konami.com' },
+      { protocol: 'https', hostname: 'i.ytimg.com' },        // 유튜브 썸네일
+      { protocol: 'https', hostname: 'lh3.googleusercontent.com' }, // 구글 프로필
+      { protocol: 'https', hostname: 'i.pinimg.com' },
+      { protocol: 'https', hostname: 'stickershop.line-scdn.net' },
+      { protocol: 'https', hostname: '**' },                 // 와일드카드
     ],
   },
 };
+
 module.exports = nextConfig;
