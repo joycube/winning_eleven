@@ -117,7 +117,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         >
             {/* 전체 화면 애니메이션 오버레이 (OPENING 단계) */}
             {isOpen && step === 'OPENING' && (
-                <PackOpeningAnimation onOpen={() => setTimeout(() => setStep('RESULT'), 2500)} cardCount={draftResults.length} />
+                <PackOpeningAnimation onOpen={() => setStep('RESULT')} cardCount={draftResults.length} />
             )}
 
             {/* 기본 모달 (OPENING 아닐 때) */}
@@ -159,7 +159,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 // =============================================================================
 const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPerOwner, setTeamsPerOwner, filterCategory, setFilterCategory, filterTiers, setFilterTiers, filteredCount, totalNeeded, onStart }: any) => {
     const toggleSelection = (id: number, current: number[], setFn: any) => {
-        if (current.includes(id)) setFn(current.filter(i => i !== id));
+        if (current.includes(id)) setFn(current.filter((i: number) => i !== id));
         else setFn([...current, id]);
     };
     const toggleFilterWithAll = (val: string, current: string[], setFn: any) => {
@@ -176,9 +176,10 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
                 <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Owners</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {owners.map((o: Owner) => (
-                        <div key={o.id} onClick={() => toggleSelection(o.id, selectedOwnerIds, setSelectedOwnerIds)} className={`cursor-pointer p-3 rounded-2xl border flex items-center gap-3 transition-all transform active:scale-95 ${selectedOwnerIds.includes(o.id) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700'}`}>
-                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedOwnerIds.includes(o.id) ? 'border-white' : 'border-slate-500'}`}>{selectedOwnerIds.includes(o.id) && <div className="w-2 h-2 bg-white rounded-full" />}</div>
-                            <span className="font-bold text-sm truncate">{o.nickname}</span>
+                        <div key={o.id} onClick={() => toggleSelection(o.id, selectedOwnerIds, setSelectedOwnerIds)} className={`cursor-pointer p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2.5 sm:gap-3 transition-all transform active:scale-95 ${selectedOwnerIds.includes(o.id) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700'}`}>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedOwnerIds.includes(o.id) ? 'border-white' : 'border-slate-500'}`}>{selectedOwnerIds.includes(o.id) && <div className="w-2 h-2 bg-white rounded-full" />}</div>
+                            {/* 🔥 [수정됨] truncate(말줄임표) 제거 및 글자 줄바꿈 허용으로 이름 잘림 방지 */}
+                            <span className="font-bold text-[13px] sm:text-sm leading-tight break-keep">{o.nickname}</span>
                         </div>
                     ))}
                 </div>
@@ -206,26 +207,33 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
 // SUB-COMPONENT: PackOpeningAnimation (애니메이션 핵심)
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
-    // Phase: IDLE -> CHARGING -> CONTRACTING -> EXPLODING -> DEALING
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
+    
+    // 🔥 [수정됨] 스킵 기능을 위해 타이머 ID를 저장할 ref 생성
+    const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
+
+    // 컴포넌트 언마운트 시 안전하게 타이머 정리
+    useEffect(() => {
+        return () => timeoutRefs.current.forEach(clearTimeout);
+    }, []);
 
     const handleClick = () => { 
         if (phase !== 'IDLE') return; 
         
-        // 1. 에너지 충전 (진동 시작)
         setPhase('CHARGING'); 
-        
-        // 2. 수축 (형광 번개 효과)
-        setTimeout(() => setPhase('CONTRACTING'), 800); 
-        
-        // 3. 메인 컬러 폭발
-        setTimeout(() => setPhase('EXPLODING'), 1200); 
-        
-        // 4. 카드 롤링 연출 (텍스트 대신)
-        setTimeout(() => { 
+        timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800)); 
+        timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200)); 
+        timeoutRefs.current.push(setTimeout(() => { 
             setPhase('DEALING'); 
             onOpen(); 
-        }, 1600); 
+        }, 1600)); 
+    };
+
+    // 🔥 [수정됨] 스킵 버튼 클릭 시 실행되는 함수
+    const handleSkip = (e: React.MouseEvent) => {
+        e.stopPropagation(); // 클릭 이벤트가 뒷배경으로 전파되는 것 방지
+        timeoutRefs.current.forEach(clearTimeout); // 진행 중인 타이머 모두 정지
+        onOpen(); // 즉시 결과 화면(RESULT)으로 이동
     };
 
     return (
@@ -254,47 +262,23 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                 .electric-aura { animation: electric-pulse 0.3s infinite alternate; }
             `}</style>
 
-            {/* 배경 효과 */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-black to-black opacity-80" />
 
-            {/* 카드 팩 */}
             <AnimatePresence>
                 {phase !== 'DEALING' && (
                     <motion.div 
                         layoutId="pack" 
                         onClick={handleClick}
                         animate={
-                            phase === 'CHARGING' ? { 
-                                scale: [1, 1.05, 0.98, 1.02], 
-                                filter: "brightness(1.5)",
-                                y: [0, -5, 5, 0]
-                            } : 
-                            phase === 'CONTRACTING' ? { 
-                                scale: 0.2, // 더 강력하게 수축
-                                opacity: 1,
-                                rotate: [0, 10, -10, 0], // 수축하며 비틀기
-                                filter: "brightness(3) contrast(2)",
-                                transition: { duration: 0.4, ease: "backIn" }
-                            } :
-                            phase === 'EXPLODING' ? { 
-                                scale: 30, // 화면 전체 덮음
-                                opacity: 0, 
-                                filter: "brightness(5) blur(20px)",
-                                transition: { duration: 0.4, ease: "easeOut" }
-                            } : 
+                            phase === 'CHARGING' ? { scale: [1, 1.05, 0.98, 1.02], filter: "brightness(1.5)", y: [0, -5, 5, 0] } : 
+                            phase === 'CONTRACTING' ? { scale: 0.2, opacity: 1, rotate: [0, 10, -10, 0], filter: "brightness(3) contrast(2)", transition: { duration: 0.4, ease: "backIn" } } :
+                            phase === 'EXPLODING' ? { scale: 30, opacity: 0, filter: "brightness(5) blur(20px)", transition: { duration: 0.4, ease: "easeOut" } } : 
                             { scale: 1, y: [0, -10, 0] }
                         }
-                        transition={
-                            phase === 'IDLE' ? { y: { repeat: Infinity, duration: 2 } } : 
-                            phase === 'CHARGING' ? { duration: 0.1, repeat: Infinity } : 
-                            {}
-                        }
+                        transition={ phase === 'IDLE' ? { y: { repeat: Infinity, duration: 2 } } : phase === 'CHARGING' ? { duration: 0.1, repeat: Infinity } : {} }
                         className={`relative z-10 cursor-pointer ${phase !== 'IDLE' ? 'pointer-events-none' : ''} ${phase === 'CHARGING' ? 'shake-hard' : ''}`}
                     >
-                        {/* 수축 시 형광 전기 오라 효과 */}
-                        {phase === 'CONTRACTING' && (
-                            <div className="absolute inset-0 -m-10 rounded-full electric-aura bg-white/20 blur-xl z-0" />
-                        )}
+                        {phase === 'CONTRACTING' && ( <div className="absolute inset-0 -m-10 rounded-full electric-aura bg-white/20 blur-xl z-0" /> )}
 
                         <div className="w-64 h-96 md:w-80 md:h-[480px] bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-3xl border-4 border-white/30 shadow-[0_0_80px_rgba(6,182,212,0.5)] flex items-center justify-center relative overflow-hidden group z-10">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
@@ -302,9 +286,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
 
                             <div className="text-center z-10 scale-110">
                                 <div className={`text-8xl mb-6 drop-shadow-md ${phase === 'CHARGING' ? 'text-white' : 'animate-pulse'}`}>⚡</div>
-                                <div className="font-black text-white text-4xl italic tracking-tighter leading-none drop-shadow-lg">
-                                    PREMIUM<br/>PACK
-                                </div>
+                                <div className="font-black text-white text-4xl italic tracking-tighter leading-none drop-shadow-lg"> PREMIUM<br/>PACK </div>
                             </div>
                             
                             {phase === 'IDLE' && (
@@ -317,38 +299,34 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                 )}
             </AnimatePresence>
 
-            {/* 터질 때 메인 컬러(형광) 그라데이션 폭발 */}
             {phase === 'EXPLODING' && (
-                <motion.div 
-                    initial={{ opacity: 0 }} 
-                    animate={{ opacity: [0, 1, 0] }} 
-                    transition={{ duration: 0.6, times: [0, 0.1, 1] }} 
-                    className="fixed inset-0 bg-gradient-to-br from-emerald-400 via-white to-sky-500 z-[100000] pointer-events-none mix-blend-screen" 
-                />
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.6, times: [0, 0.1, 1] }} className="fixed inset-0 bg-gradient-to-br from-emerald-400 via-white to-sky-500 z-[100000] pointer-events-none mix-blend-screen" />
             )}
 
-            {/* 🔥 [수정됨] 속도 2.0으로 4배 느리게 조정 */}
             {phase === 'DEALING' && (
                 <div className="absolute inset-0 flex items-center bg-black/80 z-20 overflow-hidden">
-                    <motion.div 
-                        initial={{ x: "0%" }}
-                        animate={{ x: "-50%" }}
-                        transition={{ duration: 2.0, ease: "linear", repeat: Infinity }} // 속도 조절: 0.5 -> 2.0
-                        className="flex gap-6 pl-6 min-w-max blur-[1px]"
-                    >
+                    <motion.div initial={{ x: "0%" }} animate={{ x: "-50%" }} transition={{ duration: 2.0, ease: "linear", repeat: Infinity }} className="flex gap-6 pl-6 min-w-max blur-[1px]">
                         {Array.from({ length: 24 }).map((_, i) => (
                             <div key={i} className="w-48 h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
                                 <div className="text-center z-10">
                                     <div className="text-5xl mb-2 drop-shadow-md text-white/90">⚡</div>
-                                    <div className="font-black text-white text-lg italic tracking-tighter leading-none drop-shadow-lg opacity-80">
-                                        PREMIUM<br/>PACK
-                                    </div>
+                                    <div className="font-black text-white text-lg italic tracking-tighter leading-none drop-shadow-lg opacity-80"> PREMIUM<br/>PACK </div>
                                 </div>
                             </div>
                         ))}
                     </motion.div>
                 </div>
+            )}
+
+            {/* 🔥 [추가됨] 카드 바로보기 (애니메이션 스킵) 버튼 */}
+            {phase !== 'IDLE' && (
+                <button
+                    onClick={handleSkip}
+                    className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 px-6 py-3 bg-slate-900/80 hover:bg-slate-800 border border-slate-600 text-slate-200 font-bold rounded-full backdrop-blur-md z-[100001] flex items-center gap-2 transition-all active:scale-95 shadow-xl text-sm"
+                >
+                    카드 바로보기 ⏭️
+                </button>
             )}
         </div>
     );
