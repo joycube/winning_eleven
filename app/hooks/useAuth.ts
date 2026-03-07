@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db, googleProvider } from '../firebase';
-// 🔥 [수정] 모바일 사파리 방어를 위해 signInWithRedirect, getRedirectResult 추가 임포트
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -21,13 +20,12 @@ export const useAuth = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 🔥 auth 모듈이 미처 로드되지 않았을 때의 에러를 방지하는 방어 코드
     if (!auth) {
       setIsLoading(false);
       return;
     }
 
-    // 🔥 [추가] 모바일 Redirect 로그인 후 돌아왔을 때 발생할 수 있는 에러를 조용히 처리해주는 배관
+    // Redirect로 돌아왔을 때의 결과를 처리 (백그라운드에서 조용히 실행됨)
     getRedirectResult(auth).catch((error) => {
       console.error("Redirect Login Error:", error);
     });
@@ -64,30 +62,39 @@ export const useAuth = () => {
   }, []);
 
   const loginWithGoogle = async () => {
-    if (!auth) return; // 🔥 방어 코드
+    if (!auth) return;
+    
+    // 🔥 기기 및 브라우저 환경 감지 (인앱 브라우저인지 확인)
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const isInAppBrowser = /KAKAOTALK|Instagram|NAVER|Line|Daum|everytime/i.test(userAgent);
+    
     try {
-      // 🔥 [핵심 픽스] 현재 접속한 기기가 모바일(아이폰/안드로이드)인지 판별합니다.
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
-
-      if (isMobile) {
-        // 📱 모바일/사파리 환경: 팝업 차단을 피하기 위해 화면 전체가 넘어가는 Redirect 방식 사용!
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        // 💻 PC 환경: 기존처럼 부드러운 Popup 방식 사용
-        await signInWithPopup(auth, googleProvider);
-      }
+      // 1️⃣ [1차 시도] 일단 모든 기기에서 Popup을 시도합니다. (카카오톡 등 인앱 브라우저 호환 복구)
+      await signInWithPopup(auth, googleProvider);
+      
     } catch (error: any) {
       console.error("Google Login Error:", error);
-      // 만약 PC 환경인데도 브라우저 설정 때문에 팝업이 차단되었다면, 강제로 Redirect 방식으로 우회 실행!
+      
+      // 2️⃣ [2차 우회] 사파리 등에서 '팝업 차단(popup-blocked)' 에러를 뱉어냈을 때!
       if (error.code === 'auth/popup-blocked') {
-        console.warn("팝업이 차단되어 Redirect 방식으로 재시도합니다.");
-        await signInWithRedirect(auth, googleProvider);
+        
+        if (isInAppBrowser) {
+          // 인앱 브라우저인데 팝업까지 막혔다면, 외부 브라우저로 탈출을 유도해야 합니다.
+          alert("🚨 현재 앱에서는 구글 로그인이 제한되어 있습니다. 우측 하단 메뉴를 눌러 'Safari(또는 인터넷)로 열기'를 선택해주세요!");
+        } else {
+          // 일반 사파리/크롬인데 팝업이 막혔다면, 에러 없이 부드럽게 Redirect 방식으로 재시도합니다.
+          console.warn("팝업이 차단되어 Redirect 방식으로 자동 전환합니다.");
+          await signInWithRedirect(auth, googleProvider);
+        }
+      } else if (error.code !== 'auth/cancelled-popup-request') {
+         // 사용자가 창을 그냥 닫은 게 아니라면 다른 에러 메시지 표출
+         alert("로그인 중 오류가 발생했습니다. Safari 등 외부 브라우저를 이용해주세요.");
       }
     }
   };
 
   const logout = async () => {
-    if (!auth) return; // 🔥 방어 코드
+    if (!auth) return;
     try {
       await signOut(auth);
     } catch (error) {
