@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Owner, MasterTeam, Team, FALLBACK_IMG } from '../types';
 
-// 🔥 [에러 해결] style 태그의 jsx 속성을 TypeScript가 인식하도록 선언
 declare module 'react' {
   interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
     jsx?: boolean;
@@ -21,11 +20,9 @@ interface QuickDraftModalProps {
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
 export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
-    // 다이얼로그 제어용 Ref
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
     
-    // SSR 방지
     useEffect(() => setMounted(true), []);
 
     const [step, setStep] = useState<Step>('SETTINGS');
@@ -36,7 +33,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     const [draftResults, setDraftResults] = useState<Team[]>([]);
     const [filteredCount, setFilteredCount] = useState(0);
 
-    // isOpen 상태에 따라 진짜 모달(showModal)을 열고 닫음
     useEffect(() => {
         if (!mounted) return;
         const dialog = dialogRef.current;
@@ -65,7 +61,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         };
     }, [isOpen, mounted, owners, onClose]);
 
-    // 필터링된 팀 카운트 계산
     useEffect(() => {
         const count = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -75,7 +70,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         setFilteredCount(count);
     }, [filterCategory, filterTiers, masterTeams]);
 
-    // 드래프트 시작 로직
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -115,20 +109,20 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl"
             style={{ zIndex: 99999 }}
         >
-            {/* 전체 화면 애니메이션 오버레이 (OPENING 단계) */}
             {isOpen && step === 'OPENING' && (
                 <PackOpeningAnimation onOpen={() => setStep('RESULT')} cardCount={draftResults.length} />
             )}
 
-            {/* 기본 모달 (OPENING 아닐 때) */}
             {isOpen && step !== 'OPENING' && (
                 <div className="w-full h-[100dvh] flex items-center justify-center p-4">
+                    {/* 🔥 [픽스 2] WebkitMaskImage와 isolate 추가로 사파리 테두리 광원 번짐(노란줄) 완벽 차단 */}
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.95 }} 
                         animate={{ opacity: 1, scale: 1 }} 
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
-                        className={`w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900`}
+                        style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}
+                        className={`w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900 relative isolate`}
                     >
                         <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                             <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
@@ -155,7 +149,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftSettings (설정 화면)
+// SUB-COMPONENT: DraftSettings
 // =============================================================================
 const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPerOwner, setTeamsPerOwner, filterCategory, setFilterCategory, filterTiers, setFilterTiers, filteredCount, totalNeeded, onStart }: any) => {
     const toggleSelection = (id: number, current: number[], setFn: any) => {
@@ -178,7 +172,6 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
                     {owners.map((o: Owner) => (
                         <div key={o.id} onClick={() => toggleSelection(o.id, selectedOwnerIds, setSelectedOwnerIds)} className={`cursor-pointer p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2.5 sm:gap-3 transition-all transform active:scale-95 ${selectedOwnerIds.includes(o.id) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700'}`}>
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedOwnerIds.includes(o.id) ? 'border-white' : 'border-slate-500'}`}>{selectedOwnerIds.includes(o.id) && <div className="w-2 h-2 bg-white rounded-full" />}</div>
-                            {/* 🔥 [수정됨] truncate(말줄임표) 제거 및 글자 줄바꿈 허용으로 이름 잘림 방지 */}
                             <span className="font-bold text-[13px] sm:text-sm leading-tight break-keep">{o.nickname}</span>
                         </div>
                     ))}
@@ -203,16 +196,26 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
     );
 };
 
+// 🔥 렌더링 최적화를 위해 바깥으로 분리된 공통 카드 껍데기
+const PremiumCard = () => (
+    <div className="w-40 h-60 sm:w-48 sm:h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
+        <div className="text-center z-10">
+            <div className="text-4xl sm:text-5xl mb-2 drop-shadow-md text-white/90">⚡</div>
+            <div className="font-black text-white text-base sm:text-lg italic tracking-tighter leading-none drop-shadow-lg opacity-80"> PREMIUM<br/>PACK </div>
+        </div>
+    </div>
+);
+
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation (애니메이션 핵심)
+// SUB-COMPONENT: PackOpeningAnimation (5종 랜덤 애니메이션 & 스킵 기능)
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
+    const [animType, setAnimType] = useState<number>(0); 
     
-    // 🔥 [수정됨] 스킵 기능을 위해 타이머 ID를 저장할 ref 생성
     const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
 
-    // 컴포넌트 언마운트 시 안전하게 타이머 정리
     useEffect(() => {
         return () => timeoutRefs.current.forEach(clearTimeout);
     }, []);
@@ -220,20 +223,24 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
     const handleClick = () => { 
         if (phase !== 'IDLE') return; 
         
+        // 5가지 연출 중 하나를 랜덤으로 결정
+        setAnimType(Math.floor(Math.random() * 5));
+
         setPhase('CHARGING'); 
         timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800)); 
         timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200)); 
         timeoutRefs.current.push(setTimeout(() => { 
             setPhase('DEALING'); 
-            onOpen(); 
+            timeoutRefs.current.push(setTimeout(() => {
+                onOpen();
+            }, 3500));
         }, 1600)); 
     };
 
-    // 🔥 [수정됨] 스킵 버튼 클릭 시 실행되는 함수
     const handleSkip = (e: React.MouseEvent) => {
-        e.stopPropagation(); // 클릭 이벤트가 뒷배경으로 전파되는 것 방지
-        timeoutRefs.current.forEach(clearTimeout); // 진행 중인 타이머 모두 정지
-        onOpen(); // 즉시 결과 화면(RESULT)으로 이동
+        e.stopPropagation(); 
+        timeoutRefs.current.forEach(clearTimeout); 
+        onOpen(); 
     };
 
     return (
@@ -303,30 +310,90 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.6, times: [0, 0.1, 1] }} className="fixed inset-0 bg-gradient-to-br from-emerald-400 via-white to-sky-500 z-[100000] pointer-events-none mix-blend-screen" />
             )}
 
+            {/* 🔥 [픽스 1] w-full h-full 부여 및 shrink-0를 통해 블랙스크린 완벽 복구 */}
             {phase === 'DEALING' && (
-                <div className="absolute inset-0 flex items-center bg-black/80 z-20 overflow-hidden">
-                    <motion.div initial={{ x: "0%" }} animate={{ x: "-50%" }} transition={{ duration: 2.0, ease: "linear", repeat: Infinity }} className="flex gap-6 pl-6 min-w-max blur-[1px]">
-                        {Array.from({ length: 24 }).map((_, i) => (
-                            <div key={i} className="w-48 h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
-                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
-                                <div className="text-center z-10">
-                                    <div className="text-5xl mb-2 drop-shadow-md text-white/90">⚡</div>
-                                    <div className="font-black text-white text-lg italic tracking-tighter leading-none drop-shadow-lg opacity-80"> PREMIUM<br/>PACK </div>
-                                </div>
-                            </div>
-                        ))}
-                    </motion.div>
-                </div>
-            )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20 overflow-hidden w-full h-full">
+                    
+                    {/* 0. 입체 컨베이어 벨트 (3단 교차 가로 흐름) */}
+                    {animType === 0 && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 sm:gap-10 w-full h-full">
+                            <motion.div initial={{ x: "0%" }} animate={{ x: "-50%" }} transition={{ duration: 10, ease: "linear", repeat: Infinity }} className="flex min-w-max scale-75 opacity-60 blur-[2px]">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`t-${i}`} className="shrink-0 pr-4 sm:pr-6"><PremiumCard /></div>)}
+                            </motion.div>
+                            <motion.div initial={{ x: "0%" }} animate={{ x: "-50%" }} transition={{ duration: 5, ease: "linear", repeat: Infinity }} className="flex min-w-max z-10 drop-shadow-2xl">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`m-${i}`} className="shrink-0 pr-4 sm:pr-8"><PremiumCard /></div>)}
+                            </motion.div>
+                            <motion.div initial={{ x: "-50%" }} animate={{ x: "0%" }} transition={{ duration: 8, ease: "linear", repeat: Infinity }} className="flex min-w-max scale-75 opacity-60 blur-[2px]">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`b-${i}`} className="shrink-0 pr-4 sm:pr-6"><PremiumCard /></div>)}
+                            </motion.div>
+                        </div>
+                    )}
 
-            {/* 🔥 [추가됨] 카드 바로보기 (애니메이션 스킵) 버튼 */}
-            {phase !== 'IDLE' && (
-                <button
-                    onClick={handleSkip}
-                    className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 px-6 py-3 bg-slate-900/80 hover:bg-slate-800 border border-slate-600 text-slate-200 font-bold rounded-full backdrop-blur-md z-[100001] flex items-center gap-2 transition-all active:scale-95 shadow-xl text-sm"
-                >
-                    카드 바로보기 ⏭️
-                </button>
+                    {/* 1. 3열 파칭코 릴 (세로 슬롯머신) */}
+                    {animType === 1 && (
+                        <div className="absolute inset-0 flex flex-row items-center justify-center gap-4 sm:gap-10 w-full h-full overflow-hidden">
+                            <motion.div initial={{ y: "-50%" }} animate={{ y: "0%" }} transition={{ duration: 6, ease: "linear", repeat: Infinity }} className="flex flex-col min-h-max scale-75 opacity-60 blur-[2px]">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`l-${i}`} className="shrink-0 pb-4 sm:pb-6"><PremiumCard /></div>)}
+                            </motion.div>
+                            <motion.div initial={{ y: "-50%" }} animate={{ y: "0%" }} transition={{ duration: 7, ease: "linear", repeat: Infinity }} className="flex flex-col min-h-max z-10 drop-shadow-2xl">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`c-${i}`} className="shrink-0 pb-4 sm:pb-8"><PremiumCard /></div>)}
+                            </motion.div>
+                            <motion.div initial={{ y: "-50%" }} animate={{ y: "0%" }} transition={{ duration: 9, ease: "linear", repeat: Infinity }} className="flex flex-col min-h-max scale-75 opacity-60 blur-[2px]">
+                                {Array.from({ length: 40 }).map((_, i) => <div key={`r-${i}`} className="shrink-0 pb-4 sm:pb-6"><PremiumCard /></div>)}
+                            </motion.div>
+                        </div>
+                    )}
+
+                    {/* 2. 유성우 낙하 */}
+                    {animType === 2 && (
+                        <div className="absolute inset-0 w-full h-full">
+                            {Array.from({ length: 20 }).map((_, i) => (
+                                <motion.div key={i} className="absolute" initial={{ x: '120vw', y: '-50vh', rotate: -30 }} animate={{ x: '-50vw', y: '150vh' }} transition={{ duration: 0.8 + (i % 3) * 0.3, repeat: Infinity, delay: (i % 5) * 0.3, ease: "linear" }}>
+                                    <div className="blur-[1px] opacity-80 shrink-0"><PremiumCard /></div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* 3. 소닉 붐 (중앙 앵커 + 직선 방사형 쾅쾅쾅) */}
+                    {animType === 3 && (
+                        <div className="absolute inset-0 flex items-center justify-center w-full h-full">
+                            {Array.from({ length: 24 }).map((_, i) => {
+                                const angle = (Math.PI * 2 * i) / 24; 
+                                const dist = 1000 + (i % 3) * 200; 
+                                return (
+                                    <motion.div key={`burst-${i}`} className="absolute" initial={{ scale: 0.3, opacity: 0, x: 0, y: 0 }} animate={{ scale: [0.5, 1.2], opacity: [1, 0], x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }} transition={{ duration: 0.6, repeat: Infinity, delay: (i % 4) * 0.15, ease: "easeOut" }}>
+                                        <div className="blur-[2px] opacity-70 shrink-0"><PremiumCard /></div>
+                                    </motion.div>
+                                );
+                            })}
+                            <motion.div className="z-30 shadow-[0_0_80px_rgba(52,211,153,0.8)]" animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 0.4, repeat: Infinity, ease: "easeInOut" }}>
+                                <PremiumCard />
+                            </motion.div>
+                        </div>
+                    )}
+
+                    {/* 4. 플래시 팝업 */}
+                    {animType === 4 && (
+                        <div className="absolute inset-0 flex items-center justify-center w-full h-full">
+                            {Array.from({ length: 15 }).map((_, i) => (
+                                <motion.div key={i} className="absolute" initial={{ scale: 0, opacity: 0 }} animate={{ scale: [0, 1.5, 3], opacity: [0, 1, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}>
+                                    <PremiumCard />
+                                </motion.div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* 🔥 스킵 버튼 */}
+                    <div className="fixed bottom-[10%] left-1/2 -translate-x-1/2 z-[100001] animate-in fade-in slide-in-from-bottom-8 duration-500">
+                        <button
+                            onClick={handleSkip}
+                            className="bg-white/95 text-sky-900 font-black text-sm tracking-widest py-3 px-8 rounded-full shadow-[0_10px_30px_rgba(255,255,255,0.3)] hover:scale-105 active:scale-95 transition-transform border border-white/50 whitespace-nowrap"
+                        >
+                            TAP TO SKIP ⏭️
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -359,8 +426,11 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                 @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
                 .tier-a-anim { animation: float-y 3s ease-in-out infinite; box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); border: 2px solid #ffd700 !important; }
             `}</style>
-            <div className="flex-none p-2 flex justify-end"><button onClick={handleFlipAll} className="text-xs text-slate-400 hover:text-white underline">Flip All</button></div>
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+            <div className="flex-none p-2 flex justify-end">
+                <button onClick={handleFlipAll} className="text-xs text-slate-400 hover:text-white underline">Flip All</button>
+            </div>
+            {/* 🔥 [픽스 2] translate3d(0,0,0) 추가로 스크롤 영역 밖으로 네온 빛이 새어나가는(Bleed) 현상 차단 */}
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pb-20">
                     {results.map((team: Team, idx: number) => {
                         const owner = owners.find((o: Owner) => o.nickname === team.ownerName);
