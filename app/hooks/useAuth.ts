@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db, googleProvider } from '../firebase';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+// 🔥 [수정] 모바일 사파리 방어를 위해 signInWithRedirect, getRedirectResult 추가 임포트
+import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export interface AuthUser {
@@ -25,6 +26,11 @@ export const useAuth = () => {
       setIsLoading(false);
       return;
     }
+
+    // 🔥 [추가] 모바일 Redirect 로그인 후 돌아왔을 때 발생할 수 있는 에러를 조용히 처리해주는 배관
+    getRedirectResult(auth).catch((error) => {
+      console.error("Redirect Login Error:", error);
+    });
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
@@ -60,9 +66,23 @@ export const useAuth = () => {
   const loginWithGoogle = async () => {
     if (!auth) return; // 🔥 방어 코드
     try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+      // 🔥 [핵심 픽스] 현재 접속한 기기가 모바일(아이폰/안드로이드)인지 판별합니다.
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+
+      if (isMobile) {
+        // 📱 모바일/사파리 환경: 팝업 차단을 피하기 위해 화면 전체가 넘어가는 Redirect 방식 사용!
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        // 💻 PC 환경: 기존처럼 부드러운 Popup 방식 사용
+        await signInWithPopup(auth, googleProvider);
+      }
+    } catch (error: any) {
       console.error("Google Login Error:", error);
+      // 만약 PC 환경인데도 브라우저 설정 때문에 팝업이 차단되었다면, 강제로 Redirect 방식으로 우회 실행!
+      if (error.code === 'auth/popup-blocked') {
+        console.warn("팝업이 차단되어 Redirect 방식으로 재시도합니다.");
+        await signInWithRedirect(auth, googleProvider);
+      }
     }
   };
 
