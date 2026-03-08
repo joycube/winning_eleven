@@ -17,7 +17,6 @@ interface UserData {
   photo?: string;
 }
 
-// 🔥 [에러 방지] 락커룸 뷰가 받을 데이터 규격을 명확히 지정
 interface LockerRoomViewProps {
   user: UserData | null;
   notices: any[];
@@ -207,11 +206,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
     try {
       if (viewMode === 'WRITE') {
+          // 🔥 [FM 픽스: Dual-Track 쓰기] 기존 authorId(유산)와 새로운 authorUid(뼈대)를 동시에 저장합니다.
           const docRef = await addDoc(collection(db, 'posts'), {
             title: postForm.title, content: postForm.content, cat: postForm.cat,
             imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', 
             youtubeId: getValidYoutubeId(postForm.youtubeUrl, ''), 
-            authorId: user.uid, authorName: user.mappedOwnerId || '미배정 오너', 
+            authorId: user.uid, // [기존 호환성 유지]
+            authorUid: user.uid, // 🔥 [새로운 뼈대 추가]
+            authorName: user.mappedOwnerId || '미배정 오너', 
             authorPhoto: getBestProfileImage(user, owners, user.photoURL, user.mappedOwnerId), 
             createdAt: serverTimestamp(), isPinned: false, isEdited: false, views: 0, likes: [], dislikes: [], comments: []
           });
@@ -263,13 +265,36 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       try {
           if (isNotice) {
               let updatedComments = [...(post.comments || post.replies || [])];
-              const newComment = { id: `reply_${Date.now()}`, ownerId: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false };
+              // 🔥 [FM 픽스: Dual-Track 쓰기] 공지 댓글에 ownerUid 추가
+              const newComment = { 
+                  id: `reply_${Date.now()}`, 
+                  ownerId: user.uid, // [기존 호환성 유지]
+                  ownerUid: user.uid, // 🔥 [새로운 뼈대 추가]
+                  ownerName: authorName, 
+                  ownerPhoto: authorPhoto, 
+                  text: textToSubmit, 
+                  createdAt: new Date().toISOString(), 
+                  likedBy: [], 
+                  isEdited: false 
+              };
               if (isReply) updatedComments = updatedComments.map((c:any) => c.id === replyingTo!.parentId ? { ...c, replies: [...(c.replies || []), newComment] } : c);
               else updatedComments.push(newComment);
               await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
-              updatedComments.push({ id: `cmt_${Date.now()}`, authorId: user.uid, authorName: authorName, authorPhoto: authorPhoto, text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false });
+              // 🔥 [FM 픽스: Dual-Track 쓰기] 일반 글 댓글에 authorUid 추가
+              updatedComments.push({ 
+                  id: `cmt_${Date.now()}`, 
+                  authorId: user.uid, // [기존 호환성 유지]
+                  authorUid: user.uid, // 🔥 [새로운 뼈대 추가]
+                  authorName: authorName, 
+                  authorPhoto: authorPhoto, 
+                  text: textToSubmit, 
+                  createdAt: Date.now(), 
+                  parentId: isReply ? replyingTo!.parentId : null, 
+                  likes: [], 
+                  isEdited: false 
+              });
               await updateDoc(doc(db, 'posts', postId), { comments: updatedComments });
           }
           isReply ? setReplyText('') : setCommentText('');
@@ -351,17 +376,27 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const visiblePostsList = filteredPosts.slice(0, visibleCount);
   const hasMore = visiblePostsList.length < filteredPosts.length;
 
+  // 🔥 [FM 스마트 읽기] UID로 1순위 탐색, 못 찾으면 이름으로 2순위 탐색 (하위 호환)
   const getNoticeAuthorData = (post: any): { name: string; photo: string } => {
       if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
       const rawName = post.authorName || post.ownerName;
-      const rawId = post.authorId || post.ownerId;
+      const rawId = post.authorUid || post.ownerUid || post.authorId || post.ownerId; // UID 우선 탐색
       const rawPhoto = post.authorPhoto || post.ownerPhoto;
+      
       let matchedOwner = null;
-      if (rawName || rawId) {
-          const targetFuzzy = normalizeName(rawName);
-          matchedOwner = owners?.find(o => normalizeName(o.nickname) === targetFuzzy || String(o.id) === String(rawId));
+      if (rawId) {
+          // 1순위: 철근(UID)으로 명부(users) 매칭
+          matchedOwner = owners?.find(o => o.uid === rawId || String(o.id) === String(rawId) || o.docId === rawId);
       }
-      if (!matchedOwner && (!rawName || rawName === '운영진')) matchedOwner = owners?.find((o: any) => o.role === 'ADMIN');
+      if (!matchedOwner && rawName) {
+          // 2순위: UID로 못 찾았으면 과거 유산(닉네임/레거시네임)으로 매칭 (호환성 보장)
+          const targetFuzzy = normalizeName(rawName);
+          matchedOwner = owners?.find(o => normalizeName(o.nickname) === targetFuzzy || normalizeName(o.legacyName) === targetFuzzy);
+      }
+      if (!matchedOwner && (!rawName || rawName === '운영진')) {
+          matchedOwner = owners?.find((o: any) => o.role === 'ADMIN');
+      }
+      
       const finalName = matchedOwner?.nickname || rawName || '운영진';
       const finalPhoto = getBestProfileImage(user, owners, rawPhoto, finalName);
       return { name: finalName, photo: finalPhoto };
@@ -375,9 +410,20 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       return topLevel.map((comment: any) => {
           const replies = isNotice ? (comment.replies || []) : commentsList.filter((c: any) => c.parentId === comment.id);
           const isLiked = isNotice ? comment.likedBy?.includes(user?.uid) : comment.likes?.includes(user?.uid);
+          
+          // 🔥 [FM 스마트 읽기] 댓글 작성자 찾기 (UID -> 닉네임)
           const cName = comment.authorName || comment.ownerName || '알 수 없음';
-          const authorProfileImg = getBestProfileImage(user, owners, comment.authorPhoto || comment.ownerPhoto, cName);
-          const isMyComment = user?.uid === comment.authorId || user?.uid === comment.ownerId;
+          const cUid = comment.authorUid || comment.ownerUid || comment.authorId || comment.ownerId;
+          
+          let matchedOwner = owners?.find(o => o.uid === cUid || String(o.id) === String(cUid) || o.docId === cUid);
+          if (!matchedOwner) {
+              const fuzzy = normalizeName(cName);
+              matchedOwner = owners?.find(o => normalizeName(o.nickname) === fuzzy || normalizeName(o.legacyName) === fuzzy);
+          }
+          
+          const finalName = matchedOwner?.nickname || cName;
+          const authorProfileImg = getBestProfileImage(user, owners, comment.authorPhoto || comment.ownerPhoto, finalName);
+          const isMyComment = user?.uid === cUid; // 권한 확인도 UID 우선으로
 
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
@@ -385,7 +431,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                       <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} />
                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                           <div className="flex items-baseline gap-2 mb-1.5">
-                              <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{cName}</span>
+                              <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{finalName}</span>
                               <span className="text-slate-500 text-[10px] whitespace-nowrap">{formatDate(comment.createdAt, true)}</span>
                               {comment.isEdited && <span className="text-slate-600 text-[10px] italic">(수정됨)</span>}
                           </div>
@@ -405,7 +451,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           {!editingCommentId && (
                               <div className="flex items-center gap-4 text-[12px] text-slate-400 font-bold mt-1">
                                   <button onClick={() => handleCommentReaction(postId, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}><ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}</button>
-                                  <button onClick={() => handleReplySetup(comment.id, comment.id, cName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={13}/> 답글 {replies.length > 0 ? replies.length : ''}</button>
+                                  <button onClick={() => handleReplySetup(comment.id, comment.id, finalName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={13}/> 답글 {replies.length > 0 ? replies.length : ''}</button>
                                   {(isMyComment || isMaster) && (
                                       <div className="flex items-center gap-3 ml-auto text-[11px]">
                                           {isMyComment && <button onClick={() => handleEditCommentSetup(comment)} className="hover:text-blue-400">수정</button>}
@@ -429,16 +475,27 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                       <div className="mt-4 space-y-4 pl-4 sm:pl-12 border-l-2 border-slate-800/50">
                           {replies.map((reply: any) => {
                               const isReplyLiked = isNotice ? reply.likedBy?.includes(user?.uid) : reply.likes?.includes(user?.uid);
+                              
+                              // 🔥 [FM 스마트 읽기] 대댓글 작성자 찾기 (UID -> 닉네임)
                               const rName = reply.authorName || reply.ownerName || '알 수 없음';
-                              const replyAuthorProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, rName);
-                              const isMyReply = user?.uid === reply.authorId || user?.uid === reply.ownerId;
+                              const rUid = reply.authorUid || reply.ownerUid || reply.authorId || reply.ownerId;
+                              
+                              let rMatchedOwner = owners?.find(o => o.uid === rUid || String(o.id) === String(rUid) || o.docId === rUid);
+                              if (!rMatchedOwner) {
+                                  const fuzzy = normalizeName(rName);
+                                  rMatchedOwner = owners?.find(o => normalizeName(o.nickname) === fuzzy || normalizeName(o.legacyName) === fuzzy);
+                              }
+                              
+                              const finalRName = rMatchedOwner?.nickname || rName;
+                              const replyAuthorProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, finalRName);
+                              const isMyReply = user?.uid === rUid;
 
                               return (
                                   <div key={reply.id} className="flex gap-3">
                                       <img src={replyAuthorProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} />
                                       <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                           <div className="flex items-baseline gap-2 mb-1.5">
-                                              <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{rName}</span>
+                                              <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{finalRName}</span>
                                               <span className="text-slate-500 text-[10px] whitespace-nowrap">{formatDate(reply.createdAt, true)}</span>
                                               {reply.isEdited && <span className="text-slate-600 text-[10px] italic">(수정됨)</span>}
                                           </div>
@@ -458,7 +515,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                           {!editingCommentId && (
                                               <div className="flex items-center gap-4 text-[11px] text-slate-400 font-bold mt-1">
                                                   <button onClick={() => handleCommentReaction(postId, reply.id, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isReplyLiked ? 'text-emerald-400' : ''}`}><ThumbsUp size={12} className={isReplyLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}</button>
-                                                  <button onClick={() => handleReplySetup(comment.id, reply.id, rName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={12}/> 답글</button>
+                                                  <button onClick={() => handleReplySetup(comment.id, reply.id, finalRName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={12}/> 답글</button>
                                                   {(isMyReply || isMaster) && (
                                                       <div className="flex items-center gap-3 ml-auto">
                                                           {isMyReply && <button onClick={() => handleEditCommentSetup(reply)} className="hover:text-blue-400">수정</button>}
@@ -529,7 +586,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               selectedPostId.startsWith('match_') ? (
                   <MatchTalkBoard 
                       user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} 
-                      activeRankingData={activeRankingData} // 🔥 실시간 랭킹 배관 1 연결!
+                      activeRankingData={activeRankingData} 
                       selectedMatchId={selectedPostId} 
                       onSelectMatch={(id) => {
                           setSelectedPostId(id);
@@ -553,7 +610,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
                                       {activePost.cat || '전체공지'}
                                   </span>
-                                  {(user?.uid === (activePost.authorId || activePost.ownerId) || isMaster) && (
+                                  {(user?.uid === (activePost.authorUid || activePost.ownerUid || activePost.authorId || activePost.ownerId) || isMaster) && (
                                       <div className="flex gap-2 text-[10px] font-bold">
                                           {!notices.some(n => n.id === activePost.id) && (
                                               <button onClick={() => handleOpenEdit(activePost)} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-blue-400 transition-all shadow-sm">✏️ 수정</button>
@@ -654,7 +711,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                   {category === '매치톡' ? (
                       <MatchTalkBoard 
                           user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} 
-                          activeRankingData={activeRankingData} // 🔥 실시간 랭킹 배관 2 연결!
+                          activeRankingData={activeRankingData} 
                           selectedMatchId={null} 
                           onSelectMatch={(id) => {
                               setSelectedPostId(id);
@@ -685,7 +742,7 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           })}
 
                           {visiblePostsList.length === 0 ? (
-                              <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
+                              <div className="p-16 text-center text-slate-400 font-bold text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
                                   &quot;브로, 그대가 여기 첫번째 작성자가 될 수 있어 🏆&quot;
                               </div>
                           ) : visiblePostsList.map((post, index) => {

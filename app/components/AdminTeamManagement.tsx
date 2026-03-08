@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { db } from '../firebase';
 import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
-import { League, MasterTeam, FALLBACK_IMG } from '../types'; 
+import { League, MasterTeam, Owner, FALLBACK_IMG } from '../types'; // 🔥 Owner 타입 추가
 import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../utils/helpers'; 
 
 // 🔥 TierSelector: 대소문자/공백 꼬임 방지 및 값 매칭 강제화 적용
@@ -144,7 +144,8 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
     );
 };
 
-export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], masterTeams: MasterTeam[] }) => {
+// 🔥 [FM 픽스] AdminTeamManager에 owners 프롭 추가
+export const AdminTeamManager = ({ leagues, masterTeams, owners = [] }: { leagues: League[], masterTeams: MasterTeam[], owners?: Owner[] }) => {
     const [categoryFilter, setCategoryFilter] = useState<'ALL'|'CLUB'|'NATIONAL'>('ALL');
     const [selectedLeague, setSelectedLeague] = useState<string>(''); 
     const [searchTerm, setSearchTerm] = useState('');
@@ -155,6 +156,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     const [tLogo, setTLogo] = useState('');
     const [tRegion, setTRegion] = useState('');
     const [tTier, setTTier] = useState('D'); 
+    const [tOwnerUid, setTOwnerUid] = useState(''); // 🔥 [UID 뼈대 추가] 소유주 UID 상태
     const [editTeamId, setEditTeamId] = useState<string | null>(null);
 
     const handleSaveTeam = async () => {
@@ -162,9 +164,20 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
         
         try {
             const leagueInfo = leagues.find(l => l.name === tRegion);
-            // 🔥 저장 시 무조건 대문자/공백제거 처리하여 깨끗한 데이터만 넘김
             const cleanTier = tTier ? tTier.toUpperCase().trim() : 'D';
-            const teamData = { name: tName, logo: tLogo, region: tRegion, tier: cleanTier, category: leagueInfo?.category || 'CLUB' };
+            
+            // 🔥 [Dual-Track 저장 로직]
+            const selectedOwner = owners.find(o => o.uid === tOwnerUid || o.docId === tOwnerUid || o.nickname === tOwnerUid);
+            
+            const teamData = { 
+                name: tName, 
+                logo: tLogo, 
+                region: tRegion, 
+                tier: cleanTier, 
+                category: leagueInfo?.category || 'CLUB',
+                ownerName: selectedOwner?.nickname || (tOwnerUid && !selectedOwner ? tOwnerUid : ''), // [기존 유산]
+                ownerUid: selectedOwner?.uid || selectedOwner?.docId || '' // 🔥 [새로운 뼈대 UID]
+            };
 
             if (editTeamId) {
                 await updateDoc(doc(db, "master_teams", editTeamId), teamData);
@@ -174,13 +187,12 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 alert("생성 완료");
             }
             
-            // 🔥 폼 리셋 및 닫기 처리
             setEditTeamId(null);
-            setTName(''); setTLogo(''); setTTier('D'); 
+            setTName(''); setTLogo(''); setTTier('D'); setTOwnerUid('');
             setIsEditOpen(false); 
         } catch (error: any) {
             console.error("저장 실패:", error);
-            alert(`🚨 DB 업데이트 실패 (파이어베이스 권한문제일 수 있습니다): ${error.message}`);
+            alert(`🚨 DB 업데이트 실패: ${error.message}`);
         }
     };
 
@@ -188,12 +200,11 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     
     const handleQuickTierUpdate = async (teamId: string, newTier: string) => { 
         try {
-            // 🔥 빠른 설정에서도 깨끗한 데이터로 강제 변환
             const cleanTier = newTier ? newTier.toUpperCase().trim() : 'D';
             await updateDoc(doc(db, "master_teams", teamId), { tier: cleanTier }); 
         } catch (error: any) {
             console.error("빠른 등급 업데이트 실패:", error);
-            alert(`🚨 업데이트 실패: ${error.message}\n(보안 규칙 문제이거나 네트워크를 확인하세요)`);
+            alert(`🚨 업데이트 실패: ${error.message}`);
         }
     };
     
@@ -219,8 +230,9 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
         setTName(team.name);
         setTLogo(team.logo);
         setTRegion(team.region);
-        // 🔥 기존 데이터를 불러올 때도 대문자/공백제거 정제 처리
         setTTier(team.tier ? team.tier.toUpperCase().trim() : 'D'); 
+        // 🔥 불러올 때 UID 또는 이름을 폼에 세팅
+        setTOwnerUid(team.ownerUid || team.ownerName || '');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -273,10 +285,20 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                 <label className="text-[10px] text-slate-500 font-bold">Tier Setting</label>
                                 <TierSelector value={tTier} onChange={setTTier} />
                             </div>
+                            {/* 🔥 [신규 필드] 팀 소유주 배정 (UID 기반) */}
+                            <div className="space-y-1 md:col-span-2">
+                                <label className="text-[10px] text-emerald-500 font-bold italic tracking-widest uppercase">Permanent Club Owner (UID Base)</label>
+                                <select value={tOwnerUid} onChange={e=>setTOwnerUid(e.target.value)} className="w-full bg-slate-950 p-3 rounded border border-emerald-900/50 text-white text-sm focus:border-emerald-500 transition-colors">
+                                    <option value="">-- No Owner (CPU Team) --</option>
+                                    {owners.map(o => (
+                                        <option key={o.id} value={o.uid || o.docId || o.nickname}>{o.nickname} ({o.email || 'Legacy'})</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         <div className="flex gap-2 pt-2">
                             <button onClick={handleSaveTeam} className={`flex-1 py-3 rounded font-bold shadow-lg transition-all ${editTeamId ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>{editTeamId ? 'Update Team' : 'Add Team'}</button>
-                            {editTeamId && <button onClick={()=>{setEditTeamId(null); setTName(''); setTLogo(''); setTTier('D'); setIsEditOpen(false);}} className="px-6 bg-slate-800 rounded text-slate-400 text-sm hover:text-white">Cancel</button>}
+                            {editTeamId && <button onClick={()=>{setEditTeamId(null); setTName(''); setTLogo(''); setTTier('D'); setTOwnerUid(''); setIsEditOpen(false);}} className="px-6 bg-slate-800 rounded text-slate-400 text-sm hover:text-white">Cancel</button>}
                         </div>
                     </div>
                 )}
@@ -336,12 +358,20 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
 
                 {(selectedLeague || searchTerm) && (
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 animate-in fade-in">
-                        {filteredTeams.map(t => (
+                        {filteredTeams.map(t => {
+                            // 🔥 [스마트 읽기] 소유주 닉네임 정밀 조회
+                            const ownerData = owners.find(o => o.uid === t.ownerUid || o.docId === t.ownerUid || o.nickname === t.ownerName);
+                            const ownerNickname = ownerData?.nickname || t.ownerName || '-';
+
+                            return (
                             <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-2.5 rounded-xl border flex flex-col items-center justify-center aspect-square cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
                                 <div className="w-12 h-12 bg-white rounded-full overflow-hidden flex items-center justify-center mb-2 shadow-lg ring-1 ring-slate-700 p-1.5">
                                     <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                 </div>
-                                <span className="text-[10px] text-center text-slate-300 w-full truncate font-bold group-hover:text-white px-1">{t.name}</span>
+                                <span className="text-[10px] text-center text-slate-300 w-full truncate font-bold group-hover:text-white px-1 leading-tight">{t.name}</span>
+                                {/* 🔥 구단주 정보 표시 */}
+                                <span className="text-[8px] text-slate-500 truncate w-full text-center mt-0.5 italic">{ownerNickname}</span>
+                                
                                 {isQuickTierMode ? (
                                     <TierSelector value={t.tier} onChange={(newTier) => t.docId && handleQuickTierUpdate(t.docId, newTier)} isMini={true} />
                                 ) : (
@@ -351,7 +381,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                                     <button onClick={(e)=>{e.stopPropagation(); t.docId && handleDeleteTeam(t.docId);}} className="absolute top-1.5 left-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-[10px]">✕</button>
                                 )}
                             </div>
-                        ))}
+                        )})}
                     </div>
                 )}
                 {filteredTeams.length === 0 && <div className="text-center py-10 text-slate-600 text-xs">No teams found.</div>}

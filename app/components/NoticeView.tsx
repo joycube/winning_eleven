@@ -21,27 +21,26 @@ const isBadImage = (url?: string | null): boolean => {
     return !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 };
 
-// 🔥 [공지사항 전용] 프로필 이미지 & 이름 추출기
-// 작성자가 '운영진'이거나 없을 경우, 관리자 권한을 가진 오너(ADMIN)의 정보를 강제로 끌어옵니다.
+// 🔥 [FM 헬퍼] 공지사항 전용 프로필 이미지 & 이름 추출기 (UID 우선)
 const getNoticeAuthorData = (notice: any, ownersList: Owner[]) => {
     if (!notice) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
     
     const rawName = notice.authorName || notice.ownerName;
-    const rawId = notice.authorId || notice.ownerId;
+    const rawId = notice.authorUid || notice.authorId || notice.ownerUid || notice.ownerId; // 🔥 UID 최우선
     const rawPhoto = notice.authorPhoto || notice.ownerPhoto;
 
     let matchedOwner = null;
 
-    // 1. 작성자 이름이나 ID로 명부 매칭 시도 (띄어쓰기 무시)
-    if (rawName || rawId) {
-        const targetFuzzy = normalizeName(rawName);
-        matchedOwner = ownersList.find(o => 
-            normalizeName(o.nickname) === targetFuzzy || 
-            String(o.id) === String(rawId)
-        );
+    // 1. UID 또는 ID로 명부 매칭
+    if (rawId) {
+        matchedOwner = ownersList.find(o => o.uid === rawId || String(o.id) === String(rawId) || o.docId === rawId);
     }
-
-    // 2. 매칭 실패 시 & 이름이 '운영진'인 경우, 최고 관리자(ADMIN)를 찾아서 매핑
+    // 2. 실패 시 닉네임으로 매칭 시도 (하위 호환)
+    if (!matchedOwner && rawName) {
+        const targetFuzzy = normalizeName(rawName);
+        matchedOwner = ownersList.find(o => normalizeName(o.nickname) === targetFuzzy || normalizeName(o.legacyName) === targetFuzzy);
+    }
+    // 3. 그래도 없으면 최고 관리자(ADMIN) 강제 매핑
     if (!matchedOwner && (!rawName || rawName === '운영진')) {
         matchedOwner = ownersList.find((o: any) => o.role === 'ADMIN');
     }
@@ -58,24 +57,29 @@ const getNoticeAuthorData = (notice: any, ownersList: Owner[]) => {
     return { name: finalName, photo: finalPhoto };
 };
 
-// 🔥 [공지사항 댓글 전용] 프로필 이미지 추출기
-const getCommentProfileImage = (rawName: string, rawPhoto: string, ownersList: Owner[]) => {
-    const targetFuzzy = normalizeName(rawName);
-    const matchedOwner = ownersList.find(o => normalizeName(o.nickname) === targetFuzzy);
+// 🔥 [FM 헬퍼] 공지사항 댓글 전용 정보 추출기 (UID 포함)
+const getCommentAuthorData = (cmt: any, ownersList: Owner[]) => {
+    const rawName = cmt.ownerName || cmt.authorName || '알 수 없음';
+    const rawId = cmt.ownerUid || cmt.authorUid || cmt.ownerId || cmt.authorId;
+    const rawPhoto = cmt.ownerPhoto || cmt.authorPhoto;
+
+    let matchedOwner = null;
+    if (rawId) matchedOwner = ownersList.find(o => o.uid === rawId || String(o.id) === String(rawId) || o.docId === rawId);
+    if (!matchedOwner && rawName) {
+        const fuzzy = normalizeName(rawName);
+        matchedOwner = ownersList.find(o => normalizeName(o.nickname) === fuzzy || normalizeName(o.legacyName) === fuzzy);
+    }
+
+    const name = matchedOwner?.nickname || rawName;
+    const photo = matchedOwner && !isBadImage(matchedOwner.photo) ? matchedOwner.photo : (!isBadImage(rawPhoto) ? rawPhoto : COMMON_DEFAULT_PROFILE);
     
-    if (matchedOwner && !isBadImage(matchedOwner.photo)) {
-        return String(matchedOwner.photo);
-    }
-    if (!isBadImage(rawPhoto)) {
-        return String(rawPhoto);
-    }
-    return COMMON_DEFAULT_PROFILE;
+    return { name, photo, matchedUid: matchedOwner?.uid || String(matchedOwner?.id) };
 };
 
 export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
     const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
 
-    const [activeOwnerId, setActiveOwnerId] = useState<string>('');
+    const [activeOwnerId, setActiveOwnerId] = useState<string>(''); // Select에서 고르는 내 ID (숫자 id)
     const [commentText, setCommentText] = useState('');
 
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -194,8 +198,15 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         }
     };
 
+    // 🔥 좋아요에 사용되는 ID도 가급적 UID로 통일 (호환성 유지)
+    const getActiveUserIdentifier = () => {
+        if (!currentOwner) return activeOwnerId;
+        return currentOwner.uid || String(currentOwner.id);
+    };
+
     const handleReaction = async (type: 'LIKE' | 'DISLIKE') => {
         if (!activeOwnerId || !selectedNotice) return alert("프로필을 먼저 선택해주세요.");
+        const userId = getActiveUserIdentifier();
         try {
             const noticeRef = doc(db, 'notices', selectedNotice.id);
             const noticeSnap = await getDoc(noticeRef);
@@ -204,11 +215,11 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
             let dislikes = noticeData.dislikedBy || [];
 
             if (type === 'LIKE') {
-                if (likes.includes(activeOwnerId)) likes = likes.filter(id => id !== activeOwnerId); 
-                else { likes.push(activeOwnerId); dislikes = dislikes.filter(id => id !== activeOwnerId); }
+                if (likes.includes(userId)) likes = likes.filter(id => id !== userId); 
+                else { likes.push(userId); dislikes = dislikes.filter(id => id !== userId); }
             } else {
-                if (dislikes.includes(activeOwnerId)) dislikes = dislikes.filter(id => id !== activeOwnerId); 
-                else { dislikes.push(activeOwnerId); likes = likes.filter(id => id !== activeOwnerId); }
+                if (dislikes.includes(userId)) dislikes = dislikes.filter(id => id !== userId); 
+                else { dislikes.push(userId); likes = likes.filter(id => id !== userId); }
             }
             const now = new Date().toISOString();
             await updateDoc(noticeRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: now });
@@ -216,15 +227,20 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         } catch (error) { console.error(error); }
     };
 
+    // 🔥 댓글 등록 시 Dual-Track(이름+UID) 저장
     const handleAddComment = async () => {
         if (!activeOwnerId) return alert("프로필을 확인해주세요.");
         if (!commentText.trim()) return alert("내용을 입력해주세요.");
-        if (!selectedNotice) return;
-        const owner = owners.find(o => String(o.id) === activeOwnerId);
-        if (!owner) return;
+        if (!selectedNotice || !currentOwner) return;
 
         const newComment: NoticeComment = {
-            id: `cmt_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || COMMON_DEFAULT_PROFILE, text: commentText, createdAt: new Date().toISOString()
+            id: `cmt_${Date.now()}`, 
+            ownerId: String(currentOwner.id), // [유산]
+            ownerUid: currentOwner.uid || String(currentOwner.id), // 🔥 [UID 뼈대]
+            ownerName: currentOwner.nickname, 
+            ownerPhoto: currentOwner.photo || COMMON_DEFAULT_PROFILE, 
+            text: commentText, 
+            createdAt: new Date().toISOString()
         };
         const updatedComments = [...(selectedNotice.comments || []), newComment];
         await updateCommentsInDB(updatedComments);
@@ -234,12 +250,16 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
     const handleAddReply = async (parentId: string) => {
         if (!activeOwnerId) return alert("프로필을 확인해주세요.");
         if (!replyText.trim()) return alert("답글을 입력해주세요.");
-        if (!selectedNotice) return;
-        const owner = owners.find(o => String(o.id) === activeOwnerId);
-        if (!owner) return;
+        if (!selectedNotice || !currentOwner) return;
 
         const newReply: NoticeComment = {
-            id: `reply_${Date.now()}`, ownerId: String(owner.id), ownerName: owner.nickname, ownerPhoto: owner.photo || COMMON_DEFAULT_PROFILE, text: replyText, createdAt: new Date().toISOString()
+            id: `reply_${Date.now()}`, 
+            ownerId: String(currentOwner.id), 
+            ownerUid: currentOwner.uid || String(currentOwner.id), // 🔥 [UID 뼈대]
+            ownerName: currentOwner.nickname, 
+            ownerPhoto: currentOwner.photo || COMMON_DEFAULT_PROFILE, 
+            text: replyText, 
+            createdAt: new Date().toISOString()
         };
 
         const updatedComments = [...(selectedNotice.comments || [])].map(c => 
@@ -252,7 +272,8 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
 
     const handleCommentReaction = async (commentId: string, parentId?: string) => {
         if (!activeOwnerId || !selectedNotice) return alert("프로필을 먼저 선택해주세요.");
-        const toggleLike = (likes: string[]) => likes.includes(activeOwnerId) ? likes.filter(id => id !== activeOwnerId) : [...likes, activeOwnerId];
+        const userId = getActiveUserIdentifier();
+        const toggleLike = (likes: string[]) => likes.includes(userId) ? likes.filter(id => id !== userId) : [...likes, userId];
 
         let updatedComments = [...(selectedNotice.comments || [])];
         if (parentId) {
@@ -286,28 +307,21 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         if (!editCommentText.trim()) return;
         let updatedComments = [...(selectedNotice?.comments || [])];
         if (parentId) {
-            updatedComments = updatedComments.map(c => c.id === parentId ? { ...c, replies: (c.replies||[]).map(r => r.id === commentId ? { ...r, text: editCommentText } : r) } : c);
+            updatedComments = updatedComments.map(c => c.id === parentId ? { ...c, replies: (c.replies||[]).map(r => r.id === commentId ? { ...r, text: editCommentText, isEdited: true } : r) } : c);
         } else {
-            updatedComments = updatedComments.map(c => c.id === commentId ? { ...c, text: editCommentText } : c);
+            updatedComments = updatedComments.map(c => c.id === commentId ? { ...c, text: editCommentText, isEdited: true } : c);
         }
         await updateCommentsInDB(updatedComments);
         setEditingCommentId(null);
     };
 
     const renderComment = (cmt: any, parentId?: string) => {
-        const rawId = cmt.ownerId || cmt.authorId;
-        const rawName = cmt.ownerName || cmt.authorName || '알 수 없음';
-        const rawPhoto = cmt.ownerPhoto || cmt.authorPhoto;
+        // 🔥 실시간 닉네임 조회
+        const { name: displayName, photo: displayPhoto, matchedUid } = getCommentAuthorData(cmt, owners);
+        const myIdentifier = getActiveUserIdentifier();
 
-        // 🔥 [공지 댓글 전용] 프사 최적화 로직 적용
-        const displayPhoto = getCommentProfileImage(rawName, rawPhoto, owners);
-        
-        // 화면에 보여줄 이름 정리
-        const targetFuzzy = normalizeName(rawName);
-        const matchedOwner = owners.find(o => normalizeName(o.nickname) === targetFuzzy);
-        const displayName = matchedOwner ? matchedOwner.nickname : rawName;
-
-        const isMyComment = String(rawId) === String(activeOwnerId);
+        // 삭제/수정 권한 확인 (UID 일치 여부 최우선)
+        const isMyComment = matchedUid === myIdentifier || String(cmt.ownerId) === String(activeOwnerId);
         const canEdit = isMyComment;
         const canDelete = isMyComment || isAdmin; 
         
@@ -317,7 +331,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
         return (
             <div key={cmt.id} className={`flex gap-3 py-3 sm:py-4 transition-colors ${isReply ? 'ml-8 sm:ml-12 pl-3 sm:pl-4 border-l-2 border-slate-700/60' : 'border-b border-slate-800/50 last:border-0'}`}>
                 <img 
-                    src={displayPhoto} 
+                    src={displayPhoto as string} 
                     alt="" 
                     className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-700 object-cover shrink-0 mt-0.5 bg-slate-800" 
                     onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} 
@@ -356,7 +370,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                     )}
                     
                     <div className="flex items-center gap-3 mt-1">
-                        <button onClick={() => handleCommentReaction(cmt.id, parentId)} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${(cmt.likedBy || []).includes(activeOwnerId) ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                        <button onClick={() => handleCommentReaction(cmt.id, parentId)} className={`flex items-center gap-1 text-[10px] font-bold transition-colors ${(cmt.likedBy || []).includes(myIdentifier) ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
                             👍 {(cmt.likedBy || []).length > 0 ? (cmt.likedBy || []).length : '좋아요'}
                         </button>
                         {!isReply && (
@@ -409,7 +423,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                     const likeCount = notice.likedBy?.length || 0;
                                     const boardNumber = notices.length - index; 
                                     
-                                    // 🔥 리스트에서도 작성자 정보 정상 렌더링
+                                    // 🔥 작성자 실시간 매핑
                                     const authorData = getNoticeAuthorData(notice, owners);
 
                                     return (
@@ -453,11 +467,10 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                 )}
                             </div>
 
-                            {/* 🔥 공지사항 본문 작성자 정보 완벽 연동 */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <img 
-                                        src={getNoticeAuthorData(selectedNotice, owners).photo} 
+                                        src={getNoticeAuthorData(selectedNotice, owners).photo as string} 
                                         alt="" 
                                         className="w-9 h-9 rounded-full border border-slate-700 object-cover bg-slate-800" 
                                         onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }}
@@ -506,10 +519,10 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                         </div>
 
                         <div className="bg-slate-900/50 p-5 sm:p-6 flex justify-center gap-4 border-b border-slate-800">
-                            <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(activeOwnerId) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
+                            <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.likedBy?.includes(getActiveUserIdentifier()) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👍 좋아요 {(selectedNotice.likedBy || []).length}
                             </button>
-                            <button onClick={() => handleReaction('DISLIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.dislikedBy?.includes(activeOwnerId) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
+                            <button onClick={() => handleReaction('DISLIKE')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-sm border transition-all shadow-md ${selectedNotice.dislikedBy?.includes(getActiveUserIdentifier()) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>
                                 👎 싫어요 {(selectedNotice.dislikedBy || []).length}
                             </button>
                         </div>
@@ -536,7 +549,7 @@ export const NoticeView = ({ owners, notices }: NoticeViewProps) => {
                                 <div className="flex flex-col sm:flex-row items-stretch gap-2">
                                     <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700 shrink-0">
                                         <img 
-                                            src={owners.find(o => String(o.id) === activeOwnerId)?.photo || COMMON_DEFAULT_PROFILE} 
+                                            src={currentOwner?.photo || COMMON_DEFAULT_PROFILE} 
                                             className="w-6 h-6 rounded-full object-cover border border-slate-800" 
                                             alt="" 
                                             onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }}

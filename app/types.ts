@@ -7,8 +7,15 @@ export interface Match {
   away: string;
   homeLogo: string;
   awayLogo: string;
+  
+  // [기존 유산] 텍스트 이름
   homeOwner: string;
   awayOwner: string;
+  
+  // 🔥 [UID 뼈대] 앞으로 저장될 구글 UID 공간
+  homeOwnerUid?: string; 
+  awayOwnerUid?: string; 
+
   homeScore: string;
   awayScore: string;
   status: 'UPCOMING' | 'COMPLETED' | 'BYE';
@@ -35,7 +42,10 @@ export interface Team {
   seasonId: number;
   name: string;
   logo: string;
-  ownerName: string;
+  
+  ownerName: string; // [기존 유산]
+  ownerUid?: string; // 🔥 [UID 뼈대]
+
   region: string;
   tier: string;
   win: number;
@@ -58,10 +68,10 @@ export interface Round {
 }
 
 export interface Prizes {
-  champion?: number; // 🔥 [디벨롭] 하이브리드 & 컵 모드용 '최종 우승' 상금 추가!
-  first: number;     // 기존의 정규리그 1위 (또는 조별리그 1위) 상금
-  second: number;    // 정규리그 2위 상금
-  third: number;     // 정규리그 3위 상금
+  champion?: number; 
+  first: number;     
+  second: number;    
+  third: number;     
   scorer: number;
   assist: number;
 }
@@ -91,11 +101,16 @@ export interface Season {
 export interface Owner {
   id: number;
   docId?: string;
+  uid?: string;       // 🔥 구글 연동 UID
   nickname: string;
+  email?: string;     // 🔥 [추가] TS(2339) 에러 해결을 위한 핵심 필드
+  role?: 'USER' | 'ADMIN'; // 🔥 [추가] 권한 필드
+  legacyName?: string | null; // 🔥 과거 기록 추적용 꼬리표
   photo?: string;
   password?: string;
   totalWins?: number; 
   totalMatches?: number; 
+  createdAt?: string; // 🔥 [추가] 생성일
 }
 
 export interface League {
@@ -111,6 +126,10 @@ export interface MasterTeam {
   docId?: string;
   name: string;
   logo: string;
+  
+  ownerName?: string; // [기존 유산]
+  ownerUid?: string;  // 🔥 [UID 뼈대]
+
   region: string;
   tier: string;
   category: 'CLUB' | 'NATIONAL';
@@ -133,7 +152,10 @@ export interface CupEntry {
   masterId: number;
   name: string;
   logo: string;
-  ownerName: string;
+  
+  ownerName: string; // [기존 유산]
+  ownerUid?: string; // 🔥 [UID 뼈대]
+
   region: string;
   tier: string;
   rank?: number; 
@@ -145,10 +167,10 @@ export interface CupEntry {
 
 export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
-// 🔥 [디벨롭] 댓글 안에 좋아요(likedBy)와 대댓글(replies) 배열 추가!
 export interface NoticeComment {
   id: string;
-  ownerId: string;
+  ownerId: string; 
+  ownerUid?: string; // 🔥 [UID 뼈대] 진짜 구글 UID
   ownerName: string;
   ownerPhoto: string;
   text: string;

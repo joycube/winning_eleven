@@ -70,6 +70,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
         setFilteredCount(count);
     }, [filterCategory, filterTiers, masterTeams]);
 
+    // 🔥 [FM 수술] 팀 무작위 할당 시 UID 뼈대 장착
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -91,7 +92,8 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                     ...shuffled[teamIdx],
                     id: Date.now() + teamIdx,
                     seasonId: 0,
-                    ownerName: owner.nickname,
+                    ownerName: owner.nickname, // [기존 유산]
+                    ownerUid: owner.uid || owner.docId || '', // 🔥 [UID 뼈대 주입 완료]
                     win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0
                 } as Team);
                 teamIdx++;
@@ -115,7 +117,6 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 
             {isOpen && step !== 'OPENING' && (
                 <div className="w-full h-[100dvh] flex items-center justify-center p-4">
-                    {/* 🔥 [픽스 2] WebkitMaskImage와 isolate 추가로 사파리 테두리 광원 번짐(노란줄) 완벽 차단 */}
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.95 }} 
                         animate={{ opacity: 1, scale: 1 }} 
@@ -196,7 +197,9 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
     );
 };
 
-// 🔥 렌더링 최적화를 위해 바깥으로 분리된 공통 카드 껍데기
+// =============================================================================
+// SUB-COMPONENT: PremiumCard
+// =============================================================================
 const PremiumCard = () => (
     <div className="w-40 h-60 sm:w-48 sm:h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
@@ -208,7 +211,7 @@ const PremiumCard = () => (
 );
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation (5종 랜덤 애니메이션 & 스킵 기능)
+// SUB-COMPONENT: PackOpeningAnimation
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
@@ -223,7 +226,6 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
     const handleClick = () => { 
         if (phase !== 'IDLE') return; 
         
-        // 5가지 연출 중 하나를 랜덤으로 결정
         setAnimType(Math.floor(Math.random() * 5));
 
         setPhase('CHARGING'); 
@@ -310,11 +312,8 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 0.6, times: [0, 0.1, 1] }} className="fixed inset-0 bg-gradient-to-br from-emerald-400 via-white to-sky-500 z-[100000] pointer-events-none mix-blend-screen" />
             )}
 
-            {/* 🔥 [픽스 1] w-full h-full 부여 및 shrink-0를 통해 블랙스크린 완벽 복구 */}
             {phase === 'DEALING' && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20 overflow-hidden w-full h-full">
-                    
-                    {/* 0. 입체 컨베이어 벨트 (3단 교차 가로 흐름) */}
                     {animType === 0 && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 sm:gap-10 w-full h-full">
                             <motion.div initial={{ x: "0%" }} animate={{ x: "-50%" }} transition={{ duration: 10, ease: "linear", repeat: Infinity }} className="flex min-w-max scale-75 opacity-60 blur-[2px]">
@@ -328,8 +327,6 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             </motion.div>
                         </div>
                     )}
-
-                    {/* 1. 3열 파칭코 릴 (세로 슬롯머신) */}
                     {animType === 1 && (
                         <div className="absolute inset-0 flex flex-row items-center justify-center gap-4 sm:gap-10 w-full h-full overflow-hidden">
                             <motion.div initial={{ y: "-50%" }} animate={{ y: "0%" }} transition={{ duration: 6, ease: "linear", repeat: Infinity }} className="flex flex-col min-h-max scale-75 opacity-60 blur-[2px]">
@@ -343,8 +340,6 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             </motion.div>
                         </div>
                     )}
-
-                    {/* 2. 유성우 낙하 */}
                     {animType === 2 && (
                         <div className="absolute inset-0 w-full h-full">
                             {Array.from({ length: 20 }).map((_, i) => (
@@ -354,8 +349,6 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             ))}
                         </div>
                     )}
-
-                    {/* 3. 소닉 붐 (중앙 앵커 + 직선 방사형 쾅쾅쾅) */}
                     {animType === 3 && (
                         <div className="absolute inset-0 flex items-center justify-center w-full h-full">
                             {Array.from({ length: 24 }).map((_, i) => {
@@ -372,8 +365,6 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             </motion.div>
                         </div>
                     )}
-
-                    {/* 4. 플래시 팝업 */}
                     {animType === 4 && (
                         <div className="absolute inset-0 flex items-center justify-center w-full h-full">
                             {Array.from({ length: 15 }).map((_, i) => (
@@ -383,15 +374,8 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                             ))}
                         </div>
                     )}
-
-                    {/* 🔥 스킵 버튼 */}
                     <div className="fixed bottom-[10%] left-1/2 -translate-x-1/2 z-[100001] animate-in fade-in slide-in-from-bottom-8 duration-500">
-                        <button
-                            onClick={handleSkip}
-                            className="bg-white/95 text-sky-900 font-black text-sm tracking-widest py-3 px-8 rounded-full shadow-[0_10px_30px_rgba(255,255,255,0.3)] hover:scale-105 active:scale-95 transition-transform border border-white/50 whitespace-nowrap"
-                        >
-                            TAP TO SKIP ⏭️
-                        </button>
+                        <button onClick={handleSkip} className="bg-white/95 text-sky-900 font-black text-sm tracking-widest py-3 px-8 rounded-full shadow-[0_10px_30px_rgba(255,255,255,0.3)] hover:scale-105 active:scale-95 transition-transform border border-white/50 whitespace-nowrap">TAP TO SKIP ⏭️</button>
                     </div>
                 </div>
             )}
@@ -400,7 +384,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftResultView (결과 화면)
+// SUB-COMPONENT: DraftResultView
 // =============================================================================
 const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
     const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
@@ -429,11 +413,11 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
             <div className="flex-none p-2 flex justify-end">
                 <button onClick={handleFlipAll} className="text-xs text-slate-400 hover:text-white underline">Flip All</button>
             </div>
-            {/* 🔥 [픽스 2] translate3d(0,0,0) 추가로 스크롤 영역 밖으로 네온 빛이 새어나가는(Bleed) 현상 차단 */}
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pb-20">
                     {results.map((team: Team, idx: number) => {
-                        const owner = owners.find((o: Owner) => o.nickname === team.ownerName);
+                        // 🔥 [FM 스마트 조회] UID 최우선 대조로 구단주 정보 매핑
+                        const owner = owners.find((o: Owner) => (team as any).ownerUid ? (o.uid === (team as any).ownerUid || o.docId === (team as any).ownerUid) : o.nickname === team.ownerName);
                         const isFlipped = flippedIndices.includes(idx);
                         const backBg = backStyles[idx % 4];
 
@@ -457,7 +441,7 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                                                 <div className="w-9 h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-3 bg-slate-800 shrink-0">
                                                     {owner?.photo ? <img src={owner.photo} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-[10px]">👤</div>}
                                                 </div>
-                                                <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-sm font-bold text-white truncate">{team.ownerName}</span></div>
+                                                <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-sm font-bold text-white truncate">{owner?.nickname || team.ownerName}</span></div>
                                             </div>
 
                                             <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">

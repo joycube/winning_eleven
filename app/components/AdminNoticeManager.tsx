@@ -4,8 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { Notice } from '../types';
+import { useAuth } from '../hooks/useAuth'; // 🔥 [FM 수술] 현재 관리자 정보 가져오기
 
 export const AdminNoticeManager = () => {
+    const { authUser } = useAuth(); // 🔥 [NEW] 현재 로그인한 관리자 정보 연동
     const [notices, setNotices] = useState<Notice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -13,8 +15,8 @@ export const AdminNoticeManager = () => {
     const [editId, setEditId] = useState<string | null>(null);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [imageUrl, setImageUrl] = useState('');     // 🔥 [NEW] 이미지 URL 상태 추가
-    const [youtubeUrl, setYoutubeUrl] = useState(''); // 🔥 [NEW] 유튜브 URL 상태 추가
+    const [imageUrl, setImageUrl] = useState('');     
+    const [youtubeUrl, setYoutubeUrl] = useState(''); 
     const [isPopup, setIsPopup] = useState(false);
 
     // 파이어베이스에서 공지사항 불러오기
@@ -40,8 +42,8 @@ export const AdminNoticeManager = () => {
         setEditId(null);
         setTitle('');
         setContent('');
-        setImageUrl('');     // 🔥 [NEW] 폼 초기화 시 비우기
-        setYoutubeUrl('');   // 🔥 [NEW] 폼 초기화 시 비우기
+        setImageUrl('');     
+        setYoutubeUrl('');   
         setIsPopup(false);
     };
 
@@ -53,15 +55,18 @@ export const AdminNoticeManager = () => {
             if (editId) {
                 // 수정
                 await updateDoc(doc(db, 'notices', editId), {
-                    title, content, imageUrl, youtubeUrl, isPopup // 🔥 [NEW] 확장 필드 업데이트
+                    title, content, imageUrl, youtubeUrl, isPopup,
+                    updatedAt: new Date().toISOString() // 🔥 [NEW] 수정 시간 기록
                 });
                 alert("공지사항이 수정되었습니다.");
             } else {
                 // 신규 생성
                 await addDoc(collection(db, 'notices'), {
-                    title, content, imageUrl, youtubeUrl, isPopup, // 🔥 [NEW] 확장 필드 생성
+                    title, content, imageUrl, youtubeUrl, isPopup, 
+                    authorUid: authUser?.uid || 'system', // 🔥 [FM 뼈대] 작성자 UID 기록
+                    authorName: authUser?.mappedOwnerId || '운영진', // 🔥 [FM 뼈대] 작성자 이름 기록
                     createdAt: new Date().toISOString(),
-                    likedBy: [], dislikedBy: [], comments: []      // 🔥 [NEW] 인터랙션 배열 초기화 세팅
+                    likedBy: [], dislikedBy: [], comments: []      
                 });
                 alert("새 공지사항이 등록되었습니다.");
             }
@@ -78,8 +83,8 @@ export const AdminNoticeManager = () => {
         setEditId(notice.id);
         setTitle(notice.title);
         setContent(notice.content);
-        setImageUrl(notice.imageUrl || '');     // 🔥 [NEW] 편집 시 데이터 불러오기
-        setYoutubeUrl(notice.youtubeUrl || ''); // 🔥 [NEW] 편집 시 데이터 불러오기
+        setImageUrl(notice.imageUrl || '');     
+        setYoutubeUrl(notice.youtubeUrl || ''); 
         setIsPopup(notice.isPopup);
         window.scrollTo({ top: 0, behavior: 'smooth' }); // 위로 스크롤
     };
@@ -138,7 +143,6 @@ export const AdminNoticeManager = () => {
                         />
                     </div>
 
-                    {/* 🔥 [NEW] 이미지 및 유튜브 첨부 필드 영역 추가 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-800 pt-4">
                         <div>
                             <label className="text-xs text-slate-400 font-bold mb-1 flex items-center gap-1">🖼️ Image URL (선택)</label>
@@ -204,7 +208,6 @@ export const AdminNoticeManager = () => {
                                         {notice.isPopup && (
                                             <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-yellow-500/30">POPUP</span>
                                         )}
-                                        {/* 🔥 [NEW] 리스트에 첨부파일(유튜브, 이미지) 유무 뱃지 표시 */}
                                         {notice.imageUrl && <span className="text-[9px] text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded">🖼️</span>}
                                         {notice.youtubeUrl && <span className="text-[9px] text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded">📺</span>}
                                         <span className="text-[10px] text-slate-500 ml-1">{formatDate(notice.createdAt)}</span>

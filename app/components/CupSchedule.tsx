@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
-import { Season, Match, MasterTeam, FALLBACK_IMG } from '../types';
+import { Season, Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 import { MessageSquare } from 'lucide-react';
 
@@ -16,7 +16,19 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: () => void }) => {
+// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 최신 닉네임을 반환하는 공통 로직
+const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
+    const search = ownerName.trim();
+    // 1. UID 우선 조회
+    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
+    if (foundByUid) return foundByUid.nickname;
+    // 2. 닉네임/레거시네임 조회
+    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
+    return foundByName ? foundByName.nickname : ownerName;
+};
+
+const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
     const [latestComment, setLatestComment] = useState<any>(null);
     const [commentCount, setCommentCount] = useState(0);
 
@@ -38,14 +50,15 @@ const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: (
 
     if (commentCount === 0) return null;
 
+    // 🔥 댓글 작성자 닉네임도 UID 기반으로 실시간 조회
+    const resolvedAuthorName = latestComment ? resolveOwnerNickname(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : '';
+
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
             <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
-            {/* 🔥 공간을 max-w-[120px]로 대폭 늘리고 잘림을 우아하게 처리 */}
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
-                {latestComment?.authorName}
+                {resolvedAuthorName}
             </div>
-            {/* 🔥 댓글 내용도 안전한 line-clamp-1 적용 */}
             <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
                 {latestComment?.text}
             </div>
@@ -63,12 +76,12 @@ interface CupScheduleProps {
   masterTeams: MasterTeam[];
   activeRankingData: any;
   historyData: any;
-  owners: any[];
+  owners: Owner[]; // 🔥 any[]에서 Owner[]로 타입 구체화
   knockoutStages?: any; 
 }
 
 export const CupSchedule = ({ 
-  seasons, viewSeasonId, onMatchClick, masterTeams, activeRankingData, historyData, knockoutStages 
+  seasons, viewSeasonId, onMatchClick, masterTeams, activeRankingData, historyData, owners = [], knockoutStages 
 }: CupScheduleProps) => {
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
@@ -78,15 +91,11 @@ export const CupSchedule = ({
 
   const getWinnerName = (match: Match | null): string => {
       if (!match) return 'TBD';
-      
       const home = match.home?.trim();
       const away = match.away?.trim();
-
       if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
       if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
-      
       if (home === 'BYE' || away === 'BYE' || home === 'TBD' || away === 'TBD') return 'TBD';
-
       if (match.status !== 'COMPLETED') return 'TBD';
       const h = Number(match.homeScore || 0);
       const a = Number(match.awayScore || 0);
@@ -95,9 +104,10 @@ export const CupSchedule = ({
       return 'TBD';
   };
 
+  // 🔥 [FM 수술] 팀 정보 조회 시 UID 기반 실시간 닉네임 매핑 및 ownerUid 반환
   const getTeamExtendedInfo = (teamName: string) => {
       const tbdTeam = {
-          id: 0, name: teamName || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-',
+          id: 0, name: teamName || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-', ownerUid: undefined as string | undefined,
           region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null
       };
       if (!teamName || teamName === 'TBD' || teamName === 'BYE') return tbdTeam;
@@ -106,11 +116,15 @@ export const CupSchedule = ({
       const stats = activeRankingData?.teams?.find((t:any) => normalize(t.name) === normTarget);
       const master = (masterTeams as any[])?.find((m:any) => normalize(m.name) === normTarget || normalize(m.teamName || '') === normTarget);
       
+      const rawOwnerName = stats?.ownerName || master?.ownerName || 'CPU';
+      const rawOwnerUid = stats?.ownerUid || master?.ownerUid;
+
       return {
           id: stats?.id || master?.id || 0,
           name: teamName,
           logo: stats?.logo || master?.logo || SAFE_TBD_LOGO,
-          ownerName: stats?.ownerName || master?.ownerName || 'CPU',
+          ownerName: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid), // 🔥 실시간 닉네임 변환
+          ownerUid: rawOwnerUid, // 🔥 UID 명시적 반환 (TS-2339 해결)
           region: master?.region || '',
           tier: master?.tier || 'C',
           realRankScore: master?.realRankScore,
@@ -141,16 +155,10 @@ export const CupSchedule = ({
 
   const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
       const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
-      
       return (
         <div className="relative w-9 h-9 flex-shrink-0">
             <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                <img 
-                  src={displayLogo} 
-                  className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} 
-                  alt="" 
-                  onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }}
-                />
+                <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
             </div>
             {!isTbd && getTierBadge(tier)}
         </div>
@@ -159,15 +167,12 @@ export const CupSchedule = ({
 
   const internalKnockoutStages = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
-
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
-        homePredictRate: 0, awayPredictRate: 0, 
-        stage: stageName, 
-        matchLabel: 'TBD', youtubeUrl: '',
-        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
-        commentary: '' 
+        homeOwnerUid: undefined, awayOwnerUid: undefined,
+        homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
+        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], commentary: '' 
     } as Match);
 
     const slots = {
@@ -182,10 +187,8 @@ export const CupSchedule = ({
         round.matches.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
             if (stage.includes("GROUP")) return;
-
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
-
             if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
@@ -205,6 +208,7 @@ export const CupSchedule = ({
             const info = getTeamExtendedInfo(winner);
             target[`${side}Logo`] = info.logo;
             target[`${side}Owner`] = info.ownerName;
+            target[`${side}OwnerUid`] = info.ownerUid; // 🔥 다음 단계로 UID 전달 (데이터 배관 보강)
             target[`${side}Id`] = info.id; 
         }
     };
@@ -216,18 +220,18 @@ export const CupSchedule = ({
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
-    return {
-        ...slots,
-        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
-    };
-  }, [currentSeason, viewSeasonId, activeRankingData, masterTeams]);
+    return { ...slots, roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null };
+  }, [currentSeason, viewSeasonId, activeRankingData, masterTeams, owners]);
 
   const displayStages = knockoutStages || internalKnockoutStages;
 
-  const TournamentTeamRow = ({ teamName, score, isWinner }: { teamName: string, score: number | null, isWinner: boolean }) => {
+  const TournamentTeamRow = ({ teamName, score, isWinner, ownerUid }: { teamName: string, score: number | null, isWinner: boolean, ownerUid?: string }) => {
       const info = getTeamExtendedInfo(teamName);
       const isTbd = teamName === 'TBD';
       const isBye = teamName === 'BYE';
+      
+      // 🔥 실시간 닉네임 매핑 적용
+      const resolvedOwnerName = resolveOwnerNickname(owners, info.ownerName, ownerUid || info.ownerUid);
 
       return (
           <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
@@ -241,7 +245,7 @@ export const CupSchedule = ({
                           <div className="flex items-center gap-1.5 mt-0.5 scale-[0.9] origin-left">
                               {getRealRankBadge(info.real_rank)}
                               {getConditionBadge(info.condition)}
-                              <span className="text-[9px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
+                              <span className="text-[9px] text-slate-500 font-bold italic truncate ml-0.5">{resolvedOwnerName}</span>
                           </div>
                       )}
                       {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned Slot</span>}
@@ -257,7 +261,6 @@ export const CupSchedule = ({
   const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
       const hScore = match.homeScore !== '' ? Number(match.homeScore) : (match.home === 'BYE' ? 0 : null);
       const aScore = match.awayScore !== '' ? Number(match.awayScore) : (match.away === 'BYE' ? 0 : null);
-      
       const winner = getWinnerName(match);
       const isHomeWin = winner !== 'TBD' && winner === match.home;
       const isAwayWin = winner !== 'TBD' && winner === match.away;
@@ -266,9 +269,9 @@ export const CupSchedule = ({
           <div className="flex flex-col w-full"> 
               {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
               <div className={`flex flex-col w-[220px] bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
-                  <TournamentTeamRow teamName={match.home} score={hScore} isWinner={isHomeWin} />
+                  <TournamentTeamRow teamName={match.home} score={hScore} isWinner={isHomeWin} ownerUid={match.homeOwnerUid} />
                   <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                  <TournamentTeamRow teamName={match.away} score={aScore} isWinner={isAwayWin} />
+                  <TournamentTeamRow teamName={match.away} score={aScore} isWinner={isAwayWin} ownerUid={match.awayOwnerUid} />
               </div>
           </div>
       );
@@ -285,25 +288,11 @@ export const CupSchedule = ({
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
-                        <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
-                    </div>
+                    <div className="flex items-center gap-3 mb-6"><div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3></div>
                     <div className="bracket-tree no-scrollbar">
-                        {displayStages.roundOf8 && (
-                            <div className="bracket-column">
-                                {displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Match ${i+1}`} match={m} />)}
-                            </div>
-                        )}
-                        <div className="bracket-column">
-                            {displayStages.roundOf4.map((m: any, i: number) => <TournamentMatchBox key={`r4-${i}`} title={`Semi ${i+1}`} match={m} />)}
-                        </div>
-                        <div className="bracket-column">
-                            <div className="relative scale-110 ml-4">
-                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
-                                <TournamentMatchBox title="Final" match={displayStages.final[0]} highlight />
-                            </div>
-                        </div>
+                        {displayStages.roundOf8 && (<div className="bracket-column">{displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Match ${i+1}`} match={m} />)}</div>)}
+                        <div className="bracket-column">{displayStages.roundOf4.map((m: any, i: number) => <TournamentMatchBox key={`r4-${i}`} title={`Semi ${i+1}`} match={m} />)}</div>
+                        <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><TournamentMatchBox title="Final" match={displayStages.final[0]} highlight /></div></div>
                     </div>
                 </div>
             </div>
@@ -317,38 +306,20 @@ export const CupSchedule = ({
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
                         const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
-
                         return uniqueGroups.map(gName => (
                             <div key={`group-${rIdx}-${gName}`} className="space-y-6">
-                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
-                                    <h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3>
-                                </div>
+                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard 
-                                                      match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} 
-                                                      onClick={() => onMatchClick(safeMatch)} 
-                                                      activeRankingData={activeRankingData} 
-                                                      historyData={historyData} 
-                                                      masterTeams={masterTeams} 
-                                                    />
-                                                    {m.commentary && (
-                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                                <span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>
-                                                                {m.commentary}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
-                                                    </div>
+                                                    <MatchCard match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                    {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
-                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                             </div>
                                         );
                                     })}
@@ -358,42 +329,21 @@ export const CupSchedule = ({
                     })}
 
                     {/* 2. 토너먼트 리스트 */}
-                    {[
-                        { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
-                        { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },
-                        { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' }
-                    ].map((section) => (
+                    {[ { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' }, { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' }, { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' } ].map((section) => (
                         section.matches && (
                             <div key={section.id} className="space-y-6">
-                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
-                                    <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{section.title}</h3>
-                                </div>
+                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{section.title}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard 
-                                                        match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} 
-                                                        onClick={() => onMatchClick(safeMatch)} 
-                                                        activeRankingData={activeRankingData} 
-                                                        historyData={historyData} 
-                                                        masterTeams={masterTeams} 
-                                                    />
-                                                    {m.commentary && (
-                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                                <span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>
-                                                                {m.commentary}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
-                                                    </div>
+                                                    <MatchCard match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                    {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
-                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                             </div>
                                         );
                                     })}
@@ -408,34 +358,18 @@ export const CupSchedule = ({
                     <div key={rIdx} className="space-y-8">
                          {Array.from(new Set(r.matches.map(m => m.stage))).map((stageName) => (
                             <div key={stageName} className="space-y-6">
-                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500">
-                                    <h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3>
-                                </div>
+                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                                         return (
                                             <div key={m.id} className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard 
-                                                        match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} 
-                                                        onClick={() => onMatchClick(safeMatch)} 
-                                                        activeRankingData={activeRankingData} 
-                                                        historyData={historyData} 
-                                                        masterTeams={masterTeams} 
-                                                    />
-                                                    {m.commentary && (
-                                                        <div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
-                                                            <p className="text-[11px] text-slate-400 leading-relaxed italic">
-                                                                {m.commentary}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">
-                                                        {`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}
-                                                    </div>
+                                                    <MatchCard match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                    {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
+                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
-                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
+                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                             </div>
                                         );
                                     })}

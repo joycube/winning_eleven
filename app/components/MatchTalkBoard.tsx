@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase'; 
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { ArrowLeft, Send, Trash2, Trophy } from 'lucide-react';
-import { FALLBACK_IMG } from '../types';
+import { FALLBACK_IMG, Owner } from '../types'; // 🔥 Owner 타입 추가
 
 import { MatchCard } from './MatchCard'; 
 
@@ -37,7 +37,16 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-// 🔥 [수정] 기존 StatusBadge 복구 및 색상 서로 변경 (COMPLETED: 녹색, UPCOMING: 회색)
+// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 실시간 닉네임 반환
+const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'GUEST'].includes(ownerName.trim().toUpperCase())) return ownerName;
+    const search = ownerName.trim();
+    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
+    if (foundByUid) return foundByUid.nickname;
+    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
+    return foundByName ? foundByName.nickname : ownerName;
+};
+
 const StatusBadge = ({ status }: { status?: string }) => {
     if (!status) return null;
     const s = status.toUpperCase();
@@ -50,7 +59,7 @@ interface MatchTalkBoardProps {
     user: any;
     seasons: any[];
     masterTeams: any[];
-    owners: any[];
+    owners: Owner[]; // 🔥 타입 명확화
     activeRankingData?: any; 
     selectedMatchId: string | null;
     onSelectMatch: (matchId: string) => void;
@@ -178,8 +187,13 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
 
         try {
             await addDoc(collection(db, 'match_comments'), {
-                matchId: activePost.realMatchId, authorId: user.uid, authorName: currentAuthorName,
-                authorPhoto: currentAuthorPhoto, text: commentText.trim(), createdAt: Date.now(),
+                matchId: activePost.realMatchId, 
+                authorId: user.uid, // [기존 유산]
+                authorUid: user.uid, // 🔥 [UID 뼈대 장착]
+                authorName: currentAuthorName,
+                authorPhoto: currentAuthorPhoto, 
+                text: commentText.trim(), 
+                createdAt: Date.now(),
             });
             setCommentText('');
         } catch (e) { alert("댓글 처리 실패"); }
@@ -235,9 +249,10 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                 <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>
                             )}
                             {activePost.comments?.map((comment: any) => {
-                                const cName = comment.authorName || '알 수 없음';
+                                // 🔥 [FM 수술] 댓글 렌더링 시 UID 기반 닉네임 실시간 동기화
+                                const resolvedName = resolveOwnerNickname(owners, comment.authorName, comment.authorUid || comment.authorId);
                                 const cPhoto = comment.authorPhoto;
-                                const authorProfileImg = getBestProfileImage(null, owners, cPhoto, cName);
+                                const authorProfileImg = getBestProfileImage(null, owners, cPhoto, resolvedName);
 
                                 return (
                                     <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
@@ -245,12 +260,12 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                             <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
                                             <div className="flex-1 min-w-0 pr-6 overflow-visible">
                                                 <div className="flex items-baseline gap-2 mb-1.5">
-                                                    <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{cName}</span>
+                                                    <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{resolvedName}</span>
                                                     <span className="text-slate-500 text-[10px] whitespace-nowrap">{formatDate(comment.createdAt, true)}</span>
                                                 </div>
                                                 <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap mb-2.5 font-medium tracking-tight">{comment.text}</p>
                                                 
-                                                {(user?.uid === comment.authorId || isMaster) && (
+                                                {(user?.uid === (comment.authorUid || comment.authorId) || isMaster) && (
                                                     <div className="flex items-center gap-3 mt-1 text-[11px]">
                                                         <button onClick={() => handleDeleteComment(comment.id)} className="text-slate-500 hover:text-red-400 font-bold transition-colors">삭제</button>
                                                     </div>
@@ -277,7 +292,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                             ref={commentInputRef}
                                             value={commentText} 
                                             onChange={(e) => setCommentText(e.target.value)} 
-                                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddComment(); } }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(); }}
                                             placeholder="매치톡 내용을 입력하세요..."
                                             className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium"
                                         />
@@ -320,14 +335,12 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
             ) : visiblePostsList.map((post) => (
                 <div key={post.id} onClick={() => handleMatchClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
                     <div className="flex flex-col items-center justify-center shrink-0 mr-3 sm:mr-4 w-[60px] sm:w-[68px]">
-                         {/* 🔥 [수정] 복구된 StatusBadge 배치 */}
                          <StatusBadge status={post.matchData.status} />
                     </div>
                     <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-6">
                         <div className="flex flex-col min-w-0 flex-1 overflow-visible pr-2">
                             <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
                             
-                            {/* 🔥 [수정] A VS B 텍스트 우측에 전광판 스타일 스코어 추가 */}
                             <div className="flex items-center gap-2 mt-0.5">
                                 <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
                                     {post.title}

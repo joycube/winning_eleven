@@ -49,7 +49,8 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     if (!user) {
       setActiveTab('HALL_OF_FAME');
     } else {
-      const myOwner = owners.find(o => o.nickname === user.mappedOwnerId);
+      // 🔥 [FM 픽스] UID 우선 조회 후, 없으면 닉네임으로 내 오너 정보를 찾습니다.
+      const myOwner = owners.find(o => (o.uid && o.uid === user.uid) || o.nickname === user.mappedOwnerId);
       if (myOwner) {
         setSelectedOwnerId(String(myOwner.id));
       }
@@ -92,11 +93,15 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
                 r.matches?.forEach(m => {
                     if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
                         const hScore = Number(m.homeScore); const aScore = Number(m.awayScore);
-                        if (m.homeOwner === owner.nickname) {
+                        // 🔥 [FM 픽스] 경기 기록 대조 시 닉네임 뿐만 아니라 UID(homeOwnerUid)도 체크합니다.
+                        const isHome = m.homeOwner === owner.nickname || (m.homeOwnerUid && m.homeOwnerUid === owner.uid);
+                        const isAway = m.awayOwner === owner.nickname || (m.awayOwnerUid && m.awayOwnerUid === owner.uid);
+
+                        if (isHome) {
                             if (hScore > aScore) { win++; teamWins[m.home] = { logo: m.homeLogo, wins: (teamWins[m.home]?.wins || 0) + 1 }; }
                             else if (hScore === aScore) draw++;
                             else loss++;
-                        } else if (m.awayOwner === owner.nickname) {
+                        } else if (isAway) {
                             if (aScore > hScore) { win++; teamWins[m.away] = { logo: m.awayLogo, wins: (teamWins[m.away]?.wins || 0) + 1 }; }
                             else if (hScore === aScore) draw++;
                             else loss++;
@@ -111,7 +116,12 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             if (teamWins[teamName].wins > bestTeam.wins) bestTeam = { name: teamName, logo: teamWins[teamName].logo, wins: teamWins[teamName].wins };
         });
 
-        const ownerLedgers = dbLedgers.filter(l => l.ownerId === String(owner.id));
+        // 🔥 [FM 픽스] 장부 필터링 시 레거시 숫자 ID와 새로운 구글 UID를 모두 확인합니다. (Dual-Track)
+        const ownerLedgers = dbLedgers.filter(l => 
+            String(l.ownerId) === String(owner.id) || 
+            (owner.uid && String(l.ownerId) === owner.uid) ||
+            (l.ownerUid && l.ownerUid === owner.uid)
+        );
         const revenues = ownerLedgers.filter(l => l.type === 'REVENUE');
         const expenses = ownerLedgers.filter(l => l.type === 'EXPENSE');
         
@@ -143,7 +153,11 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   const computedFinanceDetails = useMemo(() => {
     const details: Record<string, any> = {};
     owners.forEach(owner => {
-        const ownerLedgers = dbLedgers.filter(l => l.ownerId === String(owner.id));
+        // 🔥 [FM 픽스] 세부 내역 추출 시에도 ID/UID 이중 매칭
+        const ownerLedgers = dbLedgers.filter(l => 
+            String(l.ownerId) === String(owner.id) || 
+            (owner.uid && String(l.ownerId) === owner.uid)
+        );
         details[String(owner.id)] = {
             revenues: ownerLedgers.filter(l => l.type === 'REVENUE').map(l => ({ 
                 ...l, season: seasons.find(s => String(s.id) === l.seasonId)?.name || '기타', date: formatDate(l.createdAt)
@@ -166,9 +180,12 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
         owners.forEach(o => { balances[String(o.id)] = 0; });
         
         sLedgers.forEach(l => {
-            if (balances[l.ownerId] !== undefined) {
-                if (l.type === 'REVENUE') balances[l.ownerId] += Number(l.amount);
-                if (l.type === 'EXPENSE') balances[l.ownerId] -= Number(l.amount);
+            // 🔥 [FM 픽스] 장부에 적힌 ID가 UID든 숫자 ID든 실제 Owner 객체를 찾아 점수를 합산합니다.
+            const targetOwner = owners.find(o => String(o.id) === String(l.ownerId) || (o.uid && o.uid === String(l.ownerId)));
+            if (targetOwner) {
+                const key = String(targetOwner.id);
+                if (l.type === 'REVENUE') balances[key] += Number(l.amount);
+                if (l.type === 'EXPENSE') balances[key] -= Number(l.amount);
             }
         });
 
@@ -196,8 +213,14 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     if (!selectedOwnerId) return {} as Record<string, SettlementGroup>;
     const groups: Record<string, SettlementGroup> = {};
     
+    // 선택된 구단주 객체 찾기
+    const selOwner = owners.find(o => String(o.id) === selectedOwnerId);
+
     if (targetOwnerId === 'ALL') {
-        dbLedgers.filter(l => l.ownerId === selectedOwnerId).forEach(l => {
+        dbLedgers.filter(l => 
+            String(l.ownerId) === selectedOwnerId || 
+            (selOwner?.uid && String(l.ownerId) === selOwner.uid)
+        ).forEach(l => {
             const sName = seasons.find(s => String(s.id) === l.seasonId)?.name || '기타';
             if (!groups[sName]) groups[sName] = { rev: [], exp: [], p2pRx: [], p2pTx: [], sumRev: 0, sumExp: 0, sumRx: 0, sumTx: 0 };
             
@@ -317,7 +340,11 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2 px-1 border-b border-slate-800/50 mb-2">
           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap shrink-0">Selected Owner :</span>
           {computedOwners
-            .filter(o => user.role === 'ADMIN' || o.nickname === user.mappedOwnerId)
+            .filter(o => {
+                // 🔥 [FM 픽스] 관리자거나, UID 또는 닉네임이 일치하는 본인 계정만 노출
+                const isMyAccount = (user.uid && o.id && owners.find(own => String(own.id) === o.id)?.uid === user.uid) || o.nickname === user.mappedOwnerId;
+                return user.role === 'ADMIN' || isMyAccount;
+            })
             .map(owner => (
             <div key={owner.id} onClick={() => { setSelectedOwnerId(owner.id); setTargetOwnerId('ALL'); setSettlementSeason('ALL'); setStatementSeason('ALL'); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all border whitespace-nowrap shrink-0 ${selectedOwnerId === owner.id ? 'bg-slate-800 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'}`}>
               <img src={owner.photo} className="w-5 h-5 rounded-full object-cover" alt="" /><span className={`text-[11px] font-bold ${selectedOwnerId === owner.id ? 'text-white' : 'text-slate-500'}`}>{owner.nickname}</span>

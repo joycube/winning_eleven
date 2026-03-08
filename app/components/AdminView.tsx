@@ -13,8 +13,7 @@ import { AdminCupSetup } from './AdminCupSetup';
 import { AdminRealWorldManager } from './AdminRealWorldManager';
 import { AdminNoticeManager } from './AdminNoticeManager';
 
-// 🔥 [에러 해결] Trash2 (휴지통 아이콘) import 추가 완료!
-import { PlusCircle, UserCheck, Megaphone, Flag, Shield, Crown, Image as ImageIcon, Globe, ArrowLeft, Trophy, Settings, Trash2 } from 'lucide-react';
+import { PlusCircle, UserCheck, Megaphone, Flag, Shield, Crown, Image as ImageIcon, Globe, ArrowLeft, Trophy, Settings, Trash2, DatabaseBackup } from 'lucide-react';
 
 // @ts-ignore
 import { AdminUserTracker } from './AdminUserTracker';
@@ -53,10 +52,13 @@ export const AdminView = ({
                 batch.delete(docSnap.ref);
             });
 
+            // 스냅샷(명예의 전당) 기록도 함께 삭제
+            batch.delete(doc(db, "history_records", String(seasonId)));
+
             await batch.commit();
 
             setAdminTab('SEASON_MENU');
-            alert("✅ 시즌 및 연관된 재무 기록까지 깔끔하게 파기 완료되었습니다!");
+            alert("✅ 시즌 및 연관된 재무 기록, 명예의 전당 스냅샷까지 깔끔하게 파기 완료되었습니다!");
         } catch (error) {
             console.error("🚨 시즌 삭제 오류:", error);
             alert("시즌 및 장부 삭제 중 오류가 발생했습니다.");
@@ -70,55 +72,97 @@ export const AdminView = ({
     };
 
     const handleCloseSeason = async (season: Season) => {
-        if (season.status === 'COMPLETED') return alert("이미 마감된 시즌입니다.");
-        if (!confirm(`정말 '${season.name}' 시즌을 마감하고 상금을 정산하시겠습니까?\n수익 기록이 장부에 즉시 등록됩니다.`)) return;
+        const isAlreadyCompleted = season.status === 'COMPLETED';
+        
+        const confirmMsg = isAlreadyCompleted 
+            ? `이미 마감된 '${season.name}' 시즌입니다.\n과거 기록 보존을 위해 명예의 전당용 '스냅샷'만 새롭게(UID 기반으로) 재생성하시겠습니까?\n(상금 장부는 중복 지급되지 않습니다.)`
+            : `정말 '${season.name}' 시즌을 마감하시겠습니까?\n\n💰 수익이 장부에 등록되며\n🏆 명예의 전당 스냅샷에 영구 박제됩니다.`;
+
+        if (!confirm(confirmMsg)) return;
 
         try {
             const ledgerRef = collection(db, 'finance_ledger');
             const q = query(ledgerRef, where("seasonId", "==", String(season.id)), where("type", "==", "REVENUE"));
             const existingDocs = await getDocs(q);
-            if (!existingDocs.empty) return alert("🚨 이미 상금이 정산된 시즌입니다.");
+            
+            // 상금 장부가 이미 존재하면 지급 로직은 스킵
+            const skipFinance = !existingDocs.empty;
+            
+            if (skipFinance && !isAlreadyCompleted) {
+                alert("🚨 이미 상금이 정산된 시즌입니다. 스냅샷만 재생성합니다.");
+            }
 
+            const userAccSnapshot = await getDocs(collection(db, 'user_accounts'));
+            const userAccounts = userAccSnapshot.docs.map(d => {
+                const data = d.data();
+                return { 
+                    uid: d.id, 
+                    mappedOwnerId: data.mappedOwnerId as string | undefined, 
+                    displayName: data.displayName as string | undefined 
+                };
+            });
+
+            // 🔥 [FM 픽스] UID 매핑 로직을 무결성 기반으로 강화 (undefined 에러 100% 방지)
+            const getRealUid = (legacyName: string) => {
+                if (!legacyName || ['-', 'TBD', 'SYSTEM', 'BYE', 'CPU'].includes(legacyName.trim())) return null;
+                const search = legacyName.trim();
+                
+                // 1. 넘어온 값이 이미 구글 UID인 경우
+                const foundByUid = userAccounts.find(u => u.uid === search);
+                if (foundByUid) return foundByUid.uid;
+
+                // 2. 넘어온 값이 닉네임인 경우 UID를 찾아 반환
+                const foundByName = userAccounts.find(u => u.mappedOwnerId === search || u.displayName === search);
+                return foundByName ? foundByName.uid : search; // 못 찾으면 원본 유지 (호환성 철칙)
+            };
+
+            // 2. 스냅샷 데이터 수집용 그릇
             const teamStats: Record<string, any> = {};
-            const playerGoals: Record<string, any> = {};
-            const playerAssists: Record<string, any> = {};
+            const playerStats: Record<string, any> = {};
 
+            // 3. 전 경기 순회하며 데이터 정밀 집계
             season.rounds?.forEach(r => {
                 r.matches?.filter(m => m.status === 'COMPLETED').forEach(m => {
                     const hTeam = m.home; const aTeam = m.away;
-                    if (!teamStats[hTeam]) teamStats[hTeam] = { owner: m.homeOwner, pts: 0, gd: 0, gf: 0 };
-                    if (!teamStats[aTeam]) teamStats[aTeam] = { owner: m.awayOwner, pts: 0, gd: 0, gf: 0 };
+                    
+                    if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, owner: m.homeOwner, win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0 };
+                    if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, owner: m.awayOwner, win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0 };
 
                     const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
 
-                    if (!['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name)) {
-                        teamStats[hTeam].gf += hs; teamStats[hTeam].gd += (hs - as);
-                        teamStats[aTeam].gf += as; teamStats[aTeam].gd += (as - hs);
+                    const stageUpper = (m.stage || '').toUpperCase();
+                    const isKnockout = ['ROUND_OF', 'SEMI', 'FINAL', 'PO', '34'].some(k => stageUpper.includes(k) || (r.name || '').toUpperCase().includes(k));
 
-                        if (hs > as) teamStats[hTeam].pts += 3;
-                        else if (as > hs) teamStats[aTeam].pts += 3;
-                        else { teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
+                    if (!isKnockout) {
+                        teamStats[hTeam].gf += hs; teamStats[hTeam].ga += as; teamStats[hTeam].gd += (hs - as);
+                        teamStats[aTeam].gf += as; teamStats[aTeam].ga += hs; teamStats[aTeam].gd += (as - hs);
+
+                        if (hs > as) { teamStats[hTeam].win++; teamStats[hTeam].pts += 3; teamStats[aTeam].loss++; }
+                        else if (as > hs) { teamStats[aTeam].win++; teamStats[aTeam].pts += 3; teamStats[hTeam].loss++; }
+                        else { teamStats[hTeam].draw++; teamStats[aTeam].draw++; teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
                     }
 
-                    const processRecords = (records: any[], targetMap: any, ownerName: string) => {
+                    const processPlayers = (records: any[], teamName: string, ownerName: string, type: 'goals' | 'assists') => {
                         if (!records || !Array.isArray(records)) return;
                         records.forEach(p => {
                             const pName = typeof p === 'string' ? p : p.name;
                             const count = typeof p === 'string' ? 1 : (p.count || 1);
                             if (!pName) return;
                             
-                            if (!targetMap[pName]) targetMap[pName] = { owner: ownerName, count: 0 };
-                            targetMap[pName].count += count;
+                            const pKey = `${pName}-${teamName}`;
+                            if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, goals: 0, assists: 0 };
+                            playerStats[pKey][type] += count;
                         });
                     };
 
-                    processRecords(m.homeScorers, playerGoals, m.homeOwner);
-                    processRecords(m.awayScorers, playerGoals, m.awayOwner);
-                    processRecords(m.homeAssists, playerAssists, m.homeOwner);
-                    processRecords(m.awayAssists, playerAssists, m.awayOwner);
+                    processPlayers(m.homeScorers, hTeam, m.homeOwner, 'goals');
+                    processPlayers(m.awayScorers, aTeam, m.awayOwner, 'goals');
+                    processPlayers(m.homeAssists, hTeam, m.homeOwner, 'assists');
+                    processPlayers(m.awayAssists, aTeam, m.awayOwner, 'assists');
                 });
             });
 
+            // 4. 우승자 및 순위 산출 로직
             let firstOwner = '', secondOwner = '', thirdOwner = '';
             let grandChampionOwner = ''; 
 
@@ -162,45 +206,83 @@ export const AdminView = ({
                 thirdOwner = sortedFallback[0]?.owner || '';
             }
 
-            const topScorer = Object.values(playerGoals).sort((a:any, b:any) => b.count - a.count)[0]?.owner || '';
-            const topAssist = Object.values(playerAssists).sort((a:any, b:any) => b.count - a.count)[0]?.owner || '';
+            const topScorer = Object.values(playerStats).sort((a:any, b:any) => b.goals - a.goals)[0]?.owner || '';
+            const topAssist = Object.values(playerStats).sort((a:any, b:any) => b.assists - a.assists)[0]?.owner || '';
 
-            const getOwnerId = (nick: string) => owners.find(o => o.nickname === nick)?.id;
-
+            // 5. 트랜잭션 (Batch) 처리 준비
             const batch = writeBatch(db);
             const prizes = (season as any).prizes || {};
 
-            const addPrize = (oId: any, amount: number, title: string) => {
-                if (oId && amount > 0) {
-                    batch.set(doc(ledgerRef), {
-                        seasonId: String(season.id), ownerId: String(oId), type: 'REVENUE',
-                        amount: Number(amount), title: title, createdAt: new Date().toISOString()
-                    });
+            // 💰 [상금 장부] skipFinance가 아닐 때만 UID 매핑 후 등록
+            if (!skipFinance) {
+                const addPrize = (legacyOwnerName: string, amount: number, title: string) => {
+                    const realUid = getRealUid(legacyOwnerName);
+                    if (realUid && amount > 0) {
+                        batch.set(doc(ledgerRef), {
+                            seasonId: String(season.id), 
+                            ownerId: String(realUid), // 🔥 구글 UID로 완벽 저장 (뼈대 원칙)
+                            type: 'REVENUE',
+                            amount: Number(amount), 
+                            title: title, 
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                };
+
+                if (season.type === 'LEAGUE_PLAYOFF' || season.type === 'CUP') {
+                    addPrize(grandChampionOwner, prizes.champion, `👑 ${season.name} 최종 우승`);
+                    addPrize(firstOwner, prizes.first, `🚩 ${season.name} 리그 1위`);
+                    addPrize(secondOwner, prizes.second, `🚩 ${season.name} 리그 2위`);
+                    addPrize(thirdOwner, prizes.third, `🚩 ${season.name} 리그 3위`);
+                } else {
+                    addPrize(firstOwner, prizes.first, `${season.name} 우승 🏆`);
+                    addPrize(secondOwner, prizes.second, `${season.name} 준우승 🥈`);
+                    addPrize(thirdOwner, prizes.third, `${season.name} 3위 🥉`);
+                }
+
+                addPrize(topScorer, prizes.scorer, `${season.name} 득점왕 ⚽`);
+                addPrize(topAssist, prizes.assist, `${season.name} 도움왕 🅰️`);
+            }
+
+            // 🏆 [명예의 전당] 스냅샷 생성 및 박제 (호환성 철칙: UID와 레거시 네임을 모두 보존)
+            const historySnapshot = {
+                seasonId: season.id,
+                seasonName: season.name,
+                type: season.type,
+                closedAt: new Date().toISOString(),
+                teams: Object.values(teamStats).map((t: any) => ({
+                    ...t,
+                    ownerId: getRealUid(t.owner) || null, // 🔥 파이어베이스 undefined 에러 방지를 위해 || null 적용
+                    legacyName: t.owner || ''
+                })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
+                players: Object.values(playerStats).map((p: any) => ({
+                    ...p,
+                    ownerId: getRealUid(p.owner) || null, 
+                    legacyName: p.owner || ''
+                })).sort((a:any, b:any) => b.goals - a.goals),
+                awards: {
+                    champion: getRealUid(grandChampionOwner || firstOwner) || null,
+                    second: getRealUid(secondOwner) || null,
+                    third: getRealUid(thirdOwner) || null,
+                    topScorer: getRealUid(topScorer) || null,
+                    topAssist: getRealUid(topAssist) || null
                 }
             };
 
-            if (season.type === 'LEAGUE_PLAYOFF' || season.type === 'CUP') {
-                addPrize(getOwnerId(grandChampionOwner), prizes.champion, `👑 ${season.name} 최종 우승`);
-                addPrize(getOwnerId(firstOwner), prizes.first, `🚩 ${season.name} 리그 1위`);
-                addPrize(getOwnerId(secondOwner), prizes.second, `🚩 ${season.name} 리그 2위`);
-                addPrize(getOwnerId(thirdOwner), prizes.third, `🚩 ${season.name} 리그 3위`);
-            } else {
-                addPrize(getOwnerId(firstOwner), prizes.first, `${season.name} 우승 🏆`);
-                addPrize(getOwnerId(secondOwner), prizes.second, `${season.name} 준우승 🥈`);
-                addPrize(getOwnerId(thirdOwner), prizes.third, `${season.name} 3위 🥉`);
-            }
+            // history_records 컬렉션에 통째로 박제
+            batch.set(doc(db, 'history_records', String(season.id)), historySnapshot);
 
-            addPrize(getOwnerId(topScorer), prizes.scorer, `${season.name} 득점왕 ⚽`);
-            addPrize(getOwnerId(topAssist), prizes.assist, `${season.name} 도움왕 🅰️`);
-
+            // 6. 시즌 상태 변경 (마감)
             batch.update(doc(db, 'seasons', String(season.id)), { status: 'COMPLETED' });
 
+            // 7. 한 번에 커밋
             await batch.commit();
-            alert(`🎉 [${season.name}] 마감 및 상금 지급 완료!`);
+            
+            alert(`🎉 [${season.name}] ${skipFinance ? '스냅샷 재생성' : '정산 및 박제'} 완료!`);
             setAdminTab('SEASON_MENU'); 
         } catch (error) {
-            console.error("🚨 정산 오류:", error);
-            alert("정산 중 오류가 발생했습니다.");
+            console.error("🚨 정산/박제 오류:", error);
+            alert("정산 및 스냅샷 생성 중 오류가 발생했습니다.");
         }
     };
 
@@ -228,7 +310,6 @@ export const AdminView = ({
     return (
         <div className="bg-[#0B1120] p-3 sm:p-6 rounded-3xl border border-slate-800 shadow-2xl animate-in fade-in">
             
-            {/* 🔥 상단 토글 탭 */}
             <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 mb-6 sm:mb-8 shadow-inner">
                 <button
                     onClick={() => setAdminTab('SYSTEM_MENU')}
@@ -244,7 +325,6 @@ export const AdminView = ({
                 </button>
             </div>
 
-            {/* 🔥 시스템 관리 영역 */}
             {activeTopTab === 'SYSTEM' && (
                 <>
                     {(adminTab === 'SYSTEM_MENU' || adminTab === 'NEW') ? (
@@ -279,7 +359,6 @@ export const AdminView = ({
                 </>
             )}
 
-            {/* 🔥 시즌 관리 영역 */}
             {activeTopTab === 'SEASON' && (
                 <>
                     {adminTab === 'SEASON_MENU' ? (
@@ -337,11 +416,9 @@ export const AdminView = ({
                                                 </h2>
                                             </div>
                                             <div className="flex items-center justify-end gap-2 shrink-0">
-                                                {targetSeason.status !== 'COMPLETED' && (
-                                                    <button onClick={() => handleCloseSeason(targetSeason)} className="bg-yellow-600 hover:bg-yellow-500 px-4 py-2.5 rounded-xl text-xs font-black text-white shadow-[0_0_15px_rgba(202,138,4,0.3)] transition-all flex items-center gap-1.5">
-                                                        💰 마감/정산
-                                                    </button>
-                                                )}
+                                                <button onClick={() => handleCloseSeason(targetSeason)} className={`${targetSeason.status === 'COMPLETED' ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-[0_0_15px_rgba(202,138,4,0.3)]'} px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5`}>
+                                                    {targetSeason.status === 'COMPLETED' ? <><DatabaseBackup size={14}/> 스냅샷 재생성</> : <>💰 마감/정산/박제</>}
+                                                </button>
                                                 <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-950/50 hover:bg-red-600 border border-red-900/50 hover:border-red-500 px-4 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-white transition-all flex items-center gap-1.5">
                                                     <Trash2 size={14} /> 파기
                                                 </button>

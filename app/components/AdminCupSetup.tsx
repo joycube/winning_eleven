@@ -20,17 +20,16 @@ const LEAGUE_RANKING: { [key: string]: number } = {
   "EUROPE": 1, "SOUTH AMERICA": 2, "NORTH AMERICA": 3, "AFRICA": 4, "ASIA-OCEANIA": 5
 };
 
+// 🔥 [FM 픽스] 장부 기록 시 ownerId 자리에 구글 UID를 우선적으로 기록합니다.
 const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
   try {
       if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
-
       const ledgerRef = collection(db, 'finance_ledger');
-
       const q = query(ledgerRef, where("seasonId", "==", String(seasonId)), where("type", "==", "EXPENSE"));
       const existingDocs = await getDocs(q);
       
       if (!existingDocs.empty) {
-          console.log("✅ [Finance] 이미 참가비가 징수된 시즌입니다. (2중 차감 스킵)");
+          console.log("✅ [Finance] 참가비 이미 징수됨.");
           return; 
       }
 
@@ -38,24 +37,19 @@ const recordEntryFees = async (seasonId: number | string, seasonName: string, to
       if (entryFee <= 0) return;
 
       const batch = writeBatch(db);
-
       ownerIds.forEach(ownerId => {
           const newDocRef = doc(ledgerRef); 
           batch.set(newDocRef, {
               seasonId: String(seasonId),
-              ownerId: String(ownerId),
+              ownerId: String(ownerId), // 🔥 UID 기록
               type: 'EXPENSE',
               amount: entryFee,
               title: `${seasonName} 참가비 🎫`,
               createdAt: new Date().toISOString()
           });
       });
-
       await batch.commit();
-      console.log(`✅ [Finance] ${ownerIds.length}명의 참가비(-${entryFee}원) 장부 기록 완료!`);
-  } catch (error) {
-      console.error("🚨 [Finance] 참가비 기록 중 에러 발생:", error);
-  }
+  } catch (error) { console.error(error); }
 };
 
 interface AdminCupSetupProps {
@@ -94,6 +88,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
   const isGroupLocked = useMemo(() => targetSeason.rounds && targetSeason.rounds.length > 0, [targetSeason]);
   const isTournamentLocked = useMemo(() => targetSeason.rounds && targetSeason.rounds.length > 1, [targetSeason]);
 
+  // 🔥 [FM 수술] 브라켓 복원 시 UID 매핑 정보까지 복원
   useEffect(() => {
     if (isTournamentLocked && targetSeason.rounds) {
       const knockoutRound = targetSeason.rounds.find(r => r.round === 2 || r.name.includes("Knockout"));
@@ -109,7 +104,9 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               const master = masterTeams.find(mt => mt.name === match.home);
               restoredBracket[idx*2] = { 
                   id: match.home==='BYE'?`bye_h_${idx}`:`restored_h_${match.id}`, masterId: match.home==='BYE'?-1:0, 
-                  name: match.home, logo: match.homeLogo, ownerName: match.homeOwner, 
+                  name: match.home, logo: match.homeLogo, 
+                  ownerName: match.homeOwner, 
+                  ownerUid: (match as any).homeOwnerUid, // 🔥 UID 복원
                   region: master?.region || '', tier: master?.tier || '',
                   realRankScore: 0, realFormScore: 0 
               };
@@ -118,7 +115,9 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               const master = masterTeams.find(mt => mt.name === match.away);
               restoredBracket[idx*2+1] = { 
                   id: match.away==='BYE'?`bye_a_${idx}`:`restored_a_${match.id}`, masterId: match.away==='BYE'?-1:0, 
-                  name: match.away, logo: match.awayLogo, ownerName: match.awayOwner, 
+                  name: match.away, logo: match.awayLogo, 
+                  ownerName: match.awayOwner, 
+                  ownerUid: (match as any).awayOwnerUid, // 🔥 UID 복원
                   region: master?.region || '', tier: master?.tier || '',
                   realRankScore: 0, realFormScore: 0 
               };
@@ -138,7 +137,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
         maxTeams = Math.max(maxTeams, dbGroups[g].length);
         loadedGroups[g] = dbGroups[g].map(tid => {
           const t = targetSeason.teams?.find(team => team.id === tid);
-          return t ? { id: `loaded_${tid}`, masterId: tid, name: t.name, logo: t.logo, ownerName: t.ownerName||'CPU', region: t.region, tier: t.tier, realRankScore: t.realRankScore, realFormScore: t.realFormScore } : null;
+          return t ? { id: `loaded_${tid}`, masterId: tid, name: t.name, logo: t.logo, ownerName: t.ownerName||'CPU', ownerUid: (t as any).ownerUid, region: t.region, tier: t.tier, realRankScore: t.realRankScore, realFormScore: t.realFormScore } : null;
         }).filter(Boolean);
       });
       const gCount = Math.max(2, Object.keys(loadedGroups).length);
@@ -172,24 +171,21 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     return getSortedTeamsLogic(teams, '');
   }, [masterTeams, unassignedPool, groups, filterCategory, filterLeague, filterTier, searchTeam]);
 
-  // 🔥 [TS 버그 해결 완벽 픽스] undefined 방어용 폴백(|| '') 적용
+  // 🔥 [FM 수술] 진출 팀 계산 시 UID 정보 보존
   const qualifiedTeams = useMemo(() => {
     if (!targetSeason.rounds?.[0]) return [];
     const matches = targetSeason.rounds[0].matches;
-    
-    type TeamStat = { name: string; points: number; gd: number; gf: number; group: string; logo: string; ownerName: string; };
+    type TeamStat = { name: string; points: number; gd: number; gf: number; group: string; logo: string; ownerName: string; ownerUid?: string; };
     const stats: Record<string, TeamStat> = {};
     
     matches.filter(m => m.status === 'COMPLETED').forEach(m => {
       [m.home, m.away].forEach(t => { 
           if(!stats[t]) stats[t] = { 
-              name: t, 
-              points: 0, 
-              gd: 0, 
-              gf: 0, 
-              group: m.group || '', // 🔥 해결 1: undefined가 들어오지 않도록 빈 문자열 폴백
+              name: t, points: 0, gd: 0, gf: 0, 
+              group: m.group || '', 
               logo: (t === m.home ? m.homeLogo : m.awayLogo) || FALLBACK_IMG, 
-              ownerName: (t === m.home ? m.homeOwner : m.awayOwner) || 'CPU' 
+              ownerName: (t === m.home ? m.homeOwner : m.awayOwner) || 'CPU',
+              ownerUid: (t === m.home ? (m as any).homeOwnerUid : (m as any).awayOwnerUid) // 🔥 UID 추출
           }; 
       });
       const h=Number(m.homeScore), a=Number(m.awayScore);
@@ -198,29 +194,19 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     });
 
     const winners: CupEntry[] = [];
-    
-    // 🔥 해결 2: map 돌릴 때도 undefined 방어
-    const groups = Array.from(new Set(matches.map(m => m.group || ''))).sort();
-
-    groups.forEach((g: string) => {
+    const groupsList = Array.from(new Set(matches.map(m => m.group || ''))).sort();
+    groupsList.forEach((g: string) => {
       const gTeams = Object.values(stats).filter(t => t.group === g).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
-      
-      if(gTeams[0]) {
-        const master = masterTeams.find(mt => mt.name === gTeams[0].name);
-        winners.push({
-            ...gTeams[0], masterId: 0, id: `q_${g}_1`, 
-            tier: master?.tier || 'N/A', region: master?.region || '',
-            rank: 1, realRankScore: 80, realFormScore: 80
-        } as CupEntry);
-      }
-      if(gTeams[1]) {
-        const master = masterTeams.find(mt => mt.name === gTeams[1].name);
-        winners.push({
-            ...gTeams[1], masterId: 0, id: `q_${g}_2`, 
-            tier: master?.tier || 'N/A', region: master?.region || '',
-            rank: 2, realRankScore: 80, realFormScore: 80
-        } as CupEntry);
-      }
+      [0, 1].forEach(rankIdx => {
+        if(gTeams[rankIdx]) {
+            const master = masterTeams.find(mt => mt.name === gTeams[rankIdx].name);
+            winners.push({
+                ...gTeams[rankIdx], masterId: 0, id: `q_${g}_${rankIdx+1}`, 
+                tier: master?.tier || 'N/A', region: master?.region || '',
+                rank: rankIdx+1, realRankScore: 80, realFormScore: 80
+            } as CupEntry);
+        }
+      });
     });
     return winners;
   }, [targetSeason, masterTeams]);
@@ -244,19 +230,31 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     }, 60);
   };
 
+  // 🔥 [FM 수술] 팀 계약 시 UID 뼈대 장착
   const handleSignTeam = (master: MasterTeam | null) => {
     const target = master || randomResult;
     if (!target || !selectedOwnerId) return !selectedOwnerId ? alert("오너 선택 필수") : null;
-    const owner = owners.find(o => String(o.id) === String(selectedOwnerId));
+    const owner = owners.find(o => String(o.id) === String(selectedOwnerId) || o.uid === selectedOwnerId);
     const allAssignedTeams = [...unassignedPool, ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null)];
     if(allAssignedTeams.some(p => p.masterId === target.id)) return alert("이미 선발된 팀입니다.");
-    setUnassignedPool(prev => [...prev, { id: `entry_${Date.now()}`, masterId: target.id, name: target.name, logo: target.logo, ownerName: owner!.nickname, region: target.region, tier: target.tier, realRankScore: target.realRankScore, realFormScore: target.realFormScore }]);
+    
+    setUnassignedPool(prev => [...prev, { 
+        id: `entry_${Date.now()}`, masterId: target.id, name: target.name, logo: target.logo, 
+        ownerName: owner!.nickname, 
+        ownerUid: owner!.uid || owner!.docId || '', // 🔥 UID 저장
+        region: target.region, tier: target.tier, realRankScore: target.realRankScore, realFormScore: target.realFormScore 
+    }]);
     setRandomResult(null); setIsFlipping(false);
   };
 
   const handleDraftApply = (newTeams: Team[]) => {
     const used = new Set([...unassignedPool.map(t => t.masterId), ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null).map(t => t.masterId)]);
-    setUnassignedPool(prev => [...prev, ...newTeams.filter(t => !used.has(t.id)).map((t,i) => ({ id:`draft_${Date.now()}_${i}`, masterId:t.id, name:t.name, logo:t.logo, ownerName:t.ownerName||'CPU', region:t.region, tier:t.tier, realRankScore:t.realRankScore, realFormScore:t.realFormScore }))]);
+    setUnassignedPool(prev => [...prev, ...newTeams.filter(t => !used.has(t.id)).map((t,i) => ({ 
+        id:`draft_${Date.now()}_${i}`, masterId:t.id, name:t.name, logo:t.logo, 
+        ownerName:t.ownerName||'CPU', 
+        ownerUid: (t as any).ownerUid || '', // 🔥 드래프트 팀들도 UID 계승
+        region:t.region, tier:t.tier, realRankScore:t.realRankScore, realFormScore:t.realFormScore 
+    }))]);
   };
 
   const handleDragStart = (e: React.DragEvent, entry: CupEntry) => { setDraggedEntry(entry); setDraggedTournamentEntry(entry); e.dataTransfer.effectAllowed = "move"; };
@@ -291,27 +289,30 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     else { if(tournamentWaitingPool.length===0) return alert("진출 팀 없음"); setTargetSlot({group:'TOURNAMENT', idx, isTournament:true}); }
   };
 
+  // 🔥 [FM 수술] 토너먼트 대진 생성 시 UID 배관 연결
   const handleCreateTournamentSchedule = async () => {
     let tb = [...tournamentBracket]; const tSize = tb.length>4?8:4;
     if(tb.length < tSize) tb = [...tb, ...Array(tSize - tb.length).fill(null)];
     if(tb.some(t=>t===null) && !confirm("빈 자리는 BYE(부전승) 처리됩니다.")) return;
-    const proc = tb.map((t,i) => t || { id:`bye_${i}`, masterId:-1, name:'BYE', logo:FALLBACK_IMG, ownerName:'SYSTEM', region:'', tier:'', realRankScore:0, realFormScore:0 });
+    const proc = tb.map((t,i) => t || { id:`bye_${i}`, masterId:-1, name:'BYE', logo:FALLBACK_IMG, ownerName:'SYSTEM', ownerUid:'', region:'', tier:'', realRankScore:0, realFormScore:0 });
     const matches: any[] = []; const cnt = proc.length/2; const prefix = cnt===4?'ko_4':'ko_final';
     for(let i=0; i<proc.length; i+=2) {
       matches.push({
         id:`ko_${cnt}_${i/2}`, seasonId:targetSeason.id, stage:cnt===4?'ROUND_OF_8':'ROUND_OF_4', matchLabel:`${cnt===4?'8강':'4강'} ${i/2+1}경기`,
-        home:proc[i].name, homeLogo:proc[i].logo, homeOwner:proc[i].ownerName, away:proc[i+1].name, awayLogo:proc[i+1].logo, awayOwner:proc[i+1].ownerName,
+        home:proc[i].name, homeLogo:proc[i].logo, homeOwner:proc[i].ownerName, homeOwnerUid: proc[i].ownerUid, // 🔥 UID 추가
+        away:proc[i+1].name, awayLogo:proc[i+1].logo, awayOwner:proc[i+1].ownerName, awayOwnerUid: proc[i+1].ownerUid, // 🔥 UID 추가
         homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[],
         nextMatchId: cnt>1?`${prefix}_${Math.floor(i/4)}`:null, nextMatchSide:(i/2)%2===0?'HOME':'AWAY'
       });
     }
-    if(cnt===4) for(let j=0; j<2; j++) matches.push({id:`ko_4_${j}`, seasonId:targetSeason.id, stage:'ROUND_OF_4', matchLabel:`4강 ${j+1}경기`, home:'TBD', away:'TBD', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', awayOwner:'TBD', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:`ko_final_0`, nextMatchSide:j===0?'HOME':'AWAY'});
-    matches.push({id:`ko_final_0`, seasonId:targetSeason.id, stage:'FINAL', matchLabel:`결승전`, home:'TBD', away:'TBD', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', awayOwner:'TBD', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:null});
+    if(cnt===4) for(let j=0; j<2; j++) matches.push({id:`ko_4_${j}`, seasonId:targetSeason.id, stage:'ROUND_OF_4', matchLabel:`4강 ${j+1}경기`, home:'TBD', away:'TBD', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', homeOwnerUid:'', awayOwner:'TBD', awayOwnerUid:'', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:`ko_final_0`, nextMatchSide:j===0?'HOME':'AWAY'});
+    matches.push({id:`ko_final_0`, seasonId:targetSeason.id, stage:'FINAL', matchLabel:`결승전`, home:'TBD', homeOwnerUid:'', away:'TBD', awayOwnerUid:'', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', awayOwner:'TBD', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:null});
     const rounds = [...(targetSeason.rounds||[])]; rounds[1] = { round:2, name:"Knockout Stage", seasonId:targetSeason.id, matches };
     await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds, cupPhase:'KNOCKOUT' });
     alert("토너먼트 대진 생성 완료!"); onNavigateToSchedule(targetSeason.id);
   };
 
+  // 🔥 [FM 수술] 조별리그 생성 시 UID 배관 연결
   const handleCreateSchedule = async () => {
     if(Object.values(groups).flat().some(t=>!t) && !confirm("빈 자리 존재. 진행합니까?")) return;
     const finalTeams: Team[] = [];
@@ -322,21 +323,25 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     Object.keys(groups).forEach(gName => {
       groupsForDB[gName] = [];
       const currentGroupTeams: Team[] = []; 
-
       groups[gName].forEach(entry => {
         if (entry) {
           const newTeam: Team = {
-            id: Number(entry.masterId), seasonId: targetSeason.id, name: entry.name, logo: entry.logo, ownerName: entry.ownerName, region: entry.region, tier: entry.tier, win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0, realRankScore: entry.realRankScore || 80, realFormScore: entry.realFormScore || 80
+            id: Number(entry.masterId), seasonId: targetSeason.id, name: entry.name, logo: entry.logo, 
+            ownerName: entry.ownerName, 
+            ownerUid: entry.ownerUid || '', // 🔥 UID 저장
+            region: entry.region, tier: entry.tier, win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0, realRankScore: entry.realRankScore || 80, realFormScore: entry.realFormScore || 80
           };
           finalTeams.push(newTeam); groupsForDB[gName].push(newTeam.id); currentGroupTeams.push(newTeam);
         }
       });
-
       for (let i = 0; i < currentGroupTeams.length; i++) {
         for (let j = i + 1; j < currentGroupTeams.length; j++) {
           const home = currentGroupTeams[i]; const away = currentGroupTeams[j];
           groupMatches.push({
-            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`, seasonId: targetSeason.id, stage: `GROUP STAGE`, matchLabel: `Group ${gName} Match`, group: gName, home: home.name, homeLogo: home.logo, homeOwner: home.ownerName, away: away.name, awayLogo: away.logo, awayOwner: away.ownerName, homeScore: '', awayScore: '', status: 'UPCOMING', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+            id: `match_${targetSeason.id}_${gName}_${matchCounter++}`, seasonId: targetSeason.id, stage: `GROUP STAGE`, matchLabel: `Group ${gName} Match`, group: gName, 
+            home: home.name, homeLogo: home.logo, homeOwner: home.ownerName, homeOwnerUid: (home as any).ownerUid, // 🔥 UID 추가
+            away: away.name, awayLogo: away.logo, awayOwner: away.ownerName, awayOwnerUid: (away as any).ownerUid, // 🔥 UID 추가
+            homeScore: '', awayScore: '', status: 'UPCOMING', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
           });
         }
       }
@@ -345,12 +350,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: finalTeams, rounds: [{round:1, name:'Group Stage', seasonId:targetSeason.id, matches:groupMatches.sort(()=>0.5-Math.random())}], groups: groupsForDB, cupPhase: 'GROUP_STAGE', status: 'ACTIVE' });
 
     if (!isGroupLocked && (targetSeason as any).totalPrize) {
-      const uniqueOwnerNames = Array.from(new Set(finalTeams.map(t => t.ownerName)));
-      const uniqueOwnerIds = uniqueOwnerNames.map(name => {
-          const owner = owners.find(o => o.nickname === name);
-          return owner ? String(owner.id) : '';
-      }).filter(id => id !== '');
-      recordEntryFees(targetSeason.id, targetSeason.name, (targetSeason as any).totalPrize, uniqueOwnerIds);
+      const uniqueOwnerUids = Array.from(new Set(finalTeams.map(t => (t as any).ownerUid))).filter(u => u);
+      recordEntryFees(targetSeason.id, targetSeason.name, (targetSeason as any).totalPrize, uniqueOwnerUids as string[]);
     }
     alert("조별리그 시작!"); onNavigateToSchedule(targetSeason.id);
   };
@@ -384,7 +385,7 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
             <label className="text-[10px] text-slate-500 font-bold mb-1 block">SELECT OWNER</label>
             <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="w-full bg-slate-950 p-3 rounded-xl border border-slate-700 text-white font-bold text-sm">
               <option value="">👤 Select Owner</option>
-              {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
+              {owners.map(o => <option key={o.id} value={o.uid || o.docId || String(o.id)}>{o.nickname}</option>)}
             </select>
           </div>
           <div>

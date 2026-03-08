@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Owner } from '../types';
 
 interface AdminUserTrackerProps {
@@ -15,7 +15,7 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // 1. 대기 유저 가져오기 (🔥 원래 경로인 user_accounts 로 복구!)
+  // 1. 대기 유저 가져오기
   const fetchPendingUsers = async () => {
     setLoading(true);
     try {
@@ -34,42 +34,63 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
     fetchPendingUsers();
   }, []);
 
-  // 2. 통합 승인 처리 (신규 가입자 & 기존 오너 매핑)
-  const handleApprove = async (userUid: string, selectedOwner: string, userName: string) => {
+  // 2. 통합 승인 처리 (신규 가입자 & 과거 기록 매핑 - 100% FM UID 뼈대 구축)
+  const handleApprove = async (user: any, selectedLegacyName: string) => {
+    const userUid = user.id;
     setProcessingId(userUid);
     
     try {
-      // 🔥 여기도 user_accounts 로 복구!
-      const userRef = doc(db, 'user_accounts', userUid);
-      let finalOwnerId = selectedOwner;
-
-      // 분기 1: 신규 가입자 승인 (드롭다운을 선택하지 않은 경우)
-      if (!selectedOwner) {
-        if (!confirm(`[신규 가입] '${userName}' 님을 새로운 구단주로 승인하시겠습니까?\n(승인 후 오너룸에서 직접 프로필과 팀을 설정하게 됩니다.)`)) {
+      // 분기 1: 신규 가입자 승인 (과거 기록 매핑 안 함)
+      if (!selectedLegacyName) {
+        if (!confirm(`[신규 가입] '${user.displayName}' 님을 새로운 구단주로 승인하시겠습니까?\n\n승인 즉시 고유 UID 기반으로 오너 명부가 생성됩니다.`)) {
           setProcessingId(null);
           return;
         }
-        finalOwnerId = userName; // 신규 유저는 본인의 구글 닉네임을 기본 오너명으로 부여
       } 
-      // 분기 2: 기존 오너 매핑 (드롭다운을 선택한 경우)
+      // 분기 2: 기존 오너 매핑 (과거 기록 연결)
       else {
-        if (!confirm(`[기존 매핑] '${selectedOwner}'님의 기존 기록과 연결하여 승인하시겠습니까?`)) {
+        if (!confirm(`[기존 기록 연결] 구글 계정(${user.displayName})에 과거 '${selectedLegacyName}'의 모든 기록을 귀속시키겠습니까?\n\n이후부터 이 계정의 본체(Key)는 UID로 동작합니다.`)) {
           setProcessingId(null);
           return;
         }
       }
 
-      await updateDoc(userRef, {
+      // 🔥 [100% FM 픽스] user_accounts(로그인)와 users(명부)를 동시에 업데이트하기 위해 Batch 사용
+      const batch = writeBatch(db);
+      
+      const userAccountRef = doc(db, 'user_accounts', userUid);
+      const ownerListRef = doc(db, 'users', userUid); // 🔥 [핵심] 문서 ID 자체가 구글 UID가 됨!
+
+      // A. 로그인 계정 권한 승격
+      batch.update(userAccountRef, {
         role: 'MEMBER',
-        mappedOwnerId: finalOwnerId,
+        uid: userUid, 
+        mappedOwnerId: selectedLegacyName || user.displayName, // 매핑값이 없으면 본인 닉네임 사용
         approvedAt: new Date().toISOString()
       });
+
+      // B. 실제 앱에서 쓰일 오너 명부(users) 객체 생성
+      // 기존에 선택된 오너의 정보(이미지 등)가 있다면 가져오고, 없으면 구글 프로필 사용
+      const legacyOwnerData = owners.find(o => o.nickname === selectedLegacyName);
+      
+      batch.set(ownerListRef, {
+        id: Date.now(), // 정렬용 보조 숫자 ID
+        uid: userUid,   // 완벽한 뼈대!
+        nickname: selectedLegacyName || user.displayName, // 기본 노출 이름
+        legacyName: selectedLegacyName || null, // 🔥 과거 스냅샷과 연결할 생명줄 (호환성 유지용)
+        photo: legacyOwnerData?.photo || user.photoURL || '',
+        email: user.email,
+        createdAt: new Date().toISOString()
+      }, { merge: true }); // 이미 문서가 있다면 덮어쓰기(병합)
+      
+      // 트랜잭션 실행
+      await batch.commit();
       
       setPendingUsers(prev => prev.filter(u => u.id !== userUid));
-      alert('✅ 승인 처리가 완료되었습니다!');
+      alert('✅ 승인 및 명부 생성 처리가 완벽히 완료되었습니다!');
     } catch (e: any) {
       console.error(e);
-      alert(`🚨 승인 실패 (파이어베이스 보안 규칙을 확인하세요): ${e.message}`);
+      alert(`🚨 승인 실패 (파이어베이스 규칙을 확인하세요): ${e.message}`);
     } finally {
       setProcessingId(null);
     }
@@ -81,13 +102,12 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
 
     setProcessingId(userUid);
     try {
-      // 🔥 여기도 user_accounts 로 복구!
       await deleteDoc(doc(db, 'user_accounts', userUid));
       setPendingUsers(prev => prev.filter(u => u.id !== userUid));
       alert('🗑️ 성공적으로 삭제되었습니다.');
     } catch (e: any) {
       console.error(e);
-      alert(`🚨 삭제 실패 (파이어베이스 보안 규칙을 확인하세요): ${e.message}`);
+      alert(`🚨 삭제 실패: ${e.message}`);
     } finally {
       setProcessingId(null);
     }
@@ -101,7 +121,6 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
 
   return (
     <div className="bg-slate-900/50 rounded-3xl border border-slate-800 p-6 backdrop-blur-md animate-in fade-in duration-500">
-      {/* 헤더 섹션 */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h3 className="text-xl font-black text-white italic tracking-tighter uppercase flex items-center gap-2">
@@ -133,7 +152,6 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
         </div>
       </div>
 
-      {/* 리스트 섹션 */}
       {loading ? (
         <div className="py-20 text-center text-slate-500 italic font-bold animate-pulse">Scanning database...</div>
       ) : filteredUsers.length === 0 ? (
@@ -146,7 +164,6 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
         <div className="grid gap-3">
           {filteredUsers.map((u) => (
             <div key={u.id} className="group flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-950/80 p-5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all duration-300">
-              {/* 유저 정보 */}
               <div className="flex items-center gap-4">
                 <img 
                   src={u.photoURL || 'https://via.placeholder.com/40'} 
@@ -156,20 +173,20 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
                 <div>
                   <div className="text-sm font-black text-white group-hover:text-emerald-400 transition-colors">{u.displayName}</div>
                   <div className="text-[11px] text-slate-500 font-medium">{u.email}</div>
+                  <div className="text-[9px] text-slate-600 font-mono mt-0.5">UID: {u.id}</div>
                 </div>
               </div>
 
-              {/* 액션 구역 */}
               <div className="flex flex-wrap items-center gap-3">
                 <select 
                   id={`select-${u.id}`}
                   disabled={processingId === u.id}
                   className="flex-1 lg:flex-none bg-slate-900 text-[11px] font-bold border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
                 >
-                  <option value="">[신규 구단주] 로 승인 (매핑 없음)</option>
-                  <optgroup label="--- 기존 구단주 기록 연결 ---">
+                  <option value="">[신규 구단주] 로 승인 (과거 기록 없음)</option>
+                  <optgroup label="--- 기존 구단주 기록 흡수 ---">
                     {owners.map(o => (
-                      <option key={o.nickname} value={o.nickname}>{o.nickname} 기록 연동</option>
+                      <option key={o.nickname} value={o.nickname}>{o.nickname}님의 과거 기록 연결</option>
                     ))}
                   </optgroup>
                 </select>
@@ -179,7 +196,7 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
                     disabled={processingId === u.id}
                     onClick={() => {
                       const select = document.getElementById(`select-${u.id}`) as HTMLSelectElement;
-                      handleApprove(u.id, select.value, u.displayName);
+                      handleApprove(u, select.value); // 전체 객체를 전달하도록 수정
                     }}
                     className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white text-[11px] font-black italic px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-900/20"
                   >
@@ -200,11 +217,10 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
         </div>
       )}
 
-      {/* 푸터 안내 */}
       <div className="mt-8 p-5 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
         <p className="text-[11px] text-slate-400 leading-relaxed font-bold">
           <span className="text-emerald-400 mr-1">TIPS:</span> 
-          기존 오너를 선택하면 <span className="text-emerald-400">과거 기록이 매핑</span>되며, 선택하지 않고 승인하면 <span className="text-white">신규 구단주</span>로 처리되어 유저가 오너룸에서 직접 프로필을 세팅하게 됩니다. 
+          승인 시 유저의 고유 <span className="text-white font-mono">구글 UID</span>가 오너 명부(users)의 고유 식별자로 지정됩니다. 기존 오너를 매핑하면 과거 텍스트 이름이 UID에 종속되어 영구적으로 기록이 보존됩니다.
         </p>
       </div>
     </div>

@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Match, FALLBACK_IMG } from '../types';
+import { Match, Owner, FALLBACK_IMG } from '../types'; // 🔥 Owner 타입 추가
 import { RecordInput } from './RecordInput'; 
 import { db } from '../firebase'; 
 import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
@@ -15,9 +15,10 @@ interface MatchEditModalProps {
   onSave: (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => void;
   isTournament: boolean;
   teamPlayers: (team: string) => string[];
+  owners?: Owner[]; // 🔥 [FM 수술] 실시간 닉네임 조회를 위해 명부 추가
 }
 
-export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlayers }: MatchEditModalProps) => {
+export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlayers, owners = [] }: MatchEditModalProps) => {
   const { authUser: user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'TALK' | 'RECORD'>('TALK');
@@ -47,7 +48,9 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
   const hasRecordPermission = useMemo(() => {
       if (!user) return false;
       if (user.role === 'ADMIN') return true;
-      return match.homeOwner === user.mappedOwnerId || match.awayOwner === user.mappedOwnerId;
+      // 🔥 권한 확인 시 UID와 닉네임을 함께 체크
+      const matchOwnerUids = [(match as any).homeOwnerUid, (match as any).awayOwnerUid];
+      return match.homeOwner === user.mappedOwnerId || match.awayOwner === user.mappedOwnerId || matchOwnerUids.includes(user.uid);
   }, [user, match]);
 
   let rawHomeRate = match.homePredictRate !== undefined ? Number(match.homePredictRate) : 50;
@@ -111,7 +114,8 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       try {
           await addDoc(collection(db, 'match_comments'), {
               matchId: match.id,
-              authorId: user.uid,
+              authorId: user.uid, // [기존 유산]
+              authorUid: user.uid, // 🔥 [UID 뼈대]
               authorName: user.mappedOwnerId,
               text: txt,
               createdAt: Date.now() 
@@ -129,6 +133,16 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       const d = new Date(ts);
       if (isNaN(d.getTime())) return '';
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  // 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 최신 닉네임을 반환
+  const resolveOwnerNickname = (ownerName: string, ownerUid?: string) => {
+      if (!ownerName || ['-', 'CPU', 'SYSTEM', 'GUEST'].includes(ownerName.trim().toUpperCase())) return ownerName;
+      const search = ownerName.trim();
+      const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
+      if (foundByUid) return foundByUid.nickname;
+      const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
+      return foundByName ? foundByName.nickname : ownerName;
   };
 
   const latestComment = comments.length > 0 ? comments[comments.length - 1] : null;
@@ -164,7 +178,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                           { effectiveIsTournament && <span className="absolute -bottom-1 -right-1 bg-orange-600 border border-[#0B1120] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-lg">T</span>}
                       </div>
                       <span className="font-black text-white text-[12px] sm:text-[15px] text-center leading-tight italic uppercase tracking-tight break-keep">{match.home}</span>
-                      <span className="text-[9px] text-emerald-500 font-bold mt-1.5 truncate max-w-full bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">{match.homeOwner || '-'}</span>
+                      <span className="text-[9px] text-emerald-500 font-bold mt-1.5 truncate max-w-full bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">{resolveOwnerNickname(match.homeOwner, (match as any).homeOwnerUid) || '-'}</span>
                   </div>
 
                   {/* Score */}
@@ -185,7 +199,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                           { effectiveIsTournament && <span className="absolute -bottom-1 -right-1 bg-orange-600 border border-[#0B1120] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-lg">T</span>}
                       </div>
                       <span className="font-black text-white text-[12px] sm:text-[15px] text-center leading-tight italic uppercase tracking-tight break-keep">{match.away}</span>
-                      <span className="text-[9px] text-blue-500 font-bold mt-1.5 truncate max-w-full bg-blue-950/50 border border-blue-800/50 px-1.5 py-0.5 rounded">{match.awayOwner || '-'}</span>
+                      <span className="text-[9px] text-blue-500 font-bold mt-1.5 truncate max-w-full bg-blue-950/50 border border-blue-800/50 px-1.5 py-0.5 rounded">{resolveOwnerNickname(match.awayOwner, (match as any).awayOwnerUid) || '-'}</span>
                   </div>
               </div>
 
@@ -268,12 +282,13 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
               {activeTab === 'TALK' && (
                   <div className="flex flex-col h-full w-full overflow-hidden">
                       
-                      {/* 🔥 [픽스] 모달 내부 최신 댓글 티커 공간 확보 */}
                       {latestComment && (
                           <div className="p-2 sm:p-3 border-b border-slate-800/50 shrink-0">
                               <div className="bg-[#0B1120] border border-slate-700/60 rounded-md px-2 py-1.5 flex items-center gap-1.5 w-full shadow-inner">
                                   <MessageSquare size={10} className="text-emerald-500 shrink-0" />
-                                  <div className="text-[9px] font-black text-emerald-400 shrink-0 max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap pr-1">{latestComment.authorName}</div>
+                                  <div className="text-[9px] font-black text-emerald-400 shrink-0 max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap pr-1">
+                                      {resolveOwnerNickname(latestComment.authorName, latestComment.authorUid || latestComment.authorId)}
+                                  </div>
                                   <div className="text-[10px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">{latestComment.text}</div>
                               </div>
                           </div>
@@ -288,11 +303,12 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                               </div>
                           ) : (
                               comments.map(c => {
-                                  const isMe = c.authorId === user?.uid;
+                                  const isMe = c.authorId === user?.uid || c.authorUid === user?.uid;
+                                  const resolvedName = resolveOwnerNickname(c.authorName, c.authorUid || c.authorId);
                                   return (
                                       <div key={c.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                                           <div className="flex items-center gap-1 mb-0.5 mx-1">
-                                              <span className={`text-[8px] font-black ${c.authorId === 'guest' ? 'text-slate-400' : 'text-emerald-400'}`}>{c.authorName}</span>
+                                              <span className={`text-[8px] font-black ${c.authorId === 'guest' ? 'text-slate-400' : 'text-emerald-400'}`}>{resolvedName}</span>
                                               <span className="text-[7px] text-slate-500">{formatTime(c.createdAt)}</span>
                                           </div>
                                           <div className={`px-2.5 py-1.5 rounded-lg w-max max-w-[90%] border shadow-sm ${isMe ? 'bg-emerald-900/20 border-emerald-800/30 rounded-tr-none' : 'bg-slate-800/50 border-slate-700/50 rounded-tl-none'}`}>
@@ -339,7 +355,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                   </div>
               )}
 
-              {/* 🔥 탭 2: 기록실 영역 (변경 없음) */}
+              {/* 🔥 탭 2: 기록실 영역 */}
               {activeTab === 'RECORD' && (
                   <div className="flex flex-col h-full w-full overflow-hidden">
                       <div className="flex-1 overflow-y-auto p-3 sm:p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
@@ -350,7 +366,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                                   </div>
                                   <h3 className="text-[13px] sm:text-[14px] font-black text-slate-300 mb-1">기록 열람 및 수정 불가</h3>
                                   <p className="text-[9px] sm:text-[10px] text-slate-500 text-center leading-relaxed max-w-[220px]">
-                                      해당 경기의 출전 오너 <strong className="text-emerald-400">{match.homeOwner}</strong>님, <strong className="text-blue-400">{match.awayOwner}</strong>님<br/>
+                                      해당 경기의 출전 오너 <strong className="text-emerald-400">{resolveOwnerNickname(match.homeOwner, (match as any).homeOwnerUid)}</strong>님, <strong className="text-blue-400">{resolveOwnerNickname(match.awayOwner, (match as any).awayOwnerUid)}</strong>님<br/>
                                       또는 <strong className="text-white">마스터(ADMIN)</strong>만 이 곳에 접근할 수 있습니다.
                                   </p>
                               </div>

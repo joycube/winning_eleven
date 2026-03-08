@@ -37,14 +37,14 @@ const MatchEditModal = dynamic(() => import('./components/MatchEditModal').then(
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 export default function FootballLeagueApp() {
-  const { seasons, owners, masterTeams, leagues, banners, isLoaded } = useLeagueData();
+  const { seasons, owners, masterTeams, leagues, banners, historyRecords, isLoaded } = useLeagueData();
   const { authUser, isLoading: isAuthLoading } = useAuth();
   
   const [currentView, setCurrentView] = useState<'LOCKERROOM' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'OWNERROOM' | 'ADMIN'>('LOCKERROOM');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
   const [adminTab, setAdminTab] = useState<any>('NEW'); 
   
-  const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId);
+  const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId, owners, historyRecords);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -52,7 +52,14 @@ export default function FootballLeagueApp() {
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
-  // 🔥 [UX 디벨롭] 탭 클릭 시 화면 상태를 강제 초기화(리셋) 하는 중앙 통제 함수
+  // 🔥 [헬퍼 함수] 이름(legacyName)을 던지면 명부를 뒤져 UID를 반환합니다.
+  const getOwnerUidByName = (targetName: string) => {
+      if (!targetName || ['-', 'TBD', 'BYE', 'SYSTEM', 'CPU'].includes(targetName.trim())) return undefined;
+      const search = targetName.trim();
+      const found = owners.find(o => o.nickname === search || o.legacyName === search || o.docId === search || o.uid === search);
+      return found?.uid || found?.docId || undefined;
+  };
+
   const handleViewChange = (newView: any) => {
       setCurrentView(newView);
       
@@ -61,13 +68,11 @@ export default function FootballLeagueApp() {
           params.set('view', newView);
 
           if (newView === 'LOCKERROOM') {
-              // 락커룸 탭 클릭: 게시글 읽던 중이라도 무조건 메인 목록으로 강제 복귀
               params.delete('postId');
               params.delete('noticeId');
               window.history.pushState(null, '', `?${params.toString()}`);
-              window.dispatchEvent(new Event('popstate')); // 락커룸 내부에 상태 리셋 신호 쏘기
+              window.dispatchEvent(new Event('popstate')); 
           } else if (newView === 'RANKING' || newView === 'SCHEDULE') {
-              // 시즌, 스케줄 탭 클릭: 과거 시즌 보던 중이라도 무조건 최신 시즌(seasons[0])으로 강제 복귀
               if (seasons && seasons.length > 0) {
                   const latestSeasonId = seasons[0].id;
                   setViewSeasonId(latestSeasonId);
@@ -159,20 +164,24 @@ export default function FootballLeagueApp() {
     };
 
     const getTeamMeta = (name: string) => {
-        if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-' };
-        if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM' };
+        if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
+        if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM', ownerUid: undefined };
         const normName = name.toLowerCase().trim();
         const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
         const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
+        
+        const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
         return {
             logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
-            owner: stats?.ownerName || (master as any)?.ownerName || 'CPU'
+            owner: ownerName,
+            ownerUid: getOwnerUidByName(ownerName) // 🔥 UID도 함께 찾아서 넘김
         };
     };
 
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
+        homeOwnerUid: undefined, awayOwnerUid: undefined,
         homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
         homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
     } as Match);
@@ -212,6 +221,7 @@ export default function FootballLeagueApp() {
             const meta = getTeamMeta(winner);
             target[`${side}Logo`] = meta.logo;
             target[`${side}Owner`] = meta.owner;
+            target[`${side}OwnerUid`] = meta.ownerUid; // 🔥 승자의 UID도 다음 라운드에 세팅
             target[`${side}Score`] = '';
         }
     };
@@ -250,24 +260,47 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // 🔥 [핵심 로직] 경기 결과 저장 시 UID 뼈대 박기
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
+      // 선수 스탯에 UID 주입 헬퍼
+      const injectUidToPlayers = (players: any[], teamOwnerName: string) => {
+          const ownerUid = getOwnerUidByName(teamOwnerName);
+          return players.map((p: any) => ({
+              ...p,
+              ownerUid: ownerUid // 선수 기록에도 해당 팀 구단주의 UID를 박음
+          }));
+      };
+
+      const safeRecords = {
+          homeScorers: injectUidToPlayers(records?.homeScorers || [], editingMatch.homeOwner),
+          awayScorers: injectUidToPlayers(records?.awayScorers || [], editingMatch.awayOwner),
+          homeAssists: injectUidToPlayers(records?.homeAssists || [], editingMatch.homeOwner),
+          awayAssists: injectUidToPlayers(records?.awayAssists || [], editingMatch.awayOwner)
+      };
+
+      // 승자 추출 시 UID 포함
+      type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
+
       if (s.type === 'TOURNAMENT') {
           let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
           let matches = newRounds[0].matches; 
           
-          let winningTeam: {name: string, logo: string, owner: string} | null = null;
+          let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
           
-          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
+          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
+
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
+          else if (editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') winningTeam = aTeam;
+          else if (manualWinner === 'HOME') winningTeam = hTeam;
+          else if (manualWinner === 'AWAY') winningTeam = aTeam;
+          else if (h > a) winningTeam = hTeam;
+          else if (a > h) winningTeam = aTeam;
           else return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
           const currentMatchIndex = matches.findIndex((m: any) => m.id === matchId);
@@ -276,8 +309,7 @@ export default function FootballLeagueApp() {
           matches[currentMatchIndex] = {
               ...matches[currentMatchIndex],
               homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
-              homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-              homeAssists: records.homeAssists, awayAssists: records.awayAssists
+              ...safeRecords
           };
 
           const totalMatches = matches.length;
@@ -300,10 +332,12 @@ export default function FootballLeagueApp() {
                   matches[nextMatchIndex].home = winningTeam.name;
                   matches[nextMatchIndex].homeLogo = winningTeam.logo;
                   matches[nextMatchIndex].homeOwner = winningTeam.owner;
+                  matches[nextMatchIndex].homeOwnerUid = winningTeam.ownerUid; // 🔥 다음 라운드로 UID 패스
               } else {
                   matches[nextMatchIndex].away = winningTeam.name;
                   matches[nextMatchIndex].awayLogo = winningTeam.logo;
                   matches[nextMatchIndex].awayOwner = winningTeam.owner;
+                  matches[nextMatchIndex].awayOwnerUid = winningTeam.ownerUid; // 🔥 다음 라운드로 UID 패스
               }
           }
 
@@ -336,7 +370,7 @@ export default function FootballLeagueApp() {
           }
       }
 
-      const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData, masterTeams);
+      const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData || { allTimeStats: [] }, masterTeams);
 
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
@@ -348,8 +382,7 @@ export default function FootballLeagueApp() {
                   currentRoundIndex = rIdx;
                   return { 
                       ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
-                      homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-                      homeAssists: records.homeAssists, awayAssists: records.awayAssists,
+                      ...safeRecords,
                       homePredictRate: predictionSnapshot.homePredictRate,
                       awayPredictRate: predictionSnapshot.awayPredictRate
                   };
@@ -363,8 +396,7 @@ export default function FootballLeagueApp() {
                   ...editingMatch,
                   id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                   homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
-                  homeScorers: records.homeScorers, awayScorers: records.awayScorers,
-                  homeAssists: records.homeAssists, awayAssists: records.awayAssists,
+                  ...safeRecords,
                   homePredictRate: predictionSnapshot.homePredictRate,
                   awayPredictRate: predictionSnapshot.awayPredictRate
               };
@@ -375,15 +407,18 @@ export default function FootballLeagueApp() {
       });
 
       if (s.type === 'CUP' && currentRoundIndex !== -1) {
-          let winningTeam: {name: string, logo: string, owner: string} | null = null;
+          let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
 
-          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (manualWinner === 'HOME') winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (manualWinner === 'AWAY') winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
-          else if (h > a) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
-          else if (a > h) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
+          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
+
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
+          else if (manualWinner === 'HOME') winningTeam = hTeam;
+          else if (manualWinner === 'AWAY') winningTeam = aTeam;
+          else if (h > a) winningTeam = hTeam;
+          else if (a > h) winningTeam = aTeam;
           else if (!isGroupStage) return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
           const mAny = editingMatch as any;
@@ -393,8 +428,8 @@ export default function FootballLeagueApp() {
                   matches: round.matches.map(m => {
                       if (m.id === mAny.nextMatchId) {
                           const update = mAny.nextMatchSide === 'HOME' 
-                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner }
-                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner };
+                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner, homeOwnerUid: winningTeam!.ownerUid } // 🔥 UID 저장
+                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner, awayOwnerUid: winningTeam!.ownerUid }; // 🔥 UID 저장
                           
                           return { 
                               ...m, 
@@ -450,7 +485,6 @@ export default function FootballLeagueApp() {
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       
-      {/* 🔥 카카오톡 등 인앱 브라우저 접속 시 팝업 띄우는 문지기 */}
       <InAppBrowserGuard />
 
       {latestPopupNotice && !hideTicker && (
@@ -506,7 +540,6 @@ export default function FootballLeagueApp() {
           </div>
       )}
 
-      {/* 🔥 [UX 디벨롭] TopBar와 NavTabs에 우리가 만든 '강제 초기화용 중앙 통제 함수'를 물려줍니다! */}
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} /></div>
       <NavTabs currentView={currentView} setCurrentView={handleViewChange} hasNewNotice={hasNewNotice} />
       
@@ -519,7 +552,7 @@ export default function FootballLeagueApp() {
                 seasons={seasons} 
                 masterTeams={masterTeams} 
                 owners={owners} 
-                activeRankingData={activeRankingData} // 🔥 실시간 랭킹 데이터 배관 연결 완료!
+                activeRankingData={activeRankingData} 
             />
         )}
 

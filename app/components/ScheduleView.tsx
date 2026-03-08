@@ -4,7 +4,7 @@ import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestor
 import { db } from '../firebase'; 
 import { MatchCard } from './MatchCard'; 
 import { CupSchedule } from './CupSchedule'; 
-import { Season, Match, MasterTeam } from '../types'; 
+import { Season, Match, MasterTeam, Owner } from '../types'; 
 import { MessageSquare } from 'lucide-react';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -18,7 +18,19 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: () => void }) => {
+// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 최신 닉네임을 반환하는 공통 로직
+const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
+    const search = ownerName.trim();
+    // 1. UID 우선 조회 (철근 뼈대)
+    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
+    if (foundByUid) return foundByUid.nickname;
+    // 2. 닉네임/레거시네임 조회 (하위 호환)
+    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
+    return foundByName ? foundByName.nickname : ownerName;
+};
+
+const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
     const [latestComment, setLatestComment] = useState<any>(null);
     const [commentCount, setCommentCount] = useState(0);
 
@@ -40,14 +52,15 @@ const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: (
 
     if (commentCount === 0) return null;
 
+    // 🔥 댓글 작성자 닉네임도 UID 기반으로 실시간 조회
+    const resolvedAuthorName = latestComment ? resolveOwnerNickname(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : '';
+
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
             <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
-            {/* 🔥 공간을 max-w-[120px]로 대폭 늘리고 잘림을 우아하게 처리 */}
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
-                {latestComment?.authorName}
+                {resolvedAuthorName}
             </div>
-            {/* 🔥 댓글 내용도 안전한 line-clamp-1 적용 */}
             <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
                 {latestComment?.text}
             </div>
@@ -58,7 +71,7 @@ const MatchCommentSnippet = ({ matchId, onClick }: { matchId: string, onClick: (
     );
 };
 
-const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }: any) => {
+const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = false }: any) => {
     if (!match) return null;
     
     const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
@@ -75,17 +88,19 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
     const isHomeWin = winner !== 'TBD' && winner === match.home;
     const isAwayWin = winner !== 'TBD' && winner === match.away;
 
-    const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
+    const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, ownerUid: string | undefined, logo: string) => {
         const isTbd = teamName === 'TBD' || !teamName;
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
-        const dispOwner = owner || '-';
+        
+        // 🔥 실시간 닉네임 조회 적용
+        const dispOwner = resolveOwnerNickname(owners, owner, ownerUid) || '-';
 
         return (
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
                         <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -108,9 +123,9 @@ const BracketMatchBox = ({ match, title, highlight = false, isByeSlot = false }:
         <div className={`flex flex-col w-[200px] sm:w-[220px] ${isByeSlot ? 'opacity-70' : ''}`}>
             {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
             <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
-                {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeLogo)}
+                {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeOwnerUid, match.homeLogo)}
                 <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayLogo)}
+                {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayOwnerUid, match.awayLogo)}
             </div>
         </div>
     );
@@ -131,7 +146,7 @@ export const ScheduleView = ({
 }: ScheduleViewProps) => {
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
-  const [owners, setOwners] = useState<any[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
@@ -151,7 +166,7 @@ export const ScheduleView = ({
 
         const userQ = query(collection(db, 'users'));
         const userSnapshot = await getDocs(userQ);
-        const userList = userSnapshot.docs.map(doc => doc.data());
+        const userList = userSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })) as Owner[];
         setOwners(userList);
       } catch (error) { console.error(error); }
     };
@@ -178,14 +193,19 @@ export const ScheduleView = ({
   };
 
   const getTeamInfo = (teamName: string) => {
-      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return { name: teamName || 'TBD', logo: SAFE_TBD_LOGO, owner: '-' };
+      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return { name: teamName || 'TBD', logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
       const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
       const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
       const master = masterTeams.find(m => m.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
+      
+      const rawOwnerName = stats?.ownerName || (master as any)?.ownerName || '-';
+      const rawOwnerUid = stats?.ownerUid || (master as any)?.ownerUid;
+
       return {
           name: stats?.name || master?.name || teamName,
           logo: stats?.logo || master?.logo || FALLBACK_IMG,
-          owner: stats?.ownerName || (master as any)?.ownerName || '-' 
+          owner: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid), // 🔥 실시간 닉네임
+          ownerUid: rawOwnerUid
       };
   };
 
@@ -223,10 +243,10 @@ export const ScheduleView = ({
   const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
 
   if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
-      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi1.aggWinner); m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.owner; });
+      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi1.aggWinner); m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.owner; m.homeOwnerUid = info.ownerUid; });
   }
   if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
-      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi2.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; });
+      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi2.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; m.awayOwnerUid = info.ownerUid; });
   }
 
   const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel.includes('1차전'));
@@ -234,7 +254,7 @@ export const ScheduleView = ({
   const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
 
   if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
-      grandFinalRounds.forEach((m: any) => { const info = getTeamInfo(compPoFinal.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; });
+      grandFinalRounds.forEach((m: any) => { const info = getTeamInfo(compPoFinal.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; m.awayOwnerUid = info.ownerUid; });
   }
 
   const displayGrandFinal = grandFinalRounds.length > 0 ? grandFinalRounds[0] : null;
@@ -272,9 +292,10 @@ export const ScheduleView = ({
                     <div className="min-w-max md:min-w-[760px] px-2">
                         <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
                         <div className="bracket-tree no-scrollbar">
-                            <div className="bracket-column"><BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" /><BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" /></div>
-                            <div className="bracket-column"><BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" /></div>
-                            <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight /></div></div>
+                            <div className="bracket-column"><BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} /></div>
+                            <div className="bracket-column"><BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} /></div>
+                            <div className="bracket-column"><BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} /></div>
+                            <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} /></div></div>
                         </div>
                     </div>
                 </div>
@@ -307,7 +328,7 @@ export const ScheduleView = ({
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
-                                                            <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
+                                                            <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                                         </div>
                                                     );
                                                 })}
@@ -351,7 +372,7 @@ export const ScheduleView = ({
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
-                                                        <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} />
+                                                        <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                                     </div>
                                                 );
                                             })}

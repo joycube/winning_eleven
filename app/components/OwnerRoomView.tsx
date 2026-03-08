@@ -54,9 +54,26 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         );
     }
 
-    const myTeam = masterTeams?.find((m:any) => m.ownerName === user.mappedOwnerId);
-    const myHistory = historyData?.owners?.find((o:any) => o.name === user.mappedOwnerId);
-    const myOwnerData = owners?.find((o:any) => o.nickname === user.mappedOwnerId);
+    const getRealLogo = (teamName: string, defaultLogo: string) => {
+        if (!teamName) return defaultLogo || FALLBACK_IMG;
+        const matched = masterTeams?.find((m:any) => (m.name || '').toLowerCase() === teamName.toLowerCase() || (m.teamName || '').toLowerCase() === teamName.toLowerCase());
+        return matched?.logo || defaultLogo || FALLBACK_IMG;
+    };
+
+    const isMyRecord = (ownerNameInRecord: string) => {
+        if (!ownerNameInRecord) return false;
+        const search = ownerNameInRecord.toString().trim();
+        if (search === user.mappedOwnerId) return true;
+        if (search === user.uid) return true;
+        if (search.toLowerCase() === user.mappedOwnerId.toLowerCase()) return true;
+        const found = owners?.find((o:any) => o.docId === search || String(o.id) === search || o.uid === search);
+        return found ? found.nickname === user.mappedOwnerId : false;
+    };
+
+    // 🔥 [FM 픽스: 스마트 조회] UID 우선 매칭으로 내 구단 및 데이터를 정확히 찾아옵니다.
+    const myTeam = masterTeams?.find((m:any) => (m.ownerUid && m.ownerUid === user.uid) || m.ownerName === user.mappedOwnerId);
+    const myHistory = historyData?.owners?.find((o:any) => (o.uid && o.uid === user.uid) || o.name === user.mappedOwnerId);
+    const myOwnerData = owners?.find((o:any) => (o.uid && o.uid === user.uid) || o.nickname === user.mappedOwnerId);
     const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
 
     const points = myHistory?.points || 0;
@@ -82,7 +99,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         seasons?.forEach((s: any) => {
             s.rounds?.forEach((r: any) => {
                 r.matches?.forEach((m: any) => {
-                    const isMyMatch = m.homeOwner === user.mappedOwnerId || m.awayOwner === user.mappedOwnerId;
+                    const isMyMatch = isMyRecord(m.homeOwner) || isMyRecord(m.awayOwner);
                     const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
                     
                     if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
@@ -98,7 +115,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     let gf = 0; let ga = 0;
     myMatches.forEach(m => {
-        const isHome = m.homeOwner === user.mappedOwnerId;
+        const isHome = isMyRecord(m.homeOwner);
         gf += isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
         ga += isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
     });
@@ -118,7 +135,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         let gold = 0; let silver = 0;
         myMatches.forEach(m => {
             if (m.stage === 'FINAL' || m.matchLabel === 'Final') {
-                const isHome = m.homeOwner === user.mappedOwnerId;
+                const isHome = isMyRecord(m.homeOwner); 
                 const hScore = Number(m.homeScore || 0);
                 const aScore = Number(m.awayScore || 0);
                 if (isHome) { hScore > aScore ? gold++ : silver++; } 
@@ -133,9 +150,16 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
         
         myMatches.forEach(m => {
-            const isHome = m.homeOwner === user.mappedOwnerId;
-            const targetName = isHome ? (h2hFilter === 'TEAM' ? m.away : m.awayOwner) : (h2hFilter === 'TEAM' ? m.home : m.homeOwner);
+            const isHome = isMyRecord(m.homeOwner); 
             
+            let rawTargetName = isHome ? (h2hFilter === 'TEAM' ? m.away : m.awayOwner) : (h2hFilter === 'TEAM' ? m.home : m.homeOwner);
+            
+            let targetName = rawTargetName;
+            if (h2hFilter === 'OWNER') {
+                 const tFound = owners?.find((o:any) => o.docId === rawTargetName || String(o.id) === rawTargetName || o.uid === rawTargetName);
+                 if (tFound) targetName = tFound.nickname;
+            }
+
             if (!targetName || targetName === 'SYSTEM' || targetName === 'CPU') return;
 
             let logo = FALLBACK_IMG;
@@ -175,75 +199,64 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const { mostWins, mostLosses, rival } = getH2HStats();
 
     const getMyBestStats = () => {
-        const teamStats: Record<string, any> = {};
-        const playerGoals: Record<string, any> = {};
-        const playerAssists: Record<string, any> = {};
+        const myTeams = (historyData?.teams || []).filter((t:any) => isMyRecord(t.owner));
+        const topTeams = myTeams.map((t:any) => {
+            const teamData = masterTeams?.find((m:any) => m.name === t.name);
+            const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
+            return {
+                name: t.name,
+                w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || 0,
+                gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
+                logo: getRealLogo(t.name, t.logo || teamData?.logo),
+                tier: teamData?.tier || 'C',
+                winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
+            };
+        }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
 
-        myMatches.forEach(m => {
-            const isHome = m.homeOwner === user.mappedOwnerId;
-            const myTeamName = isHome ? m.home : m.away;
-            const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
-            const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
+        const myPlayers = (historyData?.players || []).filter((p:any) => isMyRecord(p.owner));
+        
+        const topScorers = [...myPlayers]
+            .filter((p:any) => (p.goals || 0) > 0)
+            .sort((a:any, b:any) => b.goals - a.goals)
+            .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) }))
+            .slice(0, 5);
 
-            if (!teamStats[myTeamName]) {
-                const teamData = masterTeams?.find((t:any) => t.name === myTeamName);
-                teamStats[myTeamName] = { 
-                    name: myTeamName, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0, 
-                    logo: teamData?.logo || FALLBACK_IMG, tier: teamData?.tier || 'C' 
-                };
-            }
-            teamStats[myTeamName].gf += myScore;
-            teamStats[myTeamName].ga += opScore;
-            if (myScore > opScore) { teamStats[myTeamName].w++; teamStats[myTeamName].pts += 3; }
-            else if (myScore === opScore) { teamStats[myTeamName].d++; teamStats[myTeamName].pts += 1; }
-            else { teamStats[myTeamName].l++; }
+        const topAssists = [...myPlayers]
+            .filter((p:any) => (p.assists || 0) > 0)
+            .sort((a:any, b:any) => b.assists - a.assists)
+            .map((p:any) => ({ name: p.name, count: p.assists, team: p.team, logo: getRealLogo(p.team, p.teamLogo) }))
+            .slice(0, 5);
 
-            const scorers = isHome ? (m.homeScorers || []) : (m.awayScorers || []);
-            const assists = isHome ? (m.homeAssists || []) : (m.awayAssists || []);
-
-            scorers.forEach((p: any) => {
-                const pName = (p && typeof p === 'object') ? (p.name || 'Unknown') : p;
-                if (!pName) return;
-                if(!playerGoals[pName]) playerGoals[pName] = { name: pName, count: 0, team: myTeamName, logo: teamStats[myTeamName].logo };
-                playerGoals[pName].count++;
-            });
-            assists.forEach((p: any) => {
-                const pName = (p && typeof p === 'object') ? (p.name || 'Unknown') : p;
-                if (!pName) return;
-                if(!playerAssists[pName]) playerAssists[pName] = { name: pName, count: 0, team: myTeamName, logo: teamStats[myTeamName].logo };
-                playerAssists[pName].count++;
-            });
-        });
-
-        Object.values(teamStats).forEach((t: any) => {
-            t.gd = t.gf - t.ga;
-            t.winRate = (t.w + t.d + t.l) > 0 ? ((t.w / (t.w + t.d + t.l)) * 100).toFixed(1) : '0.0';
-        });
-
-        return {
-            topTeams: Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5),
-            topScorers: Object.values(playerGoals).sort((a:any, b:any) => b.count - a.count).slice(0, 5),
-            topAssists: Object.values(playerAssists).sort((a:any, b:any) => b.count - a.count).slice(0, 5)
-        };
+        return { topTeams, topScorers, topAssists };
     };
 
     const { topTeams, topScorers, topAssists } = getMyBestStats();
 
-    const availableTeams = masterTeams?.filter((t:any) => !t.ownerName || t.ownerName === user.mappedOwnerId) || [];
+    // 🔥 [스마트 필터] 내 구단이거나 주인이 없는 구단만 선택 가능하도록 수정
+    const availableTeams = masterTeams?.filter((t:any) => 
+        (!t.ownerUid && !t.ownerName) || 
+        (t.ownerUid && t.ownerUid === user.uid) || 
+        (!t.ownerUid && t.ownerName === user.mappedOwnerId)
+    ) || [];
+
     const uniqueRegions = Array.from(new Set(
         availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean)
     )).sort() as string[];
     const filteredTeamsForDropdown = availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory && t.region === editRegion).sort((a:any, b:any) => a.name.localeCompare(b.name));
 
+    // 🔥 [FM 픽스: Dual-Track 저장] 저장 시 UID를 함께 박아 넣습니다.
     const handleSaveSettings = async () => {
         setIsSaving(true);
         try {
-            const targetOwnerDocId = myOwnerData?.docId || myOwnerData?.id;
+            // 1. 프로필 이미지 업데이트 (UID 문서 ID 사용)
+            const targetOwnerDocId = myOwnerData?.docId || myOwnerData?.id || user.uid;
             if (targetOwnerDocId) await updateDoc(doc(db, 'users', String(targetOwnerDocId)), { photo: editPhoto });
+
+            // 2. 구단 소유권 업데이트 (Name + UID 동시 저장)
             const oldTeamId = myTeam?.docId || myTeam?.id;
             if (String(editTeamId) !== String(oldTeamId)) {
-                if (oldTeamId) await updateDoc(doc(db, 'master_teams', String(oldTeamId)), { ownerName: '' });
-                if (editTeamId) await updateDoc(doc(db, 'master_teams', String(editTeamId)), { ownerName: user.mappedOwnerId });
+                if (oldTeamId) await updateDoc(doc(db, 'master_teams', String(oldTeamId)), { ownerName: '', ownerUid: '' });
+                if (editTeamId) await updateDoc(doc(db, 'master_teams', String(editTeamId)), { ownerName: user.mappedOwnerId, ownerUid: user.uid });
             }
             alert('✅ 설정이 성공적으로 저장되었습니다!');
             setIsEditing(false);
@@ -307,9 +320,21 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         <h2 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] overflow-visible text-center sm:text-left break-all pr-0 sm:pr-10">
                             {user.mappedOwnerId}
                         </h2>
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2 gap-x-2 gap-y-1.5">
-                            <p className="text-slate-300 text-sm sm:text-base font-bold break-keep">{myTeam?.name || '소속 구단 없음'}</p>
-                            {myTeam && <span className={`px-2 py-1 rounded text-[11px] font-black border shadow-[0_2px_5px_rgba(0,0,0,0.3)] ${getTierBadgeColor(myTeam.tier)}`}>{myTeam.tier} Tier</span>}
+                        
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2.5">
+                            {myTeam ? (
+                                <div className="flex items-center gap-2.5 bg-[#0B1120] px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-inner">
+                                    <div className="w-7 h-7 bg-white rounded-full p-0.5 flex shrink-0 items-center justify-center shadow-md">
+                                        <img src={myTeam.logo || FALLBACK_IMG} alt="team logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                    </div>
+                                    <span className="text-white text-sm sm:text-base font-black italic tracking-tight">{myTeam.name}</span>
+                                    <span className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-black border uppercase tracking-wider ${getTierBadgeColor(myTeam.tier)}`}>{myTeam.tier} TIER</span>
+                                </div>
+                            ) : (
+                                <div className="px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-400 text-sm font-bold italic">
+                                    소속 구단 없음
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -369,7 +394,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                         <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
                                             <img src={card.data.logo} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" />
                                         </div>
-                                        {/* 🔥 구단주 기준일 때 O 뱃지 대신 상황에 맞는 아이콘(불꽃/해골/타겟) 출력 */}
                                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border shadow-sm flex items-center justify-center 
                                             ${h2hFilter === 'OWNER' 
                                                 ? (i === 0 ? 'bg-emerald-950 border-emerald-500/50 text-emerald-400' 
@@ -390,22 +414,20 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
             </div>
 
-            {/* 4. 베스트 팀 & 플레이어 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
                 
                 {/* --- 4-1. MY BEST TEAMS --- */}
-                <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col">
-                    <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-900/50">
-                        <div className="py-4 px-5 flex items-center gap-2 w-full border-b-2 border-transparent">
-                            <div className="w-1.5 h-5 bg-blue-500 rounded-full"></div>
-                            <h3 className="text-base font-black text-white italic tracking-tighter uppercase text-left leading-none">MY BEST TEAMS</h3>
+                <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-full">
+                    <div className="flex border-b border-slate-800 bg-slate-900/50 h-[48px]">
+                        <div className="flex-1 flex items-center justify-center gap-2 text-xs font-black tracking-widest text-white leading-none uppercase">
+                            <div className="w-1.5 h-3 bg-blue-500 rounded-full"></div> MY BEST TEAMS
                         </div>
                     </div>
                     
-                    <div className="p-4 flex-1 space-y-2">
+                    <div className="p-4 flex-1 flex flex-col">
                         {topTeams.length > 0 ? (
                             <div className="flex flex-col gap-2">
-                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 mb-1 text-left">
+                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
                                     <div className="w-8 text-center">#</div>
                                     <div className="flex-1 ml-4">CLUB</div>
                                     <div className="flex w-[120px] justify-between text-center pl-2">
@@ -415,14 +437,14 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 </div>
                                 
                                 {topTeams.map((team:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left min-h-[64px]">
+                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left h-[64px]">
                                         <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
                                             {idx + 1}
                                         </div>
                                         <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-10 overflow-visible">
                                             <div className="relative shrink-0">
                                                 <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
-                                                    <img src={team.logo} alt="logo" className="w-full h-full object-contain" />
+                                                    <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                 </div>
                                                 <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
                                                     {team.tier}
@@ -443,22 +465,22 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 ))}
                             </div>
                         ) : (
-                            <div className="h-full flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
+                            <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
                         )}
                     </div>
                 </div>
 
                 {/* --- 4-2. MY BEST PLAYERS --- */}
-                <div className="bg-[#0B1120] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col">
-                    <div className="flex border-b border-slate-800">
-                        <button onClick={() => setPlayerTab('GOAL')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
-                        <button onClick={() => setPlayerTab('ASSIST')} className={`flex-1 py-4 flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
+                <div className="bg-[#0B1120] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-full">
+                    <div className="flex border-b border-slate-800 h-[48px]">
+                        <button onClick={() => setPlayerTab('GOAL')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
+                        <button onClick={() => setPlayerTab('ASSIST')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
                     </div>
 
-                    <div className="p-4 flex-1">
+                    <div className="p-4 flex-1 flex flex-col">
                         {((playerTab === 'GOAL' && topScorers.length > 0) || (playerTab === 'ASSIST' && topAssists.length > 0)) ? (
                             <div className="flex flex-col gap-2 text-left">
-                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 mb-1">
+                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
                                     <div className="w-8 text-center">#</div>
                                     <div className="w-[35%] text-left ml-4">PLAYER</div>
                                     <div className="flex-1 text-left ml-2">TEAM</div>
@@ -466,14 +488,14 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 </div>
 
                                 {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all min-h-[64px]">
+                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all h-[64px]">
                                         <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
                                         <div className="w-[35%] ml-4 pr-6 min-w-0 overflow-visible">
                                             <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap">{p.name}</span>
                                         </div>
                                         <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-8 overflow-visible ml-2">
                                             <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
-                                                <img src={p.logo} alt="logo" className="w-full h-full object-contain" />
+                                                <img src={p.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-400 italic whitespace-nowrap">{p.team}</span>
                                         </div>
@@ -484,7 +506,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 ))}
                             </div>
                         ) : (
-                            <div className="h-full flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">기록된 데이터가 없습니다.</div>
+                            <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">기록된 데이터가 없습니다.</div>
                         )}
                     </div>
                 </div>
