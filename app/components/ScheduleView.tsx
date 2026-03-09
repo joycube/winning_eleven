@@ -18,13 +18,14 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
-    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
+// 🔥 [프로필 수술] 닉네임뿐만 아니라 프사(photo)도 가져오도록 업그레이드
+const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
     const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return foundByUid.nickname;
+    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
     const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? foundByName.nickname : ownerName;
+    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
 const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
@@ -49,13 +50,20 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    const resolvedAuthorName = latestComment ? resolveOwnerNickname(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : '';
+    // 🔥 댓글 작성자 정보(닉네임, 프사)를 모두 조회
+    const authorInfo = latestComment ? resolveOwnerInfo(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
-            <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            {/* 🔥 [UI 수술] 말풍선 아이콘을 제거하고 작성자 프사 삽입 */}
+            {authorInfo ? (
+                <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
+            ) : (
+                <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            )}
+            
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
-                {resolvedAuthorName}
+                {authorInfo ? authorInfo.nickname : ''}
             </div>
             <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
                 {latestComment?.text}
@@ -89,7 +97,8 @@ const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = 
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
-        const dispOwner = resolveOwnerNickname(owners, owner, ownerUid) || '-';
+        // 🔥 resolveOwnerInfo로 변경된 부분 대응 (.nickname 사용)
+        const dispOwner = resolveOwnerInfo(owners, owner, ownerUid).nickname || '-';
 
         return (
             <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
@@ -199,7 +208,7 @@ export const ScheduleView = ({
       return {
           name: stats?.name || master?.name || teamName,
           logo: stats?.logo || master?.logo || FALLBACK_IMG,
-          owner: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid),
+          owner: resolveOwnerInfo(owners, rawOwnerName, rawOwnerUid).nickname, // 🔥 .nickname 으로 변경
           ownerUid: rawOwnerUid
       };
   };
@@ -277,7 +286,6 @@ export const ScheduleView = ({
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
         ) : viewMode === 'LEAGUE_PLAYOFF' ? (
             <div className="space-y-12">
-                {/* 🔥 [수술 포인트] 중간 이음선을 그리는 CSS (::before, ::after)를 완전히 삭제하여 깔끔하게 분리! */}
                 <style dangerouslySetInnerHTML={{ __html: `
                     .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
                     .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
@@ -290,7 +298,6 @@ export const ScheduleView = ({
                         <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
                         <div className="bracket-tree no-scrollbar">
                             
-                            {/* 🔥 1열: PO 4강 (위아래 정렬) */}
                             <div className="bracket-column">
                                 <div className="b-node">
                                     <BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} />
@@ -300,14 +307,12 @@ export const ScheduleView = ({
                                 </div>
                             </div>
 
-                            {/* 🔥 2열: PO 결승 (가운데 정렬) */}
                             <div className="bracket-column">
                                 <div className="b-node">
                                     <BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} />
                                 </div>
                             </div>
 
-                            {/* 🔥 3열: 대망의 그랜드 파이널 */}
                             <div className="bracket-column pl-4">
                                 <div className="b-node relative scale-110 ml-4">
                                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce z-20">👑</div>

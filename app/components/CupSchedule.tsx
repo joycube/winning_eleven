@@ -16,16 +16,16 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 최신 닉네임을 반환하는 공통 로직
-const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
-    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
+// 🔥 [프로필 수술] 닉네임뿐만 아니라 프사(photo)도 가져오도록 업그레이드
+const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
     // 1. UID 우선 조회
     const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return foundByUid.nickname;
+    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
     // 2. 닉네임/레거시네임 조회
     const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? foundByName.nickname : ownerName;
+    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
 const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
@@ -50,14 +50,20 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    // 🔥 댓글 작성자 닉네임도 UID 기반으로 실시간 조회
-    const resolvedAuthorName = latestComment ? resolveOwnerNickname(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : '';
+    // 🔥 댓글 작성자 정보(닉네임, 프사)를 모두 조회
+    const authorInfo = latestComment ? resolveOwnerInfo(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
-            <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            {/* 🔥 [UI 수술] 말풍선 아이콘을 제거하고 작성자 프사 삽입 */}
+            {authorInfo ? (
+                <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
+            ) : (
+                <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            )}
+            
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
-                {resolvedAuthorName}
+                {authorInfo ? authorInfo.nickname : ''}
             </div>
             <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
                 {latestComment?.text}
@@ -76,7 +82,7 @@ interface CupScheduleProps {
   masterTeams: MasterTeam[];
   activeRankingData: any;
   historyData: any;
-  owners: Owner[]; // 🔥 any[]에서 Owner[]로 타입 구체화
+  owners: Owner[]; 
   knockoutStages?: any; 
 }
 
@@ -104,7 +110,6 @@ export const CupSchedule = ({
       return 'TBD';
   };
 
-  // 🔥 [FM 수술] 팀 정보 조회 시 UID 기반 실시간 닉네임 매핑 및 ownerUid 반환
   const getTeamExtendedInfo = (teamName: string) => {
       const tbdTeam = {
           id: 0, name: teamName || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-', ownerUid: undefined as string | undefined,
@@ -123,8 +128,8 @@ export const CupSchedule = ({
           id: stats?.id || master?.id || 0,
           name: teamName,
           logo: stats?.logo || master?.logo || SAFE_TBD_LOGO,
-          ownerName: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid), // 🔥 실시간 닉네임 변환
-          ownerUid: rawOwnerUid, // 🔥 UID 명시적 반환 (TS-2339 해결)
+          ownerName: resolveOwnerInfo(owners, rawOwnerName, rawOwnerUid).nickname, // 🔥 .nickname으로 변경
+          ownerUid: rawOwnerUid, 
           region: master?.region || '',
           tier: master?.tier || 'C',
           realRankScore: master?.realRankScore,
@@ -208,7 +213,7 @@ export const CupSchedule = ({
             const info = getTeamExtendedInfo(winner);
             target[`${side}Logo`] = info.logo;
             target[`${side}Owner`] = info.ownerName;
-            target[`${side}OwnerUid`] = info.ownerUid; // 🔥 다음 단계로 UID 전달 (데이터 배관 보강)
+            target[`${side}OwnerUid`] = info.ownerUid; 
             target[`${side}Id`] = info.id; 
         }
     };
@@ -230,8 +235,8 @@ export const CupSchedule = ({
       const isTbd = teamName === 'TBD';
       const isBye = teamName === 'BYE';
       
-      // 🔥 실시간 닉네임 매핑 적용
-      const resolvedOwnerName = resolveOwnerNickname(owners, info.ownerName, ownerUid || info.ownerUid);
+      // 🔥 resolveOwnerInfo로 변경된 부분 대응 (.nickname 사용)
+      const resolvedOwnerName = resolveOwnerInfo(owners, info.ownerName, ownerUid || info.ownerUid).nickname;
 
       return (
           <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
