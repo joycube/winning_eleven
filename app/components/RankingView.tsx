@@ -76,7 +76,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
   const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0 };
 
-  // 🔥 [티타늄 방어막] 어떤 더러운 데이터가 들어와도 절대 크래시나지 않도록 String() 처리 및 try-catch 적용
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
     try {
         if (!ownerName) return '-';
@@ -435,12 +434,24 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
              <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
                     <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
+                    
+                    {/* 🔥 [버그 픽스] bracket-column들을 묶어주던 div.bracket-column 구조 원복 */}
                     <div className="bracket-tree no-scrollbar">
-                        <div className="bracket-column"><BracketMatchBox match={hybridPlayoffData.compSemi1} title="PO 4강 1경기 (합산)" /></div>
-                        <div className="bracket-column"><BracketMatchBox match={hybridPlayoffData.compSemi2} title="PO 4강 2경기 (합산)" /></div>
-                        <div className="bracket-column"><BracketMatchBox match={hybridPlayoffData.compPoFinal} title="PO 결승 (합산)" /></div>
-                        <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><BracketMatchBox match={hybridPlayoffData.displayGrandFinal} title="🏆 Grand Final (단판)" highlight /></div></div>
+                        <div className="bracket-column">
+                            <BracketMatchBox match={hybridPlayoffData.compSemi1} title="PO 4강 1경기 (합산)" />
+                            <BracketMatchBox match={hybridPlayoffData.compSemi2} title="PO 4강 2경기 (합산)" />
+                        </div>
+                        <div className="bracket-column">
+                            <BracketMatchBox match={hybridPlayoffData.compPoFinal} title="PO 결승 (합산)" />
+                        </div>
+                        <div className="bracket-column">
+                            <div className="relative scale-110 ml-4">
+                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
+                                <BracketMatchBox match={hybridPlayoffData.displayGrandFinal} title="🏆 Grand Final (단판)" highlight />
+                            </div>
+                        </div>
                     </div>
+
                 </div>
             </div>
           )}
@@ -500,31 +511,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-3"><div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]"><span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">OVERALL RECORD</span><span className="text-lg font-bold text-white tracking-tight">{team.win || 0}W <span className="text-slate-400">{team.draw || 0}D</span> <span className="text-red-400">{team.loss || 0}L</span></span></div><div className="bg-slate-900/80 rounded-xl px-4 py-2.5 border border-yellow-500/30 min-w-[100px]"><span className="text-[10px] text-yellow-500/80 block font-black mb-0.5">OVERALL GOAL DIFF</span><div className="flex items-baseline gap-1"><span className="text-xl font-black text-yellow-400">{(team.gd || 0) > 0 ? `+${team.gd}` : team.gd || 0}</span><span className="text-[10px] text-slate-400 font-medium">({team.gf || 0}득 / {team.ga || 0}실)</span></div></div>{topScorer && (<div className="bg-gradient-to-r from-yellow-600/20 to-yellow-900/20 rounded-xl px-5 py-2.5 border border-yellow-400/50"><span className="text-[10px] text-yellow-500 block font-black mb-0.5">TEAM MVP (TOP SCORER)</span><span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className="text-sm text-yellow-400 ml-1">({topScorer.goals} Goals)</span></span></div>)}</div></div></div>
                     <div className="absolute bottom-3 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">{footerText}</div></div></div>
               );
-          })()}
-
-          {sortedTeams.length > 0 && currentSeason?.type !== 'TOURNAMENT' && (() => {
-            const leagueChampTeam = sortedTeams[0];
-            if(!leagueChampTeam) return null;
-            const resolvedNick = resolveOwnerNickname(leagueChampTeam.ownerName, (leagueChampTeam as any).ownerUid);
-            const champOwnerInfo = owners.find(o => o.nickname === resolvedNick);
-            const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
-            const teamInfo = getTeamExtendedInfo(leagueChampTeam.name);
-            const teamPlayers = (activeRankingData?.players || []).filter((p: any) => p.team === leagueChampTeam.name && p.goals > 0);
-            const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
-            const isHybridOrCup = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF';
-            const badgeIcon = isHybridOrCup ? '🚩' : '🏆'; const badgeText = isHybridOrCup ? (currentSeason?.type === 'CUP' ? 'GROUP STAGE 1ST' : 'REGULAR LEAGUE 1ST') : 'LEAGUE CHAMPION';
-            const borderColor = isHybridOrCup ? 'border-blue-400/50' : 'border-yellow-400/50'; const glowClass = isHybridOrCup ? 'shadow-[0_0_50px_rgba(59,130,246,0.3)]' : 'champion-glow';
-            const bgGradient = isHybridOrCup ? 'from-blue-600/40 via-blue-900/60' : 'from-yellow-600/40 via-yellow-900/60'; const dropShadow = isHybridOrCup ? 'drop-shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]';
-            const ringGradient = isHybridOrCup ? 'from-blue-200 via-blue-500 to-blue-100' : 'from-yellow-200 via-yellow-500 to-yellow-100'; const ringShadow = isHybridOrCup ? 'shadow-[0_0_30px_rgba(59,130,246,0.6)]' : 'shadow-[0_0_30px_rgba(234,179,8,0.6)]';
-            const badgeBg = isHybridOrCup ? 'bg-blue-500 text-white' : 'bg-yellow-500 text-black'; const subTextColor = isHybridOrCup ? 'text-blue-400' : 'text-yellow-400'; const boxBorder = isHybridOrCup ? 'border-blue-500/30' : 'border-yellow-500/30';
-
-            return (
-              <div className="mb-6"><div className={`relative w-full rounded-xl overflow-hidden border-2 ${borderColor} ${glowClass} transform transition-all duration-500 group bg-[#020617]`}><div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} to-black z-0`}></div><div className={`absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none`}><div className={`w-[160px] h-[160px] filter ${dropShadow}`} style={{ backgroundImage: `url(${teamInfo.logo})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div></div>
-                  <div className="relative z-10 flex flex-col md:flex-row items-center p-8 gap-8 backdrop-blur-sm pb-12"><div className="relative pt-3 shrink-0">{!isHybridOrCup && <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>}<div className={`w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr ${ringGradient} ${ringShadow} relative z-10`}><div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900"><img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} /></div></div><div className={`absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 ${isHybridOrCup ? 'border-blue-400' : 'border-yellow-400'} z-30 overflow-hidden flex items-center justify-center`}><img src={teamInfo.logo || FALLBACK_IMG} className="w-[70%] h-[70%] object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} /></div></div>
-                    <div className="flex-1 text-center md:text-left"><div className={`inline-flex items-center gap-2 ${badgeBg} px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg`}><span>{badgeIcon}</span> {badgeText}</div><h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{resolvedNick}</h2><p className={`${subTextColor} font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6`}>With {leagueChampTeam.name}</p>
-                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3"><div className={`bg-slate-900/80 rounded-xl px-4 py-2.5 border ${boxBorder} min-w-[100px]`}><span className={`text-[10px] ${subTextColor} opacity-80 block font-black mb-0.5`}>RECORD</span><span className="text-lg font-bold text-white tracking-tight">{leagueChampTeam.win}W <span className="text-slate-400">{leagueChampTeam.draw}D</span> <span className="text-red-400">{leagueChampTeam.loss}L</span></span></div><div className={`bg-slate-900/80 rounded-xl px-4 py-2.5 border ${boxBorder} min-w-[100px]`}><span className={`text-[10px] ${subTextColor} opacity-80 block font-black mb-0.5`}>GOAL DIFF</span><div className="flex items-baseline gap-1"><span className={`text-xl font-black ${subTextColor}`}>{leagueChampTeam.gd > 0 ? `+${leagueChampTeam.gd}` : leagueChampTeam.gd}</span><span className="text-[10px] text-slate-400 font-medium">({leagueChampTeam.gf}득 / {leagueChampTeam.ga}실)</span></div></div>{topScorer && (<div className={`bg-slate-900/80 rounded-xl px-5 py-2.5 border ${boxBorder}`}><span className={`text-[10px] ${subTextColor} block font-black mb-0.5`}>TEAM MVP (TOP SCORER)</span><span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">⚽ {topScorer.name} <span className={`text-sm ${subTextColor} ml-1`}>({topScorer.goals} Goals)</span></span></div>)}</div></div></div>
-                  <div className="absolute bottom-3 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">{footerText}</div></div></div>
-            );
           })()}
 
           {(!activeRankingData?.owners || activeRankingData.owners.length === 0) ? (
