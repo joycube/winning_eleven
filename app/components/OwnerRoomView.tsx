@@ -80,7 +80,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return matched?.logo || defaultLogo || FALLBACK_IMG;
     };
 
-    const myOwnerData = owners?.find((o:any) => o.uid === user.uid);
+    // 🔥 [수술 포인트] UID가 없는 과거 유저(정일수)를 위해 매핑된 이름으로도 문서를 찾도록 예외 처리 추가!
+    const myOwnerData = owners?.find((o:any) => o.uid === user.uid || (user.mappedOwnerId && o.nickname === user.mappedOwnerId));
+    
     const currentNick = myOwnerData?.nickname || user.mappedOwnerId;
     const myHistory = historyData?.owners?.find((o:any) => o.uid === user.uid);
 
@@ -101,10 +103,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return found?.uid;
     };
 
-    // 🔥 [수술 1단계] 과거의 엉터리 팀 소유권 텍스트(Boca Juniors 사태 등)를 완전히 차단!
-    // 오직 명부에 저장된 'favoriteTeamId'만 바라보고 나의 상징 팀을 결정합니다.
     const myTeam = masterTeams?.find((m:any) => (m.docId || m.id) === myOwnerData?.favoriteTeamId);
-    
     const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
 
     const getTierBadgeColor = (tier?: string) => {
@@ -266,10 +265,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const handleSaveSettings = async () => {
         setIsSaving(true);
         try {
-            // 🔥 [수술 2단계] 에러의 핵심 원인 해결! DB 문서의 진짜 ID(docId)를 정확하게 타겟팅합니다.
             const targetDocId = myOwnerData?.docId || user.uid;
             
-            const userRef = doc(db, 'users', targetDocId); // 에러나던 user.uid 대신 안전한 targetDocId 사용
+            const userRef = doc(db, 'users', targetDocId); 
             const batch = writeBatch(db); 
             
             let isNameChanged = false;
@@ -283,12 +281,10 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                     updatePayload.legacyNames = arrayUnion(myOwnerData.nickname);
                 }
                 
-                // 로그인 연동 계정도 함께 업데이트
                 const accountRef = doc(db, 'user_accounts', user.uid);
                 batch.update(accountRef, { mappedOwnerId: editNickname });
             }
 
-            // 상징적 팀 정보 업데이트
             if (editTeamId) {
                 updatePayload.favoriteTeamId = editTeamId;
             }
@@ -314,7 +310,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         setEditPhoto(user.photo || myOwnerData?.photo || '');
         setEditCategory(myTeam?.category || 'CLUB'); 
         setEditRegion(myTeam?.region || '');
-        setEditTeamId(myOwnerData?.favoriteTeamId || ''); // 폼을 열 땐 항상 내 상징팀 ID만 불러옴
+        setEditTeamId(myOwnerData?.favoriteTeamId || ''); 
         setIsEditing(true);
     };
 
@@ -364,19 +360,22 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         </h2>
                         
                         <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2.5">
-                            {myTeam ? (
-                                <div className="flex items-center gap-2.5 bg-[#0B1120] px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-inner">
-                                    <div className="w-7 h-7 bg-white rounded-full p-0.5 flex shrink-0 items-center justify-center shadow-md">
-                                        <img src={myTeam.logo || FALLBACK_IMG} alt="team logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                            {(() => {
+                                const displayTeam = myTeam || masterTeams?.find((t:any) => t.docId === myOwnerData?.favoriteTeamId || t.id === myOwnerData?.favoriteTeamId);
+                                return displayTeam ? (
+                                    <div className="flex items-center gap-2.5 bg-[#0B1120] px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-inner">
+                                        <div className="w-7 h-7 bg-white rounded-full p-0.5 flex shrink-0 items-center justify-center shadow-md">
+                                            <img src={displayTeam.logo || FALLBACK_IMG} alt="team logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                        </div>
+                                        <span className="text-white text-sm sm:text-base font-black italic tracking-tight">{displayTeam.name}</span>
+                                        <span className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-black border uppercase tracking-wider ${getTierBadgeColor(displayTeam.tier)}`}>{displayTeam.tier} TIER</span>
                                     </div>
-                                    <span className="text-white text-sm sm:text-base font-black italic tracking-tight">{myTeam.name}</span>
-                                    <span className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-black border uppercase tracking-wider ${getTierBadgeColor(myTeam.tier)}`}>{myTeam.tier} TIER</span>
-                                </div>
-                            ) : (
-                                <div className="px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-400 text-sm font-bold italic">
-                                    상징 구단 없음
-                                </div>
-                            )}
+                                ) : (
+                                    <div className="px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-400 text-sm font-bold italic">
+                                        소속 구단 없음
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
