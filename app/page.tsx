@@ -9,22 +9,18 @@ import { Season, Match, Notice } from './types';
 // 🔥 [성능 최적화] Next.js Dynamic Import 불러오기
 import dynamic from 'next/dynamic';
 
-// 껍데기(항상 보이는) 컴포넌트들은 기존처럼 즉시 로딩
 import { TopBar } from './components/TopBar';
 import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
 
-// 🔥 [보안 최적화] 카카오톡 등 인앱 브라우저 접속 시 강제 탈출시키는 문지기 컴포넌트 추가
 import InAppBrowserGuard from './components/InAppBrowserGuard';
 
-// 훅
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
 
-// 🔥 [성능 최적화] 탭 전환 시에만 필요한 뷰 코드를 지연 로딩(Lazy Loading)하도록 전면 교체!
 const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
 const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
 const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
@@ -52,13 +48,98 @@ export default function FootballLeagueApp() {
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
-  // 🔥 [헬퍼 함수] 이름(legacyName)을 던지면 명부를 뒤져 UID를 반환합니다.
   const getOwnerUidByName = (targetName: string) => {
       if (!targetName || ['-', 'TBD', 'BYE', 'SYSTEM', 'CPU'].includes(targetName.trim())) return undefined;
       const search = targetName.trim();
       const found = owners.find(o => o.nickname === search || o.legacyName === search || o.docId === search || o.uid === search);
       return found?.uid || found?.docId || undefined;
   };
+
+  // 🔥 [핵심 수술] 하이브리드 엔진 데이터 뻥튀기 버그 수정
+  const combinedHistoryData = useMemo(() => {
+      const merged = {
+          teams: JSON.parse(JSON.stringify(historyData?.teams || [])),
+          owners: JSON.parse(JSON.stringify(historyData?.owners || [])),
+          players: JSON.parse(JSON.stringify(historyData?.players || []))
+      };
+
+      const getOrCreate = (arr: any[], key: string, keyName: string, initial: any) => {
+          let item = arr.find(x => x[keyName] === key);
+          if (!item) {
+              item = { [keyName]: key, ...initial };
+              arr.push(item);
+          }
+          return item;
+      };
+
+      // 💡 [해결 1] '진행 중(ACTIVE)'인 시즌만 필터링하여 중복 합산 차단
+      const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
+
+      activeSeasons.forEach((s: any) => {
+          s.rounds?.forEach((r: any) => {
+              r.matches?.forEach((m: any) => {
+                  if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
+                      
+                      const hTeam = getOrCreate(merged.teams, m.home, 'name', { win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, owner: m.homeOwner });
+                      const aTeam = getOrCreate(merged.teams, m.away, 'name', { win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, owner: m.awayOwner });
+                      
+                      const hOwner = getOrCreate(merged.owners, m.homeOwner, 'name', { win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+                      const aOwner = getOrCreate(merged.owners, m.awayOwner, 'name', { win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+
+                      const hScore = Number(m.homeScore || 0);
+                      const aScore = Number(m.awayScore || 0);
+
+                      hTeam.gf += hScore; hTeam.ga += aScore; hTeam.gd += (hScore - aScore);
+                      aTeam.gf += aScore; aTeam.ga += hScore; aTeam.gd += (aScore - hScore);
+
+                      if (hScore > aScore) {
+                          hTeam.win += 1; hTeam.points += 3;
+                          aTeam.loss += 1;
+                          hOwner.win += 1; hOwner.points += 3;
+                          aOwner.loss += 1;
+                      } else if (aScore > hScore) {
+                          aTeam.win += 1; aTeam.points += 3;
+                          hTeam.loss += 1;
+                          aOwner.win += 1; aOwner.points += 3;
+                          hOwner.loss += 1;
+                      } else {
+                          hTeam.draw += 1; hTeam.points += 1;
+                          aTeam.draw += 1; aTeam.points += 1;
+                          hOwner.draw += 1; hOwner.points += 1;
+                          aOwner.draw += 1; aOwner.points += 1;
+                      }
+
+                      // 💡 [해결 2] 선수 식별을 '이름 + 소속팀' 으로 구분하여 다른 팀 동명이인 퓨전 방지
+                      const processPlayers = (playersList: any[], teamName: string, teamLogo: string, ownerName: string, isGoal: boolean) => {
+                          playersList?.forEach((p: any) => {
+                              const pName = p.name?.trim();
+                              if (!pName) return;
+                              
+                              let pRec = merged.players.find((x:any) => x.name === pName && x.team === teamName);
+                              if (!pRec) {
+                                  pRec = { name: pName, team: teamName, goals: 0, assists: 0, teamLogo: teamLogo, owner: ownerName };
+                                  merged.players.push(pRec);
+                              }
+
+                              if (isGoal) pRec.goals += Number(p.count || 1);
+                              else pRec.assists += Number(p.count || 1);
+                              
+                              pRec.teamLogo = teamLogo;
+                              pRec.owner = ownerName;
+                          });
+                      };
+
+                      processPlayers(m.homeScorers, m.home, m.homeLogo, m.homeOwner, true);
+                      processPlayers(m.awayScorers, m.away, m.awayLogo, m.awayOwner, true);
+                      processPlayers(m.homeAssists, m.home, m.homeLogo, m.homeOwner, false);
+                      processPlayers(m.awayAssists, m.away, m.awayLogo, m.awayOwner, false);
+                  }
+              });
+          });
+      });
+
+      return merged;
+  }, [historyData, seasons]);
 
   const handleViewChange = (newView: any) => {
       setCurrentView(newView);
@@ -174,7 +255,7 @@ export default function FootballLeagueApp() {
         return {
             logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
             owner: ownerName,
-            ownerUid: getOwnerUidByName(ownerName) // 🔥 UID도 함께 찾아서 넘김
+            ownerUid: getOwnerUidByName(ownerName) 
         };
     };
 
@@ -221,7 +302,7 @@ export default function FootballLeagueApp() {
             const meta = getTeamMeta(winner);
             target[`${side}Logo`] = meta.logo;
             target[`${side}Owner`] = meta.owner;
-            target[`${side}OwnerUid`] = meta.ownerUid; // 🔥 승자의 UID도 다음 라운드에 세팅
+            target[`${side}OwnerUid`] = meta.ownerUid; 
             target[`${side}Score`] = '';
         }
     };
@@ -260,18 +341,16 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // 🔥 [핵심 로직] 경기 결과 저장 시 UID 뼈대 박기
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
 
-      // 선수 스탯에 UID 주입 헬퍼
       const injectUidToPlayers = (players: any[], teamOwnerName: string) => {
           const ownerUid = getOwnerUidByName(teamOwnerName);
           return players.map((p: any) => ({
               ...p,
-              ownerUid: ownerUid // 선수 기록에도 해당 팀 구단주의 UID를 박음
+              ownerUid: ownerUid 
           }));
       };
 
@@ -282,7 +361,6 @@ export default function FootballLeagueApp() {
           awayAssists: injectUidToPlayers(records?.awayAssists || [], editingMatch.awayOwner)
       };
 
-      // 승자 추출 시 UID 포함
       type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
 
       if (s.type === 'TOURNAMENT') {
@@ -332,12 +410,12 @@ export default function FootballLeagueApp() {
                   matches[nextMatchIndex].home = winningTeam.name;
                   matches[nextMatchIndex].homeLogo = winningTeam.logo;
                   matches[nextMatchIndex].homeOwner = winningTeam.owner;
-                  matches[nextMatchIndex].homeOwnerUid = winningTeam.ownerUid; // 🔥 다음 라운드로 UID 패스
+                  matches[nextMatchIndex].homeOwnerUid = winningTeam.ownerUid; 
               } else {
                   matches[nextMatchIndex].away = winningTeam.name;
                   matches[nextMatchIndex].awayLogo = winningTeam.logo;
                   matches[nextMatchIndex].awayOwner = winningTeam.owner;
-                  matches[nextMatchIndex].awayOwnerUid = winningTeam.ownerUid; // 🔥 다음 라운드로 UID 패스
+                  matches[nextMatchIndex].awayOwnerUid = winningTeam.ownerUid; 
               }
           }
 
@@ -370,7 +448,7 @@ export default function FootballLeagueApp() {
           }
       }
 
-      const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, historyData || { allTimeStats: [] }, masterTeams);
+      const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, combinedHistoryData || { allTimeStats: [] }, masterTeams);
 
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
@@ -428,8 +506,8 @@ export default function FootballLeagueApp() {
                   matches: round.matches.map(m => {
                       if (m.id === mAny.nextMatchId) {
                           const update = mAny.nextMatchSide === 'HOME' 
-                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner, homeOwnerUid: winningTeam!.ownerUid } // 🔥 UID 저장
-                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner, awayOwnerUid: winningTeam!.ownerUid }; // 🔥 UID 저장
+                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner, homeOwnerUid: winningTeam!.ownerUid } 
+                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner, awayOwnerUid: winningTeam!.ownerUid }; 
                           
                           return { 
                               ...m, 
@@ -568,10 +646,11 @@ export default function FootballLeagueApp() {
         )}
         {currentView === 'SCHEDULE' && (
           <ScheduleView 
-            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData, knockoutStages } as any)} 
+            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData: combinedHistoryData, knockoutStages } as any)} 
           />
         )}
-        {currentView === 'HISTORY' && <HistoryView historyData={historyData} owners={owners} />}
+        
+        {currentView === 'HISTORY' && <HistoryView historyData={combinedHistoryData} owners={owners} />}
         
         {currentView === 'FINANCE' && (
             <FinanceView owners={owners} seasons={seasons} user={authUser as any} />
@@ -581,7 +660,7 @@ export default function FootballLeagueApp() {
             <OwnerRoomView 
                 user={authUser as any} 
                 masterTeams={masterTeams} 
-                historyData={historyData} 
+                historyData={combinedHistoryData} 
                 seasons={seasons} 
                 owners={owners} 
             />
@@ -604,7 +683,17 @@ export default function FootballLeagueApp() {
         )}
       </main>
       <Footer />
-      {editingMatch && <MatchEditModal match={editingMatch} onClose={() => setEditingMatch(null)} onSave={handleSaveMatchResult} isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'} teamPlayers={getTeamPlayers} />}
+      
+      {editingMatch && (
+        <MatchEditModal 
+            match={editingMatch} 
+            onClose={() => setEditingMatch(null)} 
+            onSave={handleSaveMatchResult} 
+            isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'} 
+            teamPlayers={getTeamPlayers} 
+            owners={owners}
+        />
+      )}
     </div>
   );
 }
