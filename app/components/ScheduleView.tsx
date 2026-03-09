@@ -18,14 +18,11 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 최신 닉네임을 반환하는 공통 로직
 const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
     const search = ownerName.trim();
-    // 1. UID 우선 조회 (철근 뼈대)
     const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
     if (foundByUid) return foundByUid.nickname;
-    // 2. 닉네임/레거시네임 조회 (하위 호환)
     const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
     return foundByName ? foundByName.nickname : ownerName;
 };
@@ -52,7 +49,6 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    // 🔥 댓글 작성자 닉네임도 UID 기반으로 실시간 조회
     const resolvedAuthorName = latestComment ? resolveOwnerNickname(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : '';
 
     return (
@@ -93,7 +89,6 @@ const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = 
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
-        // 🔥 실시간 닉네임 조회 적용
         const dispOwner = resolveOwnerNickname(owners, owner, ownerUid) || '-';
 
         return (
@@ -282,25 +277,12 @@ export const ScheduleView = ({
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
         ) : viewMode === 'LEAGUE_PLAYOFF' ? (
             <div className="space-y-12">
-                {/* 🔥 대진표 트리 디자인을 완벽하게 그려주는 CSS */}
+                {/* 🔥 [수술 포인트] 중간 이음선을 그리는 CSS (::before, ::after)를 완전히 삭제하여 깔끔하게 분리! */}
                 <style dangerouslySetInnerHTML={{ __html: `
                     .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
                     .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
                     .no-scrollbar::-webkit-scrollbar { display: none; }
-                    
                     .b-node { position: relative; z-index: 10; }
-                    
-                    /* 1열(4강) -> 2열(PO결승)을 잇는 가로/세로선 */
-                    .col1-node::after { content:''; position:absolute; right:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
-                    .col1-node.top-node::before { content:''; position:absolute; right:-20px; top:50%; width:2px; height:calc(50% + 20px); background:#334155; z-index:0;}
-                    .col1-node.bottom-node::before { content:''; position:absolute; right:-20px; bottom:50%; width:2px; height:calc(50% + 20px); background:#334155; z-index:0;}
-                    
-                    /* 2열(PO결승) 좌우 수신/송신 선 */
-                    .col2-node::before { content:''; position:absolute; left:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
-                    .col2-node::after { content:''; position:absolute; right:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
-                    
-                    /* 3열(그랜드파이널) 수신 에메랄드 빛 선 */
-                    .col3-node::before { content:''; position:absolute; left:-20px; top:50%; width:20px; height:2px; background:#10b981; box-shadow: 0 0 10px #10b981; z-index:0;}
                 `}} />
 
                 <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
@@ -310,24 +292,24 @@ export const ScheduleView = ({
                             
                             {/* 🔥 1열: PO 4강 (위아래 정렬) */}
                             <div className="bracket-column">
-                                <div className="b-node col1-node top-node">
+                                <div className="b-node">
                                     <BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} />
                                 </div>
-                                <div className="b-node col1-node bottom-node">
+                                <div className="b-node">
                                     <BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} />
                                 </div>
                             </div>
 
                             {/* 🔥 2열: PO 결승 (가운데 정렬) */}
                             <div className="bracket-column">
-                                <div className="b-node col2-node">
+                                <div className="b-node">
                                     <BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} />
                                 </div>
                             </div>
 
                             {/* 🔥 3열: 대망의 그랜드 파이널 */}
                             <div className="bracket-column pl-4">
-                                <div className="b-node col3-node relative scale-110 ml-4">
+                                <div className="b-node relative scale-110 ml-4">
                                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce z-20">👑</div>
                                     <BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} />
                                 </div>
