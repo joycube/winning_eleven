@@ -1,5 +1,5 @@
 // components/ScheduleView.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
 import { MatchCard } from './MatchCard'; 
@@ -204,7 +204,7 @@ export const ScheduleView = ({
       return {
           name: stats?.name || master?.name || teamName,
           logo: stats?.logo || master?.logo || FALLBACK_IMG,
-          owner: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid), // 🔥 실시간 닉네임
+          owner: resolveOwnerNickname(owners, rawOwnerName, rawOwnerUid),
           ownerUid: rawOwnerUid
       };
   };
@@ -282,20 +282,57 @@ export const ScheduleView = ({
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
         ) : viewMode === 'LEAGUE_PLAYOFF' ? (
             <div className="space-y-12">
+                {/* 🔥 대진표 트리 디자인을 완벽하게 그려주는 CSS */}
                 <style dangerouslySetInnerHTML={{ __html: `
                     .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
-                    .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
+                    .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
                     .no-scrollbar::-webkit-scrollbar { display: none; }
+                    
+                    .b-node { position: relative; z-index: 10; }
+                    
+                    /* 1열(4강) -> 2열(PO결승)을 잇는 가로/세로선 */
+                    .col1-node::after { content:''; position:absolute; right:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
+                    .col1-node.top-node::before { content:''; position:absolute; right:-20px; top:50%; width:2px; height:calc(50% + 20px); background:#334155; z-index:0;}
+                    .col1-node.bottom-node::before { content:''; position:absolute; right:-20px; bottom:50%; width:2px; height:calc(50% + 20px); background:#334155; z-index:0;}
+                    
+                    /* 2열(PO결승) 좌우 수신/송신 선 */
+                    .col2-node::before { content:''; position:absolute; left:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
+                    .col2-node::after { content:''; position:absolute; right:-20px; top:50%; width:20px; height:2px; background:#334155; z-index:0;}
+                    
+                    /* 3열(그랜드파이널) 수신 에메랄드 빛 선 */
+                    .col3-node::before { content:''; position:absolute; left:-20px; top:50%; width:20px; height:2px; background:#10b981; box-shadow: 0 0 10px #10b981; z-index:0;}
                 `}} />
 
                 <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                     <div className="min-w-max md:min-w-[760px] px-2">
                         <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
                         <div className="bracket-tree no-scrollbar">
-                            <div className="bracket-column"><BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} /></div>
-                            <div className="bracket-column"><BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} /></div>
-                            <div className="bracket-column"><BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} /></div>
-                            <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} /></div></div>
+                            
+                            {/* 🔥 1열: PO 4강 (위아래 정렬) */}
+                            <div className="bracket-column">
+                                <div className="b-node col1-node top-node">
+                                    <BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} />
+                                </div>
+                                <div className="b-node col1-node bottom-node">
+                                    <BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} />
+                                </div>
+                            </div>
+
+                            {/* 🔥 2열: PO 결승 (가운데 정렬) */}
+                            <div className="bracket-column">
+                                <div className="b-node col2-node">
+                                    <BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} />
+                                </div>
+                            </div>
+
+                            {/* 🔥 3열: 대망의 그랜드 파이널 */}
+                            <div className="bracket-column pl-4">
+                                <div className="b-node col3-node relative scale-110 ml-4">
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce z-20">👑</div>
+                                    <BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} />
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>

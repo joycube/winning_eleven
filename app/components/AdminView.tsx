@@ -52,7 +52,6 @@ export const AdminView = ({
                 batch.delete(docSnap.ref);
             });
 
-            // 스냅샷(명예의 전당) 기록도 함께 삭제
             batch.delete(doc(db, "history_records", String(seasonId)));
 
             await batch.commit();
@@ -85,7 +84,6 @@ export const AdminView = ({
             const q = query(ledgerRef, where("seasonId", "==", String(season.id)), where("type", "==", "REVENUE"));
             const existingDocs = await getDocs(q);
             
-            // 상금 장부가 이미 존재하면 지급 로직은 스킵
             const skipFinance = !existingDocs.empty;
             
             if (skipFinance && !isAlreadyCompleted) {
@@ -102,25 +100,20 @@ export const AdminView = ({
                 };
             });
 
-            // 🔥 [FM 픽스] UID 매핑 로직을 무결성 기반으로 강화 (undefined 에러 100% 방지)
             const getRealUid = (legacyName: string) => {
                 if (!legacyName || ['-', 'TBD', 'SYSTEM', 'BYE', 'CPU'].includes(legacyName.trim())) return null;
                 const search = legacyName.trim();
                 
-                // 1. 넘어온 값이 이미 구글 UID인 경우
                 const foundByUid = userAccounts.find(u => u.uid === search);
                 if (foundByUid) return foundByUid.uid;
 
-                // 2. 넘어온 값이 닉네임인 경우 UID를 찾아 반환
                 const foundByName = userAccounts.find(u => u.mappedOwnerId === search || u.displayName === search);
-                return foundByName ? foundByName.uid : search; // 못 찾으면 원본 유지 (호환성 철칙)
+                return foundByName ? foundByName.uid : search; 
             };
 
-            // 2. 스냅샷 데이터 수집용 그릇
             const teamStats: Record<string, any> = {};
             const playerStats: Record<string, any> = {};
 
-            // 3. 전 경기 순회하며 데이터 정밀 집계
             season.rounds?.forEach(r => {
                 r.matches?.filter(m => m.status === 'COMPLETED').forEach(m => {
                     const hTeam = m.home; const aTeam = m.away;
@@ -162,7 +155,6 @@ export const AdminView = ({
                 });
             });
 
-            // 4. 우승자 및 순위 산출 로직
             let firstOwner = '', secondOwner = '', thirdOwner = '';
             let grandChampionOwner = ''; 
 
@@ -209,18 +201,16 @@ export const AdminView = ({
             const topScorer = Object.values(playerStats).sort((a:any, b:any) => b.goals - a.goals)[0]?.owner || '';
             const topAssist = Object.values(playerStats).sort((a:any, b:any) => b.assists - a.assists)[0]?.owner || '';
 
-            // 5. 트랜잭션 (Batch) 처리 준비
             const batch = writeBatch(db);
             const prizes = (season as any).prizes || {};
 
-            // 💰 [상금 장부] skipFinance가 아닐 때만 UID 매핑 후 등록
             if (!skipFinance) {
                 const addPrize = (legacyOwnerName: string, amount: number, title: string) => {
                     const realUid = getRealUid(legacyOwnerName);
                     if (realUid && amount > 0) {
                         batch.set(doc(ledgerRef), {
                             seasonId: String(season.id), 
-                            ownerId: String(realUid), // 🔥 구글 UID로 완벽 저장 (뼈대 원칙)
+                            ownerId: String(realUid),
                             type: 'REVENUE',
                             amount: Number(amount), 
                             title: title, 
@@ -244,7 +234,6 @@ export const AdminView = ({
                 addPrize(topAssist, prizes.assist, `${season.name} 도움왕 🅰️`);
             }
 
-            // 🏆 [명예의 전당] 스냅샷 생성 및 박제 (호환성 철칙: UID와 레거시 네임을 모두 보존)
             const historySnapshot = {
                 seasonId: season.id,
                 seasonName: season.name,
@@ -252,7 +241,7 @@ export const AdminView = ({
                 closedAt: new Date().toISOString(),
                 teams: Object.values(teamStats).map((t: any) => ({
                     ...t,
-                    ownerId: getRealUid(t.owner) || null, // 🔥 파이어베이스 undefined 에러 방지를 위해 || null 적용
+                    ownerId: getRealUid(t.owner) || null, 
                     legacyName: t.owner || ''
                 })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
                 players: Object.values(playerStats).map((p: any) => ({
@@ -269,13 +258,9 @@ export const AdminView = ({
                 }
             };
 
-            // history_records 컬렉션에 통째로 박제
             batch.set(doc(db, 'history_records', String(season.id)), historySnapshot);
-
-            // 6. 시즌 상태 변경 (마감)
             batch.update(doc(db, 'seasons', String(season.id)), { status: 'COMPLETED' });
 
-            // 7. 한 번에 커밋
             await batch.commit();
             
             alert(`🎉 [${season.name}] ${skipFinance ? '스냅샷 재생성' : '정산 및 박제'} 완료!`);
@@ -350,7 +335,10 @@ export const AdminView = ({
                             {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
                             {adminTab === 'NOTICE' && <AdminNoticeManager />}
                             {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
-                            {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
+                            
+                            {/* 🔥 [핵심 수술 포인트] 여기에 owners={owners} 를 추가했습니다!!! */}
+                            {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} owners={owners} />}
+                            
                             {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
                             {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
                             {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}

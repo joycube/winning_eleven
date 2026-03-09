@@ -1,12 +1,14 @@
 "use client";
-import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { doc, writeBatch, arrayUnion, collection, getDocs } from 'firebase/firestore'; 
 import { db } from '../firebase';
 import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 
 export default function OwnerRoomView({ user, masterTeams, historyData, seasons, owners }: any) {
     const [isEditing, setIsEditing] = useState(false);
+    
+    const [editNickname, setEditNickname] = useState('');
     const [editPhoto, setEditPhoto] = useState('');
     const [editCategory, setEditCategory] = useState<'CLUB'|'NATIONAL'>('CLUB'); 
     const [editRegion, setEditRegion] = useState(''); 
@@ -15,6 +17,24 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const [playerTab, setPlayerTab] = useState<'GOAL' | 'ASSIST'>('GOAL');
     const [h2hFilter, setH2HFilter] = useState<'TEAM' | 'OWNER'>('TEAM');
+
+    const [uidDict, setUidDict] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const fetchHistoryDict = async () => {
+            const snap = await getDocs(collection(db, 'history_records'));
+            const dict: Record<string, string> = {};
+            snap.docs.forEach(doc => {
+                const data = doc.data();
+                data.teams?.forEach((t:any) => {
+                    if (t.owner && t.ownerId) dict[t.owner] = t.ownerId;
+                    if (t.legacyName && t.ownerId) dict[t.legacyName] = t.ownerId;
+                });
+            });
+            setUidDict(dict);
+        };
+        fetchHistoryDict();
+    }, []);
 
     if (!user) {
         return (
@@ -60,21 +80,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return matched?.logo || defaultLogo || FALLBACK_IMG;
     };
 
-    const isMyRecord = (ownerNameInRecord: string) => {
-        if (!ownerNameInRecord) return false;
-        const search = ownerNameInRecord.toString().trim();
-        if (search === user.mappedOwnerId) return true;
-        if (search === user.uid) return true;
-        if (search.toLowerCase() === user.mappedOwnerId.toLowerCase()) return true;
-        const found = owners?.find((o:any) => o.docId === search || String(o.id) === search || o.uid === search);
-        return found ? found.nickname === user.mappedOwnerId : false;
-    };
-
-    // 🔥 [FM 픽스: 스마트 조회] UID 우선 매칭으로 내 구단 및 데이터를 정확히 찾아옵니다.
-    const myTeam = masterTeams?.find((m:any) => (m.ownerUid && m.ownerUid === user.uid) || m.ownerName === user.mappedOwnerId);
-    const myHistory = historyData?.owners?.find((o:any) => (o.uid && o.uid === user.uid) || o.name === user.mappedOwnerId);
-    const myOwnerData = owners?.find((o:any) => (o.uid && o.uid === user.uid) || o.nickname === user.mappedOwnerId);
-    const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
+    const myOwnerData = owners?.find((o:any) => o.uid === user.uid);
+    const currentNick = myOwnerData?.nickname || user.mappedOwnerId;
+    const myHistory = historyData?.owners?.find((o:any) => o.uid === user.uid);
 
     const points = myHistory?.points || 0;
     const wins = myHistory?.win || 0;
@@ -83,6 +91,21 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const totalGames = wins + draws + losses;
     const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "0.0";
     const prizeMoney = myHistory?.prize || 0;
+
+    const resolveUid = (rawUid?: string, rawName?: string) => {
+        if (rawUid && rawUid.length > 5) return rawUid; 
+        if (!rawName) return undefined;
+        const search = rawName.trim();
+        if (uidDict[search]) return uidDict[search];
+        const found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
+        return found?.uid;
+    };
+
+    // 🔥 [수술 1단계] 과거의 엉터리 팀 소유권 텍스트(Boca Juniors 사태 등)를 완전히 차단!
+    // 오직 명부에 저장된 'favoriteTeamId'만 바라보고 나의 상징 팀을 결정합니다.
+    const myTeam = masterTeams?.find((m:any) => (m.docId || m.id) === myOwnerData?.favoriteTeamId);
+    
+    const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
 
     const getTierBadgeColor = (tier?: string) => {
         const t = (tier || 'C').toUpperCase();
@@ -94,16 +117,31 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
              : 'bg-slate-800 text-slate-400 border-slate-700';
     };
 
+    const isMe = (targetUid?: string, targetName?: string) => {
+        if (targetUid && targetUid === user.uid) return true;
+        if (!targetUid && targetName) {
+            const search = targetName.trim();
+            if (search === currentNick) return true;
+            if (search === user.mappedOwnerId) return true;
+            if (myOwnerData?.legacyName === search) return true;
+            if (myOwnerData?.legacyNames?.includes(search)) return true;
+        }
+        return false;
+    };
+
     const getMyMatches = () => {
         let ownerMatches: any[] = [];
         seasons?.forEach((s: any) => {
             s.rounds?.forEach((r: any) => {
                 r.matches?.forEach((m: any) => {
-                    const isMyMatch = isMyRecord(m.homeOwner) || isMyRecord(m.awayOwner);
+                    const hUid = resolveUid(m.homeOwnerUid, m.homeOwner);
+                    const aUid = resolveUid(m.awayOwnerUid, m.awayOwner);
+
+                    const isMyMatch = hUid === user.uid || aUid === user.uid;
                     const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
                     
                     if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
-                        ownerMatches.push(m);
+                        ownerMatches.push({ ...m, resolvedHomeUid: hUid, resolvedAwayUid: aUid });
                     }
                 });
             });
@@ -115,15 +153,17 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     let gf = 0; let ga = 0;
     myMatches.forEach(m => {
-        const isHome = isMyRecord(m.homeOwner);
+        const isHome = m.resolvedHomeUid === user.uid;
         gf += isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
         ga += isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
     });
-    const avgGF = myMatches.length > 0 ? (gf / myMatches.length) : 0;
-    const avgGA = myMatches.length > 0 ? (ga / myMatches.length) : 0;
+    
+    const actualTotalGames = myMatches.length;
+    const avgGF = actualTotalGames > 0 ? (gf / actualTotalGames) : 0;
+    const avgGA = actualTotalGames > 0 ? (ga / actualTotalGames) : 0;
 
     let playStyle = { label: '뉴비 구단주', color: 'text-slate-400', border: 'border-slate-500' };
-    if (myMatches.length >= 3) {
+    if (actualTotalGames >= 3) {
         if (avgGF >= 2.5) playStyle = { label: '닥공 폭격기 🚀', color: 'text-red-400', border: 'border-red-500' };
         else if (avgGA <= 0.8) playStyle = { label: '통곡의 벽 🛡️', color: 'text-emerald-400', border: 'border-emerald-500' };
         else if (avgGF >= 1.5 && avgGA <= 1.2) playStyle = { label: '육각형 마스터 💎', color: 'text-purple-400', border: 'border-purple-500' };
@@ -131,53 +171,46 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         else playStyle = { label: '밸런스 조율사 ⚖️', color: 'text-blue-400', border: 'border-blue-500' };
     }
 
-    const getTrophies = () => {
-        let gold = 0; let silver = 0;
-        myMatches.forEach(m => {
-            if (m.stage === 'FINAL' || m.matchLabel === 'Final') {
-                const isHome = isMyRecord(m.homeOwner); 
-                const hScore = Number(m.homeScore || 0);
-                const aScore = Number(m.awayScore || 0);
-                if (isHome) { hScore > aScore ? gold++ : silver++; } 
-                else { aScore > hScore ? gold++ : silver++; }
-            }
-        });
-        return { gold, silver };
-    };
-    const trophies = getTrophies();
+    const trophies = { gold: myHistory?.golds || 0, silver: myHistory?.silvers || 0 };
 
     const getH2HStats = () => {
         const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
         
         myMatches.forEach(m => {
-            const isHome = isMyRecord(m.homeOwner); 
+            const isHome = m.resolvedHomeUid === user.uid; 
             
-            let rawTargetName = isHome ? (h2hFilter === 'TEAM' ? m.away : m.awayOwner) : (h2hFilter === 'TEAM' ? m.home : m.homeOwner);
+            let targetUid = isHome ? m.resolvedAwayUid : m.resolvedHomeUid;
+            let targetRawName = isHome ? m.awayOwner : m.homeOwner;
+            let targetTeamName = isHome ? m.away : m.home; 
             
-            let targetName = rawTargetName;
-            if (h2hFilter === 'OWNER') {
-                 const tFound = owners?.find((o:any) => o.docId === rawTargetName || String(o.id) === rawTargetName || o.uid === rawTargetName);
-                 if (tFound) targetName = tFound.nickname;
-            }
-
-            if (!targetName || targetName === 'SYSTEM' || targetName === 'CPU') return;
-
-            let logo = FALLBACK_IMG;
+            let targetName = '';
+            let logo = FALLBACK_IMG; 
             let tier = 'C';
 
             if (h2hFilter === 'TEAM') {
+                targetName = targetTeamName;
+                if (!targetName || targetName === 'TBD' || targetName === 'BYE') return;
                 const opTeamData = masterTeams?.find((t:any) => t.name === targetName);
-                logo = opTeamData?.logo || FALLBACK_IMG;
+                logo = opTeamData?.logo || FALLBACK_IMG; 
                 tier = opTeamData?.tier || 'C';
             } else {
-                const opOwnerData = owners?.find((o:any) => o.nickname === targetName);
-                logo = opOwnerData?.photo || FALLBACK_IMG;
+                let opOwnerData = null;
+                if (targetUid) {
+                    opOwnerData = owners?.find((o:any) => o.uid === targetUid);
+                } else if (targetRawName) {
+                    opOwnerData = owners?.find((o:any) => 
+                        o.nickname === targetRawName || o.legacyName === targetRawName || o.legacyNames?.includes(targetRawName)
+                    );
+                }
+                
+                targetName = opOwnerData?.nickname || targetRawName; 
+                if (!targetName || targetName === 'SYSTEM' || targetName === 'CPU' || targetName === 'BYE') return;
+                
+                logo = opOwnerData?.photo || FALLBACK_IMG; 
                 tier = 'O'; 
             }
 
-            if (!stats[targetName]) {
-                stats[targetName] = { name: targetName, logo, tier, w: 0, d: 0, l: 0, total: 0 };
-            }
+            if (!stats[targetName]) stats[targetName] = { name: targetName, logo, tier, w: 0, d: 0, l: 0, total: 0 };
             
             const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
             const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
@@ -199,67 +232,75 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const { mostWins, mostLosses, rival } = getH2HStats();
 
     const getMyBestStats = () => {
-        const myTeams = (historyData?.teams || []).filter((t:any) => isMyRecord(t.owner));
-        const topTeams = myTeams.map((t:any) => {
-            const teamData = masterTeams?.find((m:any) => m.name === t.name);
-            const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
-            return {
-                name: t.name,
-                w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || 0,
-                gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
-                logo: getRealLogo(t.name, t.logo || teamData?.logo),
-                tier: teamData?.tier || 'C',
-                winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
-            };
-        }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
+        const topTeams = (historyData?.teams || [])
+            .filter((t:any) => t.ownerUid === user.uid)
+            .map((t:any) => {
+                const teamData = masterTeams?.find((m:any) => m.name === t.name);
+                const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
+                return {
+                    name: t.name, w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || 0,
+                    gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
+                    logo: getRealLogo(t.name, t.logo || teamData?.logo), tier: teamData?.tier || 'C',
+                    winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
+                };
+            }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
 
-        const myPlayers = (historyData?.players || []).filter((p:any) => isMyRecord(p.owner));
+        const myPlayers = (historyData?.players || []).filter((p:any) => p.ownerUid === user.uid);
         
-        const topScorers = [...myPlayers]
-            .filter((p:any) => (p.goals || 0) > 0)
-            .sort((a:any, b:any) => b.goals - a.goals)
-            .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) }))
-            .slice(0, 5);
+        const topScorers = [...myPlayers].filter((p:any) => (p.goals || 0) > 0).sort((a:any, b:any) => b.goals - a.goals)
+            .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
 
-        const topAssists = [...myPlayers]
-            .filter((p:any) => (p.assists || 0) > 0)
-            .sort((a:any, b:any) => b.assists - a.assists)
-            .map((p:any) => ({ name: p.name, count: p.assists, team: p.team, logo: getRealLogo(p.team, p.teamLogo) }))
-            .slice(0, 5);
+        const topAssists = [...myPlayers].filter((p:any) => (p.assists || 0) > 0).sort((a:any, b:any) => b.assists - a.assists)
+            .map((p:any) => ({ name: p.name, count: p.assists, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
 
         return { topTeams, topScorers, topAssists };
     };
 
     const { topTeams, topScorers, topAssists } = getMyBestStats();
 
-    // 🔥 [스마트 필터] 내 구단이거나 주인이 없는 구단만 선택 가능하도록 수정
-    const availableTeams = masterTeams?.filter((t:any) => 
-        (!t.ownerUid && !t.ownerName) || 
-        (t.ownerUid && t.ownerUid === user.uid) || 
-        (!t.ownerUid && t.ownerName === user.mappedOwnerId)
-    ) || [];
+    const availableTeams = masterTeams || []; 
 
-    const uniqueRegions = Array.from(new Set(
-        availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean)
-    )).sort() as string[];
+    const uniqueRegions = Array.from(new Set(availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean))).sort() as string[];
     const filteredTeamsForDropdown = availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory && t.region === editRegion).sort((a:any, b:any) => a.name.localeCompare(b.name));
 
-    // 🔥 [FM 픽스: Dual-Track 저장] 저장 시 UID를 함께 박아 넣습니다.
     const handleSaveSettings = async () => {
         setIsSaving(true);
         try {
-            // 1. 프로필 이미지 업데이트 (UID 문서 ID 사용)
-            const targetOwnerDocId = myOwnerData?.docId || myOwnerData?.id || user.uid;
-            if (targetOwnerDocId) await updateDoc(doc(db, 'users', String(targetOwnerDocId)), { photo: editPhoto });
+            // 🔥 [수술 2단계] 에러의 핵심 원인 해결! DB 문서의 진짜 ID(docId)를 정확하게 타겟팅합니다.
+            const targetDocId = myOwnerData?.docId || user.uid;
+            
+            const userRef = doc(db, 'users', targetDocId); // 에러나던 user.uid 대신 안전한 targetDocId 사용
+            const batch = writeBatch(db); 
+            
+            let isNameChanged = false;
+            const updatePayload: any = { photo: editPhoto };
 
-            // 2. 구단 소유권 업데이트 (Name + UID 동시 저장)
-            const oldTeamId = myTeam?.docId || myTeam?.id;
-            if (String(editTeamId) !== String(oldTeamId)) {
-                if (oldTeamId) await updateDoc(doc(db, 'master_teams', String(oldTeamId)), { ownerName: '', ownerUid: '' });
-                if (editTeamId) await updateDoc(doc(db, 'master_teams', String(editTeamId)), { ownerName: user.mappedOwnerId, ownerUid: user.uid });
+            if (editNickname && editNickname !== myOwnerData?.nickname) {
+                isNameChanged = true;
+                updatePayload.nickname = editNickname;
+                
+                if (myOwnerData?.nickname) {
+                    updatePayload.legacyNames = arrayUnion(myOwnerData.nickname);
+                }
+                
+                // 로그인 연동 계정도 함께 업데이트
+                const accountRef = doc(db, 'user_accounts', user.uid);
+                batch.update(accountRef, { mappedOwnerId: editNickname });
             }
+
+            // 상징적 팀 정보 업데이트
+            if (editTeamId) {
+                updatePayload.favoriteTeamId = editTeamId;
+            }
+
+            batch.update(userRef, updatePayload);
+            await batch.commit();
+
             alert('✅ 설정이 성공적으로 저장되었습니다!');
             setIsEditing(false);
+            
+            if (isNameChanged || editTeamId) window.location.reload();
+
         } catch (e: any) {
             console.error(e);
             alert(`설정 저장 중 오류가 발생했습니다: ${e.message}`);
@@ -269,10 +310,11 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     };
 
     const openEditModal = () => {
+        setEditNickname(currentNick || ''); 
         setEditPhoto(user.photo || myOwnerData?.photo || '');
         setEditCategory(myTeam?.category || 'CLUB'); 
         setEditRegion(myTeam?.region || '');
-        setEditTeamId(myTeam?.docId || myTeam?.id || '');
+        setEditTeamId(myOwnerData?.favoriteTeamId || ''); // 폼을 열 땐 항상 내 상징팀 ID만 불러옴
         setIsEditing(true);
     };
 
@@ -318,7 +360,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                             </span>
                         </div>
                         <h2 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] overflow-visible text-center sm:text-left break-all pr-0 sm:pr-10">
-                            {user.mappedOwnerId}
+                            {currentNick}
                         </h2>
                         
                         <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2.5">
@@ -332,7 +374,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 </div>
                             ) : (
                                 <div className="px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-400 text-sm font-bold italic">
-                                    소속 구단 없음
+                                    상징 구단 없음
                                 </div>
                             )}
                         </div>
@@ -528,17 +570,22 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         
                         <div className="space-y-5">
                             <div>
+                                <label className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest mb-1.5 block">🏷️ 구단주 닉네임 변경</label>
+                                <input type="text" value={editNickname} onChange={e => setEditNickname(e.target.value)} placeholder="새로운 닉네임을 입력하세요" className="w-full bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 outline-none transition-all shadow-inner" />
+                            </div>
+
+                            <div>
                                 <label className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest mb-1.5 block">📸 프로필 이미지 URL</label>
                                 <input type="text" value={editPhoto} onChange={e => setEditPhoto(e.target.value)} placeholder="이미지 주소를 붙여넣으세요" className="w-full bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 outline-none transition-all shadow-inner" />
                             </div>
                             <div>
-                                <label className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest mb-1.5 block">🛡️ 나의 소속 구단 선택</label>
+                                <label className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest mb-1.5 block">🛡️ 나의 상징적 소속 구단</label>
                                 <div className="flex flex-col gap-2">
                                     <div className="flex gap-2">
                                         <select value={editCategory} onChange={e => { setEditCategory(e.target.value as any); setEditRegion(''); setEditTeamId(''); }} className="w-1/3 bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 cursor-pointer"><option value="CLUB">⚽ 클럽</option><option value="NATIONAL">🌍 국대</option></select>
                                         <select value={editRegion} onChange={e => { setEditRegion(e.target.value); setEditTeamId(''); }} className="w-2/3 bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 cursor-pointer"><option value="">-- 리그/지역 선택 --</option>{uniqueRegions.map((region) => (<option key={region} value={region}>{region}</option>))}</select>
                                     </div>
-                                    <select value={editTeamId} onChange={e => setEditTeamId(e.target.value)} disabled={!editRegion} className="w-full bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 cursor-pointer disabled:opacity-50"><option value="">{editRegion ? '-- 구단 선택 --' : '👆 지역을 먼저 선택하세요'}</option>{filteredTeamsForDropdown.map((t:any) => (<option key={t.docId || t.id} value={t.docId || t.id}>{t.name}</option>))}</select>
+                                    <select value={editTeamId} onChange={e => setEditTeamId(e.target.value)} disabled={!editRegion} className="w-full bg-[#0B1120] text-slate-200 text-xs sm:text-sm font-bold p-3.5 rounded-xl border border-slate-700 focus:border-emerald-500 cursor-pointer disabled:opacity-50"><option value="">{editRegion ? '-- 구단 자유 선택 --' : '👆 지역을 먼저 선택하세요'}</option>{filteredTeamsForDropdown.map((t:any) => (<option key={t.docId || t.id} value={t.docId || t.id}>{t.name}</option>))}</select>
                                 </div>
                             </div>
                             <div className="flex gap-2 pt-4">

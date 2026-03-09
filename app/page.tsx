@@ -55,36 +55,80 @@ export default function FootballLeagueApp() {
       return found?.uid || found?.docId || undefined;
   };
 
-  // 🔥 [핵심 수술] 하이브리드 엔진 데이터 뻥튀기 버그 수정
   const combinedHistoryData = useMemo(() => {
-      const merged = {
-          teams: JSON.parse(JSON.stringify(historyData?.teams || [])),
-          owners: JSON.parse(JSON.stringify(historyData?.owners || [])),
-          players: JSON.parse(JSON.stringify(historyData?.players || []))
-      };
+      const mergedOwnersMap = new Map();
+      const mergedTeamsMap = new Map();
+      const mergedPlayersMap = new Map();
 
-      const getOrCreate = (arr: any[], key: string, keyName: string, initial: any) => {
-          let item = arr.find(x => x[keyName] === key);
-          if (!item) {
-              item = { [keyName]: key, ...initial };
-              arr.push(item);
+      // 🔥 [핵심 픽스] 소문자 변환 로직 전면 폐기! 순정 UID 연결고리만 깨끗하게 수집합니다.
+      const uidLookup = new Map<string, string>();
+      
+      historyRecords?.forEach((hr: any) => {
+          hr.teams?.forEach((t: any) => {
+              if (t.owner && t.ownerId) uidLookup.set(t.owner, t.ownerId);
+              if (t.legacyName && t.ownerId) uidLookup.set(t.legacyName, t.ownerId);
+          });
+          hr.players?.forEach((p: any) => {
+              if (p.owner && p.ownerId) uidLookup.set(p.owner, p.ownerId);
+              if (p.legacyName && p.ownerId) uidLookup.set(p.legacyName, p.ownerId);
+          });
+      });
+
+      owners?.forEach((o: any) => {
+          if (o.nickname && o.uid) uidLookup.set(o.nickname, o.uid);
+          if (o.legacyName && o.uid) uidLookup.set(o.legacyName, o.uid);
+          if (o.legacyNames && Array.isArray(o.legacyNames)) {
+              o.legacyNames.forEach((ln: string) => uidLookup.set(ln, o.uid));
           }
-          return item;
-      };
+      });
 
-      // 💡 [해결 1] '진행 중(ACTIVE)'인 시즌만 필터링하여 중복 합산 차단
+      // 1. 기존 마감된 역사(historyData) 데이터 적재 (오직 UID만 쓴다)
+      historyData?.owners?.forEach((o: any) => {
+          const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name; 
+          
+          if (!mergedOwnersMap.has(uid)) {
+              mergedOwnersMap.set(uid, { ...o, uid }); 
+          } else {
+              const ex = mergedOwnersMap.get(uid);
+              ex.win += o.win || 0; ex.draw += o.draw || 0; ex.loss += o.loss || 0;
+              ex.points += o.points || 0; ex.prize += o.prize || 0;
+              ex.golds += o.golds || 0; ex.silvers += o.silvers || 0; ex.bronzes += o.bronzes || 0;
+          }
+      });
+
+      historyData?.teams?.forEach((t: any) => {
+          const uid = t.ownerId || t.ownerUid || uidLookup.get(t.owner) || t.owner;
+          mergedTeamsMap.set(t.name, { ...t, ownerUid: uid });
+      });
+
+      historyData?.players?.forEach((p: any) => {
+          const uid = p.ownerId || p.ownerUid || uidLookup.get(p.owner) || p.owner;
+          const pk = `${p.name}_${p.team}`; 
+          mergedPlayersMap.set(pk, { ...p, ownerUid: uid });
+      });
+
+      // 2. 현재 활성화된(ACTIVE) 라이브 시즌 데이터 병합 (오직 UID만 쓴다)
       const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
-
+      
       activeSeasons.forEach((s: any) => {
           s.rounds?.forEach((r: any) => {
               r.matches?.forEach((m: any) => {
                   if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
                       
-                      const hTeam = getOrCreate(merged.teams, m.home, 'name', { win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, owner: m.homeOwner });
-                      const aTeam = getOrCreate(merged.teams, m.away, 'name', { win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, owner: m.awayOwner });
+                      const hUid = m.homeOwnerUid || uidLookup.get(m.homeOwner) || m.homeOwner || "";
+                      const aUid = m.awayOwnerUid || uidLookup.get(m.awayOwner) || m.awayOwner || "";
+
+                      if (!mergedTeamsMap.has(m.home)) mergedTeamsMap.set(m.home, { name: m.home, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, ownerUid: hUid });
+                      if (!mergedTeamsMap.has(m.away)) mergedTeamsMap.set(m.away, { name: m.away, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, ownerUid: aUid });
                       
-                      const hOwner = getOrCreate(merged.owners, m.homeOwner, 'name', { win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
-                      const aOwner = getOrCreate(merged.owners, m.awayOwner, 'name', { win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+                      const hTeam = mergedTeamsMap.get(m.home);
+                      const aTeam = mergedTeamsMap.get(m.away);
+
+                      if (!mergedOwnersMap.has(hUid)) mergedOwnersMap.set(hUid, { uid: hUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+                      if (!mergedOwnersMap.has(aUid)) mergedOwnersMap.set(aUid, { uid: aUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+
+                      const hOwner = mergedOwnersMap.get(hUid);
+                      const aOwner = mergedOwnersMap.get(aUid);
 
                       const hScore = Number(m.homeScore || 0);
                       const aScore = Number(m.awayScore || 0);
@@ -93,53 +137,76 @@ export default function FootballLeagueApp() {
                       aTeam.gf += aScore; aTeam.ga += hScore; aTeam.gd += (aScore - hScore);
 
                       if (hScore > aScore) {
-                          hTeam.win += 1; hTeam.points += 3;
-                          aTeam.loss += 1;
-                          hOwner.win += 1; hOwner.points += 3;
-                          aOwner.loss += 1;
+                          hTeam.win += 1; hTeam.points += 3; aTeam.loss += 1;
+                          hOwner.win += 1; hOwner.points += 3; aOwner.loss += 1;
                       } else if (aScore > hScore) {
-                          aTeam.win += 1; aTeam.points += 3;
-                          hTeam.loss += 1;
-                          aOwner.win += 1; aOwner.points += 3;
-                          hOwner.loss += 1;
+                          aTeam.win += 1; aTeam.points += 3; hTeam.loss += 1;
+                          aOwner.win += 1; aOwner.points += 3; hOwner.loss += 1;
                       } else {
-                          hTeam.draw += 1; hTeam.points += 1;
-                          aTeam.draw += 1; aTeam.points += 1;
-                          hOwner.draw += 1; hOwner.points += 1;
-                          aOwner.draw += 1; aOwner.points += 1;
+                          hTeam.draw += 1; hTeam.points += 1; aTeam.draw += 1; aTeam.points += 1;
+                          hOwner.draw += 1; hOwner.points += 1; aOwner.draw += 1; aOwner.points += 1;
                       }
 
-                      // 💡 [해결 2] 선수 식별을 '이름 + 소속팀' 으로 구분하여 다른 팀 동명이인 퓨전 방지
-                      const processPlayers = (playersList: any[], teamName: string, teamLogo: string, ownerName: string, isGoal: boolean) => {
+                      const processPlayers = (playersList: any[], teamName: string, teamLogo: string, ownerUid: string, isGoal: boolean) => {
                           playersList?.forEach((p: any) => {
                               const pName = p.name?.trim();
                               if (!pName) return;
+                              const pk = `${pName}_${teamName}`;
                               
-                              let pRec = merged.players.find((x:any) => x.name === pName && x.team === teamName);
-                              if (!pRec) {
-                                  pRec = { name: pName, team: teamName, goals: 0, assists: 0, teamLogo: teamLogo, owner: ownerName };
-                                  merged.players.push(pRec);
+                              if (!mergedPlayersMap.has(pk)) {
+                                  mergedPlayersMap.set(pk, { name: pName, team: teamName, goals: 0, assists: 0, teamLogo, ownerUid });
                               }
-
+                              const pRec = mergedPlayersMap.get(pk);
+                              
                               if (isGoal) pRec.goals += Number(p.count || 1);
                               else pRec.assists += Number(p.count || 1);
                               
                               pRec.teamLogo = teamLogo;
-                              pRec.owner = ownerName;
+                              pRec.ownerUid = ownerUid; 
                           });
                       };
 
-                      processPlayers(m.homeScorers, m.home, m.homeLogo, m.homeOwner, true);
-                      processPlayers(m.awayScorers, m.away, m.awayLogo, m.awayOwner, true);
-                      processPlayers(m.homeAssists, m.home, m.homeLogo, m.homeOwner, false);
-                      processPlayers(m.awayAssists, m.away, m.awayLogo, m.awayOwner, false);
+                      processPlayers(m.homeScorers, m.home, m.homeLogo, hUid, true);
+                      processPlayers(m.awayScorers, m.away, m.awayLogo, aUid, true);
+                      processPlayers(m.homeAssists, m.home, m.homeLogo, hUid, false);
+                      processPlayers(m.awayAssists, m.away, m.awayLogo, aUid, false);
                   }
               });
           });
       });
 
-      return merged;
-  }, [historyData, seasons]);
+      // 3. 최종 출력(Projection): 구단주님의 철학대로 UID로 검색하여 가장 최신 닉네임을 입혀서 반환!
+      const finalOwners = Array.from(mergedOwnersMap.values()).map(o => {
+          const latestOwner = owners.find(u => u.uid === o.uid || String(u.id) === o.uid || u.docId === o.uid);
+          return {
+              ...o,
+              name: latestOwner ? latestOwner.nickname : (o.name || o.uid) 
+          };
+      });
+
+      const finalTeams = Array.from(mergedTeamsMap.values()).map(t => {
+          const latestOwner = owners.find(u => u.uid === t.ownerUid || String(u.id) === t.ownerUid || u.docId === t.ownerUid);
+          return {
+              ...t,
+              owner: latestOwner ? latestOwner.nickname : (t.owner || t.ownerUid)
+          };
+      });
+
+      const finalPlayers = Array.from(mergedPlayersMap.values()).map(p => {
+          const latestOwner = owners.find(u => u.uid === p.ownerUid || String(u.id) === p.ownerUid || u.docId === p.ownerUid);
+          return {
+              ...p,
+              owner: latestOwner ? latestOwner.nickname : (p.owner || p.ownerUid)
+          };
+      });
+
+      return {
+          teams: finalTeams,
+          owners: finalOwners.sort((a, b) => b.points - a.points || b.win - a.win),
+          players: finalPlayers,
+          allTimeStats: (historyData as any)?.allTimeStats || [] 
+      };
+  }, [historyData, seasons, owners, historyRecords]); 
 
   const handleViewChange = (newView: any) => {
       setCurrentView(newView);
