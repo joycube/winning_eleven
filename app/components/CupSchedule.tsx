@@ -264,8 +264,9 @@ export const CupSchedule = ({
 
     // 4. 부드럽게 스크롤 실행
     if (targetMatchId && matchRefs.current[targetMatchId]) {
+        const finalId = targetMatchId; // 🔥 TS 에러(클로저 타입 추론) 방지용 상수 할당
         setTimeout(() => {
-            matchRefs.current[targetMatchId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
     }
   }, [currentSeason, displayStages, viewSeasonId]);

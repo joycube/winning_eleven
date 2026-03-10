@@ -200,11 +200,11 @@ export const ScheduleView = ({
       }
 
       if (targetMatchId && matchRefs.current[targetMatchId]) {
-          // 화면이 그려질 여유 시간을 주고 부드럽게 스크롤
-          setTimeout(() => {
-              matchRefs.current[targetMatchId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 300);
-      }
+        const finalId = targetMatchId; // 🔥 TS 에러(클로저 타입 추론) 방지용 상수 할당
+        setTimeout(() => {
+            matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+    }
   }, [currentSeason, viewMode]);
 
   const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
