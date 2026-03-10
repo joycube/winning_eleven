@@ -4,47 +4,82 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase'; 
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
-import { ArrowLeft, Send, Trash2, Trophy } from 'lucide-react';
-import { FALLBACK_IMG, Owner } from '../types'; // 🔥 Owner 타입 추가
+// 🔥 [픽스] MessageSquare 아이콘 import 추가
+import { ArrowLeft, Send, Trash2, Trophy, Smile, MessageSquare } from 'lucide-react';
+import { FALLBACK_IMG, Owner } from '../types'; 
 
 import { MatchCard } from './MatchCard'; 
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-const getBestProfileImage = (userObj?: any | null, ownersList?: any[] | null, savedPhoto?: string | null, authorName?: string | null) => {
-    const targetName = authorName || (userObj ? userObj.mappedOwnerId : null);
-    if (targetName && ownersList && Array.isArray(ownersList)) {
-        const ownerData = ownersList.find(o => o.nickname === targetName);
-        if (ownerData && ownerData.photo && ownerData.photo.trim() !== '') return ownerData.photo;
-    }
-    if (userObj) {
-        if (userObj.photoURL && userObj.photoURL.trim() !== '') return userObj.photoURL;
-        if (userObj.photoUrl && userObj.photoUrl.trim() !== '') return userObj.photoUrl;
-    }
-    if (savedPhoto && typeof savedPhoto === 'string' && savedPhoto.trim() !== '') return savedPhoto;
-    return COMMON_DEFAULT_PROFILE;
-};
+// 🔥 스케줄 팝업과 동일한 45종 스티커
+const STICKER_PACK = [
+    { id: 'clown', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f921/512.gif' }, 
+    { id: 'point', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f449_1f3fb/512.gif' }, 
+    { id: 'tongue', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f61c/512.gif' }, 
+    { id: 'joy', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f602/512.gif' }, 
+    { id: 'zany', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f92a/512.gif' }, 
+    { id: 'smirk', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f60f/512.gif' }, 
+    { id: 'alien', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f47d/512.gif' }, 
+    { id: 'devil', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f608/512.gif' }, 
+    { id: 'rolling_eyes', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f644/512.gif' }, 
+    { id: 'shush', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f92b/512.gif' }, 
+    { id: 'propeller', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f601/512.gif' }, 
+    { id: 'nerd', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f913/512.gif' }, 
+    { id: 'shrug', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f937/512.gif' }, 
+    { id: 'salt', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f9f2/512.gif' }, 
+    { id: 'soap', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f9fc/512.gif' }, 
+    { id: 'megaphone', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4e3/512.gif' }, 
+    { id: 'popcorn', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f37f/512.gif' }, 
+    { id: 'eyes', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f440/512.gif' }, 
+    { id: 'hundred', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4af/512.gif' }, 
+    { id: 'camera', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4f9/512.gif' }, 
+    { id: 'warn', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/26a0/512.gif' }, 
+    { id: 'cry', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f62d/512.gif' }, 
+    { id: 'mindblown', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f92f/512.gif' }, 
+    { id: 'facepalm', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f926/512.gif' }, 
+    { id: 'explode', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a5/512.gif' }, 
+    { id: 'vomit', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f922/512.gif' }, 
+    { id: 'poop', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a9/512.gif' }, 
+    { id: 'ghost', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f47b/512.gif' }, 
+    { id: 'chicken', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f414/512.gif' }, 
+    { id: 'party', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f389/512.gif' }, 
+    { id: 'party_face', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f973/512.gif' }, 
+    { id: 'fire', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' }, 
+    { id: 'trophy', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f3c6/512.gif' }, 
+    { id: 'crown', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f451/512.gif' }, 
+    { id: 'sunglasses', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f60e/512.gif' }, 
+    { id: 'muscle', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4aa/512.gif' }, 
+    { id: 'dance', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f57a/512.gif' }, 
+    { id: 'soccer', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/26bd/512.gif' }, 
+    { id: 'moneybag', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4b0/512.gif' }, 
+    { id: 'credit_card', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4b3/512.gif' }, 
+    { id: 'target', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f3af/512.gif' }, 
+    { id: 'boxing_glove', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f94a/512.gif' }, 
+    { id: 'robot', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f916/512.gif' }, 
+    { id: 'brain', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f9e0/512.gif' }, 
+    { id: 'zzz', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f634/512.gif' } 
+];
 
-const formatDate = (ts: any, includeTime = false) => {
-    if (!ts) return '방금 전';
+const formatDate = (ts: any) => {
+    if (!ts) return '';
     let d: Date;
     if (typeof ts === 'number') d = new Date(ts);
     else if (typeof ts.toDate === 'function') d = ts.toDate();
     else if (typeof ts === 'string') d = new Date(ts);
-    else return '방금 전';
-    const datePart = `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-    const timePart = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    return includeTime ? `${datePart} ${timePart}` : datePart;
+    else return '';
+    const ampm = d.getHours() < 12 ? '오전' : '오후';
+    const h = d.getHours() % 12 || 12;
+    return `${ampm} ${h}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-// 🔥 [FM 헬퍼] UID와 이름을 모두 고려하여 실시간 닉네임 반환
-const resolveOwnerNickname = (owners: Owner[], ownerName: string, ownerUid?: string) => {
-    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'GUEST'].includes(ownerName.trim().toUpperCase())) return ownerName;
+const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'GUEST'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
     const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return foundByUid.nickname;
+    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
     const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? foundByName.nickname : ownerName;
+    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
 const StatusBadge = ({ status }: { status?: string }) => {
@@ -59,7 +94,7 @@ interface MatchTalkBoardProps {
     user: any;
     seasons: any[];
     masterTeams: any[];
-    owners: Owner[]; // 🔥 타입 명확화
+    owners: Owner[]; 
     activeRankingData?: any; 
     selectedMatchId: string | null;
     onSelectMatch: (matchId: string) => void;
@@ -69,8 +104,12 @@ interface MatchTalkBoardProps {
 const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData, selectedMatchId, onSelectMatch, onClose }: MatchTalkBoardProps) => {
     const [allMatchComments, setAllMatchComments] = useState<any[]>([]);
     const [commentText, setCommentText] = useState('');
+    const [showStickers, setShowStickers] = useState(false); 
+    const [isSending, setIsSending] = useState(false); 
     const [visibleCount, setVisibleCount] = useState(10);
     const [selectedSeasonFilter, setSelectedSeasonFilter] = useState<string>('ALL');
+    
+    const commentsEndRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLInputElement>(null);
 
     const isMaster = useMemo(() => {
@@ -83,17 +122,23 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAllMatchComments(fetched);
+            setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         });
         return () => unsubscribe();
     }, []);
 
     const matchTalkPosts = useMemo(() => {
-        const items: any[] = [];
+        let allItems: any[] = [];
+
         seasons?.forEach((s: any) => {
-            s.rounds?.forEach((r: any) => {
-                r.matches?.forEach((m: any) => {
+            let allCompleted = true;
+            const seasonMatches: any[] = [];
+
+            s.rounds?.forEach((r: any, rIdx: number) => {
+                r.matches?.forEach((m: any, mIdx: number) => {
+                    if (m.status !== 'COMPLETED') allCompleted = false;
+
                     if (m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
-                        
                         const homeNorm = (m.home || '').toLowerCase().trim();
                         const awayNorm = (m.away || '').toLowerCase().trim();
                         
@@ -128,7 +173,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                             seasonName: s.name,
                         };
 
-                        items.push({
+                        seasonMatches.push({
                             id: `match_${m.id}`, 
                             realMatchId: m.id, 
                             isMatchTalk: true,
@@ -140,13 +185,42 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                             comments: matchComments, 
                             views: m.talkViews || 0,
                             authorName: 'SYSTEM', 
-                            authorPhoto: COMMON_DEFAULT_PROFILE
+                            authorPhoto: COMMON_DEFAULT_PROFILE,
+                            _roundIndex: rIdx,
+                            _matchIndex: mIdx,
+                            _status: m.status?.toUpperCase() || 'UPCOMING'
                         });
                     }
                 });
             });
+
+            if (allCompleted) {
+                seasonMatches.sort((a, b) => {
+                    if (a._roundIndex !== b._roundIndex) return a._roundIndex - b._roundIndex;
+                    return a._matchIndex - b._matchIndex;
+                });
+            } else {
+                seasonMatches.sort((a, b) => {
+                    const getStatusWeight = (status: string) => {
+                        if (status === 'LIVE') return 0;
+                        if (status === 'UPCOMING') return 1;
+                        return 2; 
+                    };
+
+                    const weightA = getStatusWeight(a._status);
+                    const weightB = getStatusWeight(b._status);
+
+                    if (weightA !== weightB) return weightA - weightB;
+
+                    if (a._roundIndex !== b._roundIndex) return a._roundIndex - b._roundIndex;
+                    return a._matchIndex - b._matchIndex;
+                });
+            }
+
+            allItems = [...allItems, ...seasonMatches];
         });
-        return items.sort((a, b) => b.createdAt - a.createdAt);
+
+        return allItems;
     }, [seasons, masterTeams, allMatchComments, activeRankingData]); 
     
     const filteredMatchTalkPosts = useMemo(() => {
@@ -157,6 +231,12 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
     const activePost = useMemo(() => matchTalkPosts.find(p => p.id === selectedMatchId), [selectedMatchId, matchTalkPosts]);
     const visiblePostsList = filteredMatchTalkPosts.slice(0, visibleCount);
     const hasMore = visiblePostsList.length < filteredMatchTalkPosts.length;
+
+    useEffect(() => {
+        if (activePost) {
+            setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
+        }
+    }, [activePost]);
 
     const handleMatchClick = (post: any) => {
         onSelectMatch(post.id);
@@ -177,26 +257,47 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         }
     };
 
+    const handleSendSticker = async (stickerUrl: string) => {
+        if (!user || isSending || !activePost) return; 
+        setIsSending(true);
+        try {
+            await addDoc(collection(db, 'match_comments'), {
+                matchId: activePost.realMatchId,
+                authorId: user.uid,
+                authorUid: user.uid, 
+                authorName: user.mappedOwnerId || 'GUEST',
+                text: `[STICKER]${stickerUrl}`, 
+                createdAt: Date.now() 
+            });
+            setShowStickers(false); 
+        } catch (e) {
+            console.error("스티커 전송 실패:", e);
+        } finally {
+            setIsSending(false);
+        }
+    };
+
     const handleAddComment = async () => {
         if (!user) return alert("🚨 로그인이 필요합니다.");
-        if (!commentText.trim()) return alert("댓글 내용을 입력해주세요.");
+        if (!commentText.trim() || isSending) return;
         if (!activePost) return;
 
-        const currentAuthorPhoto = getBestProfileImage(user, owners);
-        const currentAuthorName = user.mappedOwnerId || '미배정 오너';
-
+        setIsSending(true);
         try {
             await addDoc(collection(db, 'match_comments'), {
                 matchId: activePost.realMatchId, 
-                authorId: user.uid, // [기존 유산]
-                authorUid: user.uid, // 🔥 [UID 뼈대 장착]
-                authorName: currentAuthorName,
-                authorPhoto: currentAuthorPhoto, 
+                authorId: user.uid, 
+                authorUid: user.uid, 
+                authorName: user.mappedOwnerId || 'GUEST',
                 text: commentText.trim(), 
                 createdAt: Date.now(),
             });
             setCommentText('');
-        } catch (e) { alert("댓글 처리 실패"); }
+        } catch (e) { 
+            alert("댓글 처리 실패"); 
+        } finally {
+            setIsSending(false);
+        }
     };
 
     const handleDeleteComment = async (commentId: string) => {
@@ -208,27 +309,20 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
 
     if (activePost) {
         return (
-            <div className="animate-in slide-in-from-bottom-4 space-y-4">
-                <div className="mb-2">
+            <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full overflow-hidden">
+                {/* 상단 뒤로가기 버튼 */}
+                <div className="mb-4 shrink-0 px-1">
                     <button onClick={onClose} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                         <ArrowLeft size={14} /> <span>목록으로 뒤로 가기</span>
                     </button>
                 </div>
 
-                <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
-                    <div className="p-4 sm:p-7 border-b border-slate-800">
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="bg-blue-400/10 text-blue-400 border-blue-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
-                                <Trophy size={12}/> 매치톡
-                            </span>
-                            <span className="text-[11px] sm:text-xs text-slate-400 font-bold">{activePost.subTitle}</span>
-                        </div>
-                        <h2 className="text-xl sm:text-3xl font-black text-white italic leading-tight truncate mb-2">{activePost.title}</h2>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium mb-6">
-                            <span>{formatDate(activePost.createdAt, true)}</span>
-                        </div>
-                        
-                        <div className="mb-2 pointer-events-none"> 
+                {/* 매치톡 전용 모달 레이아웃 시작 */}
+                <div className="flex flex-col bg-[#0f172a] rounded-t-[24px] rounded-b-xl shadow-2xl overflow-hidden border border-slate-800 flex-1 min-h-[500px]">
+                    
+                    {/* 상단 경기 정보 전광판 */}
+                    <div className="bg-[#0B1120] p-4 sm:p-6 pb-2 shrink-0 border-b border-slate-800 z-20 shadow-md">
+                        <div className="pointer-events-none mb-1"> 
                             <MatchCard 
                                 match={activePost.matchData} 
                                 onClick={() => {}} 
@@ -236,77 +330,127 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                 activeRankingData={activeRankingData}
                             />
                         </div>
-                        
+                        <div className="flex justify-between items-center px-2 py-2">
+                            <h4 className="text-[12px] font-black text-white uppercase flex items-center gap-2 tracking-widest italic">
+                                💬 Match Talk <span className="text-emerald-500 ml-1 font-bold">{(activePost.comments || []).length}</span>
+                            </h4>
+                        </div>
                     </div>
 
-                    <div className="p-4 sm:p-6 bg-slate-950/30">
-                        <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">
-                            💬 Match Talk <span className="text-emerald-500 ml-1">{(activePost.comments || []).length}</span>
-                        </h4>
+                    {/* 🔥 탭 1: 매치 톡 (채팅방) 영역 - 대칭형 복원 & 카톡 이식 */}
+                    <div className="flex-1 min-h-0 bg-[#0B1423] flex flex-col relative z-10 w-full overflow-hidden">
                         
-                        <div className="mb-6 border-t border-slate-800/50">
-                            {(!(activePost.comments) || activePost.comments.length === 0) && (
-                                <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>
-                            )}
-                            {activePost.comments?.map((comment: any) => {
-                                // 🔥 [FM 수술] 댓글 렌더링 시 UID 기반 닉네임 실시간 동기화
-                                const resolvedName = resolveOwnerNickname(owners, comment.authorName, comment.authorUid || comment.authorId);
-                                const cPhoto = comment.authorPhoto;
-                                const authorProfileImg = getBestProfileImage(null, owners, cPhoto, resolvedName);
+                        <div className="flex-1 overflow-y-auto px-3 sm:px-5 pt-6 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {!(activePost.comments) || activePost.comments.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
+                                    <MessageSquare size={28} className="mb-2" />
+                                    <p className="text-[12px] sm:text-[13px] font-bold">이 경기의 첫 번째 관전평을 남겨보세요!</p>
+                                </div>
+                            ) : (
+                                activePost.comments.map((c: any) => {
+                                    const isMe = c.authorId === user?.uid || c.authorUid === user?.uid;
+                                    const authorInfo = resolveOwnerInfo(owners, c.authorName, c.authorUid || c.authorId);
+                                    
+                                    const isSticker = c.text.startsWith('[STICKER]');
+                                    const stickerUrl = isSticker ? c.text.replace('[STICKER]', '') : '';
 
-                                return (
-                                    <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
-                                        <div className="flex gap-3.5">
-                                            <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any) => e.target.src = COMMON_DEFAULT_PROFILE} />
-                                            <div className="flex-1 min-w-0 pr-6 overflow-visible">
-                                                <div className="flex items-baseline gap-2 mb-1.5">
-                                                    <span className="font-bold text-emerald-400 text-sm italic whitespace-nowrap">{resolvedName}</span>
-                                                    <span className="text-slate-500 text-[10px] whitespace-nowrap">{formatDate(comment.createdAt, true)}</span>
+                                    return (
+                                        <div key={c.id} className={`flex gap-2.5 w-full mb-1 relative ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                            <div className="shrink-0 flex flex-col items-center">
+                                                <img src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
+                                            </div>
+                                            
+                                            <div className={`flex flex-col max-w-[78%] ${isMe ? 'items-end' : 'items-start'}`}>
+                                                <div className={`flex items-baseline gap-1.5 mb-1.5 mx-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                    <span className="text-[11px] sm:text-[12px] font-bold text-slate-300">{authorInfo.nickname}</span>
+                                                    <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium whitespace-nowrap">{formatDate(c.createdAt)}</span>
                                                 </div>
-                                                <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap mb-2.5 font-medium tracking-tight">{comment.text}</p>
                                                 
-                                                {(user?.uid === (comment.authorUid || comment.authorId) || isMaster) && (
-                                                    <div className="flex items-center gap-3 mt-1 text-[11px]">
-                                                        <button onClick={() => handleDeleteComment(comment.id)} className="text-slate-500 hover:text-red-400 font-bold transition-colors">삭제</button>
+                                                {isSticker ? (
+                                                    <div className={`relative group ${isMe ? 'mr-1' : 'ml-1'}`}>
+                                                        <img src={stickerUrl} className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-md transform hover:scale-105 transition-transform" alt="sticker" onError={(e:any) => { e.target.style.display = 'none'; }} />
+                                                        {(isMe || isMaster) && (
+                                                            <button onClick={() => handleDeleteComment(c.id)} className="absolute -top-2 -right-2 bg-slate-800 text-red-400 p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity border border-slate-700">
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className={`relative group px-3.5 py-2.5 rounded-2xl shadow-sm ${isMe ? 'bg-[#fae100] text-slate-900 rounded-tr-sm' : 'bg-slate-800 text-white rounded-tl-sm'}`}>
+                                                        <p className="text-[13px] sm:text-[14px] font-medium tracking-tight leading-snug whitespace-pre-wrap">{c.text}</p>
+                                                        {(isMe || isMaster) && (
+                                                            <button onClick={() => handleDeleteComment(c.id)} className={`absolute top-1/2 -translate-y-1/2 p-1.5 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity ${isMe ? '-left-8 bg-slate-800 text-red-400' : '-right-8 bg-slate-800 text-red-400'}`}>
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
-                                )
-                            })}
+                                    );
+                                })
+                            )}
+                            <div ref={commentsEndRef} className="h-4" />
                         </div>
 
-                        {user ? (
-                            <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
-                                <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1 mb-0.5">새로운 의견 남기기</div>
-                                <div className="flex flex-col sm:flex-row items-stretch gap-2">
-                                    <div className="flex items-center gap-2 bg-slate-900 p-1.5 px-2.5 rounded-xl border border-slate-700 shrink-0 shadow-inner">
-                                        <img src={getBestProfileImage(user, owners)} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
-                                        <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">
-                                            {user?.mappedOwnerId}
-                                        </span>
+                        {/* 🔥 댓글 입력 폼 (스케줄 모달과 동일한 깔끔한 UI) */}
+                        <div className="shrink-0 pt-3 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
+                            
+                            {/* 스티커 선택 패널 */}
+                            {showStickers && (
+                                <div className="absolute bottom-full left-2 sm:left-4 mb-3 w-[300px] bg-[#1e293b] border border-slate-700 rounded-2xl shadow-2xl p-3 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                                    <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-700">
+                                        <span className="text-[11px] font-black text-slate-300 tracking-widest uppercase ml-1">FREE STICKERS</span>
+                                        <button onClick={() => setShowStickers(false)} className="text-slate-500 hover:text-white w-6 h-6 flex items-center justify-center bg-slate-800 rounded-full text-sm font-bold">✕</button>
                                     </div>
-                                    <div className="flex flex-1 items-stretch gap-2">
-                                        <input 
-                                            ref={commentInputRef}
-                                            value={commentText} 
-                                            onChange={(e) => setCommentText(e.target.value)} 
-                                            onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(); }}
-                                            placeholder="매치톡 내용을 입력하세요..."
-                                            className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium"
-                                        />
-                                        <button onClick={handleAddComment} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">
-                                            등록 <Send size={14} className="ml-1.5" />
-                                        </button>
+                                    <div className="grid grid-cols-4 gap-2 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 pr-1">
+                                        {STICKER_PACK.map((stk) => (
+                                            <button 
+                                                key={stk.id} 
+                                                onClick={() => handleSendSticker(stk.url)} 
+                                                disabled={isSending}
+                                                className="p-1.5 hover:bg-slate-700 bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center border border-transparent hover:border-slate-600 active:scale-95"
+                                            >
+                                                <img src={stk.url} className="w-12 h-12 object-contain hover:scale-110 transition-transform drop-shadow-md" alt="sticker" />
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="bg-slate-900/50 border border-slate-800/80 text-slate-500 text-[11px] font-bold p-4 rounded-xl text-center shadow-inner">
-                                로그인 후 참여할 수 있습니다.
-                            </div>
-                        )}
+                            )}
+
+                            {!user ? (
+                                <div className="text-center text-slate-500 text-[11px] py-3 bg-slate-900 rounded-xl border border-slate-800 font-bold tracking-tight mx-2 mb-2">
+                                    로그인 후 매치톡을 이용할 수 있습니다.
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2 sm:gap-2.5 w-full">
+                                    <button 
+                                        onClick={() => setShowStickers(!showStickers)} 
+                                        className={`w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-full flex items-center justify-center transition-all ${showStickers ? 'text-[#fae100] bg-slate-800' : 'text-slate-400 hover:text-slate-200 bg-transparent'}`}
+                                    >
+                                        <Smile size={26} strokeWidth={2.5} />
+                                    </button>
+
+                                    <input 
+                                        ref={commentInputRef}
+                                        value={commentText} 
+                                        onChange={e => setCommentText(e.target.value)} 
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) handleAddComment(); }}
+                                        placeholder={isSending ? "전송 중..." : "메시지를 입력하세요."} 
+                                        disabled={isSending}
+                                        className="flex-1 min-w-0 bg-[#1e293b] border border-slate-700 text-white text-[13px] sm:text-[15px] px-5 py-3 rounded-full outline-none focus:border-slate-500 shadow-inner placeholder:font-medium placeholder:text-slate-500 disabled:opacity-60" 
+                                    />
+
+                                    <button 
+                                        onClick={handleAddComment} 
+                                        disabled={isSending || !commentText.trim()}
+                                        className="bg-[#fae100] hover:bg-yellow-400 text-black w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 disabled:bg-slate-800 disabled:text-slate-600 disabled:scale-100"
+                                    >
+                                        {isSending ? <div className="w-4 h-4 border-2 border-slate-600 border-t-slate-900 rounded-full animate-spin"></div> : <Send size={18} className="ml-0.5" />}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

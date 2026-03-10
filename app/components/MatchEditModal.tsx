@@ -4,10 +4,31 @@ import { Match, Owner, FALLBACK_IMG } from '../types';
 import { RecordInput } from './RecordInput'; 
 import { db } from '../firebase'; 
 import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
-import { Lock, MessageSquare, Edit3, Send, Youtube, Zap } from 'lucide-react';
+import { Lock, MessageSquare, Edit3, Send, Youtube, Zap, Smile } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
+// 🔥 [안전한 구글 공식 3D 스티커 16종]
+// 💡 꿀팁: 첨부해주신 곰돌이 스티커를 쓰고 싶으시다면, imgur.com 등에 이미지를 올리시고 아래 url을 교체하세요!
+const STICKER_PACK = [
+    { id: 'joy', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f602/512.gif' },
+    { id: 'cry', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f62d/512.gif' },
+    { id: 'sweat_smile', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f605/512.gif' },
+    { id: 'mindblown', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f92f/512.gif' },
+    { id: 'clown', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f921/512.gif' },
+    { id: 'poop', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4a9/512.gif' },
+    { id: 'fire', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif' },
+    { id: 'party', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f389/512.gif' },
+    { id: 'soccer', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/26bd/512.gif' },
+    { id: 'trophy', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f3c6/512.gif' },
+    { id: 'money', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4b0/512.gif' },
+    { id: 'eyes', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f440/512.gif' },
+    { id: '100', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f4af/512.gif' },
+    { id: 'rocket', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f680/512.gif' },
+    { id: 'siren', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.gif' },
+    { id: 'ghost', url: 'https://fonts.gstatic.com/s/e/notoemoji/latest/1f47b/512.gif' }
+];
 
 interface MatchEditModalProps {
   match: Match;
@@ -33,6 +54,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
 
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [showStickers, setShowStickers] = useState(false); 
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false); 
 
@@ -104,12 +126,31 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       setRecords(p => ({...p, [targetListKey]: p[targetListKey].filter((r:any)=>r.id!==id)}));
   };
 
+  const handleSendSticker = async (stickerUrl: string) => {
+      if (!user || isSending) return; 
+      setIsSending(true);
+      try {
+          await addDoc(collection(db, 'match_comments'), {
+              matchId: match.id,
+              authorId: user.uid,
+              authorUid: user.uid, 
+              authorName: user.mappedOwnerId,
+              text: `[STICKER]${stickerUrl}`, 
+              createdAt: Date.now() 
+          });
+          setShowStickers(false); 
+      } catch (e) {
+          console.error("스티커 전송 실패:", e);
+      } finally {
+          setIsSending(false);
+      }
+  };
+
   const handleSendComment = async () => {
       const txt = newComment.trim();
       if (!txt || !user || isSending) return; 
       
       setIsSending(true);
-
       try {
           await addDoc(collection(db, 'match_comments'), {
               matchId: match.id,
@@ -131,7 +172,9 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       if (!ts) return '';
       const d = new Date(ts);
       if (isNaN(d.getTime())) return '';
-      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const ampm = d.getHours() < 12 ? '오전' : '오후';
+      const h = d.getHours() % 12 || 12;
+      return `${ampm} ${h}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
   const resolveOwnerInfo = (ownerName: string, ownerUid?: string) => {
@@ -142,9 +185,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
       return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
   };
-
-  const latestComment = comments.length > 0 ? comments[comments.length - 1] : null;
-  const latestCommentInfo = latestComment ? resolveOwnerInfo(latestComment.authorName, latestComment.authorUid || latestComment.authorId) : null;
 
   let winnerName = '';
   if (Number(inputs.homeScore) > Number(inputs.awayScore)) winnerName = match.home;
@@ -185,7 +225,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                       <div className="w-11 h-12 sm:w-14 sm:h-16 bg-black rounded-lg sm:rounded-xl border border-slate-800 flex items-center justify-center shadow-inner">
                           <span className="text-2xl sm:text-3xl font-black text-white italic">{isByeMatch ? '0' : inputs.homeScore}</span>
                       </div>
-                      <span className="text-slate-600 text-lg sm:text-xl font-black mb-1">:</span>
+                      <span className="text-slate-600 text-lg font-black mb-1">:</span>
                       <div className="w-11 h-12 sm:w-14 sm:h-16 bg-black rounded-lg sm:rounded-xl border border-slate-800 flex items-center justify-center shadow-inner">
                           <span className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{isByeMatch ? '0' : inputs.awayScore}</span>
                       </div>
@@ -263,99 +303,129 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
           {/* ==========================================
               2. 권한 탭 네비게이션
           ========================================== */}
-          <div className="flex bg-[#0B1120] border-b border-slate-800 shrink-0 relative z-20">
-              <button onClick={() => setActiveTab('TALK')} className={`flex-1 py-2 sm:py-2.5 text-[11px] sm:text-[12px] font-black flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'TALK' ? 'text-emerald-400 border-b-2 border-emerald-400 bg-emerald-900/10' : 'text-slate-500 hover:text-slate-300'}`}>
-                  <MessageSquare size={13} /> 매치 톡 <span className="bg-slate-800 text-white text-[8px] px-1.5 py-[1px] rounded-md">{comments.length}</span>
+          <div className="flex bg-[#0B1120] border-b border-slate-800 shrink-0 relative z-20 shadow-md">
+              <button onClick={() => setActiveTab('TALK')} className={`flex-1 py-3 sm:py-3.5 text-[12px] sm:text-[13px] font-black flex items-center justify-center gap-2 transition-colors ${activeTab === 'TALK' ? 'text-[#fae100] border-b-2 border-[#fae100] bg-yellow-900/10' : 'text-slate-400 hover:text-slate-200'}`}>
+                  <MessageSquare size={14} /> 매치 톡 <span className="bg-slate-800 text-white text-[9px] px-1.5 py-[2px] rounded-md">{comments.length}</span>
               </button>
-              <button onClick={() => setActiveTab('RECORD')} className={`flex-1 py-2 sm:py-2.5 text-[11px] sm:text-[12px] font-black flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'RECORD' ? 'text-emerald-400 border-b-2 border-emerald-400 bg-emerald-900/10' : 'text-slate-500 hover:text-slate-300'}`}>
-                  {hasRecordPermission ? <Edit3 size={13} /> : <Lock size={13} />} 기록실
+              <button onClick={() => setActiveTab('RECORD')} className={`flex-1 py-3 sm:py-3.5 text-[12px] sm:text-[13px] font-black flex items-center justify-center gap-2 transition-colors ${activeTab === 'RECORD' ? 'text-[#fae100] border-b-2 border-[#fae100] bg-yellow-900/10' : 'text-slate-400 hover:text-slate-200'}`}>
+                  {hasRecordPermission ? <Edit3 size={14} /> : <Lock size={14} />} 기록실
               </button>
           </div>
 
           {/* ==========================================
               3. 하단 컨텐츠 영역
           ========================================== */}
-          <div className="flex-1 min-h-0 bg-slate-900 flex flex-col relative z-10 w-full overflow-hidden">
+          <div className="flex-1 min-h-0 bg-[#0B1423] flex flex-col relative z-10 w-full overflow-hidden">
               
-              {/* 🔥 탭 1: 매치 톡 (댓글) 영역 */}
+              {/* 🔥 탭 1: 매치 톡 (채팅방) 영역 */}
               {activeTab === 'TALK' && (
-                  <div className="flex flex-col h-full w-full overflow-hidden">
+                  <div className="flex flex-col h-full w-full overflow-hidden relative">
                       
-                      {latestCommentInfo && (
-                          <div className="p-2 sm:p-3 border-b border-slate-800/50 shrink-0">
-                              <div className="bg-[#0B1120] border border-slate-700/60 rounded-md px-2 py-1.5 flex items-center gap-2 w-full shadow-inner">
-                                  {/* 🔥 [프로필 수술] 말풍선 아이콘을 빼고 작성자 프사로 대체 */}
-                                  <img src={latestCommentInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
-                                  <div className="text-[9px] font-black text-emerald-400 shrink-0 max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap pr-1">
-                                      {latestCommentInfo.nickname}
-                                  </div>
-                                  <div className="text-[10px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">{latestComment?.text}</div>
-                              </div>
-                          </div>
-                      )}
-
-                      {/* 댓글 리스트 */}
-                      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                      {/* 🔥 댓글 리스트 (대칭형 디자인 복구) */}
+                      <div className="flex-1 overflow-y-auto px-3 sm:px-5 pt-4 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                           {comments.length === 0 ? (
                               <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
-                                  <MessageSquare size={20} className="mb-1.5" />
-                                  <p className="text-[10px] font-bold">이 경기의 첫 번째 관전평을 남겨보세요!</p>
+                                  <MessageSquare size={28} className="mb-2" />
+                                  <p className="text-[12px] sm:text-[13px] font-bold">이 경기의 첫 번째 관전평을 남겨보세요!</p>
                               </div>
                           ) : (
                               comments.map(c => {
                                   const isMe = c.authorId === user?.uid || c.authorUid === user?.uid;
                                   const authorInfo = resolveOwnerInfo(c.authorName, c.authorUid || c.authorId);
+                                  const isSticker = c.text.startsWith('[STICKER]');
+                                  const stickerUrl = isSticker ? c.text.replace('[STICKER]', '') : '';
+
                                   return (
-                                      <div key={c.id} className={`flex gap-2.5 w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                          {/* 🔥 [프로필 수술] 프사 크기를 더 키움 (w-8 h-8) */}
-                                          <div className="shrink-0 flex flex-col items-center mt-1">
-                                              <img src={authorInfo.photo} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover shadow-md border border-slate-700" alt="profile" />
+                                      <div key={c.id} className={`flex gap-2.5 w-full mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                          {/* 🔥 [대칭 프사 복구] 상대방과 내 프사 모두 표시되게 수정 */}
+                                          <div className="shrink-0 flex flex-col items-center">
+                                              <img src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
                                           </div>
                                           
                                           <div className={`flex flex-col max-w-[78%] ${isMe ? 'items-end' : 'items-start'}`}>
-                                              <div className={`flex items-center gap-1.5 mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                                  <span className={`text-[9px] sm:text-[10px] font-black ${c.authorId === 'guest' ? 'text-slate-400' : 'text-emerald-400'}`}>{authorInfo.nickname}</span>
-                                                  <span className="text-[7px] text-slate-500">{formatTime(c.createdAt)}</span>
+                                              {/* 작성자 이름 및 시간 */}
+                                              <div className={`flex items-baseline gap-1.5 mb-1.5 mx-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                  <span className="text-[11px] sm:text-[12px] font-bold text-slate-300">{authorInfo.nickname}</span>
+                                                  <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium whitespace-nowrap">{formatTime(c.createdAt)}</span>
                                               </div>
-                                              <div className={`px-3 py-2.5 rounded-xl shadow-sm ${isMe ? 'bg-emerald-900/20 border border-emerald-800/30 rounded-tr-sm' : 'bg-slate-800/50 border border-slate-700/50 rounded-tl-sm'}`}>
-                                                  <p className="text-slate-200 text-[11px] sm:text-[12px] break-words font-medium tracking-tight leading-relaxed">{c.text}</p>
-                                              </div>
+                                              
+                                              {/* 말풍선 또는 스티커 */}
+                                              {isSticker ? (
+                                                  <div className={`${isMe ? 'mr-1' : 'ml-1'}`}>
+                                                      <img src={stickerUrl} className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-md transform hover:scale-105 transition-transform" alt="sticker" onError={(e:any) => { e.target.style.display = 'none'; }} />
+                                                  </div>
+                                              ) : (
+                                                  <div className={`px-3.5 py-2.5 rounded-2xl shadow-sm ${isMe ? 'bg-[#fae100] text-slate-900 rounded-tr-sm' : 'bg-slate-800 text-white rounded-tl-sm'}`}>
+                                                      <p className="text-[13px] sm:text-[14px] font-medium tracking-tight leading-snug whitespace-pre-wrap">{c.text}</p>
+                                                  </div>
+                                              )}
                                           </div>
                                       </div>
                                   );
                               })
                           )}
-                          <div ref={commentsEndRef} className="h-2" />
+                          <div ref={commentsEndRef} className="h-4" />
                       </div>
 
-                      {/* 댓글 입력 폼 */}
-                      <div className="shrink-0 p-2 sm:p-3 border-t border-slate-800 bg-[#0B1120] pb-safe">
+                      {/* 🔥 댓글 입력 폼 (하단 깔끔하게 정리된 버전) */}
+                      <div className="shrink-0 pt-2 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
+                          
+                          {/* 스티커 선택 패널 */}
+                          {showStickers && (
+                              <div className="absolute bottom-full left-2 sm:left-4 mb-3 w-[300px] bg-[#1e293b] border border-slate-700 rounded-2xl shadow-2xl p-3 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                                  <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-700">
+                                      <span className="text-[11px] font-black text-slate-300 tracking-widest uppercase ml-1">FREE STICKERS</span>
+                                      <button onClick={() => setShowStickers(false)} className="text-slate-500 hover:text-white w-6 h-6 flex items-center justify-center bg-slate-800 rounded-full text-sm font-bold">✕</button>
+                                  </div>
+                                  <div className="grid grid-cols-4 gap-2 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 pr-1">
+                                      {STICKER_PACK.map((stk) => (
+                                          <button 
+                                              key={stk.id} 
+                                              onClick={() => handleSendSticker(stk.url)} 
+                                              disabled={isSending}
+                                              className="p-1.5 hover:bg-slate-700 bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center border border-transparent hover:border-slate-600 active:scale-95"
+                                          >
+                                              <img src={stk.url} className="w-12 h-12 object-contain hover:scale-110 transition-transform drop-shadow-md" alt="sticker" />
+                                          </button>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
                           {!user ? (
-                              <div className="text-center text-slate-500 text-[10px] py-2 bg-slate-900 rounded-md border border-slate-800 font-bold tracking-tight">
+                              <div className="text-center text-slate-500 text-[11px] py-3 bg-slate-900 rounded-xl border border-slate-800 font-bold tracking-tight mx-2 mb-2">
                                   로그인 후 매치톡을 이용할 수 있습니다.
                               </div>
                           ) : (
-                              <div className="flex flex-col gap-1.5 w-full">
-                                  <div className="text-[8px] sm:text-[9px] text-emerald-500 font-bold px-1 italic">
-                                      {user.mappedOwnerId} 님으로 작성 중...
-                                  </div>
-                                  <div className="flex gap-1.5 items-center w-full">
-                                      <input 
-                                          value={newComment} 
-                                          onChange={e => setNewComment(e.target.value)} 
-                                          onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) handleSendComment(); }}
-                                          placeholder={isSending ? "전송 중..." : "응원과 채팅을 남겨주세요!"} 
-                                          disabled={isSending}
-                                          className="flex-1 min-w-0 bg-[#0f172a] border border-slate-700 text-white text-[12px] px-3 py-2.5 rounded-xl outline-none focus:border-emerald-500 shadow-inner placeholder:font-medium placeholder:text-slate-600 disabled:opacity-60" 
-                                      />
-                                      <button 
-                                          onClick={handleSendComment} 
-                                          disabled={isSending || !newComment.trim()}
-                                          className="bg-emerald-600 hover:bg-emerald-500 text-white w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition-all shadow-md active:scale-95 disabled:bg-slate-700 disabled:text-slate-500 disabled:scale-100"
-                                      >
-                                          {isSending ? <div className="w-3.5 h-3.5 border-2 border-slate-500 border-t-white rounded-full animate-spin"></div> : <Send size={15} />}
-                                      </button>
-                                  </div>
+                              <div className="flex items-center gap-2 sm:gap-2.5 w-full">
+                                  {/* 🔥 [수술 포인트] 하단 입력창에서는 내 프로필 이미지를 아예 삭제하여 깔끔하게 정리했습니다. */}
+                                  
+                                  {/* 1. 스티커 버튼 */}
+                                  <button 
+                                      onClick={() => setShowStickers(!showStickers)} 
+                                      className={`w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-full flex items-center justify-center transition-all ${showStickers ? 'text-[#fae100] bg-slate-800' : 'text-slate-400 hover:text-slate-200 bg-transparent'}`}
+                                  >
+                                      <Smile size={26} strokeWidth={2.5} />
+                                  </button>
+
+                                  {/* 2. 둥근 텍스트 입력창 */}
+                                  <input 
+                                      value={newComment} 
+                                      onChange={e => setNewComment(e.target.value)} 
+                                      onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) handleSendComment(); }}
+                                      placeholder={isSending ? "전송 중..." : "메시지를 입력하세요."} 
+                                      disabled={isSending}
+                                      className="flex-1 min-w-0 bg-[#1e293b] border border-slate-700 text-white text-[13px] sm:text-[15px] px-5 py-3 rounded-full outline-none focus:border-slate-500 shadow-inner placeholder:font-medium placeholder:text-slate-500 disabled:opacity-60" 
+                                  />
+
+                                  {/* 3. 카톡식 전송 버튼 (노란색) */}
+                                  <button 
+                                      onClick={handleSendComment} 
+                                      disabled={isSending || !newComment.trim()}
+                                      className="bg-[#fae100] hover:bg-yellow-400 text-black w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 disabled:bg-slate-800 disabled:text-slate-600 disabled:scale-100"
+                                  >
+                                      {isSending ? <div className="w-4 h-4 border-2 border-slate-600 border-t-slate-900 rounded-full animate-spin"></div> : <Send size={18} className="ml-0.5" />}
+                                  </button>
                               </div>
                           )}
                       </div>

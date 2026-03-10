@@ -1,5 +1,5 @@
 // components/ScheduleView.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
 import { MatchCard } from './MatchCard'; 
@@ -18,7 +18,6 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-// 🔥 [프로필 수술] 닉네임뿐만 아니라 프사(photo)도 가져오도록 업그레이드
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
@@ -50,12 +49,10 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    // 🔥 댓글 작성자 정보(닉네임, 프사)를 모두 조회
     const authorInfo = latestComment ? resolveOwnerInfo(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
-            {/* 🔥 [UI 수술] 말풍선 아이콘을 제거하고 작성자 프사 삽입 */}
             {authorInfo ? (
                 <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
             ) : (
@@ -97,7 +94,6 @@ const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = 
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
-        // 🔥 resolveOwnerInfo로 변경된 부분 대응 (.nickname 사용)
         const dispOwner = resolveOwnerInfo(owners, owner, ownerUid).nickname || '-';
 
         return (
@@ -151,6 +147,9 @@ export const ScheduleView = ({
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
+  
+  // 🔥 [자동 스크롤 수술] DOM 요소 참조용 Ref
+  const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
@@ -176,6 +175,37 @@ export const ScheduleView = ({
     };
     fetchData();
   }, []);
+
+  // 🔥 [자동 스크롤 수술] 시즌이 렌더링 된 후, 가장 빠른 미진행 경기로 스크롤 이동
+  useEffect(() => {
+      if (viewMode === 'CUP' || !currentSeason?.rounds) return; // 컵 대회는 CupSchedule.tsx에서 별도 처리 권장
+
+      let targetMatchId: string | null = null;
+
+      // 1순위: 아직 완료되지 않은 가장 빠른 매치 찾기
+      for (const round of currentSeason.rounds) {
+          const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
+          if (upcomingMatch) {
+              targetMatchId = upcomingMatch.id;
+              break;
+          }
+      }
+
+      // 2순위: 모든 경기가 끝났다면, 마지막 매치 찾기
+      if (!targetMatchId && currentSeason.rounds.length > 0) {
+          const lastRound = currentSeason.rounds[currentSeason.rounds.length - 1];
+          if (lastRound.matches.length > 0) {
+              targetMatchId = lastRound.matches[lastRound.matches.length - 1].id;
+          }
+      }
+
+      if (targetMatchId && matchRefs.current[targetMatchId]) {
+          // 화면이 그려질 여유 시간을 주고 부드럽게 스크롤
+          setTimeout(() => {
+              matchRefs.current[targetMatchId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+      }
+  }, [currentSeason, viewMode]);
 
   const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
     const s = stage.toUpperCase();
@@ -208,7 +238,7 @@ export const ScheduleView = ({
       return {
           name: stats?.name || master?.name || teamName,
           logo: stats?.logo || master?.logo || FALLBACK_IMG,
-          owner: resolveOwnerInfo(owners, rawOwnerName, rawOwnerUid).nickname, // 🔥 .nickname 으로 변경
+          owner: resolveOwnerInfo(owners, rawOwnerName, rawOwnerUid).nickname, 
           ownerUid: rawOwnerUid
       };
   };
@@ -347,7 +377,9 @@ export const ScheduleView = ({
                                                     const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
 
                                                     return (
-                                                        <div key={m.id} className="flex flex-col mb-2">
+                                                        <div key={m.id} 
+                                                             ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                             className="flex flex-col mb-2">
                                                             <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -391,7 +423,9 @@ export const ScheduleView = ({
                                                 const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
 
                                                 return (
-                                                    <div key={m.id} className="flex flex-col mb-2">
+                                                    <div key={m.id} 
+                                                         ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                         className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
