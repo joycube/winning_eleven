@@ -74,6 +74,8 @@ export interface Prizes {
   third: number;     
   scorer: number;
   assist: number;
+  poScorer?: number; // 🔥 [추가] 토너먼트(PO) 득점왕 상금
+  poAssist?: number; // 🔥 [추가] 토너먼트(PO) 도움왕 상금
 }
 
 export type CupPhase = 'GROUP_STAGE' | 'KNOCKOUT_STAGE';
@@ -103,14 +105,14 @@ export interface Owner {
   docId?: string;
   uid?: string;       // 🔥 구글 연동 UID
   nickname: string;
-  email?: string;     // 🔥 [추가] TS(2339) 에러 해결을 위한 핵심 필드
-  role?: 'USER' | 'ADMIN'; // 🔥 [추가] 권한 필드
+  email?: string;     // 🔥 TS(2339) 에러 해결을 위한 핵심 필드
+  role?: 'USER' | 'ADMIN'; // 🔥 권한 필드
   legacyName?: string | null; // 🔥 과거 기록 추적용 꼬리표
   photo?: string;
   password?: string;
   totalWins?: number; 
   totalMatches?: number; 
-  createdAt?: string; // 🔥 [추가] 생성일
+  createdAt?: string; // 🔥 생성일
 }
 
 export interface League {

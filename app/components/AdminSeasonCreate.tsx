@@ -20,8 +20,18 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
     const [totalPrize, setTotalPrize] = useState(100000);
     const [displayPrize, setDisplayPrize] = useState('100,000');
     
-    // 🔥 [디벨롭] champion 프로퍼티 추가 (초기값 0)
-    const [prizes, setPrizes] = useState({ champion: 0, first: 45000, second: 25000, third: 10000, scorer: 10000, assist: 10000 });
+    // 🔥 [디벨롭 1] PO 전용 선수 상금 프로퍼티(poScorer, poAssist) 추가
+    const [prizes, setPrizes] = useState({ 
+        champion: 0, 
+        first: 45000, 
+        second: 25000, 
+        third: 10000, 
+        scorer: 10000, 
+        assist: 10000,
+        poScorer: 0, 
+        poAssist: 0 
+    });
+    
     const [isAuto, setIsAuto] = useState(true);
 
     const handlePrizeChange = (val: string) => {
@@ -32,28 +42,33 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
 
     useEffect(() => {
         if (isAuto) {
-            // 🔥 [디벨롭] 선택된 시즌 모드에 따라 상금 자동 계산 비율(파이)을 다르게 적용
+            // 🔥 [디벨롭 2] 컵/PO 모드일 때만 플레이오프 득점/도움왕 상금 배정
             if (type === 'CUP' || type === 'LEAGUE_PLAYOFF') {
                 setPrizes({
                     champion: Math.floor(totalPrize * 0.30), // 최종 우승 30%
                     first: Math.floor(totalPrize * 0.20),    // 정규/조별 1위 20%
                     second: Math.floor(totalPrize * 0.15),   // 정규/조별 2위 15%
                     third: Math.floor(totalPrize * 0.15),    // 정규/조별 3위 15%
-                    scorer: Math.floor(totalPrize * 0.10),   // 득점왕 10%
-                    assist: Math.floor(totalPrize * 0.10)    // 도움왕 10%
+                    scorer: Math.floor(totalPrize * 0.05),   // 정규 득점왕 5%
+                    assist: Math.floor(totalPrize * 0.05),   // 정규 도움왕 5%
+                    poScorer: Math.floor(totalPrize * 0.05), // PO 득점왕 5%
+                    poAssist: Math.floor(totalPrize * 0.05)  // PO 도움왕 5%
                 });
             } else {
+                // 일반 리그 모드에서는 PO 상금 0 처리
                 setPrizes({
-                    champion: 0,                             // 일반 모드는 챔피언 상금 없음
+                    champion: 0,                             
                     first: Math.floor(totalPrize * 0.45),    // 1위 45%
                     second: Math.floor(totalPrize * 0.25),   // 2위 25%
                     third: Math.floor(totalPrize * 0.10),    // 3위 10%
-                    scorer: Math.floor(totalPrize * 0.10),   // 득점왕 10%
-                    assist: Math.floor(totalPrize * 0.10)    // 도움왕 10%
+                    scorer: Math.floor(totalPrize * 0.10),   // 통합 득점왕 10%
+                    assist: Math.floor(totalPrize * 0.10),   // 통합 도움왕 10%
+                    poScorer: 0,
+                    poAssist: 0
                 });
             }
         }
-    }, [totalPrize, isAuto, type]); // type이 바뀔 때도 재계산되도록 의존성 배열에 추가!
+    }, [totalPrize, isAuto, type]); 
 
     const handleCreate = async () => {
         if (!name) return alert("시즌 이름을 입력하세요.");
@@ -94,7 +109,6 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
         }
 
         try {
-            // 🔥 [수정] 파이어베이스 통신 에러를 잡아내는 try-catch 방어막 추가
             await setDoc(doc(db, "seasons", String(id)), newSeason);
             alert(`${type} 시즌 생성 완료!`);
             onCreateSuccess(id);
@@ -161,7 +175,6 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
                     <div className="space-y-2">
                         <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">🏆 TEAM PRIZES</p>
                         
-                        {/* 🔥 [디벨롭] 하이브리드 & 컵 모드일 때만 보이는 '최종 우승' 입력칸 */}
                         {hasChampionPrize && (
                             <div>
                                 <label className="text-[10px] text-yellow-500 font-bold">👑 Champion (최종우승)</label>
@@ -185,14 +198,30 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
 
                     <div className="space-y-2">
                         <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
+                        
+                        {/* 정규 득점/도움왕 */}
                         <div>
-                            <label className="text-[10px] text-slate-500">👟 Scorer</label>
+                            <label className="text-[10px] text-slate-500">👟 Scorer {hasChampionPrize && '(정규)'}</label>
                             <input type="number" value={prizes.scorer} onChange={e => setPrizes({ ...prizes, scorer: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                         </div>
                         <div>
-                            <label className="text-[10px] text-slate-500">🅰️ Assist</label>
+                            <label className="text-[10px] text-slate-500">🅰️ Assist {hasChampionPrize && '(정규)'}</label>
                             <input type="number" value={prizes.assist} onChange={e => setPrizes({ ...prizes, assist: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                         </div>
+
+                        {/* 🔥 [디벨롭 3] PO 득점/도움왕 (토너먼트가 있는 시즌만 보임) */}
+                        {hasChampionPrize && (
+                            <>
+                                <div className="mt-2 pt-2 border-t border-slate-800">
+                                    <label className="text-[10px] text-blue-400 font-bold">👟 PO Scorer (토너먼트)</label>
+                                    <input type="number" value={prizes.poScorer} onChange={e => setPrizes({ ...prizes, poScorer: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-blue-900/50 text-right text-sm text-blue-300 ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-blue-400 font-bold">🅰️ PO Assist (토너먼트)</label>
+                                    <input type="number" value={prizes.poAssist} onChange={e => setPrizes({ ...prizes, poAssist: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-blue-900/50 text-right text-sm text-blue-300 ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
