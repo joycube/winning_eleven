@@ -314,7 +314,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             <div className="flex items-center gap-1.5 mt-1 pr-8 min-w-0">
               {getRealRankBadge(info.real_rank)}
               {getConditionBadge(info.condition)}
-              {/* 🔥 [수술 포인트] 글자 잘림(Clipping) 방지를 위해 span 자체에 내부 우측 여백(pr-1) 부여 */}
               <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5 min-w-0 pr-1">{info.ownerName}</span>
             </div>
           )}
@@ -558,21 +557,23 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               <div className="flex items-center gap-3 px-2"><div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Group Standings</h3></div>
               <div className="flex w-full gap-2 overflow-x-auto no-scrollbar pb-1">{sortedGroupKeys.map((gName) => <button key={gName} onClick={() => setSelectedGroupTab(gName)} className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-black italic border transition-all ${selectedGroupTab === gName ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>GROUP {gName}</button>)}</div>
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                {/* 🔥 [수술 포인트] CUP 그룹 랭킹 간격 조정 (OWNERS 탭과 동일 비율 적용) */}
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="p-4 w-8 text-center">R.</th><th className="p-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
+                  <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="py-4 pl-4 pr-1 w-10 text-center">R.</th><th className="py-4 pl-1 pr-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
                   <tbody>{groupStandings?.[selectedGroupTab]?.map((t: any) => (
-                      <tr key={t.id} className="border-b border-slate-800/50"><td className={`p-4 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td><td className="p-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
+                      <tr key={t.id} className="border-b border-slate-800/50"><td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td><td className="py-4 pl-1 pr-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
                     ))}</tbody></table></div></div>
           )}
 
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2"><div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">{currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'Regular League Standing' : 'League Total Standing'}</h3></div>
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 shadow-2xl">
+              {/* 🔥 [수술 포인트] LEAGUE 전체 랭킹 간격 조정 (OWNERS 탭과 동일 비율 적용) */}
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase">
                     <tr>
-                        <th className="p-4 w-8 text-center">R.</th>
-                        <th className="p-4">Club</th>
+                        <th className="py-4 pl-4 pr-1 w-10 text-center">R.</th>
+                        <th className="py-4 pl-1 pr-4">Club</th>
                         <th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th>
                         <th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th>
                     </tr>
@@ -587,8 +588,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                       return (
                         <React.Fragment key={t.id}>
                             <tr className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${isExpanded ? 'bg-slate-900/40' : ''}`}>
-                                <td className={`p-4 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td>
-                                <td className="p-4 w-[40%]">{renderBroadcastTeamCell(t)}</td>
+                                <td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td>
+                                <td className="py-4 pl-1 pr-4 w-[40%]">{renderBroadcastTeamCell(t)}</td>
                                 <td className="p-2 text-center text-white">{t.win}</td>
                                 <td className="p-2 text-center text-slate-500">{t.draw}</td>
                                 <td className="p-2 text-center text-slate-500">{t.loss}</td>
@@ -615,7 +616,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                     <span className="text-slate-500 text-[10px] font-bold">vs</span>
                                                                     <img src={m.opponent.logo} className="w-4 h-4 sm:w-5 sm:h-5 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
                                                                     <span className="text-[11px] sm:text-[12px] font-black text-white uppercase truncate">{m.opponent.name}</span>
-                                                                    {/* 🔥 [수술 포인트] 상대팀 오너명 우측 내부 여백(pr-1) 강제 부여 (잘림 방지) */}
                                                                     <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate pr-1">({m.opponent.ownerName})</span>
                                                                 </div>
 
@@ -625,12 +625,10 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                     <span className="text-[13px] sm:text-[15px] font-black text-slate-400">{m.opScore}</span>
                                                                 </div>
 
-                                                                {/* PC용 기록 */}
                                                                 <div className="hidden lg:flex items-center gap-3 ml-2 min-w-0">
                                                                     {(m.scorersStr || m.assistsStr) && (
                                                                         <div className="flex items-center gap-1.5 shrink-0">
                                                                             <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50">[{t.name}]</span>
-                                                                            {/* 🔥 [수술 포인트] 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                             <span className="text-[10px] sm:text-[11px] text-slate-200 pr-1">
                                                                                 {m.scorersStr && `⚽ ${m.scorersStr}`}
                                                                                 {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
@@ -646,7 +644,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                     {(m.opScorersStr || m.opAssistsStr) && (
                                                                         <div className="flex items-center gap-1.5 shrink-0">
                                                                             <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700">[{m.opponent.name}]</span>
-                                                                            {/* 🔥 [수술 포인트] 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                             <span className="text-[10px] sm:text-[11px] text-slate-400 pr-1">
                                                                                 {m.opScorersStr && `⚽ ${m.opScorersStr}`}
                                                                                 {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
@@ -657,21 +654,18 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                 </div>
                                                             </div>
 
-                                                            {/* 모바일용 기록 (팀별 각각 두 줄 처리) */}
                                                             <div className="flex lg:hidden flex-col pl-[40px] sm:pl-[44px] gap-1.5 mt-1 pr-12 min-w-0">
                                                                 {(m.scorersStr || m.assistsStr) && (
                                                                     <div className="flex flex-col gap-1">
                                                                         {m.scorersStr && (
                                                                             <div className="flex items-center gap-1.5">
                                                                                 <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
-                                                                                {/* 🔥 [수술 포인트] 모바일 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                                 <span className="text-[10px] text-slate-200 truncate pr-1">⚽ {m.scorersStr}</span>
                                                                             </div>
                                                                         )}
                                                                         {m.assistsStr && (
                                                                             <div className="flex items-center gap-1.5">
                                                                                 <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
-                                                                                {/* 🔥 [수술 포인트] 모바일 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                                 <span className="text-[10px] text-slate-200 truncate pr-1">🅰️ {m.assistsStr}</span>
                                                                             </div>
                                                                         )}
@@ -682,14 +676,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                         {m.opScorersStr && (
                                                                             <div className="flex items-center gap-1.5">
                                                                                 <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
-                                                                                {/* 🔥 [수술 포인트] 모바일 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                                 <span className="text-[10px] text-slate-400 truncate pr-1">⚽ {m.opScorersStr}</span>
                                                                             </div>
                                                                         )}
                                                                         {m.opAssistsStr && (
                                                                             <div className="flex items-center gap-1.5">
                                                                                 <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
-                                                                                {/* 🔥 [수술 포인트] 모바일 선수 기록 텍스트에도 내부 우측 여백(pr-1) 부여 */}
                                                                                 <span className="text-[10px] text-slate-400 truncate pr-1">🅰️ {m.opAssistsStr}</span>
                                                                             </div>
                                                                         )}
@@ -755,14 +747,15 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
           {activeRankingData?.owners && activeRankingData.owners.length > 1 && (
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-                <table className="w-full text-left text-xs border-collapse"><thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="p-4 w-8 text-center">R.</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr></thead>
+                {/* 오너 탭 테이블 간격 복구 유지 */}
+                <table className="w-full text-left text-xs border-collapse"><thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="py-4 pl-4 pr-1 w-10 text-center">R.</th><th className="py-4 pl-1 pr-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr></thead>
                   <tbody>{(activeRankingData?.owners || []).slice(1).map((o: any, i: number) => {
                       if(!o) return null;
                       const actualRank = i + 2;
                       const resolvedNick = resolveOwnerNickname(o.name, o.ownerUid);
                       const matchedOwner = owners.find(owner => owner.nickname === resolvedNick);
                       return (
-                        <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}><td className={`p-4 text-center font-bold ${actualRank === 2 ? 'text-slate-300' : actualRank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{actualRank}</td><td className="p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}><img src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} /></div><span className="font-bold text-sm whitespace-nowrap">{resolvedNick}</span></div></td><td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td><td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td><td className={`p-4 text-right font-bold ${getOwnerPrize(o.name) > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>₩ {getOwnerPrize(o.name).toLocaleString()}</td></tr>
+                        <tr key={i} className={`border-b border-slate-800/50 ${actualRank <= 3 ? 'bg-slate-800/30' : ''}`}><td className={`py-4 pl-4 pr-1 text-center font-bold ${actualRank === 2 ? 'text-slate-300' : actualRank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{actualRank}</td><td className="py-4 pl-1 pr-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}><img src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} /></div><span className="font-bold text-sm whitespace-nowrap">{resolvedNick}</span></div></td><td className="p-4 text-center text-slate-400 font-medium"><span className="text-white">{o.win}</span>W <span className="text-slate-500">{o.draw}D</span> <span className="text-red-400">{o.loss}L</span></td><td className="p-4 text-center text-emerald-400 font-black text-sm">{o.points}</td><td className={`p-4 text-right font-bold ${getOwnerPrize(o.name) > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>₩ {getOwnerPrize(o.name).toLocaleString()}</td></tr>
                       );
                     })}</tbody></table></div>
           )}
@@ -805,12 +798,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           </div>
 
           <div className="overflow-x-auto no-scrollbar">
+              {/* 🔥 [수술 포인트] 선수 탭 테이블 랭크(R)와 선수(Player) 열 간격 및 폰트 축소 적용 */}
               <table className="w-full text-left text-xs whitespace-nowrap table-fixed">
                   <thead className="bg-slate-950 text-slate-500 uppercase tracking-wider">
                       <tr>
-                          <th className="p-3 w-12 text-center">R.</th>
-                          <th className="p-3 w-[55%]">Player</th>
-                          <th className="p-3 w-[30%]">Club</th>
+                          <th className="py-3 pl-4 pr-1 w-10 text-center">R.</th>
+                          <th className="py-3 pl-1 pr-3 w-[50%]">Player</th>
+                          <th className="p-3 w-[35%]">Club</th>
                           <th className="p-3 text-right pr-6 w-20">{rankPlayerMode === 'GOAL' ? 'GOAL' : 'ASSIST'}</th>
                       </tr>
                   </thead>
@@ -822,13 +816,13 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                         const isTop3 = p.rank <= 3;
                         return (
                             <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${isTop3 ? 'bg-slate-900/30' : ''}`}>
-                                <td className={`p-4 text-center font-black text-sm ${p.rank === 1 ? 'text-yellow-400' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>
+                                <td className={`py-3 pl-4 pr-1 text-center font-black text-xs ${p.rank === 1 ? 'text-yellow-400' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>
                                     {p.rank}
                                 </td>
-                                <td className="p-3 overflow-hidden">
+                                <td className="py-3 pl-1 pr-3 overflow-hidden">
                                     <div className="flex items-baseline gap-1.5 whitespace-nowrap overflow-hidden">
-                                        <span className="font-bold text-white uppercase text-base shrink-0">{p.name}</span>
-                                        <span className="text-xs text-slate-500 font-bold tracking-tight italic truncate">({p.owner})</span>
+                                        <span className="font-bold text-white uppercase text-sm shrink-0">{p.name}</span>
+                                        <span className="text-[11px] text-slate-500 font-bold tracking-tight italic truncate">({p.owner})</span>
                                     </div>
                                 </td>
                                 <td className="p-3 text-slate-400">
