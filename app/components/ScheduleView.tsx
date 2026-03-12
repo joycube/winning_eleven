@@ -18,6 +18,7 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
+// 🔥 핵심 번역기: 과거 이름(legacyName)이나 현재 이름을 통해 최신 오너 정보를 찾아줍니다.
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
@@ -94,6 +95,7 @@ const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = 
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
+        // 🔥 번역기를 태워서 항상 최신 닉네임이 대진표에 표기되도록 합니다.
         const dispOwner = resolveOwnerInfo(owners, owner, ownerUid).nickname || '-';
 
         return (
@@ -148,7 +150,6 @@ export const ScheduleView = ({
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
   
-  // 🔥 [자동 스크롤 수술] DOM 요소 참조용 Ref
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
@@ -176,13 +177,11 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
-  // 🔥 [자동 스크롤 수술] 시즌이 렌더링 된 후, 가장 빠른 미진행 경기로 스크롤 이동
   useEffect(() => {
-      if (viewMode === 'CUP' || !currentSeason?.rounds) return; // 컵 대회는 CupSchedule.tsx에서 별도 처리 권장
+      if (viewMode === 'CUP' || !currentSeason?.rounds) return;
 
       let targetMatchId: string | null = null;
 
-      // 1순위: 아직 완료되지 않은 가장 빠른 매치 찾기
       for (const round of currentSeason.rounds) {
           const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
           if (upcomingMatch) {
@@ -191,7 +190,6 @@ export const ScheduleView = ({
           }
       }
 
-      // 2순위: 모든 경기가 끝났다면, 마지막 매치 찾기
       if (!targetMatchId && currentSeason.rounds.length > 0) {
           const lastRound = currentSeason.rounds[currentSeason.rounds.length - 1];
           if (lastRound.matches.length > 0) {
@@ -200,7 +198,7 @@ export const ScheduleView = ({
       }
 
       if (targetMatchId && matchRefs.current[targetMatchId]) {
-        const finalId = targetMatchId; // 🔥 TS 에러(클로저 타입 추론) 방지용 상수 할당
+        const finalId = targetMatchId; 
         setTimeout(() => {
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
@@ -226,14 +224,16 @@ export const ScheduleView = ({
     return stage;
   };
 
-  const getTeamInfo = (teamName: string) => {
+  // 🔥 [수술 포인트] 스냅샷의 박제된 오너명을 최신 닉네임으로 변환합니다.
+  const getTeamInfo = (teamName: string, snapOwnerName?: string, snapOwnerUid?: string) => {
       if (!teamName || teamName === 'TBD' || teamName === 'BYE') return { name: teamName || 'TBD', logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
       const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
       const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
       const master = masterTeams.find(m => m.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
       
-      const rawOwnerName = stats?.ownerName || (master as any)?.ownerName || '-';
-      const rawOwnerUid = stats?.ownerUid || (master as any)?.ownerUid;
+      // 스냅샷 데이터(snapOwnerName)가 있으면 최우선으로 번역기에 돌립니다.
+      const rawOwnerName = snapOwnerName || stats?.ownerName || (master as any)?.ownerName || '-';
+      const rawOwnerUid = snapOwnerUid || stats?.ownerUid || (master as any)?.ownerUid;
 
       return {
           name: stats?.name || master?.name || teamName,
@@ -374,11 +374,16 @@ export const ScheduleView = ({
                                                     
                                                     const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                     const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                    const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
+                                                    
+                                                    // 🔥 스냅샷 오너명을 최신 닉네임으로 교체하여 MatchCard에 전달
+                                                    const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
+                                                    const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
+                                                    
+                                                    const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
 
                                                     return (
                                                         <div key={m.id} 
-                                                             ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                             ref={(el) => matchRefs.current[m.id] = el}
                                                              className="flex flex-col mb-2">
                                                             <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
@@ -420,11 +425,16 @@ export const ScheduleView = ({
                                                 
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                 const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo };
+                                                
+                                                // 🔥 스냅샷 오너명을 최신 닉네임으로 교체하여 MatchCard에 전달
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
+
+                                                const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
 
                                                 return (
                                                     <div key={m.id} 
-                                                         ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                         ref={(el) => matchRefs.current[m.id] = el}
                                                          className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />

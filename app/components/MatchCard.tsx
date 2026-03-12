@@ -1,21 +1,18 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
-import { Match, MasterTeam, Owner, FALLBACK_IMG } from '../types'; // 🔥 Owner 타입 추가
+import { Match, MasterTeam, Owner, FALLBACK_IMG } from '../types'; 
 import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
-// 🔥 [FM 헬퍼] 카드 렌더링 시 UID를 타고 최신 닉네임을 가져옵니다.
 const resolveOwnerNickname = (ownersList: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
     if (!ownersList || ownersList.length === 0) return ownerName;
     
     const search = ownerName.trim();
-    // 1. UID 우선 매칭
     const foundByUid = ownersList.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
     if (foundByUid) return foundByUid.nickname;
-    // 2. 닉네임/레거시네임 매칭 (호환성)
     const foundByName = ownersList.find(o => o.nickname === search || o.legacyName === search);
     return foundByName ? foundByName.nickname : ownerName;
 };
@@ -26,7 +23,7 @@ interface MatchCardProps {
   activeRankingData?: any; 
   historyData?: any;
   masterTeams?: MasterTeam[];
-  owners?: Owner[]; // 🔥 [UID 뼈대] 실시간 조회를 위한 명부 추가
+  owners?: Owner[]; 
 }
 
 export const MatchCard = ({ match, onClick, activeRankingData, historyData, masterTeams = [], owners = [] }: MatchCardProps) => {
@@ -115,7 +112,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     const name = side === 'home' ? match.home : match.away;
     const rawLogo = side === 'home' ? match.homeLogo : match.awayLogo;
     
-    // 🔥 [FM 픽스] 실시간 닉네임 조회를 통과한 이름을 표시합니다.
     const rawOwner = side === 'home' ? match.homeOwner : match.awayOwner;
     const rawOwnerUid = side === 'home' ? match.homeOwnerUid : match.awayOwnerUid;
     const owner = resolveOwnerNickname(owners, rawOwner, rawOwnerUid);
@@ -146,7 +142,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             </div>
           )}
           
-          <div className="text-[10px] font-bold text-slate-500 italic tracking-wide w-full max-w-[120px] line-clamp-1 break-all px-1 mt-0.5">
+          {/* 🔥 [수술 포인트] 오너명 이탤릭체 잘림 현상 방지를 위해 pr-1 추가 및 min-w-0 구조 강화 */}
+          <div className="text-[10px] font-bold text-slate-500 italic tracking-wide w-full max-w-[120px] line-clamp-1 break-all mt-0.5 px-1 min-w-0 pr-1">
             {owner || '-'}
           </div>
         </div>
@@ -188,7 +185,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || match.youtubeUrl) && (
             <div className="mt-4 pt-3 border-t border-slate-900/50">
                 <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
-                    <div className="flex flex-col text-right w-full min-w-0">
+                    <div className="flex flex-col text-right w-full min-w-0 pr-1">
+                        {/* 🔥 [수술 포인트] 득점자 이름 잘림 방지를 위해 line-clamp 내부 여백 보정 */}
                         {(match.homeScorers || []).map((s:any, idx:number)=>(
                             <div key={`h-${idx}`} className="text-[10px] text-slate-400 font-medium line-clamp-1 break-all w-full">
                                 {s.name} ⚽ <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
@@ -202,7 +200,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-900"></div>}
                     </div>
-                    <div className="flex flex-col text-left w-full min-w-0">
+                    <div className="flex flex-col text-left w-full min-w-0 pl-1 pr-1">
+                        {/* 🔥 [수술 포인트] 득점자 이름 잘림 방지를 위해 line-clamp 내부 여백 보정 */}
                         {(match.awayScorers || []).map((s:any, idx:number)=>(
                             <div key={`a-${idx}`} className="text-[10px] text-slate-400 font-medium line-clamp-1 break-all w-full">
                                 ⚽ {s.name} <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
