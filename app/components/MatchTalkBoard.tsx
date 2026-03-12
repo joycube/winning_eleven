@@ -59,8 +59,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
     const [visibleCount, setVisibleCount] = useState(10);
     const [selectedSeasonFilter, setSelectedSeasonFilter] = useState<string>('ALL');
     
-    // 🔥 [수술 포인트] 스크롤 점프 현상을 막기 위한 톡방 스크롤 전용 Ref
-    const chatContainerRef = useRef<HTMLDivElement>(null);
+    const commentsEndRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLInputElement>(null);
 
     const isMaster = useMemo(() => {
@@ -68,10 +67,10 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         return owners.some(o => (o.nickname === user.mappedOwnerId || String(o.id) === user.uid) && (o as any).role === 'ADMIN');
     }, [user, owners]);
 
-    // 🔥 [수술 포인트] 화면 전체가 튀는 scrollIntoView 대신 채팅방 스크롤바만 밑으로 내리는 함수
+    // 🔥 [수술 포인트] 모달과 완벽히 동일한 block: 'end' 스크롤 적용 (화면 점프 방지)
     const scrollToBottom = () => {
-        if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        if (commentsEndRef.current) {
+            commentsEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
     };
 
@@ -89,7 +88,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         if (selectedMatchId) {
             setTimeout(scrollToBottom, 150);
         }
-    }, [selectedMatchId, allMatchComments]); // 톡방에 들어오거나 톡이 추가되면 밑으로 스크롤
+    }, [selectedMatchId, allMatchComments]); 
 
     const matchTalkPosts = useMemo(() => {
         let allItems: any[] = [];
@@ -295,10 +294,9 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                     </div>
 
                     {/* 🔥 탭 1: 매치 톡 (채팅방) 영역 */}
-                    <div className="flex-1 min-h-0 bg-[#0B1423] flex flex-col relative z-10 w-full rounded-b-xl">
+                    <div className="flex-1 min-h-0 bg-[#0B1423] flex flex-col relative z-10 w-full rounded-b-xl overflow-hidden">
                         
-                        {/* 🔥 [수술 포인트] 스크롤 제어를 위해 chatContainerRef 장착 */}
-                        <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-5 pt-6 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                        <div className="flex-1 overflow-y-auto px-3 sm:px-5 pt-6 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                             {!(activePost.comments) || activePost.comments.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
                                     <MessageSquare size={28} className="mb-2" />
@@ -348,10 +346,12 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                     );
                                 })
                             )}
+                            {/* 🔥 앵커 박스 유지 */}
+                            <div ref={commentsEndRef} className="h-4" />
                         </div>
 
                         {/* 🔥 댓글 입력 폼 */}
-                        <div className="shrink-0 pt-3 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] rounded-b-xl">
+                        <div className="shrink-0 pt-2 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] rounded-b-xl">
                             
                             {!user ? (
                                 <div className="text-center text-slate-500 text-[11px] py-3 bg-slate-900 rounded-xl border border-slate-800 font-bold tracking-tight mx-2 mb-2">

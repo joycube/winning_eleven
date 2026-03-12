@@ -6,6 +6,7 @@ import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers';
+import { ChevronDown, PlayCircle } from 'lucide-react'; 
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -62,6 +63,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchMasterTeams = async () => {
       try {
@@ -79,7 +82,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const todayDate = getTodayFormatted();
   const footerText = `시즌 '${seasonName}' / ${todayDate}`;
 
-  // 🔥 [픽스] 모든 상금 항목 초기값 부여 (TS 에러 해결)
   const prizeRule = currentSeason?.prizes || { 
     champion: 0, first: 0, second: 0, third: 0, scorer: 0, assist: 0, poScorer: 0, poAssist: 0 
   };
@@ -211,6 +213,116 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     );
   };
 
+  const getRealRankBadge = (rank: number | undefined | null) => {
+    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
+    let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
+    return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
+  };
+
+  const getTierBadge = (tier?: string) => {
+    const t = (tier || 'C').toUpperCase();
+    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
+    return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#0f172a] font-black text-[8px] z-20 shadow-md ${colors}`}>{t}</div>;
+  };
+
+  const getConditionBadge = (condition?: string) => {
+    const icons: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
+    const colors: any = { 'A': 'text-emerald-400', 'B': 'text-teal-400', 'C': 'text-slate-400', 'D': 'text-orange-400', 'E': 'text-red-500' };
+    const c = (condition || 'C').toUpperCase();
+    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
+  };
+
+  const getTeamMatches = (teamName: string) => {
+    if (!currentSeason?.rounds) return [];
+    
+    const teamMatches: any[] = [];
+    currentSeason.rounds.forEach((round: any) => {
+        round.matches?.forEach((match: any) => {
+            if (match.status === 'COMPLETED' && (match.home === teamName || match.away === teamName) && match.home !== 'BYE' && match.away !== 'BYE') {
+                const isHome = match.home === teamName;
+                const opponentName = isHome ? match.away : match.home;
+                const opponentInfo = getTeamExtendedInfo(opponentName);
+                
+                const myScore = isHome ? Number(match.homeScore) : Number(match.awayScore);
+                const opScore = isHome ? Number(match.awayScore) : Number(match.homeScore);
+                
+                let result = '무';
+                let resultColor = 'text-slate-400 bg-slate-800 border-slate-600';
+                if (myScore > opScore) { result = '승'; resultColor = 'text-emerald-400 bg-emerald-900/40 border-emerald-500/30'; }
+                else if (myScore < opScore) { result = '패'; resultColor = 'text-red-400 bg-red-900/40 border-red-500/30'; }
+
+                const myScorers = isHome ? (match.homeScorers || []) : (match.awayScorers || []);
+                const myAssists = isHome ? (match.homeAssists || []) : (match.awayAssists || []);
+                const opScorers = isHome ? (match.awayScorers || []) : (match.homeScorers || []);
+                const opAssists = isHome ? (match.awayAssists || []) : (match.homeAssists || []);
+
+                const formatPlayers = (list: any[]) => {
+                    return list.map(p => {
+                        const name = (p.name || p).toString().trim();
+                        return p.count > 1 ? `${name}(${p.count})` : name;
+                    }).join(', ');
+                };
+
+                teamMatches.push({
+                    roundName: match.matchLabel || round.name,
+                    opponent: opponentInfo,
+                    myScore,
+                    opScore,
+                    result,
+                    resultColor,
+                    scorersStr: formatPlayers(myScorers),
+                    assistsStr: formatPlayers(myAssists),
+                    opScorersStr: formatPlayers(opScorers),
+                    opAssistsStr: formatPlayers(opAssists),
+                    youtubeUrl: match.youtubeUrl
+                });
+            }
+        });
+    });
+    return teamMatches;
+  };
+
+  const renderBroadcastTeamCell = (team: any) => {
+    const info = getTeamExtendedInfo(team.name);
+    const isTbd = team.name === 'TBD';
+    const displayLogo = isTbd || info.logo?.includes('uefa.com') || team.logo?.includes('uefa.com') ? SAFE_TBD_LOGO : (info.logo || team.logo);
+    const isExpanded = expandedTeam === team.name;
+    
+    return (
+      <div 
+        className="flex items-center gap-3 cursor-pointer group w-full"
+        onClick={() => {
+            if (!isTbd) setExpandedTeam(isExpanded ? null : team.name);
+        }}
+      >
+        <div className="relative w-10 h-10 flex-shrink-0">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
+            <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+          </div>
+          {!isTbd && getTierBadge(info.tier)}
+        </div>
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+              <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight group-hover:text-emerald-400 transition-colors">{team.name}</span>
+              {!isTbd && (
+                  <span className={`text-slate-500 transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-180 text-emerald-400' : ''}`}>
+                      <ChevronDown size={14} strokeWidth={3} />
+                  </span>
+              )}
+          </div>
+          {!isTbd && (
+            // 🔥 [수술 포인트] pr-4에서 pr-8로 늘려 여백을 충분히 확보 (미세 잘림 방지)
+            <div className="flex items-center gap-1.5 mt-1 pr-8">
+              {getRealRankBadge(info.real_rank)}
+              {getConditionBadge(info.condition)}
+              <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5 leading-none">{info.ownerName}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const grandFinalMatch = useMemo(() => {
       if (!currentSeason?.rounds) return null;
       return currentSeason.rounds.flatMap((r: any) => r.matches).find((m: any) => m.stage?.toUpperCase().includes('FINAL') && !m.stage?.toUpperCase().includes('SEMI') && !m.stage?.toUpperCase().includes('QUARTER'));
@@ -244,52 +356,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         totalPrize += (prizeRule.champion || 0);
     }
     return totalPrize;
-  };
-
-  const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
-    let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
-    return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
-  };
-
-  const getTierBadge = (tier?: string) => {
-    const t = (tier || 'C').toUpperCase();
-    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
-    return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#0f172a] font-black text-[8px] z-20 shadow-md ${colors}`}>{t}</div>;
-  };
-
-  const getConditionBadge = (condition?: string) => {
-    const icons: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
-    const colors: any = { 'A': 'text-emerald-400', 'B': 'text-teal-400', 'C': 'text-slate-400', 'D': 'text-orange-400', 'E': 'text-red-500' };
-    const c = (condition || 'C').toUpperCase();
-    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
-  };
-
-  const renderBroadcastTeamCell = (team: any) => {
-    const info = getTeamExtendedInfo(team.name);
-    const isTbd = team.name === 'TBD';
-    const displayLogo = isTbd || info.logo?.includes('uefa.com') || team.logo?.includes('uefa.com') ? SAFE_TBD_LOGO : (info.logo || team.logo);
-    
-    return (
-      <div className="flex items-center gap-4">
-        <div className="relative w-10 h-10 flex-shrink-0">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
-            <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-          </div>
-          {!isTbd && getTierBadge(info.tier)}
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight">{team.name}</span>
-          {!isTbd && (
-            <div className="flex items-center gap-1.5 mt-1">
-              {getRealRankBadge(info.real_rank)}
-              {getConditionBadge(info.condition)}
-              <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
   };
 
   const groupStandings = useMemo(() => {
@@ -449,6 +515,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {rankingTab === 'STANDINGS' && (
         <div className="space-y-12">
+          
           {currentSeason?.type === 'LEAGUE_PLAYOFF' && hybridPlayoffData && (
              <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -469,7 +536,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
           )}
@@ -493,7 +559,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
               <div className="flex w-full gap-2 overflow-x-auto no-scrollbar pb-1">{sortedGroupKeys.map((gName) => <button key={gName} onClick={() => setSelectedGroupTab(gName)} className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-black italic border transition-all ${selectedGroupTab === gName ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>GROUP {gName}</button>)}</div>
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs border-collapse">
-                  {/* 🔥 [수정] STANDINGS 헤더 # -> R. */}
                   <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="p-4 w-8 text-center">R.</th><th className="p-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
                   <tbody>{groupStandings?.[selectedGroupTab]?.map((t: any) => (
                       <tr key={t.id} className="border-b border-slate-800/50"><td className={`p-4 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td><td className="p-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
@@ -502,16 +567,129 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2"><div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">{currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'Regular League Standing' : 'League Total Standing'}</h3></div>
-            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+            <div className="bg-[#0f172a] rounded-xl border border-slate-800 shadow-2xl">
               <table className="w-full text-left text-xs border-collapse">
-                {/* 🔥 [수정] STANDINGS 헤더 # -> R. */}
-                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="p-4 w-8 text-center">R.</th><th className="p-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
+                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase">
+                    <tr>
+                        <th className="p-4 w-8 text-center">R.</th>
+                        <th className="p-4">Club</th>
+                        <th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th>
+                        <th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th>
+                    </tr>
+                </thead>
                 <tbody>
                   {sortedTeams.length === 0 ? (
                       <tr><td colSpan={7} className="p-10 text-center text-slate-500 font-bold italic">진행된 경기가 없습니다.</td></tr>
-                  ) : sortedTeams.map((t: any) => (
-                    <tr key={t.id} className="border-b border-slate-800/50"><td className={`p-4 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td><td className="p-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
-                  ))}
+                  ) : sortedTeams.map((t: any) => {
+                      const isExpanded = expandedTeam === t.name;
+                      const teamMatches = isExpanded ? getTeamMatches(t.name) : [];
+
+                      return (
+                        <React.Fragment key={t.id}>
+                            <tr className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${isExpanded ? 'bg-slate-900/40' : ''}`}>
+                                <td className={`p-4 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td>
+                                <td className="p-4 w-[40%]">{renderBroadcastTeamCell(t)}</td>
+                                <td className="p-2 text-center text-white">{t.win}</td>
+                                <td className="p-2 text-center text-slate-500">{t.draw}</td>
+                                <td className="p-2 text-center text-slate-500">{t.loss}</td>
+                                <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
+                                <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
+                            </tr>
+                            
+                            {isExpanded && (
+                                <tr>
+                                    <td colSpan={7} className="p-0 border-b border-slate-800">
+                                        <div className="bg-[#0b0e14] py-3 px-3 sm:px-8 shadow-inner border-l-2 border-emerald-500 animate-in slide-in-from-top-2 duration-200">
+                                            {teamMatches.length === 0 ? (
+                                                <div className="text-slate-500 text-[11px] italic text-center py-4">완료된 경기가 없습니다.</div>
+                                            ) : (
+                                                <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                                    {teamMatches.map((m, idx) => (
+                                                        <div key={idx} className="flex flex-col lg:flex-row lg:items-center bg-[#0f141e] border border-slate-800/80 rounded-xl p-3 hover:bg-slate-800/50 transition-colors gap-2 relative pr-12">
+                                                            
+                                                            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                                                                <span className="text-[10px] font-black text-slate-500 tracking-widest w-8 shrink-0">{m.roundName?.replace('리그', '')}</span>
+                                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${m.resultColor} shrink-0`}>{m.result}</span>
+                                                                
+                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                    <span className="text-slate-500 text-[10px] font-bold">vs</span>
+                                                                    <img src={m.opponent.logo} className="w-4 h-4 sm:w-5 sm:h-5 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
+                                                                    <span className="text-[11px] sm:text-[12px] font-black text-white uppercase truncate">{m.opponent.name}</span>
+                                                                    <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-1 shrink-0 ml-1">
+                                                                    <span className="text-[13px] sm:text-[15px] font-black text-emerald-400">{m.myScore}</span>
+                                                                    <span className="text-[11px] text-slate-600">:</span>
+                                                                    <span className="text-[13px] sm:text-[15px] font-black text-slate-400">{m.opScore}</span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-3 ml-2 min-w-0">
+                                                                    {(m.scorersStr || m.assistsStr) && (
+                                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50">[{t.name}]</span>
+                                                                            <span className="text-[10px] sm:text-[11px] text-slate-200">
+                                                                                {m.scorersStr && `⚽ ${m.scorersStr}`}
+                                                                                {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                                                {m.assistsStr && `🅰️ ${m.assistsStr}`}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    {(m.scorersStr || m.assistsStr) && (m.opScorersStr || m.opAssistsStr) && (
+                                                                        <div className="w-px h-3 bg-slate-700 shrink-0 hidden md:block"></div>
+                                                                    )}
+                                                                    
+                                                                    {(m.opScorersStr || m.opAssistsStr) && (
+                                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700">[{m.opponent.name}]</span>
+                                                                            <span className="text-[10px] sm:text-[11px] text-slate-400">
+                                                                                {m.opScorersStr && `⚽ ${m.opScorersStr}`}
+                                                                                {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                                                {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex lg:hidden flex-col pl-10 gap-1 mt-1 pr-10">
+                                                                {(m.scorersStr || m.assistsStr) && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
+                                                                        <span className="text-[10px] text-slate-200 truncate">
+                                                                            {m.scorersStr && `⚽ ${m.scorersStr}`} {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>} {m.assistsStr && `🅰️ ${m.assistsStr}`}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                {(m.opScorersStr || m.opAssistsStr) && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
+                                                                        <span className="text-[10px] text-slate-400 truncate">
+                                                                            {m.opScorersStr && `⚽ ${m.opScorersStr}`} {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>} {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {m.youtubeUrl && (
+                                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
+                                                                    <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
+                                                                        <PlayCircle size={22} strokeWidth={2} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </React.Fragment>
+                      );
+                  })}
                 </tbody></table></div></div>
         </div>
       )}
@@ -552,7 +730,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
           {activeRankingData?.owners && activeRankingData.owners.length > 1 && (
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-                {/* 🔥 [수정] OWNERS 헤더 # -> R. */}
                 <table className="w-full text-left text-xs border-collapse"><thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="p-4 w-8 text-center">R.</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center text-emerald-400">Pts</th><th className="p-4 text-right">Prize</th></tr></thead>
                   <tbody>{(activeRankingData?.owners || []).slice(1).map((o: any, i: number) => {
                       if(!o) return null;
@@ -567,7 +744,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
       )}
 
-      {/* 🔥 [수술포인트] 플레이어 테이블 폰트 상향 및 간격 축소 */}
       {rankingTab === 'PLAYERS' && (
         <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
           
@@ -604,11 +780,9 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           </div>
 
           <div className="overflow-x-auto no-scrollbar">
-              {/* table-fixed를 통해 Player(55%)와 Club(30%) 비율을 고정하여 간격 축소 */}
               <table className="w-full text-left text-xs whitespace-nowrap table-fixed">
                   <thead className="bg-slate-950 text-slate-500 uppercase tracking-wider">
                       <tr>
-                          {/* R. 텍스트로 통일 */}
                           <th className="p-3 w-12 text-center">R.</th>
                           <th className="p-3 w-[55%]">Player</th>
                           <th className="p-3 w-[30%]">Club</th>
@@ -628,20 +802,16 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 </td>
                                 <td className="p-3 overflow-hidden">
                                     <div className="flex items-baseline gap-1.5 whitespace-nowrap overflow-hidden">
-                                        {/* 폰트 상향: text-[14px] -> text-base */}
                                         <span className="font-bold text-white uppercase text-base shrink-0">{p.name}</span>
-                                        {/* 폰트 상향: text-[10px] -> text-xs */}
                                         <span className="text-xs text-slate-500 font-bold tracking-tight italic truncate">({p.owner})</span>
                                     </div>
                                 </td>
                                 <td className="p-3 text-slate-400">
                                     <div className="flex items-center gap-2 min-w-0">
                                         <img src={p.teamLogo} className="w-6 h-6 object-contain rounded-full bg-white shadow-sm p-0.5 shrink-0" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-                                        {/* 폰트 상향: text-[10px] -> text-xs */}
                                         <span className="font-bold text-xs truncate uppercase">{p.team}</span>
                                     </div>
                                 </td>
-                                {/* 폰트 상향: text-base -> text-lg */}
                                 <td className={`p-3 text-right pr-6 font-black text-lg ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>
                                     {rankPlayerMode === 'GOAL' ? p.goals : p.assists}
                                 </td>
@@ -667,7 +837,5 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     </div>
   );
 };
-
-const SubTabs = ['STANDINGS', 'OWNERS', 'PLAYERS', 'HIGHLIGHTS'] as const;
 
 export default RankingView;
