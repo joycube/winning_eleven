@@ -7,6 +7,8 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, serverT
 import { MessageSquare, ThumbsUp, Edit3, Image as ImageIcon, Youtube, ArrowLeft, Send, Trash2 } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import MatchTalkBoard from './MatchTalkBoard';
+// 🔥 [수술 포인트] 공용 스티커 컴포넌트 임포트
+import StickerSelector from './StickerSelector';
 
 interface UserData {
   uid: string;
@@ -110,6 +112,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   
   const [replyingTo, setReplyingTo] = useState<{ parentId: string, targetId: string, authorName: string } | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  
+  // 🔥 [수술 포인트] 중복 전송 방지용 상태 추가
+  const [isSending, setIsSending] = useState(false); 
   const commentInputRef = useRef<HTMLInputElement>(null);
 
   const isMaster = useMemo(() => {
@@ -206,13 +211,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
 
     try {
       if (viewMode === 'WRITE') {
-          // 🔥 [FM 픽스: Dual-Track 쓰기] 기존 authorId(유산)와 새로운 authorUid(뼈대)를 동시에 저장합니다.
           const docRef = await addDoc(collection(db, 'posts'), {
             title: postForm.title, content: postForm.content, cat: postForm.cat,
             imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', 
             youtubeId: getValidYoutubeId(postForm.youtubeUrl, ''), 
-            authorId: user.uid, // [기존 호환성 유지]
-            authorUid: user.uid, // 🔥 [새로운 뼈대 추가]
+            authorId: user.uid, 
+            authorUid: user.uid, 
             authorName: user.mappedOwnerId || '미배정 오너', 
             authorPhoto: getBestProfileImage(user, owners, user.photoURL, user.mappedOwnerId), 
             createdAt: serverTimestamp(), isPinned: false, isEdited: false, views: 0, likes: [], dislikes: [], comments: []
@@ -249,9 +253,12 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       } catch (e: any) { alert("삭제 실패: 권한이 부족하거나 통신 에러입니다. (" + e.message + ")"); }
   };
 
-  const submitComment = async (postId: string, isReply: boolean) => {
+  // 🔥 [수술 포인트] 스티커 URL도 전송할 수 있도록 파라미터 추가
+  const submitComment = async (postId: string, isReply: boolean, stickerUrl?: string) => {
       if (!user) return alert("🚨 로그인이 필요합니다.");
-      const textToSubmit = isReply ? replyText.trim() : commentText.trim();
+      if (isSending) return; 
+
+      const textToSubmit = stickerUrl ? `[STICKER]${stickerUrl}` : (isReply ? replyText.trim() : commentText.trim());
       if (!textToSubmit) return alert("내용을 입력해주세요.");
       if (isReply && !replyingTo) return;
 
@@ -262,14 +269,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
       const authorName = user.mappedOwnerId || '미배정 오너';
       const authorPhoto = getBestProfileImage(user, owners, user.photoURL, authorName);
 
+      setIsSending(true);
       try {
           if (isNotice) {
               let updatedComments = [...(post.comments || post.replies || [])];
-              // 🔥 [FM 픽스: Dual-Track 쓰기] 공지 댓글에 ownerUid 추가
               const newComment = { 
                   id: `reply_${Date.now()}`, 
-                  ownerId: user.uid, // [기존 호환성 유지]
-                  ownerUid: user.uid, // 🔥 [새로운 뼈대 추가]
+                  ownerId: user.uid, 
+                  ownerUid: user.uid, 
                   ownerName: authorName, 
                   ownerPhoto: authorPhoto, 
                   text: textToSubmit, 
@@ -282,11 +289,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
               await updateDoc(doc(db, 'notices', postId), { comments: updatedComments, updatedAt: new Date().toISOString() });
           } else {
               let updatedComments = [...(post.comments || [])];
-              // 🔥 [FM 픽스: Dual-Track 쓰기] 일반 글 댓글에 authorUid 추가
               updatedComments.push({ 
                   id: `cmt_${Date.now()}`, 
-                  authorId: user.uid, // [기존 호환성 유지]
-                  authorUid: user.uid, // 🔥 [새로운 뼈대 추가]
+                  authorId: user.uid, 
+                  authorUid: user.uid, 
                   authorName: authorName, 
                   authorPhoto: authorPhoto, 
                   text: textToSubmit, 
@@ -299,7 +305,11 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           }
           isReply ? setReplyText('') : setCommentText('');
           if (isReply) setReplyingTo(null);
-      } catch (e) { alert("처리 실패: " + (e as Error).message); }
+      } catch (e) { 
+          alert("처리 실패: " + (e as Error).message); 
+      } finally {
+          setIsSending(false);
+      }
   };
 
   const handleSaveEdit = async (postId: string) => {
@@ -376,20 +386,17 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
   const visiblePostsList = filteredPosts.slice(0, visibleCount);
   const hasMore = visiblePostsList.length < filteredPosts.length;
 
-  // 🔥 [FM 스마트 읽기] UID로 1순위 탐색, 못 찾으면 이름으로 2순위 탐색 (하위 호환)
   const getNoticeAuthorData = (post: any): { name: string; photo: string } => {
       if (!post) return { name: '운영진', photo: COMMON_DEFAULT_PROFILE };
       const rawName = post.authorName || post.ownerName;
-      const rawId = post.authorUid || post.ownerUid || post.authorId || post.ownerId; // UID 우선 탐색
+      const rawId = post.authorUid || post.ownerUid || post.authorId || post.ownerId; 
       const rawPhoto = post.authorPhoto || post.ownerPhoto;
       
       let matchedOwner = null;
       if (rawId) {
-          // 1순위: 철근(UID)으로 명부(users) 매칭
           matchedOwner = owners?.find(o => o.uid === rawId || String(o.id) === String(rawId) || o.docId === rawId);
       }
       if (!matchedOwner && rawName) {
-          // 2순위: UID로 못 찾았으면 과거 유산(닉네임/레거시네임)으로 매칭 (호환성 보장)
           const targetFuzzy = normalizeName(rawName);
           matchedOwner = owners?.find(o => normalizeName(o.nickname) === targetFuzzy || normalizeName(o.legacyName) === targetFuzzy);
       }
@@ -411,7 +418,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           const replies = isNotice ? (comment.replies || []) : commentsList.filter((c: any) => c.parentId === comment.id);
           const isLiked = isNotice ? comment.likedBy?.includes(user?.uid) : comment.likes?.includes(user?.uid);
           
-          // 🔥 [FM 스마트 읽기] 댓글 작성자 찾기 (UID -> 닉네임)
           const cName = comment.authorName || comment.ownerName || '알 수 없음';
           const cUid = comment.authorUid || comment.ownerUid || comment.authorId || comment.ownerId;
           
@@ -423,7 +429,10 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
           
           const finalName = matchedOwner?.nickname || cName;
           const authorProfileImg = getBestProfileImage(user, owners, comment.authorPhoto || comment.ownerPhoto, finalName);
-          const isMyComment = user?.uid === cUid; // 권한 확인도 UID 우선으로
+          const isMyComment = user?.uid === cUid; 
+          
+          // 🔥 [수술 포인트] 스티커 여부 판별
+          const isSticker = comment.text?.startsWith('[STICKER]');
 
           return (
               <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
@@ -445,7 +454,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   </div>
                               </div>
                           ) : (
-                              <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium tracking-tight">{comment.text}</p>
+                              // 🔥 [수술 포인트] 스티커인 경우 이미지로 출력
+                              isSticker ? (
+                                  <div className="relative group mb-2.5">
+                                      <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-md transform hover:scale-105 transition-transform" alt="sticker" onError={(e:any) => { e.target.style.display = 'none'; }} />
+                                  </div>
+                              ) : (
+                                  <p className="text-[14px] sm:text-[15px] text-slate-200 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium tracking-tight">{comment.text}</p>
+                              )
                           )}
 
                           {!editingCommentId && (
@@ -454,7 +470,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                   <button onClick={() => handleReplySetup(comment.id, comment.id, finalName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={13}/> 답글 {replies.length > 0 ? replies.length : ''}</button>
                                   {(isMyComment || isMaster) && (
                                       <div className="flex items-center gap-3 ml-auto text-[11px]">
-                                          {isMyComment && <button onClick={() => handleEditCommentSetup(comment)} className="hover:text-blue-400">수정</button>}
+                                          {/* 스티커일 경우 수정 버튼 숨김 처리 */}
+                                          {isMyComment && !isSticker && <button onClick={() => handleEditCommentSetup(comment)} className="hover:text-blue-400">수정</button>}
                                           <button onClick={() => handleDeleteComment(postId, comment.id)} className="hover:text-red-400">삭제</button>
                                       </div>
                                   )}
@@ -462,10 +479,16 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           )}
 
                           {replyingTo?.targetId === comment.id && !editingCommentId && (
-                              <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
-                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner" />
-                                  <button onClick={() => submitComment(postId, true)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
-                                  <button onClick={handleCancelAction} className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
+                              <div className="mt-3 flex items-center gap-2 animate-in fade-in slide-in-from-top-1 relative">
+                                  {/* 🔥 [수술 포인트] 대댓글 작성 시 스티커 선택 컴포넌트 추가 */}
+                                  <div className="shrink-0 relative z-[100] flex items-center justify-center">
+                                      <StickerSelector onSelect={(url) => submitComment(postId, true, url)} />
+                                  </div>
+                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !isSending) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} disabled={isSending} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner disabled:opacity-60" />
+                                  <button onClick={() => submitComment(postId, true)} disabled={isSending || !replyText.trim()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0 disabled:bg-slate-800 disabled:text-slate-600 flex items-center justify-center min-w-[50px]">
+                                      {isSending ? <div className="w-3.5 h-3.5 border-2 border-slate-600 border-t-slate-900 rounded-full animate-spin"></div> : '등록'}
+                                  </button>
+                                  <button onClick={handleCancelAction} disabled={isSending} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
                               </div>
                           )}
                       </div>
@@ -476,7 +499,6 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           {replies.map((reply: any) => {
                               const isReplyLiked = isNotice ? reply.likedBy?.includes(user?.uid) : reply.likes?.includes(user?.uid);
                               
-                              // 🔥 [FM 스마트 읽기] 대댓글 작성자 찾기 (UID -> 닉네임)
                               const rName = reply.authorName || reply.ownerName || '알 수 없음';
                               const rUid = reply.authorUid || reply.ownerUid || reply.authorId || reply.ownerId;
                               
@@ -489,6 +511,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               const finalRName = rMatchedOwner?.nickname || rName;
                               const replyAuthorProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, finalRName);
                               const isMyReply = user?.uid === rUid;
+                              
+                              // 🔥 [수술 포인트] 스티커 여부 판별 (대댓글)
+                              const isReplySticker = reply.text?.startsWith('[STICKER]');
 
                               return (
                                   <div key={reply.id} className="flex gap-3">
@@ -509,7 +534,14 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                                   </div>
                                               </div>
                                           ) : (
-                                              <p className="text-[14px] sm:text-[15px] text-slate-300 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium">{reply.text}</p>
+                                              // 🔥 [수술 포인트] 스티커인 경우 이미지로 출력 (대댓글)
+                                              isReplySticker ? (
+                                                  <div className="relative group mb-2.5">
+                                                      <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-md transform hover:scale-105 transition-transform" alt="sticker" onError={(e:any) => { e.target.style.display = 'none'; }} />
+                                                  </div>
+                                              ) : (
+                                                  <p className="text-[14px] sm:text-[15px] text-slate-300 leading-snug whitespace-pre-wrap break-words break-all mb-2.5 font-medium">{reply.text}</p>
+                                              )
                                           )}
 
                                           {!editingCommentId && (
@@ -518,7 +550,8 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                                   <button onClick={() => handleReplySetup(comment.id, reply.id, finalRName)} className="flex items-center gap-1 hover:text-white transition-colors"><MessageSquare size={12}/> 답글</button>
                                                   {(isMyReply || isMaster) && (
                                                       <div className="flex items-center gap-3 ml-auto">
-                                                          {isMyReply && <button onClick={() => handleEditCommentSetup(reply)} className="hover:text-blue-400">수정</button>}
+                                                          {/* 스티커일 경우 수정 버튼 숨김 처리 */}
+                                                          {isMyReply && !isReplySticker && <button onClick={() => handleEditCommentSetup(reply)} className="hover:text-blue-400">수정</button>}
                                                           <button onClick={() => handleDeleteComment(postId, reply.id, comment.id)} className="hover:text-red-400">삭제</button>
                                                       </div>
                                                   )}
@@ -526,10 +559,16 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                           )}
 
                                           {replyingTo?.targetId === reply.id && !editingCommentId && (
-                                              <div className="mt-3 flex items-stretch gap-2 animate-in fade-in slide-in-from-top-1">
-                                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner" />
-                                                  <button onClick={() => submitComment(postId, true)} className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0">등록</button>
-                                                  <button onClick={handleCancelAction} className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
+                                              <div className="mt-3 flex items-center gap-2 animate-in fade-in slide-in-from-top-1 relative">
+                                                  {/* 🔥 [수술 포인트] 대댓글의 대댓글 작성 시 스티커 선택 컴포넌트 추가 */}
+                                                  <div className="shrink-0 relative z-[100] flex items-center justify-center">
+                                                      <StickerSelector onSelect={(url) => submitComment(postId, true, url)} />
+                                                  </div>
+                                                  <input ref={commentInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !isSending) { e.preventDefault(); submitComment(postId, true); } }} placeholder={`${replyingTo?.authorName || '작성자'}님에게 답글 작성 중...`} disabled={isSending} className="flex-1 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-[12px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner disabled:opacity-60" />
+                                                  <button onClick={() => submitComment(postId, true)} disabled={isSending || !replyText.trim()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-lg shrink-0 disabled:bg-slate-800 disabled:text-slate-600 flex items-center justify-center min-w-[50px]">
+                                                      {isSending ? <div className="w-3.5 h-3.5 border-2 border-slate-600 border-t-slate-900 rounded-full animate-spin"></div> : '등록'}
+                                                  </button>
+                                                  <button onClick={handleCancelAction} disabled={isSending} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[11px] rounded-lg transition-all shrink-0">취소</button>
                                               </div>
                                           )}
                                       </div>
@@ -604,8 +643,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                           </button>
                       </div>
 
-                      <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
-                          <div className="p-5 sm:p-7 border-b border-slate-800">
+                      {/* 🔥 [수술 포인트] 스티커 팝업이 잘리지 않도록 부모 컨테이너의 overflow-hidden 속성을 제거하고 모서리 곡률을 자식들에게 재분배했습니다. */}
+                      <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl">
+                          <div className="p-5 sm:p-7 border-b border-slate-800 rounded-t-3xl">
                               <div className="flex justify-between items-start mb-3">
                                   <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
                                       {activePost.cat || '전체공지'}
@@ -656,7 +696,9 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                               <button onClick={() => handleReaction(activePost, 'LIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.likes || activePost.likedBy)?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👍 좋아요 {(activePost.likes || activePost.likedBy)?.length || 0}</button>
                               <button onClick={() => handleReaction(activePost, 'DISLIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.dislikes || activePost.dislikedBy)?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👎 싫어요 {(activePost.dislikes || activePost.dislikedBy)?.length || 0}</button>
                           </div>
-                          <div className="p-4 sm:p-6 bg-slate-950/30">
+                          
+                          {/* 🔥 [수술 포인트] 하단 댓글 영역 모서리 둥글게 복구 */}
+                          <div className="p-4 sm:p-6 bg-slate-950/30 rounded-b-3xl">
                               <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span></h4>
                               <div className="mb-6 border-t border-slate-800/50">
                                   {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>}
@@ -671,9 +713,15 @@ const LockerRoomView = ({ user, notices = [], seasons = [], masterTeams = [], ow
                                                   <img src={getBestProfileImage(user, owners, user?.photoURL, user?.mappedOwnerId)} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} className="w-6 h-6 rounded-full object-cover border border-slate-800 bg-slate-800 shrink-0" alt="" />
                                                   <span className="bg-transparent border-none text-white text-[10px] font-bold outline-none pr-2 truncate">{user?.mappedOwnerId}</span>
                                               </div>
-                                              <div className="flex flex-1 items-stretch gap-2">
-                                                  <input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submitComment(activePost.id, false); } }} placeholder="내용을 입력하세요..." className="flex-1 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium" />
-                                                  <button onClick={() => submitComment(activePost.id, false)} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center">등록 <Send size={14} className="ml-1.5" /></button>
+                                              <div className="flex flex-1 items-stretch gap-2 relative">
+                                                  {/* 🔥 [수술 포인트] 최상위 댓글 작성용 스티커 컴포넌트 추가 */}
+                                                  <div className="shrink-0 relative z-[100] flex items-center justify-center">
+                                                      <StickerSelector onSelect={(url) => submitComment(activePost.id, false, url)} />
+                                                  </div>
+                                                  <input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !isSending) { e.preventDefault(); submitComment(activePost.id, false); } }} placeholder={isSending ? "전송 중..." : "내용을 입력하세요..."} disabled={isSending} className="flex-1 min-w-0 bg-slate-900 px-4 py-2.5 sm:py-3 rounded-xl border border-slate-700 text-white text-[12px] sm:text-[13px] placeholder-slate-600 focus:border-emerald-500 transition-colors shadow-inner font-medium disabled:opacity-60" />
+                                                  <button onClick={() => submitComment(activePost.id, false)} disabled={isSending || !commentText.trim()} className="px-5 py-2.5 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all shadow-lg shrink-0 active:scale-95 flex items-center justify-center disabled:bg-slate-800 disabled:text-slate-600 min-w-[70px]">
+                                                      {isSending ? <div className="w-4 h-4 border-2 border-slate-600 border-t-slate-900 rounded-full animate-spin"></div> : <>등록 <Send size={14} className="ml-1.5" /></>}
+                                                  </button>
                                               </div>
                                           </div>
                                       </div>
