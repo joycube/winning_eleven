@@ -130,7 +130,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       return getTeamExtendedInfo(winnerName);
   }, [grandFinalMatch, activeRankingData, masterTeams]);
 
-  const SubTabs = ['STANDINGS', 'OWNERS', 'PLAYERS', 'HIGHLIGHTS'] as const;
+  // 🔥 [수술 포인트] 메뉴 순서 재배치 (스탠딩, 플레이어스, 오너스, 하이라이트)
+  const SubTabs = ['STANDINGS', 'PLAYERS', 'OWNERS', 'HIGHLIGHTS'] as const;
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -176,6 +177,15 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         />
       )}
 
+      {rankingTab === 'PLAYERS' && (
+        <R_PlayersTab 
+            currentSeason={currentSeason} 
+            activeRankingData={activeRankingData}
+            isHybridSeason={isHybridSeason}
+            owners={owners}
+        />
+      )}
+
       {rankingTab === 'OWNERS' && (
         <R_OwnersTab 
             currentSeason={currentSeason}
@@ -185,14 +195,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             grandChampionInfo={grandChampionInfo}
             prizeRule={prizeRule}
             footerText={footerText}
-        />
-      )}
-
-      {rankingTab === 'PLAYERS' && (
-        <R_PlayersTab 
-            activeRankingData={activeRankingData}
-            isHybridSeason={isHybridSeason}
-            owners={owners}
         />
       )}
 

@@ -2,18 +2,24 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo } from 'react';
-import { FALLBACK_IMG, Owner } from '../types';
+import { FALLBACK_IMG, Owner, Match } from '../types';
+import { ChevronRight } from 'lucide-react'; 
+
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface RPlayersTabProps {
+  currentSeason: any; // 🔥 경기 로그 분석을 위해 추가
   activeRankingData: any;
   isHybridSeason: boolean;
   owners: Owner[];
 }
 
-export default function R_PlayersTab({ activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
-  // 탭 내부에서 독립적으로 상태를 관리하여 부모 렌더링 부하를 줄입니다.
+export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [rankPlayerStageMode, setRankPlayerStageMode] = useState<'REGULAR' | 'PLAYOFF'>('REGULAR');
+  
+  // 🔥 [수술 포인트] 어떤 선수의 아코디언이 열려있는지 관리
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
     try {
@@ -30,6 +36,47 @@ export default function R_PlayersTab({ activeRankingData, isHybridSeason, owners
         return String(ownerName || '-');
     }
   };
+
+  // 🔥 [수술 포인트] 시즌의 모든 경기를 분석하여 선수별/상대팀별 득점 도움 지도를 만듭니다.
+  const distributionMap = useMemo(() => {
+    const map: any = {};
+    if (!currentSeason?.rounds) return map;
+
+    currentSeason.rounds.forEach((r: any) => {
+        r.matches?.forEach((m: any) => {
+            if (m.status !== 'COMPLETED') return;
+
+            const processStats = (scorersOrAssists: any[], isHome: boolean) => {
+                const opponentName = isHome ? m.away : m.home;
+                const opponentLogo = isHome ? (m.awayLogo || SAFE_TBD_LOGO) : (m.homeLogo || SAFE_TBD_LOGO);
+                const opponentOwner = isHome ? m.awayOwner : m.homeOwner;
+                const opponentOwnerUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
+
+                scorersOrAssists.forEach((s: any) => {
+                    const pName = s.name;
+                    if (!map[pName]) map[pName] = {};
+                    if (!map[pName][opponentName]) {
+                        map[pName][opponentName] = {
+                            count: 0,
+                            logo: opponentLogo,
+                            owner: resolveOwnerNickname(opponentOwner, opponentOwnerUid)
+                        };
+                    }
+                    map[pName][opponentName].count += (s.count || 1);
+                });
+            };
+
+            if (rankPlayerMode === 'GOAL') {
+                processStats(m.homeScorers || [], true);
+                processStats(m.awayScorers || [], false);
+            } else {
+                processStats(m.homeAssists || [], true);
+                processStats(m.awayAssists || [], false);
+            }
+        });
+    });
+    return map;
+  }, [currentSeason, rankPlayerMode, owners]);
 
   const getPlayerRanking = (players: any[]) => {
     const sortedPlayers = [...(players || [])]
@@ -87,13 +134,13 @@ export default function R_PlayersTab({ activeRankingData, isHybridSeason, owners
 
       <div className="flex bg-slate-950 border-b border-slate-800">
           <button 
-              onClick={() => setRankPlayerMode('GOAL')} 
+              onClick={() => { setRankPlayerMode('GOAL'); setExpandedPlayer(null); }} 
               className={`flex-1 py-3.5 text-[11px] sm:text-xs font-black tracking-widest ${rankPlayerMode === 'GOAL' ? 'text-yellow-400 bg-slate-900 border-b-2 border-yellow-400' : 'text-slate-600 hover:text-slate-400'} uppercase transition-colors`}
           >
               ⚽ TOP SCORERS
           </button>
           <button 
-              onClick={() => setRankPlayerMode('ASSIST')} 
+              onClick={() => { setRankPlayerMode('ASSIST'); setExpandedPlayer(null); }} 
               className={`flex-1 py-3.5 text-[11px] sm:text-xs font-black tracking-widest ${rankPlayerMode === 'ASSIST' ? 'text-blue-400 bg-slate-900 border-b-2 border-blue-400' : 'text-slate-600 hover:text-slate-400'} uppercase transition-colors`}
           >
               🅰️ TOP ASSISTS
@@ -101,7 +148,6 @@ export default function R_PlayersTab({ activeRankingData, isHybridSeason, owners
       </div>
 
       <div className="overflow-x-auto no-scrollbar">
-          {/* 🔥 [수술 포인트] 선수 탭 테이블 간격 밀착 및 너비 조정 */}
           <table className="w-full text-left text-xs whitespace-nowrap table-fixed">
               <thead className="bg-slate-950 text-slate-500 uppercase tracking-wider">
                   <tr>
@@ -117,28 +163,82 @@ export default function R_PlayersTab({ activeRankingData, isHybridSeason, owners
                 ) : rankedPlayers.slice(0, 20).map((p: any, i: number) => {
                     if(!p) return null;
                     const isTop3 = p.rank <= 3;
+                    const isExpanded = expandedPlayer === p.name;
+                    const playerDist = distributionMap[p.name] || {};
+                    const opponents = Object.keys(playerDist).sort((a, b) => playerDist[b].count - playerDist[a].count);
+
                     return (
-                        <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${isTop3 ? 'bg-slate-900/30' : ''}`}>
-                            <td className={`py-3 pl-4 pr-1 text-center font-black text-xs ${p.rank === 1 ? 'text-yellow-400' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>
-                                {p.rank}
-                            </td>
-                            <td className="py-3 pl-1 pr-3 overflow-hidden">
-                                <div className="flex items-baseline gap-1.5 whitespace-nowrap overflow-hidden">
-                                    {/* 🔥 [수술 포인트] 선수 이름과 오너 닉네임 폰트 크기 하향 및 잘림 방지 여백 */}
-                                    <span className="font-bold text-white uppercase text-sm shrink-0">{p.name}</span>
-                                    <span className="text-[11px] text-slate-500 font-bold tracking-tight italic truncate pr-1">({p.owner})</span>
-                                </div>
-                            </td>
-                            <td className="p-3 text-slate-400">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <img src={p.teamLogo} className="w-6 h-6 object-contain rounded-full bg-white shadow-sm p-0.5 shrink-0" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-                                    <span className="font-bold text-xs truncate uppercase">{p.team}</span>
-                                </div>
-                            </td>
-                            <td className={`p-3 text-right pr-6 font-black text-lg ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>
-                                {rankPlayerMode === 'GOAL' ? p.goals : p.assists}
-                            </td>
-                        </tr>
+                        <React.Fragment key={i}>
+                            <tr 
+                                className={`hover:bg-slate-800/30 transition-colors cursor-pointer ${isTop3 ? 'bg-slate-900/30' : ''} ${isExpanded ? 'bg-slate-800/40' : ''}`}
+                                onClick={() => setExpandedPlayer(isExpanded ? null : p.name)}
+                            >
+                                <td className={`py-3 pl-4 pr-1 text-center font-black text-xs ${p.rank === 1 ? 'text-yellow-400' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>
+                                    {p.rank}
+                                </td>
+                                <td className="py-3 pl-1 pr-3 overflow-hidden">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <div className="flex items-baseline gap-1.5 min-w-0 flex-1">
+                                            <span className="font-bold text-white uppercase text-sm shrink-0">{p.name}</span>
+                                            <span className="text-[11px] text-slate-500 font-bold tracking-tight italic truncate pr-1">({p.owner})</span>
+                                        </div>
+                                        {/* 🔥 [수술 포인트] 스탠딩과 동일한 아코디언 버튼 배치 (모드별 색상 변경) */}
+                                        <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${rankPlayerMode === 'GOAL' ? 'bg-yellow-400 text-slate-900' : 'bg-blue-500 text-white'}`}>
+                                            <ChevronRight size={12} strokeWidth={4} />
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="p-3 text-slate-400">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <img src={p.teamLogo} className="w-6 h-6 object-contain rounded-full bg-white shadow-sm p-0.5 shrink-0" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                        <span className="font-bold text-xs truncate uppercase">{p.team}</span>
+                                    </div>
+                                </td>
+                                <td className={`p-3 text-right pr-6 font-black text-lg ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                    {rankPlayerMode === 'GOAL' ? p.goals : p.assists}
+                                </td>
+                            </tr>
+
+                            {/* 🔥 [수술 포인트] 아코디언 상세 영역: 상대팀별 분포도 (가로 스크롤 카드) */}
+                            {isExpanded && (
+                                <tr>
+                                    <td colSpan={4} className="p-0 border-b border-slate-800 bg-[#0b0e14]">
+                                        <div className={`py-3 px-4 shadow-inner border-l-2 animate-in slide-in-from-top-2 duration-200 ${rankPlayerMode === 'GOAL' ? 'border-yellow-500' : 'border-blue-500'}`}>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className={`text-[9px] font-black uppercase tracking-widest ${rankPlayerMode === 'GOAL' ? 'text-yellow-500' : 'text-blue-500'}`}>
+                                                    {rankPlayerMode === 'GOAL' ? 'Goal Distribution' : 'Assist Distribution'}
+                                                </span>
+                                                <div className="h-px flex-1 bg-slate-800"></div>
+                                            </div>
+                                            
+                                            {opponents.length === 0 ? (
+                                                <div className="text-slate-600 text-[10px] italic py-2">상세 기록을 찾을 수 없습니다.</div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                                                    {opponents.map((opName) => {
+                                                        const data = playerDist[opName];
+                                                        return (
+                                                            <div key={opName} className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 rounded-lg p-2 min-w-[130px] shrink-0 hover:border-slate-700 transition-colors">
+                                                                <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm">
+                                                                    <img src={data.logo} className="w-full h-full object-contain" alt="" onError={(e:any) => { e.target.src = SAFE_TBD_LOGO; }} />
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <div className="flex items-baseline gap-1">
+                                                                        <span className="text-[11px] font-black text-white uppercase truncate">{opName}</span>
+                                                                        <span className={`text-[12px] font-black ${rankPlayerMode === 'GOAL' ? 'text-yellow-400' : 'text-blue-400'}`}>{data.count}</span>
+                                                                    </div>
+                                                                    <span className="text-[9px] text-slate-500 font-bold italic truncate">({data.owner})</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </React.Fragment>
                     )
                 })}
               </tbody>
