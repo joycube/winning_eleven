@@ -54,9 +54,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [isFlipping, setIsFlipping] = useState(false); 
     const [isDraftOpen, setIsDraftOpen] = useState(false);
 
-    // 🔥 플레이오프 드래그 앤 드롭 상태
     const [poWaitingPool, setPoWaitingPool] = useState<any[]>([]);
-    // bracket: [0: Final(1st), 1: Semi1_Home(2nd), 2: Semi1_Away(5th), 3: Semi2_Home(3rd), 4: Semi2_Away(4th)]
     const [poBracket, setPoBracket] = useState<(any | null)[]>(Array(5).fill(null));
 
     const [filterCategory, setFilterCategory] = useState('ALL');
@@ -67,22 +65,18 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
-    // 🔥 플레이오프 락(Lock) 상태 판별 (방어 로직 추가)
     const isPoLocked = useMemo(() => {
         if (targetSeason.type !== 'LEAGUE_PLAYOFF' || !targetSeason.rounds) return false;
         const finalRound = targetSeason.rounds.find(r => r.name === 'FINAL');
         if (!finalRound || !finalRound.matches || finalRound.matches.length === 0) return false;
         
-        // 방어막: matches[0]이 없거나 home 속성이 없을 경우 에러 방지
         const finalHome = finalRound.matches[0]?.home || '';
         return finalHome !== 'TBD' && finalHome !== 'BYE' && !finalHome.includes('1위');
     }, [targetSeason.rounds, targetSeason.type]);
 
-    // 확정(Locked)된 경우 초기 마운트 시 브래킷 데이터 복원 (방어 로직 추가)
     useEffect(() => {
         if (isPoLocked && targetSeason.rounds && targetSeason.type === 'LEAGUE_PLAYOFF') {
             const getTeam = (name: string) => targetSeason.teams?.find(t => t.name === name) || null;
-            // 방어막: matches 배열 접근 시 optional chaining(?.) 적용
             const finalMatch = targetSeason.rounds.find(r => r.name === 'FINAL')?.matches?.[0];
             const r4Match1 = targetSeason.rounds.find(r => r.name === 'ROUND_OF_4')?.matches?.find(m => m.matchLabel?.includes('1차전') && m.matchLabel?.includes('5위'));
             const r4Match2 = targetSeason.rounds.find(r => r.name === 'ROUND_OF_4')?.matches?.find(m => m.matchLabel?.includes('1차전') && m.matchLabel?.includes('4위'));
@@ -197,7 +191,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         const updatedTeams = targetSeason.teams.filter(t => t.id !== teamId);
         let updatedRounds = targetSeason.rounds ? [...targetSeason.rounds] : [];
         if (updatedRounds.length > 0) {
-            // 방어막: r.matches가 비어있을 수 있으므로 || [] 추가
             updatedRounds = updatedRounds.map(r => ({
                 ...r, matches: (r.matches || []).filter(m => m.home !== teamName && m.away !== teamName)
             })).filter(r => r.matches && r.matches.length > 0);
@@ -251,13 +244,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
     };
 
-    // =========================================================================
-    // 🔥 플레이오프 드래그 앤 드롭 대기실 및 편성 로직
-    // =========================================================================
     const handleLoadPlayoffTeams = () => {
         if (!targetSeason.rounds) return;
         
-        // 방어막: r.matches 접근 시 || [] 처리
         const leagueMatches = targetSeason.rounds
             .filter(r => !['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name))
             .flatMap(r => r.matches || [])
@@ -322,8 +311,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
     const handleUnlockPoBracket = async () => {
         if (!confirm("확정된 대진을 해제하고 초기화하시겠습니까?")) return;
-        
-        // 1. 기존 라운드에서 PO 라운드 3개를 완전히 제거
         const filteredRounds = targetSeason.rounds?.filter(r => 
             !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)
         ) || [];
@@ -381,51 +368,73 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         setPoWaitingPool(newPool);
     };
 
-    // 🔥 [수술 포인트] 스케줄 3단계 구조 연동 완벽 적용 (4강 -> PO결승 -> 최종결승)
+    // 🔥 [핵심 수술 포인트] 내전 경고 무시 기능 및 Firebase undefined 저장 에러 100% 방어
     const handleConfirmPlayoffBracket = async () => {
         if (isPoLocked) return;
-        if (poBracket.includes(null)) return alert("🚨 5개의 모든 대진 슬롯에 팀을 배치해주세요.");
-        if (!confirm("현재 설정된 대진표로 플레이오프 스케줄을 공식 발행하시겠습니까?")) return;
+        
+        if (poBracket.includes(null)) {
+            return alert("🚨 5개의 모든 대진 슬롯에 팀을 배치해주세요.\n(대진표 가장 위의 '리그 1위 직행' 슬롯도 채워야 합니다.)");
+        }
 
         const [t1, t2, t5, t3, t4] = poBracket; 
 
-        // 기존 라운드에서 PO 관련 라운드를 싹 지우고 시작
-        const filteredRounds = targetSeason.rounds?.filter(r => 
-            !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)
-        ) || [];
+        // 1. 내전 여부 꼼꼼하게 체크
+        const isCivilWar = 
+            (t2.ownerUid && t5.ownerUid && t2.ownerUid === t5.ownerUid) || 
+            (t3.ownerUid && t4.ownerUid && t3.ownerUid === t4.ownerUid) ||
+            (t2.ownerName === t5.ownerName) || 
+            (t3.ownerName === t4.ownerName);
 
-        // 1. PO 4강 라운드 생성 (홈&어웨이 2연전)
-        const roundOf4 = {
-            name: 'ROUND_OF_4',
-            matches: [
-                { id: `po_4_1_1`, home: t5.name, away: t2.name, homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: t5.logo, awayLogo: t2.logo, homeOwner: t5.ownerName, awayOwner: t2.ownerName, matchLabel: 'PO 4강 1경기 (1차전: 5위 홈 vs 2위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: t5.ownerUid, awayOwnerUid: t2.ownerUid },
-                { id: `po_4_1_2`, home: t2.name, away: t5.name, homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: t2.logo, awayLogo: t5.logo, homeOwner: t2.ownerName, awayOwner: t5.ownerName, matchLabel: 'PO 4강 1경기 (2차전: 2위 홈 vs 5위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: t2.ownerUid, awayOwnerUid: t5.ownerUid },
-                { id: `po_4_2_1`, home: t4.name, away: t3.name, homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: t4.logo, awayLogo: t3.logo, homeOwner: t4.ownerName, awayOwner: t3.ownerName, matchLabel: 'PO 4강 2경기 (1차전: 4위 홈 vs 3위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: t4.ownerUid, awayOwnerUid: t3.ownerUid },
-                { id: `po_4_2_2`, home: t3.name, away: t4.name, homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: t3.logo, awayLogo: t4.logo, homeOwner: t3.ownerName, awayOwner: t4.ownerName, matchLabel: 'PO 4강 2경기 (2차전: 3위 홈 vs 4위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: t3.ownerUid, awayOwnerUid: t4.ownerUid },
-            ]
-        };
+        // 2. 구단주님 요청: 내전 발생 시 "경고 + 강제 진행 옵션" 제공
+        if (isCivilWar) {
+            const forceGenerate = confirm("🚨 [경고] 4강 대진에 동일 오너(내전) 매치업이 포함되어 있습니다!\n무시하고 플레이오프 스케줄을 강제로 발행하시겠습니까?");
+            if (!forceGenerate) return;
+        } else {
+            if (!confirm("현재 설정된 대진표로 플레이오프 스케줄을 공식 발행하시겠습니까?")) return;
+        }
 
-        // 2. PO 결승 라운드 생성 (홈&어웨이 2연전 - 대진팀 미정)
-        const poFinal = {
-            name: 'SEMI_FINAL', // 스케줄 렌더러 호환을 위해 SEMI_FINAL로 네이밍
-            matches: [
-                { id: `po_fin_1`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (1차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
-                { id: `po_fin_2`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (2차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
-            ]
-        };
+        try {
+            const filteredRounds = targetSeason.rounds?.filter(r => 
+                !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)
+            ) || [];
 
-        // 3. 최종 챔피언 결정전 라운드 생성 (단판 - 1위 vs PO결승 승자)
-        const grandFinal = {
-            name: 'FINAL',
-            matches: [
-                { id: `grand_fin_1`, home: t1.name, away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: t1.logo, awayLogo: '', homeOwner: t1.ownerName, awayOwner: '-', matchLabel: '🏆 최종 챔피언 결정전 (단판)', stage: 'FINAL', seasonId: targetSeason.id, homeOwnerUid: t1.ownerUid },
-            ]
-        };
+            // 🔥 파이어베이스 에러 유발자(undefined) 킬러 함수
+            const s = (val: any) => val === undefined ? '' : val;
 
-        const updatedRounds = [...filteredRounds, roundOf4, poFinal, grandFinal];
+            const roundOf4 = {
+                name: 'ROUND_OF_4',
+                matches: [
+                    { id: `po_4_1_1`, home: s(t5.name), away: s(t2.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t5.logo), awayLogo: s(t2.logo), homeOwner: s(t5.ownerName), awayOwner: s(t2.ownerName), matchLabel: 'PO 4강 1경기 (1차전: 5위 홈 vs 2위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t5.ownerUid), awayOwnerUid: s(t2.ownerUid) },
+                    { id: `po_4_1_2`, home: s(t2.name), away: s(t5.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t2.logo), awayLogo: s(t5.logo), homeOwner: s(t2.ownerName), awayOwner: s(t5.ownerName), matchLabel: 'PO 4강 1경기 (2차전: 2위 홈 vs 5위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t2.ownerUid), awayOwnerUid: s(t5.ownerUid) },
+                    { id: `po_4_2_1`, home: s(t4.name), away: s(t3.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t4.logo), awayLogo: s(t3.logo), homeOwner: s(t4.ownerName), awayOwner: s(t3.ownerName), matchLabel: 'PO 4강 2경기 (1차전: 4위 홈 vs 3위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t4.ownerUid), awayOwnerUid: s(t3.ownerUid) },
+                    { id: `po_4_2_2`, home: s(t3.name), away: s(t4.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t3.logo), awayLogo: s(t4.logo), homeOwner: s(t3.ownerName), awayOwner: s(t4.ownerName), matchLabel: 'PO 4강 2경기 (2차전: 3위 홈 vs 4위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t3.ownerUid), awayOwnerUid: s(t4.ownerUid) },
+                ]
+            };
 
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
-        alert(`🎉 플레이오프 대진표 확정 완료!\n1위 ${t1.name}가 최종 결승전에 선착했습니다.`);
+            const poFinal = {
+                name: 'SEMI_FINAL', 
+                matches: [
+                    { id: `po_fin_1`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (1차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
+                    { id: `po_fin_2`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (2차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
+                ]
+            };
+
+            const grandFinal = {
+                name: 'FINAL',
+                matches: [
+                    { id: `grand_fin_1`, home: s(t1.name), away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t1.logo), awayLogo: '', homeOwner: s(t1.ownerName), awayOwner: '-', matchLabel: '🏆 최종 챔피언 결정전 (단판)', stage: 'FINAL', seasonId: targetSeason.id, homeOwnerUid: s(t1.ownerUid) },
+                ]
+            };
+
+            const updatedRounds = [...filteredRounds, roundOf4, poFinal, grandFinal];
+
+            await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
+            alert(`🎉 플레이오프 대진표 확정 완료!\n1위 ${t1.name}가 최종 결승전에 선착했습니다.`);
+            
+        } catch (error) {
+            console.error("Firebase Update Error: ", error);
+            alert("🚨 데이터 저장 중 파이어베이스 에러가 발생했습니다. (콘솔 확인 필요)");
+        }
     };
 
     return (
