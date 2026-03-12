@@ -6,7 +6,7 @@ import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { getYouTubeThumbnail } from '../utils/helpers';
-import { ChevronDown, PlayCircle } from 'lucide-react'; 
+import { ChevronRight, PlayCircle } from 'lucide-react'; 
 
 const TBD_LOGO = "https://img.uefa.com/imgml/uefacom/club-generic-badge-new.svg";
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -214,11 +214,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   };
 
   const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
+    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none shrink-0">R.-</div>;
     let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
     return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
   };
 
+  // 🔥 [수술 포인트 1] 티어 배지 원상 복구 (회전 삭제, 순수 티어 표시)
   const getTierBadge = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
     let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
@@ -229,7 +230,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     const icons: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
     const colors: any = { 'A': 'text-emerald-400', 'B': 'text-teal-400', 'C': 'text-slate-400', 'D': 'text-orange-400', 'E': 'text-red-500' };
     const c = (condition || 'C').toUpperCase();
-    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
+    return <div className={`px-1 py-[0.5px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5 shrink-0`}><span className={`text-[10px] font-black ${colors[c]}`}>{icons[c]}</span></div>;
   };
 
   const getTeamMatches = (teamName: string) => {
@@ -299,22 +300,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
             <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
           </div>
+          {/* 티어 배지 복구 */}
           {!isTbd && getTierBadge(info.tier)}
         </div>
         <div className="flex flex-col min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
               <span className="font-black text-[14px] tracking-tight text-white uppercase truncate leading-tight group-hover:text-emerald-400 transition-colors">{team.name}</span>
+              {/* 🔥 [수술 포인트 2] 메인 형광색(에메랄드) 둥근 꺾쇠 버튼 추가 */}
               {!isTbd && (
-                  <span className={`text-slate-500 transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-180 text-emerald-400' : ''}`}>
-                      <ChevronDown size={14} strokeWidth={3} />
-                  </span>
+                  <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full bg-emerald-400 text-slate-900 shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`}>
+                      <ChevronRight size={12} strokeWidth={4} />
+                  </div>
               )}
           </div>
           {!isTbd && (
-            <div className="flex items-center gap-1.5 mt-1 pr-6">
+            // 🔥 [수술 포인트 3] 오너명 텍스트 잘림 방지를 위해 pr-8 여백 추가 및 min-w-0 적용
+            <div className="flex items-center gap-1.5 mt-1 pr-8 min-w-0">
               {getRealRankBadge(info.real_rank)}
               {getConditionBadge(info.condition)}
-              <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5">{info.ownerName}</span>
+              <span className="text-[10px] text-slate-500 font-bold italic truncate ml-0.5 min-w-0">{info.ownerName}</span>
             </div>
           )}
         </div>
@@ -595,7 +599,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                 <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
                             </tr>
                             
-                            {/* 🔥 [수술 포인트] PC 화면 좌측 정렬 및 유튜브 겹침 완벽 차단 */}
                             {isExpanded && (
                                 <tr>
                                     <td colSpan={7} className="p-0 border-b border-slate-800">
@@ -607,7 +610,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                     {teamMatches.map((m, idx) => (
                                                         <div key={idx} className="flex flex-col lg:flex-row lg:items-center bg-[#0f141e] border border-slate-800/80 rounded-xl p-3 hover:bg-slate-800/50 transition-colors gap-2 relative pr-12">
                                                             
-                                                            {/* 정보 블록 (라운드, 결과, 상대팀, 점수, 선수기록) 모두 좌측 정렬 */}
                                                             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                                                                 <span className="text-[10px] font-black text-slate-500 tracking-widest w-8 shrink-0">{m.roundName?.replace('리그', '')}</span>
                                                                 <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${m.resultColor} shrink-0`}>{m.result}</span>
@@ -619,15 +621,14 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                     <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
                                                                 </div>
 
-                                                                {/* 점수: 팀 이름 바로 옆으로 밀착 */}
                                                                 <div className="flex items-center gap-1 shrink-0 ml-1">
                                                                     <span className="text-[13px] sm:text-[15px] font-black text-emerald-400">{m.myScore}</span>
                                                                     <span className="text-[11px] text-slate-600">:</span>
                                                                     <span className="text-[13px] sm:text-[15px] font-black text-slate-400">{m.opScore}</span>
                                                                 </div>
 
-                                                                {/* 득점/어시 정보: 점수 바로 뒤에 이어지도록 배치 */}
-                                                                <div className="flex items-center gap-3 ml-2 min-w-0">
+                                                                {/* PC용 기록 */}
+                                                                <div className="hidden lg:flex items-center gap-3 ml-2 min-w-0">
                                                                     {(m.scorersStr || m.assistsStr) && (
                                                                         <div className="flex items-center gap-1.5 shrink-0">
                                                                             <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50">[{t.name}]</span>
@@ -656,7 +657,42 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                                                                 </div>
                                                             </div>
 
-                                                            {/* 유튜브 버튼: 우측 끝 공간에 무조건 단독 존재 (절대 안 겹침) */}
+                                                            {/* 🔥 [수술 포인트 4] 모바일용 기록 (팀별 각각 두 줄 처리) */}
+                                                            <div className="flex lg:hidden flex-col pl-[40px] sm:pl-[44px] gap-1.5 mt-1 pr-12 min-w-0">
+                                                                {(m.scorersStr || m.assistsStr) && (
+                                                                    <div className="flex flex-col gap-1">
+                                                                        {m.scorersStr && (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
+                                                                                <span className="text-[10px] text-slate-200 truncate">⚽ {m.scorersStr}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {m.assistsStr && (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
+                                                                                <span className="text-[10px] text-slate-200 truncate">🅰️ {m.assistsStr}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {(m.opScorersStr || m.opAssistsStr) && (
+                                                                    <div className="flex flex-col gap-1 mt-0.5">
+                                                                        {m.opScorersStr && (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
+                                                                                <span className="text-[10px] text-slate-400 truncate">⚽ {m.opScorersStr}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {m.opAssistsStr && (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
+                                                                                <span className="text-[10px] text-slate-400 truncate">🅰️ {m.opAssistsStr}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
                                                             {m.youtubeUrl && (
                                                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
                                                                     <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
@@ -679,7 +715,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
       )}
 
-      {/* 이하 탭은 기존과 완벽히 동일합니다 */}
       {rankingTab === 'OWNERS' && (
         <div className="space-y-6">
           {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF') && grandChampionInfo && (() => {
