@@ -3,15 +3,10 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarDays, MessageSquare, Flame, ChevronRight, Image as ImageIcon, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
-// 🔥 [수술 포인트 1] 부드러운 화면 이동을 위해 Next.js 라우터 임포트
-import { useRouter } from 'next/navigation';
 
 export default function L_LockerRoomDashboard({ user, notices, seasons, masterTeams, owners, activeSeason, posts, uidDict, setViewMode, setCategory, setSelectedPostId }: any) {
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
-  
-  // 🔥 [수술 포인트 2] 라우터 객체 초기화
-  const router = useRouter();
 
   // --- 유틸 함수 ---
   const getRealLogoLocal = (teamName: string, fallback: string) => {
@@ -26,7 +21,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return (masterTeams as any[]).find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
   };
 
-  // 🔥 [수술 포인트] Vercel 타입 에러 해결: 두 번째 인자(fallbackName)를 받을 수 있도록 수정
   const getOwnerProfile = (idOrName: string, fallbackName?: string) => {
       const search1 = idOrName?.toString().trim();
       const search2 = fallbackName?.toString().trim();
@@ -36,13 +30,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           (search2 && o.nickname === search2)
       );
       return found?.photo || FALLBACK_IMG;
-  };
-
-  const formatDate = (ts: any) => {
-      if (!ts) return '방금 전';
-      let d = typeof ts === 'number' ? new Date(ts) : new Date(ts.toDate?.() || ts);
-      if (isNaN(d.getTime())) return '방금 전';
-      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
   // --- 데이터 추출 ---
@@ -114,15 +101,12 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 🔥 [수술 포인트 3] useRouter를 활용한 부드러운 스케줄 탭 이동 (깜빡임 X, 스크롤 오류 X)
-  const handleScheduleClick = (e?: React.MouseEvent) => {
-      if (e) e.stopPropagation(); // 버튼과 카드의 클릭 이벤트 겹침 방지
-      router.push('/?view=SCHEDULE');
-  };
-
+  // 🔥 [수술 포인트] 매치톡 ID가 무조건 'match_'로 시작하도록 보정하여 부모 컴포넌트 오류 방지
   const handleMatchTalkClick = (m: any) => {
-      const matchId = m.id || m.matchId || `match_${m.home}_${m.away}`;
-      // 락커룸 내부 상태만 변경하므로 pushState 유지
+      let rawId = m.id || m.matchId;
+      // rawId가 이미 match_로 시작하면 그대로 쓰고, 아니면 match_를 붙여줍니다.
+      const matchId = rawId ? (String(rawId).startsWith('match_') ? String(rawId) : `match_${rawId}`) : `match_${m.home}_${m.away}`;
+      
       setSelectedPostId(matchId);
       setViewMode('LIST');
       
@@ -162,10 +146,12 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       const aRate = Number(m.awayPredictRate) > 0 ? Number(m.awayPredictRate) : 50;
 
       return (
-          <div className="flex flex-col bg-slate-900/40 relative hover:bg-slate-800/40 transition-colors group cursor-pointer">
-              {/* 🔥 매치 본체 클릭 시 라우터로 스케줄 이동 */}
-              <div onClick={() => handleScheduleClick()} className="flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6">
-                  {/* HOME (우측 정렬) */}
+          <div 
+              onClick={() => isRecent && handleMatchTalkClick(m)} 
+              className={`flex flex-col bg-slate-900/40 relative transition-colors group ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
+          >
+              <div className="flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6">
+                  {/* HOME */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
                       <div className="flex flex-col items-end gap-1 min-w-0">
                           <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none">{m.home}</span>
@@ -179,7 +165,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
                   </div>
                   
-                  {/* CENTER (VS / 스코어 / 개별 스케줄 버튼) */}
+                  {/* CENTER */}
                   <div className="w-[80px] sm:w-[100px] shrink-0 flex flex-col items-center justify-center px-1">
                       <span className="text-[9px] text-slate-500 font-bold mb-1.5 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 uppercase tracking-widest text-center line-clamp-1">{m.matchLabel || 'MATCH'}</span>
                       {isRecent ? (
@@ -189,15 +175,11 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                               <span className={Number(m.awayScore) > Number(m.homeScore) ? 'text-emerald-400' : 'text-slate-200'}>{m.awayScore}</span>
                           </div>
                       ) : (
-                          <span className="text-[12px] sm:text-[14px] font-black text-slate-600 italic">VS</span>
+                          <span className="text-[12px] sm:text-[14px] font-black text-slate-600 italic mt-1">VS</span>
                       )}
-                      
-                      <button onClick={handleScheduleClick} className="mt-2.5 flex items-center justify-center gap-1 text-[9px] sm:text-[10px] font-bold text-slate-400 group-hover:text-white bg-slate-800 px-2 py-1 rounded-md transition-colors border border-slate-700 shadow-sm w-max whitespace-nowrap">
-                          <CalendarDays size={10} className="text-blue-400" /> 스케줄 이동
-                      </button>
                   </div>
 
-                  {/* AWAY (좌측 정렬) */}
+                  {/* AWAY */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-start min-w-0">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full p-1.5 shadow-md shrink-0">
                           <img src={getRealLogoLocal(m.away, m.awayLogo)} className="w-full h-full object-contain" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
@@ -227,15 +209,16 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               )}
 
-              {/* 🔥 RECENT 매치톡 부착 탭 (클릭 시 매치톡 이동) */}
+              {/* RECENT 매치톡 코멘트 탭 */}
               {isRecent && (() => {
-                  const matchPostId = m.id ? `match_${m.id}` : `match_${m.home}_${m.away}`;
+                  let rawId = m.id || m.matchId;
+                  const matchPostId = rawId ? (String(rawId).startsWith('match_') ? String(rawId) : `match_${rawId}`) : `match_${m.home}_${m.away}`;
                   const targetPost = posts.find((p:any) => p.id === matchPostId);
                   const targetComments = targetPost?.comments || targetPost?.replies || [];
                   const latestComment = targetComments.length > 0 ? [...targetComments].sort((a,b) => b.createdAt - a.createdAt)[0] : null;
 
                   return (
-                      <div onClick={(e) => { e.stopPropagation(); handleMatchTalkClick(m); }} className="bg-[#080d1a] border-t border-slate-800/80 py-3 px-4 sm:px-6 cursor-pointer hover:bg-slate-800/80 transition-colors flex items-center justify-between group/talk">
+                      <div className="bg-[#080d1a] border-t border-slate-800/80 py-3 px-4 sm:px-6 flex items-center justify-between group/talk">
                           {latestComment ? (
                               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <img src={getOwnerProfile(latestComment.ownerUid || latestComment.authorUid, latestComment.ownerName || latestComment.authorName)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
@@ -249,7 +232,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                           ) : (
                               <div className="flex items-center gap-2 min-w-0 flex-1 opacity-70 group-hover/talk:opacity-100 transition-opacity">
                                   <MessageSquare size={12} className="text-slate-500 shrink-0" />
-                                  <span className="text-[10px] font-bold text-slate-400 truncate">가장 먼저 매치톡을 남겨보세요!</span>
+                                  <span className="text-[10px] font-bold text-slate-400 truncate">가장 먼저 코멘트(매치톡)를 남겨보세요!</span>
                               </div>
                           )}
                           <div className="flex items-center text-[9px] font-black text-slate-500 group-hover/talk:text-blue-400 transition-colors shrink-0 pl-3">
@@ -292,7 +275,14 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2">
                       <Flame size={16} className="text-orange-500" /> LEAGUE COMMUNITY
                   </h3>
-                  <span onClick={() => { setCategory('전체'); setViewMode('LIST'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] text-slate-500 font-bold uppercase tracking-wider cursor-pointer hover:text-white transition-colors">더보기 &gt;</span>
+                  <span onClick={() => { 
+                      setCategory('전체'); 
+                      setViewMode('LIST'); 
+                      const params = new URLSearchParams(window.location.search);
+                      params.set('view', 'LOCKERROOM'); params.delete('postId');
+                      window.history.pushState(null, '', `/?${params.toString()}`);
+                      window.scrollTo({ top: 0, behavior: 'smooth' }); 
+                  }} className="text-[10px] text-slate-500 font-bold uppercase tracking-wider cursor-pointer hover:text-white transition-colors">더보기 &gt;</span>
               </div>
               
               <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -356,7 +346,16 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           </div>
 
           {/* 3. 매치톡 전광판 (라이브 데이터) */}
-          <div onClick={() => { setCategory('매치톡'); setViewMode('LIST'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center gap-3 cursor-pointer hover:border-slate-600 hover:shadow-lg transition-all mb-8 relative overflow-hidden group">
+          {/* 🔥 수정: 전광판 클릭 시에도 URL 파라미터를 정확하게 매치톡 전용으로 맞춰줍니다. */}
+          <div onClick={() => { 
+              setCategory('매치톡'); 
+              setViewMode('LIST'); 
+              const params = new URLSearchParams(window.location.search);
+              params.set('view', 'LOCKERROOM');
+              params.delete('postId');
+              window.history.pushState(null, '', `/?${params.toString()}`);
+              window.scrollTo({ top: 0, behavior: 'smooth' }); 
+          }} className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center gap-3 cursor-pointer hover:border-slate-600 hover:shadow-lg transition-all mb-8 relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 group-hover:bg-blue-400 transition-colors z-20"></div>
               <div className="bg-blue-900/30 p-2 rounded-xl shrink-0 group-hover:scale-110 transition-transform duration-300 z-20 relative">
                   <MessageSquare size={16} className="text-blue-400" />
@@ -382,7 +381,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest shrink-0 bg-slate-800/80 px-2 py-1 rounded z-20 relative">입장</span>
           </div>
 
-          {/* 4. 경기 정보 (UPCOMING / RECENT) & 넓어진 라이트 UI 적용 */}
+          {/* 4. 경기 정보 (UPCOMING / RECENT) */}
           <div className="mb-8">
               <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
                   <div className="flex border-b border-slate-800 h-[45px] bg-slate-950/50">
