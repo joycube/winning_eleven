@@ -3,10 +3,15 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarDays, MessageSquare, Flame, ChevronRight, Image as ImageIcon, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
+// 🔥 [수술 포인트 1] 부드러운 화면 이동을 위해 Next.js 라우터 임포트
+import { useRouter } from 'next/navigation';
 
 export default function L_LockerRoomDashboard({ user, notices, seasons, masterTeams, owners, activeSeason, posts, uidDict, setViewMode, setCategory, setSelectedPostId }: any) {
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
+  
+  // 🔥 [수술 포인트 2] 라우터 객체 초기화
+  const router = useRouter();
 
   // --- 유틸 함수 ---
   const getRealLogoLocal = (teamName: string, fallback: string) => {
@@ -21,9 +26,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return (masterTeams as any[]).find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
   };
 
-  const getOwnerProfile = (idOrName: string) => {
-      const search = idOrName?.toString().trim();
-      const found = owners?.find((o:any) => o.docId === search || String(o.id) === search || o.uid === search || o.nickname === search);
+  // 🔥 [수술 포인트] Vercel 타입 에러 해결: 두 번째 인자(fallbackName)를 받을 수 있도록 수정
+  const getOwnerProfile = (idOrName: string, fallbackName?: string) => {
+      const search1 = idOrName?.toString().trim();
+      const search2 = fallbackName?.toString().trim();
+      
+      const found = owners?.find((o:any) => 
+          o.docId === search1 || String(o.id) === search1 || o.uid === search1 || o.nickname === search1 ||
+          (search2 && o.nickname === search2)
+      );
       return found?.photo || FALLBACK_IMG;
   };
 
@@ -93,34 +104,31 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
   const hotPosts = [...posts].sort((a, b) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
 
-  // --- 🔥 네비게이션 핸들러 (에러 박멸) ---
+  // --- 🔥 네비게이션 핸들러 ---
   const handlePostClick = (post: any) => {
       setSelectedPostId(post.id);
       setViewMode('LIST');
       const params = new URLSearchParams(window.location.search);
       params.set('view', 'LOCKERROOM'); params.set('postId', post.id);
-      window.history.pushState(null, '', `?${params.toString()}`);
+      window.history.pushState(null, '', `/?${params.toString()}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleScheduleClick = () => {
-      const params = new URLSearchParams(window.location.search);
-      params.set('view', 'SCHEDULE');
-      // 루트('/')를 붙이지 않아 메인 메뉴로 튕기는 버그를 원천 차단
-      window.history.pushState(null, '', `?${params.toString()}`);
-      window.dispatchEvent(new Event('popstate'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // 🔥 [수술 포인트 3] useRouter를 활용한 부드러운 스케줄 탭 이동 (깜빡임 X, 스크롤 오류 X)
+  const handleScheduleClick = (e?: React.MouseEvent) => {
+      if (e) e.stopPropagation(); // 버튼과 카드의 클릭 이벤트 겹침 방지
+      router.push('/?view=SCHEDULE');
   };
 
   const handleMatchTalkClick = (m: any) => {
       const matchId = m.id || m.matchId || `match_${m.home}_${m.away}`;
-      // 상태 즉각 업데이트 (화면 깜빡임 제로)
+      // 락커룸 내부 상태만 변경하므로 pushState 유지
       setSelectedPostId(matchId);
       setViewMode('LIST');
       
       const params = new URLSearchParams(window.location.search);
       params.set('view', 'LOCKERROOM'); params.set('postId', matchId);
-      window.history.pushState(null, '', `?${params.toString()}`);
+      window.history.pushState(null, '', `/?${params.toString()}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -155,8 +163,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
       return (
           <div className="flex flex-col bg-slate-900/40 relative hover:bg-slate-800/40 transition-colors group cursor-pointer">
-              {/* 🔥 매치 본체 영역 (누르면 스케줄 탭으로 이동) */}
-              <div onClick={handleScheduleClick} className="flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6">
+              {/* 🔥 매치 본체 클릭 시 라우터로 스케줄 이동 */}
+              <div onClick={() => handleScheduleClick()} className="flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6">
                   {/* HOME (우측 정렬) */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
                       <div className="flex flex-col items-end gap-1 min-w-0">
@@ -184,7 +192,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                           <span className="text-[12px] sm:text-[14px] font-black text-slate-600 italic">VS</span>
                       )}
                       
-                      <button className="mt-2.5 flex items-center justify-center gap-1 text-[9px] sm:text-[10px] font-bold text-slate-400 group-hover:text-white bg-slate-800 px-2 py-1 rounded-md transition-colors border border-slate-700 shadow-sm w-max whitespace-nowrap">
+                      <button onClick={handleScheduleClick} className="mt-2.5 flex items-center justify-center gap-1 text-[9px] sm:text-[10px] font-bold text-slate-400 group-hover:text-white bg-slate-800 px-2 py-1 rounded-md transition-colors border border-slate-700 shadow-sm w-max whitespace-nowrap">
                           <CalendarDays size={10} className="text-blue-400" /> 스케줄 이동
                       </button>
                   </div>
@@ -219,7 +227,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               )}
 
-              {/* 🔥 RECENT 탭 전용: 실제 매치톡 데이터 부착형 UI (누르면 매치톡으로 이동) */}
+              {/* 🔥 RECENT 매치톡 부착 탭 (클릭 시 매치톡 이동) */}
               {isRecent && (() => {
                   const matchPostId = m.id ? `match_${m.id}` : `match_${m.home}_${m.away}`;
                   const targetPost = posts.find((p:any) => p.id === matchPostId);
@@ -347,7 +355,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           </div>
 
-          {/* 3. 매치톡 전광판 */}
+          {/* 3. 매치톡 전광판 (라이브 데이터) */}
           <div onClick={() => { setCategory('매치톡'); setViewMode('LIST'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center gap-3 cursor-pointer hover:border-slate-600 hover:shadow-lg transition-all mb-8 relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 group-hover:bg-blue-400 transition-colors z-20"></div>
               <div className="bg-blue-900/30 p-2 rounded-xl shrink-0 group-hover:scale-110 transition-transform duration-300 z-20 relative">
@@ -374,7 +382,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest shrink-0 bg-slate-800/80 px-2 py-1 rounded z-20 relative">입장</span>
           </div>
 
-          {/* 4. 경기 정보 (UPCOMING / RECENT) */}
+          {/* 4. 경기 정보 (UPCOMING / RECENT) & 넓어진 라이트 UI 적용 */}
           <div className="mb-8">
               <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
                   <div className="flex border-b border-slate-800 h-[45px] bg-slate-950/50">
