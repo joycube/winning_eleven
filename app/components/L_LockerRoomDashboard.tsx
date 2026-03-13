@@ -10,7 +10,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
   // --- 유틸 함수 ---
   const getRealLogoLocal = (teamName: string, fallback: string) => {
-      if (!teamName) return fallback || FALLBACK_IMG;
+      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return fallback || FALLBACK_IMG;
       const matched = masterTeams?.find((m: any) => (m.name || '').toLowerCase() === teamName.toLowerCase() || (m.teamName || '').toLowerCase() === teamName.toLowerCase());
       return matched?.logo || fallback || FALLBACK_IMG;
   };
@@ -32,41 +32,101 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return found?.photo || FALLBACK_IMG;
   };
 
+  const formatDate = (ts: any) => {
+      if (!ts) return '방금 전';
+      let d = typeof ts === 'number' ? new Date(ts) : new Date(ts.toDate?.() || ts);
+      if (isNaN(d.getTime())) return '방금 전';
+      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  // 🔥 [수술 포인트] 스케줄 뷰의 대진표 계산 로직을 그대로 가져와서 TBD를 승자 이름으로 교체합니다.
+  const processedRounds = useMemo(() => {
+      const latestSeason = seasons && seasons.length > 0 ? [...seasons].sort((a: any, b: any) => b.id - a.id)[0] : null;
+      const currentSeason = activeSeason || latestSeason;
+      
+      if (!currentSeason || !currentSeason.rounds) return [];
+
+      const displayRounds = JSON.parse(JSON.stringify(currentSeason.rounds));
+
+      if (currentSeason.type === 'LEAGUE_PLAYOFF') {
+          const calcAgg = (leg1: any, leg2: any) => {
+              if (!leg1) return null;
+              let s1 = 0, s2 = 0;
+              let isLeg1Done = leg1.status === 'COMPLETED';
+              let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
+              const t1 = leg1.home; const t2 = leg1.away;
+              
+              if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+              if (isLeg2Done && leg2) { 
+                  if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); } 
+                  else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+              }
+              
+              let aggWinner = 'TBD';
+              if (leg2 && leg2.aggWinner && leg2.aggWinner !== 'TBD') aggWinner = leg2.aggWinner;
+              else if (leg1 && leg1.aggWinner && leg1.aggWinner !== 'TBD') aggWinner = leg1.aggWinner;
+              else if (isLeg1Done && (!leg2 || isLeg2Done)) {
+                  if (s1 > s2) aggWinner = t1;
+                  else if (s2 > s1) aggWinner = t2;
+              }
+              return { ...leg1, aggWinner };
+          };
+
+          const po4Rounds = displayRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
+          const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
+          const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
+
+          const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
+          const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
+          const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
+          const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
+
+          const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
+          const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+
+          if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => { m.home = compSemi1.aggWinner; });
+          }
+          if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => { m.away = compSemi2.aggWinner; });
+          }
+
+          const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+          const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
+          const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+
+          if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
+              grandFinalRounds.forEach((m: any) => { m.away = compPoFinal.aggWinner; });
+          }
+      }
+      return displayRounds;
+  }, [activeSeason, seasons]);
+
   // --- 데이터 추출 ---
   const upcomingMatchesList = useMemo(() => {
       const matches: any[] = [];
-      const latestSeason = seasons && seasons.length > 0 ? [...seasons].sort((a: any, b: any) => b.id - a.id)[0] : null;
-      const currentSeason = activeSeason || latestSeason;
-      
-      if (currentSeason && currentSeason.rounds) {
-          currentSeason.rounds.forEach((r: any) => {
-              r.matches?.forEach((m: any) => {
-                  const isNotPlayed = m.status === 'SCHEDULED' || m.status === 'PENDING' || (!m.homeScore && !m.awayScore && m.status !== 'COMPLETED');
-                  if (isNotPlayed && m.home !== 'BYE' && m.away !== 'BYE') {
-                      matches.push({ ...m, matchLabel: r.name }); 
-                  }
-              });
+      processedRounds.forEach((r: any) => {
+          r.matches?.forEach((m: any) => {
+              const isNotPlayed = m.status === 'SCHEDULED' || m.status === 'PENDING' || (!m.homeScore && !m.awayScore && m.status !== 'COMPLETED');
+              if (isNotPlayed && m.home !== 'BYE' && m.away !== 'BYE') {
+                  matches.push({ ...m, matchLabel: r.name }); 
+              }
           });
-      }
+      });
       return matches.slice(0, 5); 
-  }, [activeSeason, seasons]);
+  }, [processedRounds]);
 
   const recentMatchesList = useMemo(() => {
       const matches: any[] = [];
-      const latestSeason = seasons && seasons.length > 0 ? [...seasons].sort((a: any, b: any) => b.id - a.id)[0] : null;
-      const currentSeason = activeSeason || latestSeason;
-      
-      if (currentSeason && currentSeason.rounds) {
-          currentSeason.rounds.forEach((r: any) => {
-              r.matches?.forEach((m: any) => {
-                  if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE') {
-                      matches.push({ ...m, matchLabel: r.name }); 
-                  }
-              });
+      processedRounds.forEach((r: any) => {
+          r.matches?.forEach((m: any) => {
+              if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE') {
+                  matches.push({ ...m, matchLabel: r.name }); 
+              }
           });
-      }
+      });
       return matches.reverse().slice(0, 5); 
-  }, [activeSeason, seasons]);
+  }, [processedRounds]);
 
   const liveTickerData = useMemo(() => {
       let allComments: any[] = [];
@@ -101,10 +161,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 🔥 [수술 포인트] 매치톡 ID가 무조건 'match_'로 시작하도록 보정하여 부모 컴포넌트 오류 방지
   const handleMatchTalkClick = (m: any) => {
       let rawId = m.id || m.matchId;
-      // rawId가 이미 match_로 시작하면 그대로 쓰고, 아니면 match_를 붙여줍니다.
       const matchId = rawId ? (String(rawId).startsWith('match_') ? String(rawId) : `match_${rawId}`) : `match_${m.home}_${m.away}`;
       
       setSelectedPostId(matchId);
@@ -156,8 +214,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       <div className="flex flex-col items-end gap-1 min-w-0">
                           <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none">{m.home}</span>
                           <div className="flex items-center gap-1 mt-1">
-                              {renderTierBadge(homeMaster?.tier)}
-                              {renderRankCondition(homeMaster?.real_rank, homeMaster?.condition)}
+                              {m.home !== 'TBD' && renderTierBadge(homeMaster?.tier)}
+                              {m.home !== 'TBD' && renderRankCondition(homeMaster?.real_rank, homeMaster?.condition)}
                           </div>
                       </div>
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full p-1.5 shadow-md shrink-0">
@@ -187,15 +245,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       <div className="flex flex-col items-start gap-1 min-w-0">
                           <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none">{m.away}</span>
                           <div className="flex items-center gap-1 mt-1">
-                              {renderRankCondition(awayMaster?.real_rank, awayMaster?.condition)}
-                              {renderTierBadge(awayMaster?.tier)}
+                              {m.away !== 'TBD' && renderRankCondition(awayMaster?.real_rank, awayMaster?.condition)}
+                              {m.away !== 'TBD' && renderTierBadge(awayMaster?.tier)}
                           </div>
                       </div>
                   </div>
               </div>
 
               {/* 예상승률 얇은 바 (UPCOMING일 때만) */}
-              {!isRecent && (
+              {!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && (
                   <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none">
                       <div className="flex justify-between text-[8px] font-black px-1">
                           <span className="text-emerald-500">{hRate}%</span>
@@ -346,7 +404,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           </div>
 
           {/* 3. 매치톡 전광판 (라이브 데이터) */}
-          {/* 🔥 수정: 전광판 클릭 시에도 URL 파라미터를 정확하게 매치톡 전용으로 맞춰줍니다. */}
           <div onClick={() => { 
               setCategory('매치톡'); 
               setViewMode('LIST'); 
