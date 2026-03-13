@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { doc, writeBatch, arrayUnion, collection, getDocs } from 'firebase/firestore'; 
 import { db } from '../firebase';
-import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles } from 'lucide-react';
+import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles, ChevronRight } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 
 export default function OwnerRoomView({ user, masterTeams, historyData, seasons, owners }: any) {
@@ -17,6 +17,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const [playerTab, setPlayerTab] = useState<'GOAL' | 'ASSIST'>('GOAL');
     const [h2hFilter, setH2HFilter] = useState<'TEAM' | 'OWNER'>('OWNER');
+
+    const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+    const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
     const [uidDict, setUidDict] = useState<Record<string, string>>({});
 
@@ -102,6 +105,16 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return found?.uid;
     };
 
+    const resolveOpponentName = (rawUid?: string, rawName?: string) => {
+        let found = null;
+        if (rawUid) found = owners?.find((o:any) => o.uid === rawUid);
+        if (!found && rawName) {
+            const search = rawName.trim();
+            found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
+        }
+        return found?.nickname || rawName || '-';
+    };
+
     const myTeam = masterTeams?.find((m:any) => (m.docId || m.id) === myOwnerData?.favoriteTeamId);
     const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
     const displayTeam = myTeam || masterTeams?.find((t:any) => t.docId === myOwnerData?.favoriteTeamId || t.id === myOwnerData?.favoriteTeamId);
@@ -116,9 +129,14 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
              : 'bg-slate-800 text-slate-400 border-slate-700';
     };
 
+    // 🔥 [수술 포인트] 시간순(과거->최신)으로 완벽하게 정렬하여 픽스!
     const getMyMatches = () => {
         let ownerMatches: any[] = [];
-        seasons?.forEach((s: any) => {
+        
+        // 시즌 데이터가 최신 역순일 수 있으므로 id 기준으로 오름차순(과거->최신) 정렬
+        const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
+
+        sortedSeasons.forEach((s: any) => {
             s.rounds?.forEach((r: any) => {
                 r.matches?.forEach((m: any) => {
                     const hUid = resolveUid(m.homeOwnerUid, m.homeOwner);
@@ -147,7 +165,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return 'D';
     });
 
-    // 🔥 [수술 포인트] 배경색, 워터마크 효과, 인증 배지 색상을 FORM 기세에 따라 자동 적용
     const recentWins = recentForm.filter(f => f === 'W').length;
     let cardBorder = "border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)]";
     let bgOverlay = "bg-gradient-to-tr from-emerald-900/30 via-transparent to-transparent";
@@ -246,6 +263,65 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const { mostWins, mostLosses, rival } = getH2HStats();
 
+    const getTeamRecentMatches = (teamName: string) => {
+        const teamMatches = myMatches.filter(m => {
+            const isHome = m.resolvedHomeUid === user.uid;
+            const myTeamStr = isHome ? m.home : m.away;
+            return myTeamStr === teamName;
+        });
+        
+        return teamMatches.reverse().slice(0, 5).map(m => {
+            const isHome = m.resolvedHomeUid === user.uid;
+            const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
+            const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
+            const opTeam = isHome ? m.away : m.home;
+            const opLogo = getRealLogo(opTeam, isHome ? m.awayLogo : m.homeLogo);
+            const opOwner = resolveOpponentName(isHome ? m.awayOwnerUid : m.homeOwnerUid, isHome ? m.awayOwner : m.homeOwner);
+            
+            let res = 'D'; let color = 'bg-slate-600/20 text-slate-400 border-slate-500/50';
+            if (myScore > opScore) { res = 'W'; color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'; }
+            else if (myScore < opScore) { res = 'L'; color = 'bg-red-500/20 text-red-400 border-red-500/50'; }
+
+            return { res, color, myScore, opScore, opTeam, opLogo, opOwner };
+        });
+    };
+
+    const playerDistributionMap = useMemo(() => {
+        const map: any = {};
+        myMatches.forEach(m => {
+            const isHome = m.resolvedHomeUid === user.uid;
+            const opTeam = isHome ? m.away : m.home;
+            const opLogo = getRealLogo(opTeam, isHome ? m.awayLogo : m.homeLogo);
+            const opOwnerUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
+            const opOwner = isHome ? m.awayOwner : m.homeOwner;
+            const resolvedOpOwner = resolveOpponentName(opOwnerUid, opOwner);
+
+            const processStats = (scorers: any[], type: 'GOAL' | 'ASSIST') => {
+                if(!scorers || !Array.isArray(scorers)) return;
+                scorers.forEach(s => {
+                    const pName = typeof s === 'string' ? s : s.name;
+                    const count = typeof s === 'string' ? 1 : (s.count || 1);
+                    if (!pName) return;
+
+                    if (!map[pName]) map[pName] = { GOAL: {}, ASSIST: {} };
+                    if (!map[pName][type][opTeam]) {
+                        map[pName][type][opTeam] = { count: 0, logo: opLogo, owner: resolvedOpOwner };
+                    }
+                    map[pName][type][opTeam].count += count;
+                });
+            };
+
+            if (isHome) {
+                processStats(m.homeScorers, 'GOAL');
+                processStats(m.homeAssists, 'ASSIST');
+            } else {
+                processStats(m.awayScorers, 'GOAL');
+                processStats(m.awayAssists, 'ASSIST');
+            }
+        });
+        return map;
+    }, [myMatches, owners, masterTeams]);
+
     const getMyBestStats = () => {
         const topTeams = (historyData?.teams || [])
             .filter((t:any) => t.ownerUid === user.uid)
@@ -331,9 +407,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     return (
         <div className="space-y-6 animate-in fade-in pb-10 mt-4 relative text-left">
             
-            <div className={`rounded-3xl p-6 sm:p-8 relative overflow-hidden group transition-all duration-1000 bg-[#020617] ${cardBorder}`}>
+            <div className={`border border-slate-700/50 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden group transition-colors duration-1000 bg-[#020617] ${cardBorder}`}>
                 
-                {/* 🔥 [수술 포인트] 배경 워터마크 사이즈 조절 및 폼 컬러 그림자 적용 */}
                 {displayTeam && (
                     <div className={`absolute top-1/2 right-4 sm:right-10 -translate-y-1/2 pointer-events-none transition-opacity duration-700 z-0 ${watermarkStyle}`}>
                         <div className="w-[140px] h-[140px] sm:w-[180px] sm:h-[180px]" style={{ backgroundImage: `url(${displayTeam.logo || FALLBACK_IMG})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
@@ -355,7 +430,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" />
                                 </div>
                             </div>
-                            {/* 🔥 [수술 포인트] 고급스러운 VERIFIED 인증 배지 복구 및 폼 컬러 동기화 */}
                             <div className={`absolute -bottom-1 -right-1 bg-gradient-to-br text-white p-1.5 rounded-full border-[3px] border-[#020617] z-20 ${badgeGlow}`}>
                                 <CheckCircle2 size={16} className="stroke-[3]" />
                             </div>
@@ -449,7 +523,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         <h3 className="text-[13px] sm:text-[15px] font-black text-white italic tracking-widest uppercase">상성 분석기</h3>
                     </div>
                     <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800 shadow-inner">
-                        {/* 🔥 [수술 포인트] 버튼 텍스트 직관성 개선 */}
                         <button onClick={() => setH2HFilter('TEAM')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'TEAM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><ShieldCheck size={12}/> 팀 기준</button>
                         <button onClick={() => setH2HFilter('OWNER')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'OWNER' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12}/> 오너 기준</button>
                     </div>
@@ -506,39 +579,73 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
                                     <div className="w-8 text-center">#</div>
                                     <div className="flex-1 ml-4">CLUB</div>
-                                    <div className="flex w-[120px] justify-between text-center pl-2">
+                                    <div className="flex w-[120px] justify-between text-center pl-2 pr-4">
                                         <span className="w-6">W</span><span className="w-6">D</span><span className="w-6">L</span>
                                         <span className="w-8 text-emerald-400">PTS</span>
                                     </div>
                                 </div>
                                 
-                                {topTeams.map((team:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left h-[64px]">
-                                        <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
-                                            {idx + 1}
-                                        </div>
-                                        <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-10 overflow-visible">
-                                            <div className="relative shrink-0">
-                                                <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
-                                                    <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                {topTeams.map((team:any, idx:number) => {
+                                    const isExpanded = expandedTeam === team.name;
+                                    return (
+                                        <React.Fragment key={idx}>
+                                            <div onClick={() => setExpandedTeam(isExpanded ? null : team.name)} className={`flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left cursor-pointer h-[64px] ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}>
+                                                <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
+                                                    {idx + 1}
                                                 </div>
-                                                <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
-                                                    {team.tier}
+                                                <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-2 overflow-visible">
+                                                    <div className="relative shrink-0">
+                                                        <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
+                                                            <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                                        </div>
+                                                        <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
+                                                            {team.tier}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate">{team.name}</span>
+                                                            <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} bg-emerald-500 text-white`}>
+                                                                <ChevronRight size={12} strokeWidth={4} />
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-wider">WIN RATE {team.winRate}%</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex w-[120px] justify-between text-center text-[10px] font-bold pl-2 pr-2 items-center">
+                                                    <span className="w-6 text-slate-400">{team.w}W</span>
+                                                    <span className="w-6 text-slate-400">{team.d}D</span>
+                                                    <span className="w-6 text-slate-400">{team.l}L</span>
+                                                    <span className="w-8 text-emerald-400 font-black text-xs">{team.pts}P</span>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-col min-w-0">
-                                                <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap pr-2">{team.name}</span>
-                                                <span className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-wider">WIN RATE {team.winRate}%</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex w-[120px] justify-between text-center text-[10px] font-bold pl-2 items-center">
-                                            <span className="w-6 text-slate-400">{team.w}W</span>
-                                            <span className="w-6 text-slate-400">{team.d}D</span>
-                                            <span className="w-6 text-slate-400">{team.l}L</span>
-                                            <span className="w-8 text-emerald-400 font-black text-xs">{team.pts}P</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                            {isExpanded && (
+                                                <div className="bg-[#0b0e14] py-3 px-4 shadow-inner border-x border-b border-slate-800/60 rounded-b-2xl mb-2 animate-in slide-in-from-top-2 duration-200">
+                                                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2 block border-b border-slate-800 pb-1.5">LAST 5 MATCHES WITH {team.name}</span>
+                                                    <div className="space-y-1.5">
+                                                        {getTeamRecentMatches(team.name).map((rm, rIdx) => (
+                                                            <div key={rIdx} className="flex items-center gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 hover:bg-slate-800 transition-colors">
+                                                                <span className={`w-5 h-5 flex items-center justify-center text-[9px] font-black rounded border ${rm.color}`}>{rm.res}</span>
+                                                                <span className="text-slate-500 text-[10px] font-bold mx-1">vs</span>
+                                                                <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center p-0.5 shrink-0 shadow-sm">
+                                                                    <img src={rm.opLogo} className="w-full h-full object-contain" alt="" />
+                                                                </div>
+                                                                <span className="text-[11px] font-black text-white uppercase truncate max-w-[90px]">{rm.opTeam}</span>
+                                                                <span className="text-[9px] text-slate-500 font-bold truncate pr-1">({rm.opOwner})</span>
+                                                                <div className="ml-auto flex items-center gap-1.5 font-black text-xs">
+                                                                    <span className={rm.res === 'W' ? 'text-emerald-400' : 'text-slate-400'}>{rm.myScore}</span>
+                                                                    <span className="text-slate-600 text-[10px]">:</span>
+                                                                    <span className={rm.res === 'L' ? 'text-red-400' : 'text-slate-500'}>{rm.opScore}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {getTeamRecentMatches(team.name).length === 0 && <div className="text-[10px] text-slate-500 italic py-1">최근 경기 로그가 없습니다.</div>}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
@@ -549,8 +656,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 {/* --- 4-2. MY BEST PLAYERS --- */}
                 <div className="bg-[#0B1120] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-full">
                     <div className="flex border-b border-slate-800 h-[48px]">
-                        <button onClick={() => setPlayerTab('GOAL')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
-                        <button onClick={() => setPlayerTab('ASSIST')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
+                        <button onClick={() => { setPlayerTab('GOAL'); setExpandedPlayer(null); }} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
+                        <button onClick={() => { setPlayerTab('ASSIST'); setExpandedPlayer(null); }} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
                     </div>
 
                     <div className="p-4 flex-1 flex flex-col">
@@ -560,26 +667,61 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     <div className="w-8 text-center">#</div>
                                     <div className="w-[35%] text-left ml-4">PLAYER</div>
                                     <div className="flex-1 text-left ml-2">TEAM</div>
-                                    <div className="w-12 text-right">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
+                                    <div className="w-12 text-right pr-3">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
                                 </div>
 
-                                {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => (
-                                    <div key={idx} className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all h-[64px]">
-                                        <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
-                                        <div className="w-[35%] ml-4 pr-6 min-w-0 overflow-visible">
-                                            <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap">{p.name}</span>
-                                        </div>
-                                        <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-8 overflow-visible ml-2">
-                                            <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
-                                                <img src={p.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => {
+                                    const isExpanded = expandedPlayer === p.name;
+                                    const pTabStr = playerTab;
+                                    return (
+                                        <React.Fragment key={idx}>
+                                            <div onClick={() => setExpandedPlayer(isExpanded ? null : p.name)} className={`flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all cursor-pointer h-[64px] ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}>
+                                                <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
+                                                <div className="w-[35%] ml-4 pr-2 min-w-0 overflow-hidden flex items-center gap-1.5">
+                                                    <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate">{p.name}</span>
+                                                    <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${playerTab === 'GOAL' ? 'bg-yellow-400 text-slate-900' : 'bg-red-500 text-white'}`}>
+                                                        <ChevronRight size={12} strokeWidth={4} />
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-2 overflow-visible ml-2">
+                                                    <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
+                                                        <img src={p.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                                    </div>
+                                                    <span className="text-[11px] font-bold text-slate-400 italic whitespace-nowrap">{p.team}</span>
+                                                </div>
+                                                <div className={`w-12 text-right pr-2 font-black text-lg italic ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                    {p.count}
+                                                </div>
                                             </div>
-                                            <span className="text-[11px] font-bold text-slate-400 italic whitespace-nowrap">{p.team}</span>
-                                        </div>
-                                        <div className={`w-12 text-right font-black text-lg italic ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
-                                            {p.count}
-                                        </div>
-                                    </div>
-                                ))}
+                                            {isExpanded && (
+                                                <div className="bg-[#0b0e14] py-3 px-4 shadow-inner border-x border-b border-slate-800/60 rounded-b-2xl mb-2 animate-in slide-in-from-top-2 duration-200">
+                                                    <span className={`text-[9px] font-black uppercase tracking-widest mb-2 block border-b border-slate-800 pb-1.5 ${pTabStr === 'GOAL' ? 'text-yellow-500' : 'text-red-500'}`}>{pTabStr === 'GOAL' ? 'GOAL DISTRIBUTION (TOP 5)' : 'ASSIST DISTRIBUTION (TOP 5)'}</span>
+                                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                                                        {(() => {
+                                                            const dist = playerDistributionMap[p.name]?.[pTabStr] || {};
+                                                            const opponents = Object.keys(dist).sort((a, b) => dist[b].count - dist[a].count).slice(0, 5);
+                                                            if (opponents.length === 0) return <div className="text-[10px] text-slate-500 italic py-1">상세 기록을 찾을 수 없습니다.</div>;
+                                                            return opponents.map(op => (
+                                                                <div key={op} className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 rounded-lg p-2 min-w-[130px] shrink-0 hover:border-slate-700 transition-colors">
+                                                                    <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm">
+                                                                        <img src={dist[op].logo} className="w-full h-full object-contain" alt="" />
+                                                                    </div>
+                                                                    <div className="flex flex-col min-w-0 text-left">
+                                                                        <div className="flex items-baseline gap-1">
+                                                                            <span className="text-[11px] font-black text-white uppercase truncate">{op}</span>
+                                                                            <span className={`text-[12px] font-black ${pTabStr === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>{dist[op].count}</span>
+                                                                        </div>
+                                                                        <span className="text-[9px] text-slate-500 font-bold italic truncate">({dist[op].owner})</span>
+                                                                    </div>
+                                                                </div>
+                                                            ));
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">기록된 데이터가 없습니다.</div>
