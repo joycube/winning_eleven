@@ -67,7 +67,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </p>
 
                 <div className="bg-[#0B1120] p-4 rounded-xl border border-slate-800 flex items-center justify-center gap-3 shadow-inner">
-                    <img src={user.photoURL} alt="profile" className="w-11 h-11 rounded-full border border-slate-700 shadow-sm" />
+                    <img src={user.photoURL} alt="profile" className="w-11 h-11 rounded-full border border-slate-700 shadow-sm" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                     <div className="flex flex-col text-left">
                         <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mb-0.5">대기 중인 계정</span>
                         <span className="text-sm font-black text-white truncate max-w-[180px]">{user.displayName || user.email}</span>
@@ -102,12 +102,12 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         const search = rawName.trim();
         if (uidDict[search]) return uidDict[search];
         const found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
-        return found?.uid;
+        return found?.uid || found?.docId;
     };
 
     const resolveOpponentName = (rawUid?: string, rawName?: string) => {
         let found = null;
-        if (rawUid) found = owners?.find((o:any) => o.uid === rawUid);
+        if (rawUid) found = owners?.find((o:any) => o.uid === rawUid || o.docId === rawUid || String(o.id) === rawUid);
         if (!found && rawName) {
             const search = rawName.trim();
             found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
@@ -225,11 +225,14 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 tier = opTeamData?.tier || 'C';
             } else {
                 let opOwnerData = null;
+                // 🔥 오너 ID 또는 이름으로 검색 강화
                 if (targetUid) {
-                    opOwnerData = owners?.find((o:any) => o.uid === targetUid);
-                } else if (targetRawName) {
+                    opOwnerData = owners?.find((o:any) => o.uid === targetUid || o.docId === targetUid || String(o.id) === targetUid);
+                }
+                if (!opOwnerData && targetRawName) {
+                    const search = targetRawName.trim();
                     opOwnerData = owners?.find((o:any) => 
-                        o.nickname === targetRawName || o.legacyName === targetRawName || o.legacyNames?.includes(targetRawName)
+                        o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search)
                     );
                 }
                 
@@ -284,7 +287,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         });
     };
 
-    // 🔥 [수술 포인트] Vercel 배포 에러 해결을 위해 useMemo 제거 후 즉시 실행 함수로 변경
     const playerDistributionMap = (() => {
         const map: any = {};
         myMatches.forEach(m => {
@@ -426,7 +428,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         <div className="relative">
                             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-600 via-white/80 to-slate-800 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
                                 <div className="w-full h-full rounded-full bg-[#050b14] p-1 flex items-center justify-center overflow-hidden">
-                                    <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" />
+                                    {/* 🔥 프로필 이미지 에러 처리 추가 */}
+                                    <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                 </div>
                             </div>
                             <div className={`absolute -bottom-1 -right-1 bg-gradient-to-br text-white p-1.5 rounded-full border-[3px] border-[#020617] z-20 ${badgeGlow}`}>
@@ -540,7 +543,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 <div className="flex items-center gap-4 relative z-10">
                                     <div className="relative shrink-0">
                                         <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
-                                            <img src={card.data.logo} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" />
+                                            {/* 🔥 상성 분석기 이미지 에러 처리 완벽 추가 */}
+                                            <img src={card.data.logo || FALLBACK_IMG} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                         </div>
                                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border shadow-sm flex items-center justify-center 
                                             ${h2hFilter === 'OWNER' 
@@ -595,6 +599,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                 <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-2 overflow-visible">
                                                     <div className="relative shrink-0">
                                                         <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
+                                                            {/* 🔥 최근 전적 이미지 에러 처리 */}
                                                             <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                         </div>
                                                         <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
@@ -627,7 +632,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                                 <span className={`w-5 h-5 flex items-center justify-center text-[9px] font-black rounded border ${rm.color}`}>{rm.res}</span>
                                                                 <span className="text-slate-500 text-[10px] font-bold mx-1">vs</span>
                                                                 <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center p-0.5 shrink-0 shadow-sm">
-                                                                    <img src={rm.opLogo} className="w-full h-full object-contain" alt="" />
+                                                                    <img src={rm.opLogo} className="w-full h-full object-contain" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                                 </div>
                                                                 <span className="text-[11px] font-black text-white uppercase truncate max-w-[90px]">{rm.opTeam}</span>
                                                                 <span className="text-[9px] text-slate-500 font-bold truncate pr-1">({rm.opOwner})</span>
