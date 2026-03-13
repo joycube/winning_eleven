@@ -408,6 +408,7 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // 🔥 [수술 포인트] LEAGUE_PLAYOFF (리그+PO 모드)에서도 수동 진출(manualWinner) 값을 받아 대진표를 업데이트 하도록 로직 추가!
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -429,6 +430,8 @@ export default function FootballLeagueApp() {
       };
 
       type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
+      const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
+      const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
 
       if (s.type === 'TOURNAMENT') {
           let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
@@ -437,9 +440,6 @@ export default function FootballLeagueApp() {
           let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
           
-          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
-          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
-
           if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
           else if (editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') winningTeam = aTeam;
           else if (manualWinner === 'HOME') winningTeam = hTeam;
@@ -525,11 +525,18 @@ export default function FootballLeagueApp() {
               if (m.id === matchId) {
                   found = true;
                   currentRoundIndex = rIdx;
+                  // 🔥 LEAGUE_PLAYOFF 모드일 때 manualWinner 데이터를 aggWinner로 박아넣어서 대진표를 갱신하게 합니다.
+                  let aggUpdate = {};
+                  if (s.type === 'LEAGUE_PLAYOFF' && manualWinner) {
+                      aggUpdate = { aggWinner: manualWinner === 'HOME' ? editingMatch.home : editingMatch.away };
+                  }
+
                   return { 
                       ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
                       ...safeRecords,
                       homePredictRate: predictionSnapshot.homePredictRate,
-                      awayPredictRate: predictionSnapshot.awayPredictRate
+                      awayPredictRate: predictionSnapshot.awayPredictRate,
+                      ...aggUpdate // 동점 시 강제 진출 기록
                   };
               }
               return m;
@@ -555,9 +562,6 @@ export default function FootballLeagueApp() {
           let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
-
-          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
-          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
 
           if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
           else if (manualWinner === 'HOME') winningTeam = hTeam;

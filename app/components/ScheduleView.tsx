@@ -18,7 +18,6 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-// 🔥 핵심 번역기: 과거 이름(legacyName)이나 현재 이름을 통해 최신 오너 정보를 찾아줍니다.
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
     const search = ownerName.trim();
@@ -95,7 +94,6 @@ const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = 
         const isBye = teamName === 'BYE';
         const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
-        // 🔥 번역기를 태워서 항상 최신 닉네임이 대진표에 표기되도록 합니다.
         const dispOwner = resolveOwnerInfo(owners, owner, ownerUid).nickname || '-';
 
         return (
@@ -224,14 +222,12 @@ export const ScheduleView = ({
     return stage;
   };
 
-  // 🔥 [수술 포인트] 스냅샷의 박제된 오너명을 최신 닉네임으로 변환합니다.
   const getTeamInfo = (teamName: string, snapOwnerName?: string, snapOwnerUid?: string) => {
       if (!teamName || teamName === 'TBD' || teamName === 'BYE') return { name: teamName || 'TBD', logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
       const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
       const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
       const master = masterTeams.find(m => m.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
       
-      // 스냅샷 데이터(snapOwnerName)가 있으면 최우선으로 번역기에 돌립니다.
       const rawOwnerName = snapOwnerName || stats?.ownerName || (master as any)?.ownerName || '-';
       const rawOwnerUid = snapOwnerUid || stats?.ownerUid || (master as any)?.ownerUid;
 
@@ -243,22 +239,34 @@ export const ScheduleView = ({
       };
   };
 
+  // 🔥 [수술 포인트] 점수 동점 여부와 관계없이, DB에 저장된 강제 진출(aggWinner)이 있다면 무조건 그것을 따르도록 수정!
   const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
       if (!leg1) return null;
       let s1 = 0, s2 = 0;
       let isLeg1Done = leg1.status === 'COMPLETED';
       let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
       const t1 = leg1.home; const t2 = leg1.away;
+      
       if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
       if (isLeg2Done && leg2) { 
           if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); } 
           else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
       }
+      
       let aggWinner = 'TBD';
-      if (isLeg1Done && (!leg2 || isLeg2Done)) {
+      
+      // DB에 저장된 승자가 있으면 가장 최우선으로 적용!
+      if (leg2 && (leg2 as any).aggWinner && (leg2 as any).aggWinner !== 'TBD') {
+          aggWinner = (leg2 as any).aggWinner;
+      } else if ((leg1 as any).aggWinner && (leg1 as any).aggWinner !== 'TBD') {
+          aggWinner = (leg1 as any).aggWinner;
+      } 
+      // 강제 지정된 승자가 없을 때만 점수로 판별
+      else if (isLeg1Done && (!leg2 || isLeg2Done)) {
           if (s1 > s2) aggWinner = t1;
           else if (s2 > s1) aggWinner = t2;
       }
+
       return { ...leg1, homeScore: isLeg1Done||isLeg2Done?String(s1):'', awayScore: isLeg1Done||isLeg2Done?String(s2):'', status: (isLeg1Done&&(!leg2||isLeg2Done))?'COMPLETED':'UPCOMING', aggWinner };
   };
 

@@ -36,7 +36,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   
-  // 🔥 [수술 포인트] 구단주님 요청대로 scrollIntoView 유지를 위한 Ref
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false); 
 
@@ -75,7 +74,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
           const dbComments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           dbComments.sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
           setComments(dbComments);
-          // 🔥 [수술 포인트] 구단주님 요청사항 복구 (화면 하단 딱 맞춤)
           setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 100);
       });
       return () => unsubscribe();
@@ -195,12 +193,13 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
   return (
     <div className="fixed inset-0 h-full w-full bg-black/95 flex flex-col justify-end sm:justify-center items-center z-[9999] p-0 sm:p-4 backdrop-blur-sm overflow-hidden">
        
-       {/* 🔥 [수술 포인트] overflow-hidden 제거 (스티커 팝업 잘림 방지) */}
        <div className="bg-[#0f172a] w-full sm:max-w-2xl flex flex-col rounded-t-[20px] sm:rounded-[24px] shadow-2xl h-[92dvh] sm:h-auto sm:max-h-[85vh] animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative border border-slate-800">
           
           <button onClick={onClose} className="absolute top-3 right-3 sm:top-4 sm:right-4 w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full text-lg transition-colors z-50">✕</button>
           
-          {/* 팝업 상단 전광판 영역 (둥근 모서리 복구) */}
+          {/* ==========================================
+              1. 팝업 상단 전광판 영역 
+          ========================================== */}
           <div className="bg-[#0B1120] p-3 sm:p-5 pt-5 sm:pt-6 relative shrink-0 border-b border-slate-800 rounded-t-[20px] sm:rounded-t-[24px]">
               <div className="text-center mb-3 sm:mb-5">
                   <h3 className="text-[14px] sm:text-[18px] font-black text-white italic tracking-tighter drop-shadow-md">{match.matchLabel}</h3>
@@ -272,8 +271,35 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                       <div className="w-full h-1.5 bg-slate-800 rounded-full flex overflow-hidden relative shadow-inner border border-slate-700/50">
                           <div style={{ width: `${homeRate}%` }} className="bg-emerald-500 h-full transition-all duration-1000"></div>
                           <div style={{ width: `${awayRate}%` }} className="bg-blue-600 h-full transition-all duration-1000"></div>
-                          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[12px] h-[12px] bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 z-10 leading-none pb-[1px]">
+                          {/* 🔥 번개 마크가 가운데 고정되지 않고 승률(homeRate)을 따라 움직이도록 수정 */}
+                          <div 
+                              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-[12px] h-[12px] bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 z-10 leading-none pb-[1px] transition-all duration-1000"
+                              style={{ left: `${homeRate}%` }}
+                          >
                               <Zap size={7} className="text-yellow-400 fill-yellow-400" />
+                          </div>
+                      </div>
+                  </div>
+              )}
+
+              {/* 🔥 강제 진출(승자) 지정 버튼 - 최상단 전광판 영역으로 이동! (권한자에게만 표시) */}
+              {hasRecordPermission && !isByeMatch && (
+                  <div className="mt-4 px-2 w-full max-w-[280px] mx-auto">
+                      <div className="bg-red-950/30 p-2 sm:p-2.5 rounded-xl border border-red-900/50 text-center shadow-inner">
+                          <p className="text-[9px] text-red-400 font-bold mb-2 tracking-widest leading-tight">🏆 강제 진출(승자) 지정 (합산 동점 등)</p>
+                          <div className="flex gap-2 justify-center">
+                              <button 
+                                  onClick={() => setManualWinner(manualWinner === 'HOME' ? null : 'HOME')} 
+                                  className={`flex-1 py-1.5 text-[11px] font-black rounded-lg border transition-all ${manualWinner==='HOME'?'bg-red-600 text-white border-red-400 shadow-[0_0_12px_rgba(220,38,38,0.6)]':'bg-[#0B1120] text-slate-400 border-slate-800 hover:border-red-500/50 hover:text-red-400'}`}
+                              >
+                                  {match.home} 승
+                              </button>
+                              <button 
+                                  onClick={() => setManualWinner(manualWinner === 'AWAY' ? null : 'AWAY')} 
+                                  className={`flex-1 py-1.5 text-[11px] font-black rounded-lg border transition-all ${manualWinner==='AWAY'?'bg-red-600 text-white border-red-400 shadow-[0_0_12px_rgba(220,38,38,0.6)]':'bg-[#0B1120] text-slate-400 border-slate-800 hover:border-red-500/50 hover:text-red-400'}`}
+                              >
+                                  {match.away} 승
+                              </button>
                           </div>
                       </div>
                   </div>
@@ -371,7 +397,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                           <div ref={commentsEndRef} className="h-4" />
                       </div>
 
-                      {/* 🔥 댓글 입력 폼 (스티커 컴포넌트 이식 및 z-index 세팅) */}
+                      {/* 댓글 입력 폼 */}
                       <div className="shrink-0 pt-2 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] rounded-b-[24px]">
                           {!user ? (
                               <div className="text-center text-slate-500 text-[11px] py-3 bg-slate-900 rounded-xl border border-slate-800 font-bold tracking-tight mx-2 mb-2">
@@ -380,7 +406,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                           ) : (
                               <div className="flex items-center gap-2 sm:gap-2.5 w-full relative">
                                   
-                                  {/* 🔥 [수술 포인트] 공용 스티커 컴포넌트 렌더링 */}
                                   <div className="shrink-0 relative z-[100]">
                                       <StickerSelector onSelect={handleSendSticker} />
                                   </div>
@@ -448,16 +473,6 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                                                       <input type="number" value={inputs.awayScore} onChange={e=>setInputs({...inputs, awayScore:e.target.value})} className="w-12 h-12 text-center text-2xl font-black bg-slate-950 rounded-md border border-slate-700 text-white focus:border-blue-500 outline-none transition-colors" />
                                                   </div>
                                               </div>
-                                              
-                                              {effectiveIsTournament && Number(inputs.homeScore) === Number(inputs.awayScore) && inputs.homeScore !== '' && (
-                                                  <div className="bg-red-900/40 p-2 rounded-md border border-red-500/50 text-center animate-pulse w-full max-w-[200px] mt-3">
-                                                      <p className="text-[8px] text-red-300 font-bold mb-1.5 tracking-widest leading-tight">⚠️ 승부차기 승리 팀 선택</p>
-                                                      <div className="flex gap-1.5 justify-center">
-                                                          <button onClick={()=>setManualWinner('HOME')} className={`flex-1 py-1 text-[9px] font-bold rounded border transition-all ${manualWinner==='HOME'?'bg-red-600 text-white border-red-400':'bg-black text-red-400 border-red-800'}`}>HOME 승</button>
-                                                          <button onClick={()=>setManualWinner('AWAY')} className={`flex-1 py-1 text-[9px] font-bold rounded border transition-all ${manualWinner==='AWAY'?'bg-red-600 text-white border-red-400':'bg-black text-red-400 border-red-800'}`}>AWAY 승</button>
-                                                      </div>
-                                                  </div>
-                                              )}
                                           </div>
 
                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
