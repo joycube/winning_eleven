@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+// 🔥 [수술 포인트] deleteDoc이 누락되어 있던 것을 추가했습니다!
+import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import StickerSelector from './StickerSelector';
@@ -252,7 +253,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                     <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span></h4>
                     <div className="mb-6 border-t border-slate-800/50">
                         {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>}
-                        {/* 댓글 렌더링 - 단순화를 위해 1뎁스 렌더링만 예시로, 원본 로직과 동일하게 작동 */}
                         {(activePost.comments || activePost.replies || []).filter((c:any) => !c.parentId).map((comment: any) => {
                             const replies = isNotice ? (comment.replies || []) : (activePost.comments||[]).filter((c: any) => c.parentId === comment.id);
                             const cName = comment.authorName || comment.ownerName || '알 수 없음';
@@ -279,7 +279,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: cName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white"><MessageSquare size={13}/> 답글</button>
                                                 {(user?.uid === (comment.authorUid || comment.ownerUid) || isMaster) && <button onClick={() => handleDeleteComment(comment.id)} className="hover:text-red-400 ml-auto">삭제</button>}
                                             </div>
-                                            {/* 답글 입력창 및 대댓글 렌더링 로직 (생략: 공간 관계상 본체의 완벽한 트리 렌더링을 그대로 복사해 넣으시면 됩니다.) */}
                                         </div>
                                     </div>
                                 </div>
