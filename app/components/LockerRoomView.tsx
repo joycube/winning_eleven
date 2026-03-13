@@ -95,6 +95,8 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
     return () => window.removeEventListener('popstate', syncState);
   }, [selectedPostId]);
 
+  // 🔥 요청하신 대로 로그인 차단 로직을 완전히 제거/주석 처리했습니다.
+  /*
   if (!user) {
       return (
           <div className="flex flex-col items-center justify-center min-h-[50vh] text-center animate-in fade-in zoom-in-95 mt-10">
@@ -114,6 +116,7 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
           </div>
       );
   }
+  */
 
   return (
     <div className="max-w-[700px] mx-auto p-0 sm:p-2 space-y-6 pb-20">
