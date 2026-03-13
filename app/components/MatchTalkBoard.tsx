@@ -67,7 +67,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         return owners.some(o => (o.nickname === user.mappedOwnerId || String(o.id) === user.uid) && (o as any).role === 'ADMIN');
     }, [user, owners]);
 
-    // 🔥 [수술 포인트] 모달과 완벽히 동일한 block: 'end' 스크롤 적용 (화면 점프 방지)
     const scrollToBottom = () => {
         if (commentsEndRef.current) {
             commentsEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -263,20 +262,18 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         } catch (e) { console.error(e); }
     };
 
+    // 1. 특정 매치톡(방) 안에 들어왔을 때의 렌더링
     if (activePost) {
         return (
             <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full overflow-hidden">
                 {/* 상단 뒤로가기 버튼 */}
                 <div className="mb-4 shrink-0 px-1">
                     <button onClick={onClose} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
-                        <ArrowLeft size={14} /> <span>목록으로 뒤로 가기</span>
+                        <ArrowLeft size={14} /> <span>락커룸으로 돌아가기</span>
                     </button>
                 </div>
 
-                {/* 매치톡 전용 모달 레이아웃 시작 (팝업이 잘리지 않도록 overflow-hidden 제거) */}
                 <div className="flex flex-col bg-[#0f172a] rounded-t-[24px] rounded-b-xl shadow-2xl border border-slate-800 flex-1 min-h-[500px]">
-                    
-                    {/* 상단 경기 정보 전광판 */}
                     <div className="bg-[#0B1120] p-4 sm:p-6 pb-2 shrink-0 border-b border-slate-800 z-20 shadow-md rounded-t-[24px]">
                         <div className="pointer-events-none mb-1"> 
                             <MatchCard 
@@ -293,9 +290,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                         </div>
                     </div>
 
-                    {/* 🔥 탭 1: 매치 톡 (채팅방) 영역 */}
                     <div className="flex-1 min-h-0 bg-[#0B1423] flex flex-col relative z-10 w-full rounded-b-xl overflow-hidden">
-                        
                         <div className="flex-1 overflow-y-auto px-3 sm:px-5 pt-6 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                             {!(activePost.comments) || activePost.comments.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
@@ -346,24 +341,19 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                     );
                                 })
                             )}
-                            {/* 🔥 앵커 박스 유지 */}
                             <div ref={commentsEndRef} className="h-4" />
                         </div>
 
-                        {/* 🔥 댓글 입력 폼 */}
                         <div className="shrink-0 pt-2 pb-6 px-3 sm:px-4 sm:pb-8 border-t border-slate-800 bg-[#0B1120] relative z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] rounded-b-xl">
-                            
                             {!user ? (
                                 <div className="text-center text-slate-500 text-[11px] py-3 bg-slate-900 rounded-xl border border-slate-800 font-bold tracking-tight mx-2 mb-2">
                                     로그인 후 매치톡을 이용할 수 있습니다.
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2 sm:gap-2.5 w-full relative">
-                                    {/* 🔥 스티커 컴포넌트 이식 완료! */}
                                     <div className="shrink-0 relative z-[100]">
                                         <StickerSelector onSelect={handleSendSticker} />
                                     </div>
-
                                     <input 
                                         ref={commentInputRef}
                                         value={commentText} 
@@ -373,7 +363,6 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                         disabled={isSending}
                                         className="flex-1 min-w-0 bg-[#1e293b] border border-slate-700 text-white text-[13px] sm:text-[15px] px-5 py-3 rounded-full outline-none focus:border-slate-500 shadow-inner placeholder:font-medium placeholder:text-slate-500 disabled:opacity-60" 
                                     />
-
                                     <button 
                                         onClick={handleAddComment} 
                                         disabled={isSending || !commentText.trim()}
@@ -390,71 +379,82 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         );
     }
 
+    // 2. 매치톡 전체 "목록" 화면 렌더링
     return (
-        <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
-             <div className="p-3 sm:p-4 bg-slate-900 border-b border-slate-800 flex justify-end">
-                <select 
-                    value={selectedSeasonFilter} 
-                    onChange={(e) => setSelectedSeasonFilter(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 text-slate-300 text-[11px] sm:text-xs font-bold rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500 transition-colors"
-                >
-                    <option value="ALL">모든 시즌 보기</option>
-                    {seasons?.map(s => (
-                        <option key={s.id} value={String(s.id)}>{s.name}</option>
-                    ))}
-                </select>
+        <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full">
+            
+            {/* 🔥 새롭게 추가된 [목록 화면의 뒤로가기 버튼] */}
+            <div className="mb-4 shrink-0 px-1">
+                <button onClick={onClose} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
+                    <ArrowLeft size={14} /> <span>락커룸으로 돌아가기</span>
+                </button>
             </div>
 
-            {visiblePostsList.length === 0 ? (
-                <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
-                    &quot;해당 조건의 매치톡이 없습니다.&quot;
+            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
+                 <div className="p-3 sm:p-4 bg-slate-900 border-b border-slate-800 flex justify-end">
+                    <select 
+                        value={selectedSeasonFilter} 
+                        onChange={(e) => setSelectedSeasonFilter(e.target.value)}
+                        className="bg-slate-800 border border-slate-700 text-slate-300 text-[11px] sm:text-xs font-bold rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500 transition-colors"
+                    >
+                        <option value="ALL">모든 시즌 보기</option>
+                        {seasons?.map(s => (
+                            <option key={s.id} value={String(s.id)}>{s.name}</option>
+                        ))}
+                    </select>
                 </div>
-            ) : visiblePostsList.map((post) => (
-                <div key={post.id} onClick={() => handleMatchClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
-                    <div className="flex flex-col items-center justify-center shrink-0 mr-3 sm:mr-4 w-[60px] sm:w-[68px]">
-                         <StatusBadge status={post.matchData.status} />
-                    </div>
-                    <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-6">
-                        <div className="flex flex-col min-w-0 flex-1 overflow-visible pr-2">
-                            <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
-                            
-                            <div className="flex items-center gap-2 mt-0.5">
-                                <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
-                                    {post.title}
-                                </h3>
-                                
-                                {post.matchData.status?.toUpperCase() === 'COMPLETED' ? (
-                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-emerald-900/40 text-emerald-400 border-emerald-500/40 shadow-inner">
-                                        {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
-                                    </span>
-                                ) : post.matchData.status?.toUpperCase() === 'LIVE' ? (
-                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-red-900/40 text-red-400 border-red-500/40 shadow-inner animate-pulse">
-                                        {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
-                                    </span>
-                                ) : (
-                                    <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-slate-800 text-slate-500 border-slate-700 shadow-inner">
-                                        - : -
-                                    </span>
-                                )}
-                            </div>
 
+                {visiblePostsList.length === 0 ? (
+                    <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
+                        &quot;해당 조건의 매치톡이 없습니다.&quot;
+                    </div>
+                ) : visiblePostsList.map((post) => (
+                    <div key={post.id} onClick={() => handleMatchClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
+                        <div className="flex flex-col items-center justify-center shrink-0 mr-3 sm:mr-4 w-[60px] sm:w-[68px]">
+                             <StatusBadge status={post.matchData.status} />
+                        </div>
+                        <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-6">
+                            <div className="flex flex-col min-w-0 flex-1 overflow-visible pr-2">
+                                <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
+                                
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
+                                        {post.title}
+                                    </h3>
+                                    
+                                    {post.matchData.status?.toUpperCase() === 'COMPLETED' ? (
+                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-emerald-900/40 text-emerald-400 border-emerald-500/40 shadow-inner">
+                                            {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                        </span>
+                                    ) : post.matchData.status?.toUpperCase() === 'LIVE' ? (
+                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-red-900/40 text-red-400 border-red-500/40 shadow-inner animate-pulse">
+                                            {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                        </span>
+                                    ) : (
+                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-slate-800 text-slate-500 border-slate-700 shadow-inner">
+                                            - : -
+                                        </span>
+                                    )}
+                                </div>
+
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2.5 shrink-0 ml-1">
+                            <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${post.comments?.length > 0 ? 'bg-blue-950/50 border border-blue-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
+                                <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${post.comments?.length > 0 ? 'text-blue-400' : 'text-slate-400'}`}>{post.comments?.length || 0}</span>
+                                <span className={`text-[8px] font-bold leading-none ${post.comments?.length > 0 ? 'text-blue-500' : 'text-slate-500'}`}>매치톡</span>
+                            </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2.5 shrink-0 ml-1">
-                        <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${post.comments?.length > 0 ? 'bg-blue-950/50 border border-blue-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
-                            <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${post.comments?.length > 0 ? 'text-blue-400' : 'text-slate-400'}`}>{post.comments?.length || 0}</span>
-                            <span className={`text-[8px] font-bold leading-none ${post.comments?.length > 0 ? 'text-blue-500' : 'text-slate-500'}`}>매치톡</span>
-                        </div>
+                ))}
+                {hasMore && (
+                    <div className="p-3 border-t border-slate-800/50 flex justify-center bg-slate-900/30">
+                        <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-5 py-2.5 bg-slate-800 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-lg">
+                            더 보기 ▼
+                        </button>
                     </div>
-                </div>
-            ))}
-            {hasMore && (
-                <div className="p-3 border-t border-slate-800/50 flex justify-center bg-slate-900/30">
-                    <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-5 py-2.5 bg-slate-800 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-lg">
-                        더 보기 ▼
-                    </button>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

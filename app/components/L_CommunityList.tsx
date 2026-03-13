@@ -23,7 +23,7 @@ export default function L_CommunityList({ user, notices, posts, category, setCat
                 <div className="flex items-center gap-3">
                     <div className="w-2 h-6 sm:h-7 bg-emerald-500 rounded-sm"></div>
                     <div className="flex flex-col">
-                        <h2 className="text-xl sm:text-2xl font-black italic text-white uppercase tracking-tighter leading-none">Locker Room</h2>
+                        <h2 className="text-xl sm:text-2xl font-black italic text-white uppercase tracking-tighter leading-none">LEAGUE COMMUNITY</h2>
                         <span className="text-[10px] text-slate-500 font-bold mt-1">자유 소통 게시판</span>
                     </div>
                 </div>
