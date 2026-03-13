@@ -34,7 +34,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
-  // 마스터 팀 정보 한 번만 로드
   useEffect(() => {
     const fetchMasterTeams = async () => {
       try {
@@ -47,7 +46,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     fetchMasterTeams();
   }, []);
 
-  // 시즌 및 공통 메타 데이터 계산
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const seasonName = currentSeason?.name || 'Unknown Season';
   const todayDate = getTodayFormatted();
@@ -55,7 +53,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0, scorer: 0, assist: 0, poScorer: 0, poAssist: 0 };
   const isHybridSeason = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF';
 
-  // 👑 오너 탭에 전달할 그랜드 파이널 챔피언 및 랭킹 팀 연산
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
@@ -114,28 +111,106 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     };
   };
 
-  const grandFinalMatch = useMemo(() => {
-      if (!currentSeason?.rounds) return null;
-      return currentSeason.rounds.flatMap((r: any) => r.matches).find((m: any) => m.stage?.toUpperCase().includes('FINAL') && !m.stage?.toUpperCase().includes('SEMI') && !m.stage?.toUpperCase().includes('QUARTER'));
+  // 🔥 [핵심 수술 포인트] 스케줄 뷰와 완벽하게 동일한 실시간 대진표 계산(TBD 치환) 로직 이식!
+  const processedRounds = useMemo(() => {
+      if (!currentSeason?.rounds) return [];
+      const roundsCopy = JSON.parse(JSON.stringify(currentSeason.rounds));
+
+      if (currentSeason.type === 'LEAGUE_PLAYOFF') {
+          const po4Rounds = roundsCopy.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
+          const poFinalRounds = roundsCopy.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
+          const grandFinalRounds = roundsCopy.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
+
+          const calcAgg = (leg1: any, leg2: any) => {
+              if (!leg1) return null;
+              let s1 = 0, s2 = 0;
+              let isLeg1Done = leg1.status === 'COMPLETED';
+              let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
+              const t1 = leg1.home; const t2 = leg1.away;
+              if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+              if (isLeg2Done && leg2) { 
+                  if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); } 
+                  else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+              }
+              let aggWinner = 'TBD';
+              if (leg2 && leg2.aggWinner && leg2.aggWinner !== 'TBD') aggWinner = leg2.aggWinner;
+              else if (leg1 && leg1.aggWinner && leg1.aggWinner !== 'TBD') aggWinner = leg1.aggWinner;
+              else if (isLeg1Done && (!leg2 || isLeg2Done)) {
+                  if (s1 > s2) aggWinner = t1;
+                  else if (s2 > s1) aggWinner = t2;
+              }
+              return { ...leg1, aggWinner };
+          };
+
+          const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
+          const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
+          const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
+          const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
+
+          const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
+          const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+
+          if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => { m.home = compSemi1.aggWinner; });
+          }
+          if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => { m.away = compSemi2.aggWinner; });
+          }
+
+          const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+          const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
+          const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+
+          if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
+              grandFinalRounds.forEach((m: any) => { m.away = compPoFinal.aggWinner; });
+          }
+      }
+      return roundsCopy;
   }, [currentSeason]);
 
+  // DB 데이터가 아니라, 실시간으로 계산된 processedRounds 에서 결승전을 가져옵니다.
+  const grandFinalMatch = useMemo(() => {
+      if (processedRounds.length === 0) return null;
+      
+      const allMatches = processedRounds.flatMap((r: any) => r.matches || []);
+      return allMatches.find((m: any) => {
+          const s = (m.stage || '').toUpperCase();
+          const l = (m.matchLabel || '').toUpperCase();
+          const isFinalText = s.includes('FINAL') || s.includes('결승') || l.includes('FINAL') || l.includes('결승');
+          const isNotSemi = !(s.includes('SEMI') || s.includes('4강') || l.includes('SEMI') || l.includes('4강') || s.includes('34') || l.includes('34'));
+          return isFinalText && isNotSemi;
+      });
+  }, [processedRounds]);
+
   const grandChampionInfo = useMemo(() => {
-      if (!grandFinalMatch || grandFinalMatch.status !== 'COMPLETED') return null;
-      const hScore = Number(grandFinalMatch.homeScore);
-      const aScore = Number(grandFinalMatch.awayScore);
+      if (!grandFinalMatch) return null;
+      
+      const hScoreText = grandFinalMatch.homeScore;
+      const aScoreText = grandFinalMatch.awayScore;
+      
+      // 결승전 자리에 팀이 없거나, 점수가 안 들어갔으면 아직 우승자가 없는 것
+      if (grandFinalMatch.home === 'TBD' || grandFinalMatch.away === 'TBD') return null;
+      if (grandFinalMatch.status !== 'COMPLETED') return null;
+
       let winnerName = null;
-      if (hScore > aScore) winnerName = grandFinalMatch.home;
-      if (aScore > hScore) winnerName = grandFinalMatch.away;
+
+      if ((grandFinalMatch as any).aggWinner && (grandFinalMatch as any).aggWinner !== 'TBD') {
+          winnerName = (grandFinalMatch as any).aggWinner;
+      } else {
+          const hScore = Number(hScoreText || 0);
+          const aScore = Number(aScoreText || 0);
+          if (hScore > aScore) winnerName = grandFinalMatch.home;
+          else if (aScore > hScore) winnerName = grandFinalMatch.away;
+      }
+
       if (!winnerName || winnerName === 'TBD') return null;
       return getTeamExtendedInfo(winnerName);
   }, [grandFinalMatch, activeRankingData, masterTeams]);
 
-  // 🔥 [수술 포인트] 메뉴 순서 재배치 (스탠딩, 플레이어스, 오너스, 하이라이트)
   const SubTabs = ['STANDINGS', 'PLAYERS', 'OWNERS', 'HIGHLIGHTS'] as const;
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* 글로벌 스타일 적용 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .crown-icon { animation: bounce 2s infinite; }
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -145,7 +220,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
       `}} />
 
-      {/* 상단 시즌 선택 및 탭 컨트롤 */}
       <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
         <div className="relative">
           <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-base font-bold py-4 px-5 rounded-xl border border-slate-700 shadow-xl appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer italic">
@@ -166,7 +240,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
       </div>
 
-      {/* 모듈화된 하위 탭 렌더링 */}
       {rankingTab === 'STANDINGS' && (
         <R_StandingsTab 
             currentSeason={currentSeason}
