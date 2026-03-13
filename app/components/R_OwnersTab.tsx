@@ -123,6 +123,63 @@ export default function R_OwnersTab({
           );
       })()}
 
+      {/* 🚩 리그 1위 전용 카드 (경기가 한 번이라도 진행되었을 때 노출) */}
+      {sortedTeams && sortedTeams.length > 0 && (sortedTeams[0].win > 0 || sortedTeams[0].draw > 0 || sortedTeams[0].loss > 0) && (() => {
+          const team = sortedTeams[0];
+          const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);
+          const ownerInfo = owners.find(o => o.nickname === resolvedNick);
+          const displayPhoto = ownerInfo?.photo || FALLBACK_IMG;
+          
+          let title = "🚩 CURRENT LEAGUE 1ST";
+          if (currentSeason?.type === 'LEAGUE_PLAYOFF') title = "🚩 REGULAR LEAGUE 1ST";
+          else if (currentSeason?.status === 'COMPLETED') title = "🏆 LEAGUE CHAMPION";
+
+          return (
+            <div className="mb-6">
+                <div className="relative w-full rounded-xl overflow-hidden border border-blue-500/40 shadow-[0_0_30px_rgba(59,130,246,0.15)] transform transition-transform duration-300 bg-[#020617]">
+                    <div className="absolute inset-0 z-0 bg-gradient-to-tr from-blue-900/30 via-transparent to-transparent"></div>
+                    <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 pointer-events-none">
+                        <div className="w-[140px] h-[140px] filter drop-shadow-[0_0_20px_rgba(59,130,246,0.5)]" style={{ backgroundImage: `url(${team.logo})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
+                    </div>
+                    <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
+                        <div className="relative pt-3 shrink-0 pl-2">
+                            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-blue-300 via-blue-500 to-blue-200 shadow-xl relative z-10">
+                                <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
+                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                </div>
+                            </div>
+                            <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-blue-400 z-30 overflow-hidden flex items-center justify-center">
+                                <img src={team.logo || FALLBACK_IMG} className="w-[80%] h-[80%] object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                            </div>
+                        </div>
+                        <div className="flex-1 text-center md:text-left pt-3 md:pt-0 pl-2 md:pl-4">
+                            <div className="inline-flex items-center gap-1.5 bg-blue-900/50 border border-blue-500/50 text-blue-400 px-3 py-1 rounded-full font-black text-[10px] tracking-widest mb-3 shadow-lg uppercase">
+                                {title}
+                            </div>
+                            <h2 className="text-3xl md:text-4xl font-black text-white mb-1 drop-shadow-md tracking-tight italic">{resolvedNick}</h2>
+                            <p className="text-blue-400 font-bold tracking-widest text-xs md:text-sm opacity-80 uppercase italic mb-4">With {team.name}</p>
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                                <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[80px]">
+                                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5 uppercase">PTS</span>
+                                    <span className="text-xl font-black text-blue-400">{team.points}</span>
+                                </div>
+                                <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]">
+                                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5 uppercase">RECORD</span>
+                                    <span className="text-lg font-bold text-white tracking-tight">{team.win}W <span className="text-slate-500">{team.draw}D</span> <span className="text-red-400">{team.loss}L</span></span>
+                                </div>
+                                <div className="bg-blue-900/20 rounded-xl px-5 py-2.5 border border-blue-500/20">
+                                    <span className="text-[10px] text-blue-400 block font-black mb-0.5 uppercase">GOAL DIFF</span>
+                                    <span className="text-xl font-black text-blue-400">{(team.gd || 0) > 0 ? `+${team.gd}` : team.gd || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="absolute bottom-2 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">{footerText}</div>
+                </div>
+            </div>
+          );
+      })()}
+
       {/* 🌟 1위 오너 포인트 정보 */}
       {(!activeRankingData?.owners || activeRankingData.owners.length === 0) ? (
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 p-10 text-center text-slate-500 font-bold italic shadow-2xl">등록된 오너 포인트가 없습니다.</div>
@@ -175,7 +232,6 @@ export default function R_OwnersTab({
       {/* 📊 2위 이하 오너 포인트 순위표 */}
       {activeRankingData?.owners && activeRankingData.owners.length > 1 && (
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
-            {/* 🔥 [테이블 간격/여백 최적화 뷰] */}
             <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase">
                     <tr>
