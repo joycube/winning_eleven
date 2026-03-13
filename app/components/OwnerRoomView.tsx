@@ -129,11 +129,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
              : 'bg-slate-800 text-slate-400 border-slate-700';
     };
 
-    // 🔥 [수술 포인트] 시간순(과거->최신)으로 완벽하게 정렬하여 픽스!
     const getMyMatches = () => {
         let ownerMatches: any[] = [];
         
-        // 시즌 데이터가 최신 역순일 수 있으므로 id 기준으로 오름차순(과거->최신) 정렬
         const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
 
         sortedSeasons.forEach((s: any) => {
@@ -286,7 +284,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         });
     };
 
-    const playerDistributionMap = useMemo(() => {
+    // 🔥 [수술 포인트] Vercel 배포 에러 해결을 위해 useMemo 제거 후 즉시 실행 함수로 변경
+    const playerDistributionMap = (() => {
         const map: any = {};
         myMatches.forEach(m => {
             const isHome = m.resolvedHomeUid === user.uid;
@@ -320,7 +319,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
             }
         });
         return map;
-    }, [myMatches, owners, masterTeams]);
+    })();
 
     const getMyBestStats = () => {
         const topTeams = (historyData?.teams || [])
