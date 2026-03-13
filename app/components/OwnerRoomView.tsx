@@ -16,7 +16,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const [isSaving, setIsSaving] = useState(false);
 
     const [playerTab, setPlayerTab] = useState<'GOAL' | 'ASSIST'>('GOAL');
-    const [h2hFilter, setH2HFilter] = useState<'TEAM' | 'OWNER'>('TEAM');
+    const [h2hFilter, setH2HFilter] = useState<'TEAM' | 'OWNER'>('OWNER');
 
     const [uidDict, setUidDict] = useState<Record<string, string>>({});
 
@@ -80,7 +80,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         return matched?.logo || defaultLogo || FALLBACK_IMG;
     };
 
-    // 🔥 [수술 포인트] UID가 없는 과거 유저(정일수)를 위해 매핑된 이름으로도 문서를 찾도록 예외 처리 추가!
     const myOwnerData = owners?.find((o:any) => o.uid === user.uid || (user.mappedOwnerId && o.nickname === user.mappedOwnerId));
     
     const currentNick = myOwnerData?.nickname || user.mappedOwnerId;
@@ -105,6 +104,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const myTeam = masterTeams?.find((m:any) => (m.docId || m.id) === myOwnerData?.favoriteTeamId);
     const profileImage = user.photo || myOwnerData?.photo || myTeam?.logo || user.photoURL || FALLBACK_IMG;
+    const displayTeam = myTeam || masterTeams?.find((t:any) => t.docId === myOwnerData?.favoriteTeamId || t.id === myOwnerData?.favoriteTeamId);
 
     const getTierBadgeColor = (tier?: string) => {
         const t = (tier || 'C').toUpperCase();
@@ -114,18 +114,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
              : t === 'C' ? 'bg-slate-600 text-white border-slate-400'
              : t === 'D' ? 'bg-orange-700 text-white border-orange-500'
              : 'bg-slate-800 text-slate-400 border-slate-700';
-    };
-
-    const isMe = (targetUid?: string, targetName?: string) => {
-        if (targetUid && targetUid === user.uid) return true;
-        if (!targetUid && targetName) {
-            const search = targetName.trim();
-            if (search === currentNick) return true;
-            if (search === user.mappedOwnerId) return true;
-            if (myOwnerData?.legacyName === search) return true;
-            if (myOwnerData?.legacyNames?.includes(search)) return true;
-        }
-        return false;
     };
 
     const getMyMatches = () => {
@@ -150,6 +138,34 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const myMatches = getMyMatches();
 
+    const recentForm = myMatches.slice(-5).map(m => {
+        const isHome = m.resolvedHomeUid === user.uid;
+        const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
+        const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
+        if (myScore > opScore) return 'W';
+        if (myScore < opScore) return 'L';
+        return 'D';
+    });
+
+    // 🔥 [수술 포인트] 배경색, 워터마크 효과, 인증 배지 색상을 FORM 기세에 따라 자동 적용
+    const recentWins = recentForm.filter(f => f === 'W').length;
+    let cardBorder = "border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)]";
+    let bgOverlay = "bg-gradient-to-tr from-emerald-900/30 via-transparent to-transparent";
+    let watermarkStyle = "opacity-[0.15] drop-shadow-[0_0_15px_rgba(16,185,129,0.4)]";
+    let badgeGlow = "from-emerald-400 to-emerald-600 shadow-[0_0_15px_rgba(52,211,153,0.6)]";
+    
+    if (recentWins >= 4) {
+        cardBorder = "border-2 border-yellow-400/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]";
+        bgOverlay = "bg-gradient-to-br from-yellow-600/30 via-yellow-900/40 to-transparent";
+        watermarkStyle = "opacity-[0.25] drop-shadow-[0_0_30px_rgba(234,179,8,0.6)]";
+        badgeGlow = "from-yellow-400 to-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.6)]";
+    } else if (recentWins >= 2) {
+        cardBorder = "border border-blue-500/40 shadow-[0_0_30px_rgba(59,130,246,0.15)]";
+        bgOverlay = "bg-gradient-to-tr from-blue-900/30 via-transparent to-transparent";
+        watermarkStyle = "opacity-[0.2] drop-shadow-[0_0_20px_rgba(59,130,246,0.5)]";
+        badgeGlow = "from-blue-400 to-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.6)]";
+    }
+
     let gf = 0; let ga = 0;
     myMatches.forEach(m => {
         const isHome = m.resolvedHomeUid === user.uid;
@@ -170,7 +186,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         else playStyle = { label: '밸런스 조율사 ⚖️', color: 'text-blue-400', border: 'border-blue-500' };
     }
 
-    const trophies = { gold: myHistory?.golds || 0, silver: myHistory?.silvers || 0 };
+    const trophies = { gold: myHistory?.golds || 0, silver: myHistory?.silvers || 0, bronze: myHistory?.bronzes || 0 };
 
     const getH2HStats = () => {
         const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
@@ -258,7 +274,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const { topTeams, topScorers, topAssists } = getMyBestStats();
 
     const availableTeams = masterTeams || []; 
-
     const uniqueRegions = Array.from(new Set(availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean))).sort() as string[];
     const filteredTeamsForDropdown = availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory && t.region === editRegion).sort((a:any, b:any) => a.name.localeCompare(b.name));
 
@@ -266,7 +281,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         setIsSaving(true);
         try {
             const targetDocId = myOwnerData?.docId || user.uid;
-            
             const userRef = doc(db, 'users', targetDocId); 
             const batch = writeBatch(db); 
             
@@ -317,71 +331,91 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     return (
         <div className="space-y-6 animate-in fade-in pb-10 mt-4 relative text-left">
             
-            <div className="bg-[#050609] border border-slate-700/50 rounded-3xl p-6 sm:p-9 shadow-2xl relative overflow-hidden group">
-                <div className="absolute inset-0 bg-[url('/img/metal_pattern.png')] opacity-10 pointer-events-none"></div>
-                <div className="absolute inset-0 bg-gradient-to-br from-[#0B1120] to-black pointer-events-none"></div>
+            <div className={`rounded-3xl p-6 sm:p-8 relative overflow-hidden group transition-all duration-1000 bg-[#020617] ${cardBorder}`}>
                 
-                <div className="absolute -left-10 -top-10 w-60 h-60 bg-emerald-600/20 rounded-full blur-[80px] pointer-events-none group-hover:scale-110 transition-transform duration-700"></div>
-                <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-600/10 rounded-full blur-[80px] pointer-events-none"></div>
+                {/* 🔥 [수술 포인트] 배경 워터마크 사이즈 조절 및 폼 컬러 그림자 적용 */}
+                {displayTeam && (
+                    <div className={`absolute top-1/2 right-4 sm:right-10 -translate-y-1/2 pointer-events-none transition-opacity duration-700 z-0 ${watermarkStyle}`}>
+                        <div className="w-[140px] h-[140px] sm:w-[180px] sm:h-[180px]" style={{ backgroundImage: `url(${displayTeam.logo || FALLBACK_IMG})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
+                    </div>
+                )}
+                
+                <div className={`absolute inset-0 z-0 pointer-events-none ${bgOverlay}`}></div>
 
-                <div className="absolute top-4 right-5 sm:top-7 sm:right-9 flex gap-1.5 z-20 pointer-events-none">
-                    {Array.from({length: trophies.gold}).map((_, i) => <Trophy key={`g-${i}`} size={22} className="text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.7)]" />)}
-                    {Array.from({length: trophies.silver}).map((_, i) => <Trophy key={`s-${i}`} size={20} className="text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.5)] mt-0.5" />)}
-                    {trophies.gold === 0 && trophies.silver === 0 && <div className="text-[10px] text-slate-700 font-bold italic tracking-wider">NO TROPHIES YET</div>}
-                </div>
+                <button onClick={openEditModal} className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2.5 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 rounded-full border border-slate-700 shadow-md transition-all z-20 group/edit">
+                    <Settings size={18} className="group-hover/edit:rotate-90 transition-transform duration-300" />
+                </button>
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-6 relative z-10">
-                    <div className="relative shrink-0 flex justify-center">
+                <div className="flex flex-col sm:flex-row items-center sm:items-stretch gap-6 relative z-10">
+                    
+                    <div className="relative shrink-0 flex justify-center mt-2 sm:mt-0">
                         <div className="relative">
-                            <div className="absolute inset-0 rounded-full blur-md bg-emerald-500/30 scale-105 group-hover:bg-emerald-500/50 transition-colors"></div>
-                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-700 via-white to-slate-700 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-600 via-white/80 to-slate-800 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
                                 <div className="w-full h-full rounded-full bg-[#050b14] p-1 flex items-center justify-center overflow-hidden">
                                     <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" />
-                                    <div className="absolute top-0 left-0 w-full h-[45%] bg-gradient-to-b from-white/20 to-transparent rounded-t-full"></div>
                                 </div>
                             </div>
-                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 p-1.5 sm:p-2 rounded-full border-2 border-[#0B1120] shadow-xl z-20">
-                                <CheckCircle2 size={16} className="stroke-[3.5]" />
+                            {/* 🔥 [수술 포인트] 고급스러운 VERIFIED 인증 배지 복구 및 폼 컬러 동기화 */}
+                            <div className={`absolute -bottom-1 -right-1 bg-gradient-to-br text-white p-1.5 rounded-full border-[3px] border-[#020617] z-20 ${badgeGlow}`}>
+                                <CheckCircle2 size={16} className="stroke-[3]" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex flex-col min-w-0 flex-1 pt-1">
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-2.5">
-                            <span className="flex items-center gap-1.5 text-emerald-300 font-black text-[11px] tracking-[0.15em] uppercase bg-emerald-950/70 px-3 py-1.5 rounded-lg border border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]">
-                                <ShieldCheck size={14} className="text-emerald-400"/> VERIFIED OWNER
+                    <div className="flex flex-col items-center sm:items-start min-w-0 flex-1 pt-1 justify-center">
+                        
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+                            <span className={`px-2 py-[3px] text-[10px] font-black rounded border shadow-md flex items-center gap-1 bg-slate-900/80 backdrop-blur-sm ${playStyle.color} ${playStyle.border}`}>
+                                <Sparkles size={11}/> {playStyle.label}
                             </span>
-                            <span className={`px-3 py-1.5 text-[10px] font-black rounded-lg border shadow-[0_0_10px_rgba(0,0,0,0.3)] flex items-center gap-1 bg-[#0f172a] ${playStyle.color} ${playStyle.border}`}>
-                                <Sparkles size={12}/> {playStyle.label}
-                            </span>
+                            
+                            {(trophies.gold > 0 || trophies.silver > 0 || trophies.bronze > 0) && (
+                                <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/80 px-2 py-[3px] rounded shadow-md backdrop-blur-sm">
+                                    {trophies.gold > 0 && <span className="text-[10px] font-black text-yellow-400 flex items-center gap-0.5">🥇 {trophies.gold}</span>}
+                                    {trophies.silver > 0 && <span className="text-[10px] font-black text-slate-300 flex items-center gap-0.5">🥈 {trophies.silver}</span>}
+                                    {trophies.bronze > 0 && <span className="text-[10px] font-black text-orange-400 flex items-center gap-0.5">🥉 {trophies.bronze}</span>}
+                                </div>
+                            )}
                         </div>
-                        <h2 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] overflow-visible text-center sm:text-left break-all pr-0 sm:pr-10">
+                        
+                        <h2 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter drop-shadow-lg text-center sm:text-left break-all pr-0 sm:pr-10 leading-none mb-3">
                             {currentNick}
                         </h2>
                         
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start mt-2.5">
-                            {(() => {
-                                const displayTeam = myTeam || masterTeams?.find((t:any) => t.docId === myOwnerData?.favoriteTeamId || t.id === myOwnerData?.favoriteTeamId);
-                                return displayTeam ? (
-                                    <div className="flex items-center gap-2.5 bg-[#0B1120] px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-inner">
-                                        <div className="w-7 h-7 bg-white rounded-full p-0.5 flex shrink-0 items-center justify-center shadow-md">
-                                            <img src={displayTeam.logo || FALLBACK_IMG} alt="team logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
-                                        </div>
-                                        <span className="text-white text-sm sm:text-base font-black italic tracking-tight">{displayTeam.name}</span>
-                                        <span className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-black border uppercase tracking-wider ${getTierBadgeColor(displayTeam.tier)}`}>{displayTeam.tier} TIER</span>
-                                    </div>
-                                ) : (
-                                    <div className="px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-400 text-sm font-bold italic">
-                                        소속 구단 없음
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                    </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full justify-center sm:justify-start">
+                            {displayTeam ? (
+                                <div className="flex items-center justify-center sm:justify-start gap-2 bg-[#0B1120]/80 px-3 py-1.5 rounded-lg border border-slate-700/80 shadow-inner backdrop-blur-sm shrink-0">
+                                    <span className="text-white text-sm font-black italic tracking-tight">{displayTeam.name}</span>
+                                    <span className={`px-1.5 py-[1px] rounded text-[8px] font-black border uppercase ${getTierBadgeColor(displayTeam.tier)}`}>{displayTeam.tier}</span>
+                                </div>
+                            ) : (
+                                <div className="px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-400 text-xs font-bold italic shrink-0">
+                                    소속 구단 없음
+                                </div>
+                            )}
 
-                    <button onClick={openEditModal} className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 flex items-center gap-1.5 text-[10px] sm:text-xs font-black text-slate-500 hover:text-white bg-black/40 hover:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-800 hover:border-slate-700 transition-all shadow-inner z-20">
-                        <Settings size={13} /> <span>EDIT</span>
-                    </button>
+                            <div className="hidden sm:block w-px h-5 bg-slate-700/80"></div>
+
+                            <div className="flex items-center justify-center sm:justify-start gap-2">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest bg-slate-900/80 px-2 py-1 rounded-md border border-slate-800 shadow-inner">FORM</span>
+                                <div className="flex gap-1.5">
+                                    {recentForm.length === 0 ? (
+                                        <span className="text-[10px] text-slate-600 italic font-bold px-2 py-1">경기 없음</span>
+                                    ) : (
+                                        recentForm.map((res, i) => (
+                                            <div key={i} className={`w-5 h-5 sm:w-6 sm:h-6 rounded flex items-center justify-center text-[10px] sm:text-[11px] font-black shadow-md border
+                                                ${res === 'W' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 
+                                                  res === 'D' ? 'bg-slate-600/20 text-slate-400 border-slate-500/50' : 
+                                                  'bg-red-500/20 text-red-400 border-red-500/50'}`}>
+                                                {res}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
 
@@ -415,8 +449,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         <h3 className="text-[13px] sm:text-[15px] font-black text-white italic tracking-widest uppercase">상성 분석기</h3>
                     </div>
                     <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800 shadow-inner">
-                        <button onClick={() => setH2HFilter('TEAM')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'TEAM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><ShieldCheck size={12}/> 구단 기준</button>
-                        <button onClick={() => setH2HFilter('OWNER')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'OWNER' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12}/> 구단주 기준</button>
+                        {/* 🔥 [수술 포인트] 버튼 텍스트 직관성 개선 */}
+                        <button onClick={() => setH2HFilter('TEAM')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'TEAM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><ShieldCheck size={12}/> 팀 기준</button>
+                        <button onClick={() => setH2HFilter('OWNER')} className={`px-3 py-1.5 text-[10px] font-black rounded-md transition-all flex items-center gap-1 ${h2hFilter === 'OWNER' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12}/> 오너 기준</button>
                     </div>
                 </div>
 

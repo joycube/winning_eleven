@@ -45,11 +45,29 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   const [settlementSeason, setSettlementSeason] = useState<string>('ALL'); 
   const [statementSeason, setStatementSeason] = useState<string>('ALL');
 
+  // 🔥 [핵심 수술 포인트] 랭킹 뷰의 닉네임 번역기를 파이낸스 뷰에도 동일하게 장착!
+  const resolveOwnerNickname = useMemo(() => {
+      return (ownerName: any, ownerUid?: string) => {
+          try {
+              if (!ownerName) return '-';
+              const strName = String(ownerName).trim();
+              if (['-', 'CPU', 'SYSTEM', 'TBD', 'BYE', 'GUEST'].includes(strName.toUpperCase())) return strName;
+              
+              const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === strName || o.docId === strName));
+              if (foundByUid) return foundByUid.nickname;
+              
+              const foundByName = owners.find(o => o.nickname === strName || o.legacyName === strName);
+              return foundByName ? foundByName.nickname : strName;
+          } catch (e) {
+              return String(ownerName || '-');
+          }
+      };
+  }, [owners]);
+
   useEffect(() => {
     if (!user) {
       setActiveTab('HALL_OF_FAME');
     } else {
-      // 🔥 [FM 픽스] UID 우선 조회 후, 없으면 닉네임으로 내 오너 정보를 찾습니다.
       const myOwner = owners.find(o => (o.uid && o.uid === user.uid) || o.nickname === user.mappedOwnerId);
       if (myOwner) {
         setSelectedOwnerId(String(myOwner.id));
@@ -87,15 +105,22 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     return owners.map(owner => {
         let win = 0, draw = 0, loss = 0;
         const teamWins: Record<string, { logo: string, wins: number }> = {};
+        
+        // 현재 오너의 번역된 닉네임 (ex: JK -> 루키가문다)
+        const currentOwnerResolvedNick = owner.nickname;
 
         seasons.forEach(s => {
             s.rounds?.forEach(r => {
                 r.matches?.forEach(m => {
                     if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
                         const hScore = Number(m.homeScore); const aScore = Number(m.awayScore);
-                        // 🔥 [FM 픽스] 경기 기록 대조 시 닉네임 뿐만 아니라 UID(homeOwnerUid)도 체크합니다.
-                        const isHome = m.homeOwner === owner.nickname || (m.homeOwnerUid && m.homeOwnerUid === owner.uid);
-                        const isAway = m.awayOwner === owner.nickname || (m.awayOwnerUid && m.awayOwnerUid === owner.uid);
+                        
+                        // 🔥 [핵심 수술 포인트] 경기 기록 상의 과거 닉네임을 최신 닉네임으로 번역하여 비교!
+                        const resolvedHomeNick = resolveOwnerNickname(m.homeOwner, m.homeOwnerUid);
+                        const resolvedAwayNick = resolveOwnerNickname(m.awayOwner, m.awayOwnerUid);
+
+                        const isHome = resolvedHomeNick === currentOwnerResolvedNick;
+                        const isAway = resolvedAwayNick === currentOwnerResolvedNick;
 
                         if (isHome) {
                             if (hScore > aScore) { win++; teamWins[m.home] = { logo: m.homeLogo, wins: (teamWins[m.home]?.wins || 0) + 1 }; }
@@ -116,7 +141,6 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             if (teamWins[teamName].wins > bestTeam.wins) bestTeam = { name: teamName, logo: teamWins[teamName].logo, wins: teamWins[teamName].wins };
         });
 
-        // 🔥 [FM 픽스] 장부 필터링 시 레거시 숫자 ID와 새로운 구글 UID를 모두 확인합니다. (Dual-Track)
         const ownerLedgers = dbLedgers.filter(l => 
             String(l.ownerId) === String(owner.id) || 
             (owner.uid && String(l.ownerId) === owner.uid) ||
@@ -139,7 +163,7 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             trophies, win, draw, loss, bestTeam, totalRevenue, totalExpense, netProfit
         };
     });
-  }, [owners, seasons, dbLedgers]);
+  }, [owners, seasons, dbLedgers, resolveOwnerNickname]);
 
   const formatDate = (isoString: string) => {
     if (!isoString) return '-';
@@ -153,7 +177,6 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   const computedFinanceDetails = useMemo(() => {
     const details: Record<string, any> = {};
     owners.forEach(owner => {
-        // 🔥 [FM 픽스] 세부 내역 추출 시에도 ID/UID 이중 매칭
         const ownerLedgers = dbLedgers.filter(l => 
             String(l.ownerId) === String(owner.id) || 
             (owner.uid && String(l.ownerId) === owner.uid)
@@ -180,7 +203,6 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
         owners.forEach(o => { balances[String(o.id)] = 0; });
         
         sLedgers.forEach(l => {
-            // 🔥 [FM 픽스] 장부에 적힌 ID가 UID든 숫자 ID든 실제 Owner 객체를 찾아 점수를 합산합니다.
             const targetOwner = owners.find(o => String(o.id) === String(l.ownerId) || (o.uid && o.uid === String(l.ownerId)));
             if (targetOwner) {
                 const key = String(targetOwner.id);
@@ -213,7 +235,6 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     if (!selectedOwnerId) return {} as Record<string, SettlementGroup>;
     const groups: Record<string, SettlementGroup> = {};
     
-    // 선택된 구단주 객체 찾기
     const selOwner = owners.find(o => String(o.id) === selectedOwnerId);
 
     if (targetOwnerId === 'ALL') {
@@ -341,7 +362,6 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap shrink-0">Selected Owner :</span>
           {computedOwners
             .filter(o => {
-                // 🔥 [FM 픽스] 관리자거나, UID 또는 닉네임이 일치하는 본인 계정만 노출
                 const isMyAccount = (user.uid && o.id && owners.find(own => String(own.id) === o.id)?.uid === user.uid) || o.nickname === user.mappedOwnerId;
                 return user.role === 'ADMIN' || isMyAccount;
             })
