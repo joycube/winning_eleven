@@ -14,7 +14,7 @@ const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
         if (!match.id) return;
         const q = query(collection(db, 'match_comments'), where('matchId', '==', match.id));
         const unsubscribe = onSnapshot(q, (snap) => {
-            const docs = snap.docs.map(d => d.data());
+            const docs = snap.docs.map((d: any) => d.data());
             if (docs.length > 0) {
                 docs.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
                 setLatestComment(docs[0]);
@@ -96,7 +96,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   const getTeamMasterInfo = (teamName: string) => {
       if (!masterTeams || masterTeams.length === 0) return undefined;
       const cleanTarget = teamName.replace(/\s+/g, '').toLowerCase();
-      return (masterTeams as any[]).find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
+      return (masterTeams as any[]).find((t: any) => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
   };
 
   const getOwnerProfile = (idOrName: string, fallbackName?: string) => {
@@ -205,23 +205,23 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return matches.reverse().slice(0, 5); 
   }, [processedRounds]);
 
-  const hotPosts = [...posts].sort((a, b) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
+  const hotPosts = [...posts].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
 
   // LIVE FEED: 커뮤니티 데이터 가공
   const communityComments = useMemo(() => {
       let allComments: any[] = [];
       posts.forEach((p: any) => {
           if (p.comments && Array.isArray(p.comments)) {
-              allComments.push(...p.comments.map(c => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
+              allComments.push(...p.comments.map((c: any) => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
           }
           if (p.replies && Array.isArray(p.replies)) {
-              allComments.push(...p.replies.map(c => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
+              allComments.push(...p.replies.map((c: any) => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
           }
       });
       
       allComments.sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
       
-      const recent = allComments.slice(0, 10).map(c => ({
+      const recent = allComments.slice(0, 10).map((c: any) => ({
           id: c.id || Math.random().toString(),
           name: c.authorName || c.ownerName || '익명',
           uid: c.authorUid || c.ownerUid || c.authorName || c.ownerName,
@@ -241,7 +241,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   useEffect(() => {
       const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(15));
       const unsubscribe = onSnapshot(q, (snap) => {
-          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const docs = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
           setMatchCommentsData(docs);
       });
       return () => unsubscribe();
@@ -250,7 +250,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   const matchComments = useMemo(() => {
       const sortedMatchComments = [...matchCommentsData].sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
       
-      const recent = sortedMatchComments.slice(0, 10).map(c => ({
+      const recent = sortedMatchComments.slice(0, 10).map((c: any) => ({
           id: c.id,
           name: c.authorName || c.ownerName || '익명',
           uid: c.authorUid || c.ownerUid || c.authorName || c.ownerName,
@@ -421,7 +421,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
   return (
       <div className="animate-in fade-in pb-10 mt-2 text-left overflow-x-hidden">
-          {/* 🔥 [수술 포인트] 두 줄의 흐름 속도를 다르게 조정 (윗줄 45s, 아랫줄 32s) */}
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
               .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -594,7 +593,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       <div className="flex flex-col bg-[#050b14]">
                           {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
                               <div className="flex flex-col divide-y divide-slate-800/80">
-                                  {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match, idx) => (
+                                  {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match: any, idx: number) => (
                                       <React.Fragment key={idx}>
                                           {renderMatchRow(match, matchTab === 'RECENT')}
                                       </React.Fragment>
