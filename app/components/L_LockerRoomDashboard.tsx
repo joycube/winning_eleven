@@ -1,12 +1,90 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CalendarDays, MessageSquare, Flame, ChevronRight, Image as ImageIcon, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { db } from '../firebase';
+
+// 실제 매치톡 DB를 참조하는 전용 프리뷰 컴포넌트
+const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
+    const [latestComment, setLatestComment] = useState<any>(null);
+
+    useEffect(() => {
+        if (!match.id) return;
+        const q = query(collection(db, 'match_comments'), where('matchId', '==', match.id));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            const docs = snap.docs.map(d => d.data());
+            if (docs.length > 0) {
+                docs.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+                setLatestComment(docs[0]);
+            } else {
+                setLatestComment(null);
+            }
+        });
+        return () => unsubscribe();
+    }, [match.id]);
+
+    const getOwnerProfileLocal = (uid: string, name: string) => {
+        const found = owners?.find((o:any) => o.uid === uid || o.nickname === name);
+        return found?.photo || FALLBACK_IMG;
+    };
+
+    return (
+        <div onClick={onEnter} className="bg-[#080d1a] border-t border-slate-800/80 py-3 px-4 sm:px-6 flex items-center justify-between group/talk cursor-pointer hover:bg-[#0b1221] transition-colors">
+            {latestComment ? (
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <img src={getOwnerProfileLocal(latestComment.authorUid, latestComment.authorName)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                    <div className="flex items-baseline gap-1.5 min-w-0">
+                        <span className="text-[10px] font-black text-blue-400 shrink-0">{latestComment.authorName}</span>
+                        <span className="text-[11px] text-slate-300 font-medium truncate">
+                            {latestComment.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : latestComment.text}
+                        </span>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 min-w-0 flex-1 opacity-70 group-hover/talk:opacity-100 transition-opacity">
+                    <MessageSquare size={12} className="text-slate-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-slate-400 truncate">가장 먼저 코멘트(매치톡)를 남겨보세요!</span>
+                </div>
+            )}
+            <div className="flex items-center text-[9px] font-black text-slate-500 group-hover/talk:text-blue-400 transition-colors shrink-0 pl-3">
+                매치톡 입장 <ChevronRight size={12} className="ml-0.5" />
+            </div>
+        </div>
+    );
+};
+
+// 🔥 날짜/시간 정렬을 완벽하게 잡아주는 유틸리티 함수
+const getTimestamp = (val: any) => {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (typeof val.toDate === 'function') return val.toDate().getTime();
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+};
 
 export default function L_LockerRoomDashboard({ user, notices, seasons, masterTeams, owners, activeSeason, posts, uidDict, setViewMode, setCategory, setSelectedPostId }: any) {
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
+  
+  const activeOrLatestSeason = useMemo(() => {
+      if (!seasons || seasons.length === 0) return null;
+      const active = seasons.find((s: any) => s.status === 'ACTIVE');
+      return active || [...seasons].sort((a: any, b: any) => b.id - a.id)[0];
+  }, [seasons]);
+
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
+
+  useEffect(() => {
+      if (activeOrLatestSeason && !selectedSeasonId) {
+          setSelectedSeasonId(activeOrLatestSeason.id);
+      }
+  }, [activeOrLatestSeason, selectedSeasonId]);
+
+  const currentDashboardSeason = useMemo(() => {
+      return seasons?.find((s: any) => s.id === selectedSeasonId) || activeOrLatestSeason;
+  }, [seasons, selectedSeasonId, activeOrLatestSeason]);
 
   // --- 유틸 함수 ---
   const getRealLogoLocal = (teamName: string, fallback: string) => {
@@ -32,23 +110,22 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return found?.photo || FALLBACK_IMG;
   };
 
-  const formatDate = (ts: any) => {
-      if (!ts) return '방금 전';
-      let d = typeof ts === 'number' ? new Date(ts) : new Date(ts.toDate?.() || ts);
-      if (isNaN(d.getTime())) return '방금 전';
-      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-
-  // 🔥 [수술 포인트] 스케줄 뷰의 대진표 계산 로직을 그대로 가져와서 TBD를 승자 이름으로 교체합니다.
+  // --- 대진표 재계산 ---
   const processedRounds = useMemo(() => {
-      const latestSeason = seasons && seasons.length > 0 ? [...seasons].sort((a: any, b: any) => b.id - a.id)[0] : null;
-      const currentSeason = activeSeason || latestSeason;
-      
-      if (!currentSeason || !currentSeason.rounds) return [];
+      if (!currentDashboardSeason || !currentDashboardSeason.rounds) return [];
 
-      const displayRounds = JSON.parse(JSON.stringify(currentSeason.rounds));
+      const displayRounds = JSON.parse(JSON.stringify(currentDashboardSeason.rounds));
 
-      if (currentSeason.type === 'LEAGUE_PLAYOFF') {
+      const fillTeamData = (match: any, side: 'home' | 'away', teamName: string) => {
+          match[side] = teamName;
+          const master = getTeamMasterInfo(teamName);
+          match[`${side}Logo`] = master?.logo || FALLBACK_IMG;
+          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName);
+          match[`${side}Owner`] = owner?.nickname || master?.ownerName || '-';
+          match[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
+      };
+
+      if (currentDashboardSeason.type === 'LEAGUE_PLAYOFF') {
           const calcAgg = (leg1: any, leg2: any) => {
               if (!leg1) return null;
               let s1 = 0, s2 = 0;
@@ -85,10 +162,10 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
 
           if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
-              poFinalRounds.forEach((m: any) => { m.home = compSemi1.aggWinner; });
+              poFinalRounds.forEach((m: any) => fillTeamData(m, 'home', compSemi1.aggWinner));
           }
           if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
-              poFinalRounds.forEach((m: any) => { m.away = compSemi2.aggWinner; });
+              poFinalRounds.forEach((m: any) => fillTeamData(m, 'away', compSemi2.aggWinner));
           }
 
           const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
@@ -96,11 +173,11 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
 
           if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
-              grandFinalRounds.forEach((m: any) => { m.away = compPoFinal.aggWinner; });
+              grandFinalRounds.forEach((m: any) => fillTeamData(m, 'away', compPoFinal.aggWinner));
           }
       }
       return displayRounds;
-  }, [activeSeason, seasons]);
+  }, [currentDashboardSeason, masterTeams, owners]);
 
   // --- 데이터 추출 ---
   const upcomingMatchesList = useMemo(() => {
@@ -128,30 +205,68 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return matches.reverse().slice(0, 5); 
   }, [processedRounds]);
 
-  const liveTickerData = useMemo(() => {
+  const hotPosts = [...posts].sort((a, b) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
+
+  // LIVE FEED: 커뮤니티 데이터 가공
+  const communityComments = useMemo(() => {
       let allComments: any[] = [];
       posts.forEach((p: any) => {
           if (p.comments && Array.isArray(p.comments)) {
-              allComments = [...allComments, ...p.comments];
+              allComments.push(...p.comments.map(c => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
+          }
+          if (p.replies && Array.isArray(p.replies)) {
+              allComments.push(...p.replies.map(c => ({ ...c, type: 'COMMUNITY', targetId: p.id })));
           }
       });
-      allComments.sort((a, b) => b.createdAt - a.createdAt);
+      
+      allComments.sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
       
       const recent = allComments.slice(0, 10).map(c => ({
+          id: c.id || Math.random().toString(),
           name: c.authorName || c.ownerName || '익명',
           uid: c.authorUid || c.ownerUid || c.authorName || c.ownerName,
-          text: c.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : c.text,
+          text: c.text,
+          type: c.type,
+          targetId: c.targetId
       }));
 
       if (recent.length === 0) {
-          return owners?.slice(0, 3).map((o:any) => ({ name: o.nickname, uid: o.uid, text: "오늘 경기 화이팅입니다! 🔥" })) || [];
+          return owners?.slice(0, 3).map((o:any) => ({ id: Math.random(), name: o.nickname, uid: o.uid, text: "오늘도 활기찬 리그! 🔥", type: 'COMMUNITY', targetId: '' })) || [];
       }
       return recent;
   }, [posts, owners]);
 
-  const hotPosts = [...posts].sort((a, b) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
+  // LIVE FEED: 스케줄 매치톡 최신 데이터 수신
+  const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
+  useEffect(() => {
+      const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(15));
+      const unsubscribe = onSnapshot(q, (snap) => {
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setMatchCommentsData(docs);
+      });
+      return () => unsubscribe();
+  }, []);
 
-  // --- 🔥 네비게이션 핸들러 ---
+  const matchComments = useMemo(() => {
+      const sortedMatchComments = [...matchCommentsData].sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
+      
+      const recent = sortedMatchComments.slice(0, 10).map(c => ({
+          id: c.id,
+          name: c.authorName || c.ownerName || '익명',
+          uid: c.authorUid || c.ownerUid || c.authorName || c.ownerName,
+          text: c.text,
+          type: 'MATCH',
+          targetId: c.matchId,
+          seasonId: c.seasonId
+      }));
+
+      if (recent.length === 0) {
+          return owners?.slice(0, 3).map((o:any) => ({ id: Math.random(), name: o.nickname, uid: o.uid, text: "경기 기대됩니다! ⚽", type: 'MATCH', targetId: '' })) || [];
+      }
+      return recent;
+  }, [matchCommentsData, owners]);
+
+  // --- 네비게이션 핸들러 ---
   const handlePostClick = (post: any) => {
       setSelectedPostId(post.id);
       setViewMode('LIST');
@@ -162,16 +277,28 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   };
 
   const handleMatchTalkClick = (m: any) => {
-      let rawId = m.id || m.matchId;
-      const matchId = rawId ? (String(rawId).startsWith('match_') ? String(rawId) : `match_${rawId}`) : `match_${m.home}_${m.away}`;
-      
-      setSelectedPostId(matchId);
-      setViewMode('LIST');
-      
-      const params = new URLSearchParams(window.location.search);
-      params.set('view', 'LOCKERROOM'); params.set('postId', matchId);
-      window.history.pushState(null, '', `/?${params.toString()}`);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const targetSeasonId = m.seasonId || selectedSeasonId || (seasons && seasons.length > 0 ? seasons[0].id : 0);
+      window.location.href = `/?view=SCHEDULE&season=${targetSeasonId}&matchId=${m.id}`;
+  };
+
+  const handleTickerItemClick = (msg: any) => {
+      if (!msg.targetId) return;
+      if (msg.type === 'COMMUNITY') {
+          handlePostClick({ id: msg.targetId });
+      } else if (msg.type === 'MATCH') {
+          let sId = msg.seasonId;
+          if (!sId) {
+              for (const s of seasons) {
+                  for (const r of s.rounds || []) {
+                      if (r.matches?.find((m:any) => m.id === msg.targetId)) {
+                          sId = s.id; break;
+                      }
+                  }
+                  if (sId) break;
+              }
+          }
+          handleMatchTalkClick({ id: msg.targetId, seasonId: sId || selectedSeasonId });
+      }
   };
 
   // --- 컴포넌트 렌더러 ---
@@ -202,13 +329,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       const awayMaster = getTeamMasterInfo(m.away);
       const hRate = Number(m.homePredictRate) > 0 ? Number(m.homePredictRate) : 50;
       const aRate = Number(m.awayPredictRate) > 0 ? Number(m.awayPredictRate) : 50;
+      
+      const pureSeasonName = currentDashboardSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
 
       return (
-          <div 
-              onClick={() => isRecent && handleMatchTalkClick(m)} 
-              className={`flex flex-col bg-slate-900/40 relative transition-colors group ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
-          >
-              <div className="flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6">
+          <div className="flex flex-col bg-slate-900/40 relative transition-colors group">
+              <div 
+                  onClick={() => isRecent && handleMatchTalkClick(m)} 
+                  className={`flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6 ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
+              >
                   {/* HOME */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
                       <div className="flex flex-col items-end gap-1 min-w-0">
@@ -225,6 +354,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   
                   {/* CENTER */}
                   <div className="w-[80px] sm:w-[100px] shrink-0 flex flex-col items-center justify-center px-1">
+                      <span className="text-[8px] text-blue-400 font-black mb-0.5 truncate w-full text-center tracking-tighter opacity-80">{pureSeasonName}</span>
                       <span className="text-[9px] text-slate-500 font-bold mb-1.5 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 uppercase tracking-widest text-center line-clamp-1">{m.matchLabel || 'MATCH'}</span>
                       {isRecent ? (
                           <div className="flex items-center gap-1.5 text-[20px] sm:text-[24px] font-black italic tracking-tighter leading-none">
@@ -252,7 +382,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               </div>
 
-              {/* 예상승률 얇은 바 (UPCOMING일 때만) */}
               {!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && (
                   <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none">
                       <div className="flex justify-between text-[8px] font-black px-1">
@@ -267,50 +396,42 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               )}
 
-              {/* RECENT 매치톡 코멘트 탭 */}
-              {isRecent && (() => {
-                  let rawId = m.id || m.matchId;
-                  const matchPostId = rawId ? (String(rawId).startsWith('match_') ? String(rawId) : `match_${rawId}`) : `match_${m.home}_${m.away}`;
-                  const targetPost = posts.find((p:any) => p.id === matchPostId);
-                  const targetComments = targetPost?.comments || targetPost?.replies || [];
-                  const latestComment = targetComments.length > 0 ? [...targetComments].sort((a,b) => b.createdAt - a.createdAt)[0] : null;
+              {isRecent && <RecentMatchTalkPreview match={m} owners={owners} onEnter={() => handleMatchTalkClick(m)} />}
+          </div>
+      );
+  };
 
-                  return (
-                      <div className="bg-[#080d1a] border-t border-slate-800/80 py-3 px-4 sm:px-6 flex items-center justify-between group/talk">
-                          {latestComment ? (
-                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                  <img src={getOwnerProfile(latestComment.ownerUid || latestComment.authorUid, latestComment.ownerName || latestComment.authorName)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
-                                  <div className="flex items-baseline gap-1.5 min-w-0">
-                                      <span className="text-[10px] font-black text-blue-400 shrink-0">{latestComment.ownerName || latestComment.authorName}</span>
-                                      <span className="text-[11px] text-slate-300 font-medium truncate">
-                                          {latestComment.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : latestComment.text}
-                                      </span>
-                                  </div>
-                              </div>
-                          ) : (
-                              <div className="flex items-center gap-2 min-w-0 flex-1 opacity-70 group-hover/talk:opacity-100 transition-opacity">
-                                  <MessageSquare size={12} className="text-slate-500 shrink-0" />
-                                  <span className="text-[10px] font-bold text-slate-400 truncate">가장 먼저 코멘트(매치톡)를 남겨보세요!</span>
-                              </div>
-                          )}
-                          <div className="flex items-center text-[9px] font-black text-slate-500 group-hover/talk:text-blue-400 transition-colors shrink-0 pl-3">
-                              매치톡 입장 <ChevronRight size={12} className="ml-0.5" />
-                          </div>
-                      </div>
-                  );
-              })()}
+  // 라이브 피드 개별 아이템 렌더링
+  const renderTickerMessage = (msg: any) => {
+      const isSticker = msg.text?.startsWith('[STICKER]');
+      return (
+          <div key={msg.id + Math.random()} onClick={() => handleTickerItemClick(msg)} className="flex items-center shrink-0 mx-1.5 cursor-pointer hover:bg-slate-800/80 px-3 py-1 rounded-xl transition-all group/item">
+              <div className="flex items-center gap-1.5 mr-1.5 shrink-0">
+                  <img src={getOwnerProfile(msg.uid, msg.name)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0 shadow-sm" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                  <span className="text-[11px] text-blue-400 font-black whitespace-nowrap shrink-0 group-hover/item:text-blue-300 transition-colors">{msg.name}:</span>
+              </div>
+              {isSticker ? (
+                  <img src={msg.text.replace('[STICKER]', '')} className="h-6 w-auto object-contain drop-shadow-sm ml-0.5" alt="sticker" />
+              ) : (
+                  <span className="text-slate-300 text-[12px] font-medium whitespace-nowrap shrink-0 group-hover/item:text-white transition-colors">{msg.text}</span>
+              )}
           </div>
       );
   };
 
   return (
       <div className="animate-in fade-in pb-10 mt-2 text-left overflow-x-hidden">
+          {/* 🔥 [수술 포인트] 두 줄의 흐름 속도를 다르게 조정 (윗줄 45s, 아랫줄 32s) */}
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
               .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-              @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-              .ticker-track { display: flex; width: max-content; animation: ticker 35s linear infinite; }
-              .ticker-track:hover { animation-play-state: paused; }
+              @keyframes ticker-ltr { 0% { transform: translateX(-50%); } 100% { transform: translateX(0); } }
+              
+              .ticker-track-1 { display: flex; width: max-content; animation: ticker-ltr 45s linear infinite; }
+              .ticker-track-1:hover { animation-play-state: paused; }
+              
+              .ticker-track-2 { display: flex; width: max-content; animation: ticker-ltr 32s linear infinite; animation-delay: -16s; }
+              .ticker-track-2:hover { animation-play-state: paused; }
           `}</style>
 
           {/* 1. 공지사항 */}
@@ -326,6 +447,31 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   ))}
               </div>
           )}
+
+          {/* LIVE FEED */}
+          <div className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2 relative overflow-hidden shadow-lg mb-6">
+              <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 z-20"></div>
+              
+              <div className="flex items-center gap-2 pl-2 mb-1 z-20">
+                  <div className="bg-blue-900/30 p-1.5 rounded-lg shrink-0">
+                      <MessageSquare size={14} className="text-blue-400" />
+                  </div>
+                  <span className="text-xs font-black text-white italic uppercase tracking-widest">LIVE FEED</span>
+                  <span className="text-[9px] text-emerald-400 font-bold px-2 py-0.5 bg-emerald-950/30 rounded-full border border-emerald-900/50 animate-pulse ml-2">REAL-TIME</span>
+              </div>
+              
+              <div className="absolute left-0 w-12 h-full bg-gradient-to-r from-[#0B1120] to-transparent z-10 pointer-events-none"></div>
+              <div className="absolute right-0 w-12 h-full bg-gradient-to-l from-slate-900 to-transparent z-10 pointer-events-none"></div>
+
+              <div className="flex flex-col gap-1 overflow-hidden relative z-0 py-1">
+                  <div className="ticker-track-1">
+                      {[...communityComments, ...communityComments].map(renderTickerMessage)}
+                  </div>
+                  <div className="ticker-track-2">
+                      {[...matchComments, ...matchComments].map(renderTickerMessage)}
+                  </div>
+              </div>
+          </div>
 
           {/* 2. 리그 커뮤니티 */}
           <div className="mb-6">
@@ -403,70 +549,66 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           </div>
 
-          {/* 3. 매치톡 전광판 (라이브 데이터) */}
-          <div onClick={() => { 
-              setCategory('매치톡'); 
-              setViewMode('LIST'); 
-              const params = new URLSearchParams(window.location.search);
-              params.set('view', 'LOCKERROOM');
-              params.delete('postId');
-              window.history.pushState(null, '', `/?${params.toString()}`);
-              window.scrollTo({ top: 0, behavior: 'smooth' }); 
-          }} className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center gap-3 cursor-pointer hover:border-slate-600 hover:shadow-lg transition-all mb-8 relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 group-hover:bg-blue-400 transition-colors z-20"></div>
-              <div className="bg-blue-900/30 p-2 rounded-xl shrink-0 group-hover:scale-110 transition-transform duration-300 z-20 relative">
-                  <MessageSquare size={16} className="text-blue-400" />
-              </div>
-              
-              <div className="absolute left-10 w-8 h-full bg-gradient-to-r from-[#0B1120] to-transparent z-10 pointer-events-none"></div>
-              <div className="absolute right-12 w-12 h-full bg-gradient-to-l from-slate-900 to-transparent z-10 pointer-events-none"></div>
-
-              <div className="flex-1 overflow-hidden relative flex items-center h-full">
-                  <div className="ticker-track">
-                      {[...liveTickerData, ...liveTickerData].map((msg, i) => (
-                          <div key={i} className="flex items-center shrink-0 mx-4">
-                              <div className="flex items-center gap-1.5 mr-2 shrink-0">
-                                  <img src={getOwnerProfile(msg.uid, msg.name)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
-                                  <span className="text-[11px] text-blue-400 font-black whitespace-nowrap shrink-0">{msg.name}:</span>
-                              </div>
-                              <span className="text-slate-300 text-[12px] font-medium whitespace-nowrap shrink-0">{msg.text}</span>
-                              <span className="ml-6 text-slate-700 text-[10px] shrink-0">♦</span>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-              <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest shrink-0 bg-slate-800/80 px-2 py-1 rounded z-20 relative">입장</span>
-          </div>
-
           {/* 4. 경기 정보 (UPCOMING / RECENT) */}
           <div className="mb-8">
-              <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                  <div className="flex border-b border-slate-800 h-[45px] bg-slate-950/50">
-                      <button onClick={() => setMatchTab('UPCOMING')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-[11px] font-black tracking-widest transition-all ${matchTab === 'UPCOMING' ? 'bg-slate-900 text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                          <CalendarDays size={14}/> UPCOMING
-                      </button>
-                      <button onClick={() => setMatchTab('RECENT')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-[11px] font-black tracking-widest transition-all ${matchTab === 'RECENT' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                          <Clock size={14}/> RECENT
-                      </button>
-                  </div>
-
-                  <div className="flex flex-col bg-[#050b14]">
-                      {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
-                          <div className="flex flex-col divide-y divide-slate-800/80">
-                              {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match, idx) => (
-                                  <React.Fragment key={idx}>
-                                      {renderMatchRow(match, matchTab === 'RECENT')}
-                                  </React.Fragment>
-                              ))}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 px-1 gap-3">
+                  <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2 shrink-0">
+                      <CalendarDays size={16} className="text-blue-500" /> MATCH CENTER
+                  </h3>
+                  {seasons && seasons.length > 0 && (
+                      <div className="relative w-full sm:w-auto min-w-[200px]">
+                          <select
+                              value={selectedSeasonId || ''}
+                              onChange={(e) => setSelectedSeasonId(Number(e.target.value))}
+                              className="w-full appearance-none bg-slate-950 border border-slate-700 text-white text-xs font-bold py-2 pl-3 pr-8 rounded-lg outline-none focus:border-blue-500 shadow-sm cursor-pointer"
+                          >
+                              {seasons.map((s:any) => {
+                                  const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '');
+                                  let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️'; if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
+                                  return <option key={s.id} value={s.id}>{icon} {pureName}</option>;
+                              })}
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                           </div>
-                      ) : (
-                          <div className="bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center">
-                              <CalendarDays size={32} className="text-slate-600 mb-2" />
-                              <span className="text-xs font-bold text-slate-400">해당하는 매치 기록이 없습니다.</span>
-                          </div>
-                      )}
-                  </div>
+                      </div>
+                  )}
               </div>
+
+              {(!seasons || seasons.length === 0) ? (
+                  <div className="bg-[#050b14] border border-slate-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center shadow-xl">
+                      <CalendarDays size={40} className="text-slate-600 mb-4" />
+                      <span className="text-sm font-black text-slate-300 italic">현재 진행 중인 시즌이 없습니다.</span>
+                  </div>
+              ) : (
+                  <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                      <div className="flex border-b border-slate-800 h-[45px] bg-slate-950/50">
+                          <button onClick={() => setMatchTab('UPCOMING')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-[11px] font-black tracking-widest transition-all ${matchTab === 'UPCOMING' ? 'bg-slate-900 text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                              <CalendarDays size={14}/> UPCOMING
+                          </button>
+                          <button onClick={() => setMatchTab('RECENT')} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-[11px] font-black tracking-widest transition-all ${matchTab === 'RECENT' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                              <Clock size={14}/> RECENT
+                          </button>
+                      </div>
+
+                      <div className="flex flex-col bg-[#050b14]">
+                          {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
+                              <div className="flex flex-col divide-y divide-slate-800/80">
+                                  {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match, idx) => (
+                                      <React.Fragment key={idx}>
+                                          {renderMatchRow(match, matchTab === 'RECENT')}
+                                      </React.Fragment>
+                                  ))}
+                              </div>
+                          ) : (
+                              <div className="bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center">
+                                  <CalendarDays size={32} className="text-slate-600 mb-2 opacity-50" />
+                                  <span className="text-xs font-bold text-slate-500">해당하는 매치 기록이 없습니다.</span>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              )}
           </div>
       </div>
   );

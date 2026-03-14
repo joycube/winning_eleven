@@ -175,33 +175,68 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
+  // 🔥 [수술 포인트] URL에서 matchId를 읽고, 해당 경기로 스크롤한 뒤 팝업(모달)을 자동으로 열어줍니다.
   useEffect(() => {
       if (viewMode === 'CUP' || !currentSeason?.rounds) return;
 
+      const params = new URLSearchParams(window.location.search);
+      const urlMatchId = params.get('matchId');
+
       let targetMatchId: string | null = null;
+      let urlTargetMatch: Match | null = null;
 
-      for (const round of currentSeason.rounds) {
-          const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
-          if (upcomingMatch) {
-              targetMatchId = upcomingMatch.id;
-              break;
+      if (urlMatchId) {
+          targetMatchId = urlMatchId;
+          // 전체 매치 속에서 urlMatchId에 해당하는 객체를 찾습니다.
+          for (const round of currentSeason.rounds) {
+              const found = round.matches.find(m => m.id === urlMatchId);
+              if (found) {
+                  urlTargetMatch = found;
+                  break;
+              }
           }
-      }
-
-      if (!targetMatchId && currentSeason.rounds.length > 0) {
-          const lastRound = currentSeason.rounds[currentSeason.rounds.length - 1];
-          if (lastRound.matches.length > 0) {
-              targetMatchId = lastRound.matches[lastRound.matches.length - 1].id;
+      } else {
+          // 원래 있던 기본 스크롤 로직 (가장 최근 경기 위치로 이동)
+          for (const round of currentSeason.rounds) {
+              const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
+              if (upcomingMatch) {
+                  targetMatchId = upcomingMatch.id;
+                  break;
+              }
+          }
+          if (!targetMatchId && currentSeason.rounds.length > 0) {
+              const lastRound = currentSeason.rounds[currentSeason.rounds.length - 1];
+              if (lastRound.matches.length > 0) {
+                  targetMatchId = lastRound.matches[lastRound.matches.length - 1].id;
+              }
           }
       }
 
       if (targetMatchId && matchRefs.current[targetMatchId]) {
         const finalId = targetMatchId; 
         setTimeout(() => {
+            // 부드러운 스크롤 이동
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // 🔥 URL 파라미터가 있었다면, 스크롤 후 매치톡 팝업을 띄우고 URL을 청소합니다.
+            if (urlTargetMatch) {
+                // 부모로부터 받아온 onMatchClick 함수를 실행해서 모달을 띄움
+                const translatedHomeOwner = resolveOwnerInfo(owners, urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid).nickname;
+                const translatedAwayOwner = resolveOwnerInfo(owners, urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid).nickname;
+                const safeMatch = { 
+                    ...urlTargetMatch, 
+                    homeOwner: translatedHomeOwner, 
+                    awayOwner: translatedAwayOwner,
+                    // matchLabel 등은 모달이 알아서 띄우므로 원본 넘김
+                };
+                onMatchClick(safeMatch);
+                
+                params.delete('matchId');
+                window.history.replaceState(null, '', `?${params.toString()}`);
+            }
         }, 300);
     }
-  }, [currentSeason, viewMode]);
+  }, [currentSeason, viewMode, owners]);
 
   const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
     const s = stage.toUpperCase();
@@ -239,7 +274,6 @@ export const ScheduleView = ({
       };
   };
 
-  // 🔥 [수술 포인트] 점수 동점 여부와 관계없이, DB에 저장된 강제 진출(aggWinner)이 있다면 무조건 그것을 따르도록 수정!
   const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
       if (!leg1) return null;
       let s1 = 0, s2 = 0;
@@ -255,13 +289,11 @@ export const ScheduleView = ({
       
       let aggWinner = 'TBD';
       
-      // DB에 저장된 승자가 있으면 가장 최우선으로 적용!
       if (leg2 && (leg2 as any).aggWinner && (leg2 as any).aggWinner !== 'TBD') {
           aggWinner = (leg2 as any).aggWinner;
       } else if ((leg1 as any).aggWinner && (leg1 as any).aggWinner !== 'TBD') {
           aggWinner = (leg1 as any).aggWinner;
       } 
-      // 강제 지정된 승자가 없을 때만 점수로 판별
       else if (isLeg1Done && (!leg2 || isLeg2Done)) {
           if (s1 > s2) aggWinner = t1;
           else if (s2 > s1) aggWinner = t2;
@@ -276,10 +308,10 @@ export const ScheduleView = ({
   const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
   const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
 
-  const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel.includes('5위') && m.matchLabel.includes('1차전'));
-  const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel.includes('2위') && m.matchLabel.includes('2차전'));
-  const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel.includes('4위') && m.matchLabel.includes('1차전'));
-  const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel.includes('3위') && m.matchLabel.includes('2차전'));
+  const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
+  const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
+  const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
+  const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
 
   const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
   const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
@@ -291,8 +323,8 @@ export const ScheduleView = ({
       poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi2.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; m.awayOwnerUid = info.ownerUid; });
   }
 
-  const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel.includes('1차전'));
-  const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel.includes('2차전'));
+  const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+  const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
   const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
 
   if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
@@ -383,7 +415,6 @@ export const ScheduleView = ({
                                                     const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                     const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
                                                     
-                                                    // 🔥 스냅샷 오너명을 최신 닉네임으로 교체하여 MatchCard에 전달
                                                     const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                                     const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
                                                     
@@ -434,7 +465,6 @@ export const ScheduleView = ({
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                 const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
                                                 
-                                                // 🔥 스냅샷 오너명을 최신 닉네임으로 교체하여 MatchCard에 전달
                                                 const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                                 const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
 

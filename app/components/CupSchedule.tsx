@@ -227,10 +227,10 @@ export const CupSchedule = ({
 
   const displayStages = knockoutStages || internalKnockoutStages;
 
+  // 🔥 [핵심 수술 포인트] URL에서 matchId를 읽고, 해당 경기로 스크롤한 뒤 팝업(모달)을 자동으로 열어줍니다.
   useEffect(() => {
     if (!currentSeason || !currentSeason.rounds) return; 
 
-    let targetMatchId: string | null = null;
     let allMatches: Match[] = [];
 
     if (displayStages) { 
@@ -247,21 +247,39 @@ export const CupSchedule = ({
         });
     }
 
-    const upcomingMatch = allMatches.find(m => m.status !== 'COMPLETED' && m.id && !m.id.startsWith('v-')); 
+    const params = new URLSearchParams(window.location.search);
+    const urlMatchId = params.get('matchId');
     
-    if (upcomingMatch) {
-        targetMatchId = upcomingMatch.id;
+    let targetMatchId: string | null = null;
+    let urlTargetMatch: Match | null = null;
+
+    if (urlMatchId) {
+        targetMatchId = urlMatchId;
+        urlTargetMatch = allMatches.find(m => m.id === urlMatchId) || null;
     } else {
-        const completedMatches = allMatches.filter(m => m.status === 'COMPLETED' && m.id);
-        if (completedMatches.length > 0) {
-            targetMatchId = completedMatches[completedMatches.length - 1].id;
+        const upcomingMatch = allMatches.find(m => m.status !== 'COMPLETED' && m.id && !m.id.startsWith('v-')); 
+        if (upcomingMatch) {
+            targetMatchId = upcomingMatch.id;
+        } else {
+            const completedMatches = allMatches.filter(m => m.status === 'COMPLETED' && m.id);
+            if (completedMatches.length > 0) {
+                targetMatchId = completedMatches[completedMatches.length - 1].id;
+            }
         }
     }
 
     if (targetMatchId && matchRefs.current[targetMatchId]) {
         const finalId = targetMatchId; 
         setTimeout(() => {
+            // 해당 매치 카드로 부드럽게 스크롤
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // 🔥 URL을 통해 들어왔다면, 스크롤 직후 매치톡 팝업을 띄우고 URL을 청소합니다.
+            if (urlTargetMatch) {
+                onMatchClick(urlTargetMatch);
+                params.delete('matchId');
+                window.history.replaceState(null, '', `?${params.toString()}`);
+            }
         }, 300);
     }
   }, [currentSeason, displayStages, viewSeasonId]);
@@ -351,17 +369,15 @@ export const CupSchedule = ({
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                        // 🔥 [수술 포인트] 스냅샷의 박제된 오너명을 최신 닉네임으로 변환하여 MatchCard로 내려줍니다.
                                         const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
                                         
                                         return (
                                             <div key={m.id} 
-                                                 ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                 ref={(el) => matchRefs.current[m.id] = el}
                                                  className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    {/* 🔥 owners 명부도 MatchCard로 전달하여 내부 번역 호환성 유지 */}
                                                     <MatchCard match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -384,17 +400,15 @@ export const CupSchedule = ({
                                     {section.matches.map((m: any, mIdx: number) => {
                                         if (m.id && m.id.startsWith('v-')) return null;
 
-                                        // 🔥 [수술 포인트] 스냅샷의 박제된 오너명을 최신 닉네임으로 변환하여 MatchCard로 내려줍니다.
                                         const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
                                         
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} 
-                                                 ref={(el) => { if (m.id) matchRefs.current[m.id] = el; }} // 🔥 Ref 할당
+                                                 ref={(el) => { if (m.id) matchRefs.current[m.id] = el; }}
                                                  className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    {/* 🔥 owners 명부 전달 */}
                                                     <MatchCard match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -417,17 +431,15 @@ export const CupSchedule = ({
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        // 🔥 [수술 포인트] 스냅샷의 박제된 오너명을 최신 닉네임으로 변환하여 MatchCard로 내려줍니다.
                                         const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
                                         
                                         return (
                                             <div key={m.id} 
-                                                 ref={(el) => matchRefs.current[m.id] = el} // 🔥 Ref 할당
+                                                 ref={(el) => matchRefs.current[m.id] = el}
                                                  className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    {/* 🔥 owners 명부 전달 */}
                                                     <MatchCard match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
