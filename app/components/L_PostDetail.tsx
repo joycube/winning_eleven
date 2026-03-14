@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useRef } from 'react';
 import { db } from '../firebase';
-// 🔥 [수술 포인트] deleteDoc이 누락되어 있던 것을 추가했습니다!
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
@@ -65,6 +64,10 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     if (!activePost) return null;
 
     const isNotice = !!notices.find((n:any) => n.id === activePost.id);
+
+    const isPostAuthor = user?.uid === (activePost.authorUid || activePost.ownerUid || activePost.authorId || activePost.ownerId) || 
+                         normalizeName(user?.mappedOwnerId) === normalizeName(activePost.authorName || activePost.ownerName) || 
+                         isMaster;
 
     const getNoticeAuthorData = () => {
         const rawName = activePost.authorName || activePost.ownerName;
@@ -205,10 +208,17 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                         <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
                             {activePost.cat || '전체공지'}
                         </span>
-                        {(user?.uid === (activePost.authorUid || activePost.ownerUid || activePost.authorId || activePost.ownerId) || isMaster) && (
+                        
+                        {isPostAuthor && (
                             <div className="flex gap-2 text-[10px] font-bold">
-                                {!isNotice && <button onClick={() => setEditingPostId(activePost.id)} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-blue-400 transition-all shadow-sm">✏️ 수정</button>}
-                                <button onClick={handleDeletePost} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-red-400 transition-all shadow-sm">🗑️ 삭제</button>
+                                {!isNotice && (
+                                    <button onClick={() => { setEditingPostId(activePost.id); setViewMode('EDIT'); }} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-blue-400 transition-all shadow-sm">
+                                        ✏️ 수정
+                                    </button>
+                                )}
+                                <button onClick={handleDeletePost} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-red-400 transition-all shadow-sm">
+                                    🗑️ 삭제
+                                </button>
                             </div>
                         )}
                     </div>
@@ -251,48 +261,157 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                 {/* 댓글 영역 */}
                 <div className="p-4 sm:p-6 bg-slate-950/30 rounded-b-3xl">
                     <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span></h4>
+                    
                     <div className="mb-6 border-t border-slate-800/50">
                         {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>}
+                        
                         {(activePost.comments || activePost.replies || []).filter((c:any) => !c.parentId).map((comment: any) => {
                             const replies = isNotice ? (comment.replies || []) : (activePost.comments||[]).filter((c: any) => c.parentId === comment.id);
                             const cName = comment.authorName || comment.ownerName || '알 수 없음';
                             const authorProfileImg = getBestProfileImage(user, owners, comment.authorPhoto || comment.ownerPhoto, cName);
                             const isLiked = isNotice ? comment.likedBy?.includes(user?.uid) : comment.likes?.includes(user?.uid);
                             const isSticker = comment.text?.startsWith('[STICKER]');
+                            
+                            const isCommentAuthor = user?.uid === (comment.authorUid || comment.ownerUid) || 
+                                                    normalizeName(user?.mappedOwnerId) === normalizeName(cName) || 
+                                                    isMaster;
 
                             return (
                                 <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
+                                    {/* --- 메인 댓글 --- */}
                                     <div className="flex gap-3.5">
                                         <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-baseline gap-2 mb-1.5">
                                                 <span className="font-bold text-emerald-400 text-sm whitespace-nowrap">{cName}</span>
-                                                <span className="text-slate-500 text-[10px]">{formatDate(comment.createdAt, true)}</span>
+                                                <span className="text-slate-500 text-[10px]">
+                                                    {formatDate(comment.createdAt, true)}
+                                                    {comment.isEdited && <span className="ml-1 text-slate-600">(수정됨)</span>}
+                                                </span>
                                             </div>
-                                            {isSticker ? (
-                                                <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-2.5" alt="sticker" />
+                                            
+                                            {editingCommentId === comment.id ? (
+                                                <div className="mt-2 mb-3 flex flex-col gap-2">
+                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-4 py-1.5 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-xs font-bold hover:text-white transition-colors">취소</button>
+                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors">저장</button>
+                                                    </div>
+                                                </div>
                                             ) : (
-                                                <p className="text-[14px] text-slate-200 mb-2.5 font-medium">{comment.text}</p>
+                                                isSticker ? (
+                                                    <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-2.5" alt="sticker" />
+                                                ) : (
+                                                    <p className="text-[14px] text-slate-200 mb-2.5 font-medium whitespace-pre-wrap leading-relaxed">{comment.text}</p>
+                                                )
                                             )}
+
                                             <div className="flex items-center gap-4 text-[12px] text-slate-400 font-bold mt-1">
-                                                <button onClick={() => handleCommentReaction(comment.id)} className={`flex items-center gap-1 ${isLiked ? 'text-emerald-400' : ''}`}><ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}</button>
-                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: cName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white"><MessageSquare size={13}/> 답글</button>
-                                                {(user?.uid === (comment.authorUid || comment.ownerUid) || isMaster) && <button onClick={() => handleDeleteComment(comment.id)} className="hover:text-red-400 ml-auto">삭제</button>}
+                                                <button onClick={() => handleCommentReaction(comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}>
+                                                    <ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}
+                                                </button>
+                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: cName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
+                                                    <MessageSquare size={13}/> 답글
+                                                </button>
+                                                
+                                                {isCommentAuthor && !editingCommentId && (
+                                                    <div className="ml-auto flex items-center gap-3 text-[11px]">
+                                                        {!isSticker && <button onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }} className="hover:text-blue-400 transition-colors">수정</button>}
+                                                        <button onClick={() => handleDeleteComment(comment.id)} className="hover:text-red-400 transition-colors">삭제</button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* 🔥 [수술 포인트 2] 대댓글(답글) 렌더링 로직 완벽 복구 */}
+                                    {replies.length > 0 && (
+                                        <div className="mt-4 space-y-4 pl-10 sm:pl-12 border-l-2 border-slate-800/50 ml-4">
+                                            {replies.map((reply: any) => {
+                                                const rName = reply.authorName || reply.ownerName || '알 수 없음';
+                                                const rProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, rName);
+                                                const isRLiked = isNotice ? reply.likedBy?.includes(user?.uid) : reply.likes?.includes(user?.uid);
+                                                const isRSticker = reply.text?.startsWith('[STICKER]');
+                                                const isReplyAuthor = user?.uid === (reply.authorUid || reply.ownerUid) || normalizeName(user?.mappedOwnerId) === normalizeName(rName) || isMaster;
+
+                                                return (
+                                                    <div key={reply.id} className="flex gap-3">
+                                                        <img src={rProfileImg} alt="profile" className="w-7 h-7 rounded-full object-cover shrink-0 bg-slate-800" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-baseline gap-2 mb-1.5">
+                                                                <span className="font-bold text-slate-300 text-xs whitespace-nowrap">{rName}</span>
+                                                                <span className="text-slate-500 text-[9px]">{formatDate(reply.createdAt, true)}{reply.isEdited && ' (수정됨)'}</span>
+                                                            </div>
+
+                                                            {editingCommentId === reply.id ? (
+                                                                <div className="mt-2 mb-3 flex flex-col gap-2">
+                                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
+                                                                    <div className="flex justify-end gap-2">
+                                                                        <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-4 py-1.5 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-xs font-bold hover:text-white transition-colors">취소</button>
+                                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors">저장</button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                isRSticker ? (
+                                                                    <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
+                                                                ) : (
+                                                                    <p className="text-[13px] text-slate-300 mb-2 font-medium whitespace-pre-wrap leading-relaxed">{reply.text}</p>
+                                                                )
+                                                            )}
+
+                                                            <div className="flex items-center gap-4 text-[11px] text-slate-400 font-bold mt-1">
+                                                                <button onClick={() => handleCommentReaction(reply.id, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isRLiked ? 'text-emerald-400' : ''}`}>
+                                                                    <ThumbsUp size={12} className={isRLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}
+                                                                </button>
+                                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: reply.id, authorName: rName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
+                                                                    <MessageSquare size={12}/> 답글
+                                                                </button>
+
+                                                                {isReplyAuthor && !editingCommentId && (
+                                                                    <div className="ml-auto flex items-center gap-3 text-[10px]">
+                                                                        {!isRSticker && <button onClick={() => { setEditingCommentId(reply.id); setEditCommentText(reply.text); }} className="hover:text-blue-400 transition-colors">수정</button>}
+                                                                        <button onClick={() => handleDeleteComment(reply.id, comment.id)} className="hover:text-red-400 transition-colors">삭제</button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
                     </div>
-                    {user && !replyingTo && (
+                    
+                    {/* 🔥 [수술 포인트 1] 입력창 언마운트 버그 수정: 답글 작성 시에도 입력창 유지 및 UI 동적 변환 */}
+                    {user && (
                         <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
+                            {replyingTo && (
+                                <div className="flex justify-between items-center bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50 mb-1">
+                                    <span className="text-[11px] font-bold text-emerald-400">@{replyingTo.authorName} 님에게 답글 작성 중...</span>
+                                    <button onClick={() => setReplyingTo(null)} className="text-[10px] text-slate-400 hover:text-white font-bold px-2 py-1 bg-slate-700 rounded-md transition-colors">✕ 취소</button>
+                                </div>
+                            )}
                             <div className="flex items-stretch gap-2 relative">
                                 <div className="shrink-0 relative z-[100] flex items-center justify-center">
-                                    <StickerSelector onSelect={(url) => submitComment(false, url)} />
+                                    <StickerSelector onSelect={(url) => submitComment(!!replyingTo, url)} />
                                 </div>
-                                <input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) { e.preventDefault(); submitComment(false); } }} placeholder="내용을 입력하세요..." disabled={isSending} className="flex-1 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-700 text-white text-[12px] focus:border-emerald-500 shadow-inner disabled:opacity-60" />
-                                <button onClick={() => submitComment(false)} disabled={isSending || !commentText.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl shadow-lg shrink-0 flex items-center justify-center disabled:bg-slate-800">
+                                <input 
+                                    ref={commentInputRef}
+                                    value={replyingTo ? replyText : commentText} 
+                                    onChange={(e) => replyingTo ? setReplyText(e.target.value) : setCommentText(e.target.value)} 
+                                    onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) { e.preventDefault(); submitComment(!!replyingTo); } }} 
+                                    placeholder={replyingTo ? "답글을 입력하세요..." : "내용을 입력하세요..."} 
+                                    disabled={isSending} 
+                                    className="flex-1 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-700 text-white text-[12px] focus:border-emerald-500 shadow-inner disabled:opacity-60" 
+                                />
+                                <button 
+                                    onClick={() => submitComment(!!replyingTo)} 
+                                    disabled={isSending || (replyingTo ? !replyText.trim() : !commentText.trim())} 
+                                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl shadow-lg shrink-0 flex items-center justify-center disabled:bg-slate-800 transition-colors"
+                                >
                                     등록 <Send size={14} className="ml-1.5" />
                                 </button>
                             </div>
