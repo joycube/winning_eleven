@@ -14,6 +14,9 @@ import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
 
+// 🔥 [에러 픽스] 중괄호 { } 를 씌워서 정확한 Named Import로 수정했습니다!
+import { ScrollToTop } from './components/ScrollToTop';
+
 import InAppBrowserGuard from './components/InAppBrowserGuard';
 
 import { useLeagueData } from './hooks/useLeagueData';
@@ -60,7 +63,6 @@ export default function FootballLeagueApp() {
       const mergedTeamsMap = new Map();
       const mergedPlayersMap = new Map();
 
-      // 🔥 [핵심 픽스] 소문자 변환 로직 전면 폐기! 순정 UID 연결고리만 깨끗하게 수집합니다.
       const uidLookup = new Map<string, string>();
       
       historyRecords?.forEach((hr: any) => {
@@ -82,7 +84,6 @@ export default function FootballLeagueApp() {
           }
       });
 
-      // 1. 기존 마감된 역사(historyData) 데이터 적재 (오직 UID만 쓴다)
       historyData?.owners?.forEach((o: any) => {
           const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name; 
           
@@ -107,7 +108,6 @@ export default function FootballLeagueApp() {
           mergedPlayersMap.set(pk, { ...p, ownerUid: uid });
       });
 
-      // 2. 현재 활성화된(ACTIVE) 라이브 시즌 데이터 병합 (오직 UID만 쓴다)
       const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
       
       activeSeasons.forEach((s: any) => {
@@ -175,7 +175,6 @@ export default function FootballLeagueApp() {
           });
       });
 
-      // 3. 최종 출력(Projection): 구단주님의 철학대로 UID로 검색하여 가장 최신 닉네임을 입혀서 반환!
       const finalOwners = Array.from(mergedOwnersMap.values()).map(o => {
           const latestOwner = owners.find(u => u.uid === o.uid || String(u.id) === o.uid || u.docId === o.uid);
           return {
@@ -408,7 +407,6 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
-  // 🔥 [수술 포인트] LEAGUE_PLAYOFF (리그+PO 모드)에서도 수동 진출(manualWinner) 값을 받아 대진표를 업데이트 하도록 로직 추가!
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -525,7 +523,6 @@ export default function FootballLeagueApp() {
               if (m.id === matchId) {
                   found = true;
                   currentRoundIndex = rIdx;
-                  // 🔥 LEAGUE_PLAYOFF 모드일 때 manualWinner 데이터를 aggWinner로 박아넣어서 대진표를 갱신하게 합니다.
                   let aggUpdate = {};
                   if (s.type === 'LEAGUE_PLAYOFF' && manualWinner) {
                       aggUpdate = { aggWinner: manualWinner === 'HOME' ? editingMatch.home : editingMatch.away };
@@ -536,7 +533,7 @@ export default function FootballLeagueApp() {
                       ...safeRecords,
                       homePredictRate: predictionSnapshot.homePredictRate,
                       awayPredictRate: predictionSnapshot.awayPredictRate,
-                      ...aggUpdate // 동점 시 강제 진출 기록
+                      ...aggUpdate 
                   };
               }
               return m;
@@ -765,6 +762,9 @@ export default function FootballLeagueApp() {
             owners={owners}
         />
       )}
+
+      {/* 🔥 글로벌 플로팅 스크롤 투 탑 버튼 */}
+      <ScrollToTop />
     </div>
   );
 }
