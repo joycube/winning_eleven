@@ -54,8 +54,18 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [isFlipping, setIsFlipping] = useState(false); 
     const [isDraftOpen, setIsDraftOpen] = useState(false);
 
+    // ==========================================
+    // LEAGUE_PLAYOFF 전용 상태
+    // ==========================================
     const [poWaitingPool, setPoWaitingPool] = useState<any[]>([]);
     const [poBracket, setPoBracket] = useState<(any | null)[]>(Array(5).fill(null));
+
+    // ==========================================
+    // TOURNAMENT 전용 상태
+    // ==========================================
+    const [tourneyWaitingPool, setTourneyWaitingPool] = useState<any[]>([]);
+    const [tourneyBracket, setTourneyBracket] = useState<(any | null)[]>([]);
+    const [tourneyTargetSize, setTourneyTargetSize] = useState<number>(0);
 
     const [filterCategory, setFilterCategory] = useState('ALL');
     const [filterLeague, setFilterLeague] = useState('');
@@ -65,6 +75,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
+    // --- PLAYOFF 잠금 확인 ---
     const isPoLocked = useMemo(() => {
         if (targetSeason.type !== 'LEAGUE_PLAYOFF' || !targetSeason.rounds) return false;
         const finalRound = targetSeason.rounds.find(r => r.name === 'FINAL');
@@ -72,6 +83,12 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         
         const finalHome = finalRound.matches[0]?.home || '';
         return finalHome !== 'TBD' && finalHome !== 'BYE' && !finalHome.includes('1위');
+    }, [targetSeason.rounds, targetSeason.type]);
+
+    // --- TOURNAMENT 잠금 확인 ---
+    const isTourneyLocked = useMemo(() => {
+        if (targetSeason.type !== 'TOURNAMENT' || !targetSeason.rounds || targetSeason.rounds.length === 0) return false;
+        return targetSeason.rounds[0].matches.some(m => m.status === 'COMPLETED' || m.homeScore !== '' || m.awayScore !== '');
     }, [targetSeason.rounds, targetSeason.type]);
 
     useEffect(() => {
@@ -91,6 +108,31 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             setPoWaitingPool([]);
         }
     }, [isPoLocked, targetSeason]);
+
+    useEffect(() => {
+        if (hasSchedule && targetSeason.type === 'TOURNAMENT' && targetSeason.rounds) {
+            const teams = targetSeason.teams || [];
+            const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(2, teams.length))));
+            setTourneyTargetSize(nextPowerOf2);
+
+            const firstRoundMatches = targetSeason.rounds[0].matches.slice(0, nextPowerOf2 / 2);
+            const currentBracket: (any|null)[] = Array(nextPowerOf2).fill(null);
+            
+            firstRoundMatches.forEach((m, idx) => {
+                if (m.home !== 'BYE' && m.home !== 'TBD') {
+                    currentBracket[idx * 2] = teams.find(t => t.name === m.home) || null;
+                }
+                if (m.away !== 'BYE' && m.away !== 'TBD') {
+                    currentBracket[idx * 2 + 1] = teams.find(t => t.name === m.away) || null;
+                }
+            });
+
+            setTourneyBracket(currentBracket);
+            
+            const bracketTeamNames = currentBracket.filter(Boolean).map(t => t.name);
+            setTourneyWaitingPool(teams.filter(t => !bracketTeamNames.includes(t.name)));
+        }
+    }, [hasSchedule, targetSeason]);
 
     useEffect(() => { 
         if (randomResult && !isRolling) setRandomResult(null); 
@@ -215,6 +257,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
         const shuffledTeams = [...refreshedTeams].sort(() => Math.random() - 0.5);
         const tempSeason = { ...targetSeason, teams: shuffledTeams, rounds: [] };
+        
         const rounds = generateRoundsLogic(tempSeason);
         
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
@@ -232,7 +275,11 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             recordEntryFees(targetSeason.id, targetSeason.name, (targetSeason as any).totalPrize, finalOwnerUids);
         }
 
-        if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
+        if (targetSeason.type === 'TOURNAMENT') {
+            alert("스케줄 생성이 완료되었습니다.\n하단 [Step 3]에서 1라운드 대진표를 원하는 대로 배치해주세요!");
+        } else {
+            if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
+        }
     };
 
     const handleDraftApply = async (newTeams: Team[]) => {
@@ -244,6 +291,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
     };
 
+    // =======================================================
+    // PLAYOFF 전용 핸들러
+    // =======================================================
     const handleLoadPlayoffTeams = () => {
         if (!targetSeason.rounds) return;
         
@@ -289,7 +339,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         if (isPoLocked) return alert("이미 확정되었습니다. 해제 후 이용하세요.");
         const allTeams = [...poWaitingPool, ...poBracket.filter(Boolean)];
         const newBracket = Array(5).fill(null);
-        
         allTeams.forEach(t => {
             if (t._realRank === 1) newBracket[0] = t; 
             if (t._realRank === 2) newBracket[1] = t; 
@@ -297,7 +346,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             if (t._realRank === 3) newBracket[3] = t; 
             if (t._realRank === 4) newBracket[4] = t; 
         });
-
         setPoBracket(newBracket);
         setPoWaitingPool([]);
     };
@@ -311,10 +359,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
     const handleUnlockPoBracket = async () => {
         if (!confirm("확정된 대진을 해제하고 초기화하시겠습니까?")) return;
-        const filteredRounds = targetSeason.rounds?.filter(r => 
-            !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)
-        ) || [];
-
+        const filteredRounds = targetSeason.rounds?.filter(r => !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)) || [];
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: filteredRounds });
         handleLoadPlayoffTeams();
     };
@@ -368,24 +413,13 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         setPoWaitingPool(newPool);
     };
 
-    // 🔥 [핵심 수술 포인트] 내전 경고 무시 기능 및 Firebase undefined 저장 에러 100% 방어
     const handleConfirmPlayoffBracket = async () => {
         if (isPoLocked) return;
-        
-        if (poBracket.includes(null)) {
-            return alert("🚨 5개의 모든 대진 슬롯에 팀을 배치해주세요.\n(대진표 가장 위의 '리그 1위 직행' 슬롯도 채워야 합니다.)");
-        }
+        if (poBracket.includes(null)) return alert("🚨 5개의 모든 대진 슬롯에 팀을 배치해주세요.\n(대진표 가장 위의 '리그 1위 직행' 슬롯도 채워야 합니다.)");
 
         const [t1, t2, t5, t3, t4] = poBracket; 
+        const isCivilWar = (t2.ownerUid && t5.ownerUid && t2.ownerUid === t5.ownerUid) || (t3.ownerUid && t4.ownerUid && t3.ownerUid === t4.ownerUid) || (t2.ownerName === t5.ownerName) || (t3.ownerName === t4.ownerName);
 
-        // 1. 내전 여부 꼼꼼하게 체크
-        const isCivilWar = 
-            (t2.ownerUid && t5.ownerUid && t2.ownerUid === t5.ownerUid) || 
-            (t3.ownerUid && t4.ownerUid && t3.ownerUid === t4.ownerUid) ||
-            (t2.ownerName === t5.ownerName) || 
-            (t3.ownerName === t4.ownerName);
-
-        // 2. 구단주님 요청: 내전 발생 시 "경고 + 강제 진행 옵션" 제공
         if (isCivilWar) {
             const forceGenerate = confirm("🚨 [경고] 4강 대진에 동일 오너(내전) 매치업이 포함되어 있습니다!\n무시하고 플레이오프 스케줄을 강제로 발행하시겠습니까?");
             if (!forceGenerate) return;
@@ -394,11 +428,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         }
 
         try {
-            const filteredRounds = targetSeason.rounds?.filter(r => 
-                !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)
-            ) || [];
-
-            // 🔥 파이어베이스 에러 유발자(undefined) 킬러 함수
+            const filteredRounds = targetSeason.rounds?.filter(r => !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)) || [];
             const s = (val: any) => val === undefined ? '' : val;
 
             const roundOf4 = {
@@ -427,14 +457,154 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             };
 
             const updatedRounds = [...filteredRounds, roundOf4, poFinal, grandFinal];
-
             await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
             alert(`🎉 플레이오프 대진표 확정 완료!\n1위 ${t1.name}가 최종 결승전에 선착했습니다.`);
             
-        } catch (error) {
-            console.error("Firebase Update Error: ", error);
-            alert("🚨 데이터 저장 중 파이어베이스 에러가 발생했습니다. (콘솔 확인 필요)");
+        } catch (error) { console.error("Firebase Update Error: ", error); alert("🚨 저장 에러 발생."); }
+    };
+
+    // =======================================================
+    // TOURNAMENT 전용 핸들러
+    // =======================================================
+    const handleAutoFillTourneyBracket = () => {
+        if (isTourneyLocked) return;
+        const newBracket = [...tourneyBracket];
+        let poolIdx = 0;
+        for (let i = 0; i < newBracket.length; i++) {
+            if (!newBracket[i] && poolIdx < tourneyWaitingPool.length) {
+                newBracket[i] = tourneyWaitingPool[poolIdx];
+                poolIdx++;
+            }
         }
+        setTourneyBracket(newBracket);
+        setTourneyWaitingPool(tourneyWaitingPool.slice(poolIdx));
+    };
+
+    const handleResetTourneyBracket = () => {
+        if (isTourneyLocked) return;
+        const allTeams = [...tourneyWaitingPool, ...tourneyBracket.filter(Boolean)];
+        setTourneyWaitingPool(allTeams);
+        setTourneyBracket(Array(tourneyTargetSize).fill(null));
+    };
+
+    const handleTourneyDragStart = (e: React.DragEvent, source: 'pool' | 'bracket', index: number | null, team: any) => {
+        if (isTourneyLocked) return;
+        e.dataTransfer.setData('text/plain', JSON.stringify({ source, index, teamId: team.id }));
+    };
+
+    const handleTourneyDrop = (e: React.DragEvent, targetIndex: number) => {
+        if (isTourneyLocked) return;
+        e.preventDefault();
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const { source, index, teamId } = data;
+
+        let team = source === 'pool' ? tourneyWaitingPool.find(t => t.id === teamId) : tourneyBracket[index!];
+        if (!team) return;
+
+        const newBracket = [...tourneyBracket];
+        const newPool = [...tourneyWaitingPool];
+        const existingTeam = newBracket[targetIndex];
+
+        newBracket[targetIndex] = team;
+
+        if (source === 'pool') {
+            newPool.splice(newPool.findIndex(t => t.id === teamId), 1);
+        } else if (source === 'bracket') {
+            newBracket[index!] = existingTeam; 
+        }
+
+        if (source === 'pool' && existingTeam) {
+            newPool.push(existingTeam); 
+        }
+
+        setTourneyBracket(newBracket);
+        setTourneyWaitingPool(newPool);
+    };
+
+    const handleTourneySlotClick = (index: number) => {
+        if (isTourneyLocked) return;
+        const team = tourneyBracket[index];
+        if (!team) return;
+        const newBracket = [...tourneyBracket];
+        newBracket[index] = null;
+        
+        const newPool = [...tourneyWaitingPool, team];
+        setTourneyBracket(newBracket);
+        setTourneyWaitingPool(newPool);
+    };
+
+    const handleConfirmTourneyBracket = async () => {
+        if (isTourneyLocked) return;
+        const placedCount = tourneyBracket.filter(Boolean).length;
+        if (placedCount < targetSeason.teams.length) {
+            return alert("🚨 리그에 등록된 모든 팀을 대진표에 배치해주세요.");
+        }
+
+        let isCivilWar = false;
+        for (let i = 0; i < tourneyTargetSize / 2; i++) {
+            const hTeam = tourneyBracket[i * 2];
+            const aTeam = tourneyBracket[i * 2 + 1];
+            if (hTeam && aTeam && (hTeam.ownerUid === aTeam.ownerUid || hTeam.ownerName === aTeam.ownerName)) {
+                isCivilWar = true;
+                break;
+            }
+        }
+
+        if (isCivilWar) {
+            const forceGenerate = confirm("🚨 [경고] 1라운드에 동일 오너(내전) 매치업이 포함되어 있습니다!\n무시하고 토너먼트 스케줄을 강제로 발행하시겠습니까?");
+            if (!forceGenerate) return;
+        } else {
+            if (!confirm("현재 설정된 대진표로 토너먼트 스케줄을 공식 발행하시겠습니까?")) return;
+        }
+
+        try {
+            const s = (val: any) => val === undefined ? '' : val;
+            const matches: Match[] = [];
+            const totalMatches = tourneyTargetSize - 1;
+
+            for (let i = 0; i < totalMatches; i++) {
+                const isFirst = i < tourneyTargetSize / 2;
+                const isFinal = i === totalMatches - 1;
+                
+                let homeName = 'TBD', awayName = 'TBD', homeLogo = FALLBACK_IMG, awayLogo = FALLBACK_IMG;
+                let homeOwner = '-', awayOwner = '-', status = 'UPCOMING';
+                let homeOwnerUid = '', awayOwnerUid = '';
+
+                if (isFirst) {
+                    const hTeam = tourneyBracket[i * 2];
+                    const aTeam = tourneyBracket[i * 2 + 1];
+                    homeName = hTeam ? hTeam.name : 'BYE';
+                    awayName = aTeam ? aTeam.name : 'BYE';
+                    homeLogo = hTeam ? hTeam.logo : FALLBACK_IMG;
+                    awayLogo = aTeam ? aTeam.logo : FALLBACK_IMG;
+                    homeOwner = hTeam ? hTeam.ownerName : '-';
+                    awayOwner = aTeam ? aTeam.ownerName : '-';
+                    homeOwnerUid = hTeam ? hTeam.ownerUid : '';
+                    awayOwnerUid = aTeam ? aTeam.ownerUid : '';
+                    
+                    if (homeName === 'BYE' || awayName === 'BYE') status = 'BYE';
+                }
+
+                matches.push({
+                    id: `${targetSeason.id}_M${i}`,
+                    seasonId: targetSeason.id,
+                    home: s(homeName), away: s(awayName),
+                    homeLogo: s(homeLogo), awayLogo: s(awayLogo),
+                    homeOwner: s(homeOwner), awayOwner: s(awayOwner),
+                    homeOwnerUid: s(homeOwnerUid), awayOwnerUid: s(awayOwnerUid),
+                    status, homeScore: '', awayScore: '',
+                    stage: isFinal ? 'FINAL' : 'TOURNAMENT',
+                    matchLabel: isFinal ? '🏆 결승전' : `1Round - Match ${i + 1}`,
+                    youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+                });
+            }
+
+            const updatedRounds = [{ round: 1, name: 'Tournament Bracket', seasonId: targetSeason.id, matches }];
+            await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
+            alert("🎉 토너먼트 대진표 확정이 완료되었습니다!");
+            onNavigateToSchedule(targetSeason.id);
+            
+        } catch (error) { console.error("Firebase Update Error: ", error); alert("🚨 저장 에러 발생."); }
     };
 
     return (
@@ -535,6 +705,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                 {targetSeason.type === 'LEAGUE_PLAYOFF' && !isPoLocked && (
                                     <button onClick={handleLoadPlayoffTeams} className="bg-emerald-600 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-emerald-500 shadow-lg shadow-emerald-900/50 animate-pulse">🌟 PO 진출팀 대기실로 이동</button>
                                 )}
+                                {targetSeason.type === 'TOURNAMENT' && !isTourneyLocked && (
+                                    <button onClick={() => { document.getElementById('tourney-setup-section')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-blue-600 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-500 shadow-lg shadow-blue-900/50 animate-pulse">🌟 토너먼트 대진표 세팅</button>
+                                )}
                                 <button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button>
                                 <button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button>
                             </>
@@ -556,7 +729,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             <QuickDraftModal isOpen={isDraftOpen} onClose={() => setIsDraftOpen(false)} owners={owners} masterTeams={masterTeams} onConfirm={handleDraftApply} />
 
             {/* ==============================================================================
-                STEP 3. 플레이오프 3단계 대진표 인라인 에디터 (수직 피라미드 구조 완벽 복구)
+                STEP 3. 플레이오프 3단계 대진표 인라인 에디터 (LEAGUE_PLAYOFF 모드)
             ============================================================================== */}
             {hasSchedule && targetSeason.type === 'LEAGUE_PLAYOFF' && (
                 <div id="po-setup-section" className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 overflow-hidden ${isPoLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
@@ -578,7 +751,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                 </button>
                             ) : (
                                 <>
-                                    <button onClick={handleAutoFillPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95">
+                                    <button onClick={handleAutoFillPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-indigo-600 text-white hover:bg-indigo-50 active:scale-95">
                                         ⚡ AUTO (순위 기반)
                                     </button>
                                     <button onClick={handleResetPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">
@@ -610,155 +783,250 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                         )}
                     </div>
 
-                    {/* 🔥 3단계 수직 피라미드 대진표 */}
+                    {/* 수직 피라미드 대진표 */}
                     <div className="space-y-6 relative pb-8 max-w-4xl mx-auto flex flex-col items-center">
-                        
-                        {/* 1층: 최종 결승전 (1위 vs PO 결승 승자) */}
                         <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all shadow-xl w-full max-w-2xl ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-yellow-500/30'}`}>
                             <div className="text-center mb-5 border-b border-slate-800/50 pb-2 relative">
                                 <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-3xl animate-bounce drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]">👑</span>
                                 <span className="text-[12px] text-yellow-500 font-black italic tracking-widest uppercase">챔피언 결정전 (Grand Final)</span>
                             </div>
                             <div className="grid grid-cols-2 gap-4 relative items-center">
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                                    <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                </div>
-                                
-                                {/* Slot 0: 리그 1위 자리 (드래그 가능) */}
-                                <div 
-                                    onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, 0)} onClick={() => !isPoLocked && handleSlotClick(0)}
-                                    className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
-                                        isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
-                                        poBracket[0] ? 'border-yellow-500 bg-yellow-900/20 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-yellow-700/50 bg-slate-900/30 hover:border-yellow-500 border-dashed cursor-pointer'
-                                    }`}
-                                >
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
+                                <div onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, 0)} onClick={() => !isPoLocked && handleSlotClick(0)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[0] ? 'border-yellow-500 bg-yellow-900/20 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-yellow-700/50 bg-slate-900/30 hover:border-yellow-500 border-dashed cursor-pointer'}`}>
                                     <span className="absolute -top-0 w-full bg-yellow-600 text-black text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">리그 1위 직행</span>
-                                    {poBracket[0] ? (
-                                        <div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', 0, poBracket[0])}>
-                                            <TeamCard team={poBracket[0]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />
-                                            {!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
-                                        </div>
-                                    ) : <div className="flex flex-col items-center text-slate-600 group-hover:text-yellow-500 pt-3"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
+                                    {poBracket[0] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', 0, poBracket[0])}><TeamCard team={poBracket[0]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 group-hover:text-yellow-500 pt-3"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
                                 </div>
-
-                                {/* Slot X: PO 결승 승리팀 대기 자리 (고정 슬롯, 드래그 불가) */}
                                 <div className="relative min-h-[110px] rounded-xl border-2 border-slate-800 bg-slate-900/30 flex flex-col items-center justify-center opacity-60 cursor-not-allowed select-none">
-                                    <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">최종 도전자</span>
-                                    <span className="text-3xl mb-1 mt-3">⚔️</span>
-                                    <span className="text-[9px] font-bold text-slate-500 tracking-widest mt-1">PO 결승 승자</span>
+                                    <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">최종 도전자</span><span className="text-3xl mb-1 mt-3">⚔️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest mt-1">PO 결승 승자</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 수직 연결선 1 */}
                         <div className="w-px h-8 bg-slate-700"></div>
 
-                        {/* 2층: PO 결승전 (중간 단계 가시화 블록) */}
                         <div className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-full max-w-[400px] opacity-80 pointer-events-none`}>
-                            <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
-                                <span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">플레이오프 결승 (PO Final)</span>
-                            </div>
+                            <div className="text-center mb-4 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">플레이오프 결승 (PO Final)</span></div>
                             <div className="grid grid-cols-2 gap-4 relative items-center">
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                                    <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                </div>
-                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center">
-                                    <span className="text-2xl text-slate-600 mb-1">🛡️</span>
-                                    <span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 1경기 승자</span>
-                                </div>
-                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center">
-                                    <span className="text-2xl text-slate-600 mb-1">🛡️</span>
-                                    <span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 2경기 승자</span>
-                                </div>
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div></div>
+                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center"><span className="text-2xl text-slate-600 mb-1">🛡️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 1경기 승자</span></div>
+                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center"><span className="text-2xl text-slate-600 mb-1">🛡️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 2경기 승자</span></div>
                             </div>
                         </div>
 
-                        {/* 수직 연결선 2 */}
                         <div className="w-full flex justify-center relative h-10">
-                            <div className="w-px h-full bg-slate-700"></div>
-                            {/* 가로 분기선 */}
-                            <div className="absolute top-1/2 left-[25%] right-[25%] h-px bg-slate-700"></div>
-                            <div className="absolute top-1/2 left-[25%] bottom-0 w-px bg-slate-700"></div>
-                            <div className="absolute top-1/2 right-[25%] bottom-0 w-px bg-slate-700"></div>
+                            <div className="w-px h-full bg-slate-700"></div><div className="absolute top-1/2 left-[25%] right-[25%] h-px bg-slate-700"></div><div className="absolute top-1/2 left-[25%] bottom-0 w-px bg-slate-700"></div><div className="absolute top-1/2 right-[25%] bottom-0 w-px bg-slate-700"></div>
                         </div>
 
-                        {/* 3층: PO 4강전 (하단 2개 매치업) */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 relative w-full">
-                            
-                            {/* Semi 1: 2nd vs 5th */}
                             <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50 shadow-xl'}`}>
-                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2">
-                                    <span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 1경기</span>
-                                </div>
+                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 1경기</span></div>
                                 <div className="grid grid-cols-2 gap-4 relative items-center">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                    </div>
+                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
                                     {[1, 2].map((slotIdx) => (
-                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)}
-                                            className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
-                                                isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
-                                                poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                            }`}
-                                        >
+                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'}`}>
                                             <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">{slotIdx === 1 ? '2위 자리' : '5위 자리'}</span>
-                                            {poBracket[slotIdx] ? (
-                                                <div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}>
-                                                    <TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />
-                                                    {!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
-                                                </div>
-                                            ) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
+                                            {poBracket[slotIdx] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}><TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
                                         </div>
                                     ))}
                                 </div>
-                                {!isPoLocked && poBracket[1] && poBracket[2] && poBracket[1].ownerUid === poBracket[2].ownerUid && (
-                                    <div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>
-                                )}
+                                {!isPoLocked && poBracket[1] && poBracket[2] && poBracket[1].ownerUid === poBracket[2].ownerUid && (<div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>)}
                             </div>
 
-                            {/* Semi 2: 3rd vs 4th */}
                             <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50 shadow-xl'}`}>
-                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2">
-                                    <span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 2경기</span>
-                                </div>
+                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 2경기</span></div>
                                 <div className="grid grid-cols-2 gap-4 relative items-center">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                    </div>
+                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
                                     {[3, 4].map((slotIdx) => (
-                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)}
-                                            className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
-                                                isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
-                                                poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                            }`}
-                                        >
+                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'}`}>
                                             <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">{slotIdx === 3 ? '3위 자리' : '4위 자리'}</span>
-                                            {poBracket[slotIdx] ? (
-                                                <div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}>
-                                                    <TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />
-                                                    {!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
-                                                </div>
-                                            ) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
+                                            {poBracket[slotIdx] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}><TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
                                         </div>
                                     ))}
                                 </div>
-                                {!isPoLocked && poBracket[3] && poBracket[4] && poBracket[3].ownerUid === poBracket[4].ownerUid && (
-                                    <div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>
-                                )}
+                                {!isPoLocked && poBracket[3] && poBracket[4] && poBracket[3].ownerUid === poBracket[4].ownerUid && (<div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>)}
                             </div>
                         </div>
 
                     </div>
 
+                    <div className="mt-2 pt-6 border-t border-slate-800 flex justify-center">
+                        {isPoLocked ? (<div className="px-10 py-5 bg-slate-900 text-slate-500 font-black italic rounded-2xl border border-slate-800 flex items-center gap-3 cursor-not-allowed select-none shadow-inner"><span>🔒</span> PLAYOFF BRACKET IS LOCKED</div>) : (<button onClick={handleConfirmPlayoffBracket} className="px-10 py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl shadow-emerald-900/50 text-lg transition-transform active:scale-95 flex items-center gap-3"><span>🚀</span> CONFIRM & GENERATE PLAYOFF</button>)}
+                    </div>
+                </div>
+            )}
+
+            {/* ==============================================================================
+                STEP 3. 토너먼트 대진표 에디터 (🔥 모바일 최적화 수직 스태킹 디자인)
+            ============================================================================== */}
+            {hasSchedule && targetSeason.type === 'TOURNAMENT' && (
+                <div id="tourney-setup-section" className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 overflow-hidden ${isTourneyLocked ? 'border-slate-800 bg-[#05070a]' : 'border-blue-900/50'}`}>
+                    
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Tournament Bracket Setup</h3>
+                            {isTourneyLocked && (
+                                <div className="flex items-center gap-1 bg-red-900/30 border border-red-500/30 px-3 py-1 rounded-full">
+                                    <span className="text-sm">🔒</span><span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">IN PROGRESS</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            {!isTourneyLocked && (
+                                <>
+                                    <button onClick={handleAutoFillTourneyBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-blue-600 text-white hover:bg-blue-500 active:scale-95">
+                                        ⚡ AUTO FILL
+                                    </button>
+                                    <button onClick={handleResetTourneyBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">
+                                        🔄 대기실로 빼기
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Waiting Pool */}
+                    <div className={`mb-8 p-4 rounded-2xl border transition-all duration-300 ${isTourneyLocked ? 'bg-black/40 border-slate-800/50 opacity-40 grayscale pointer-events-none' : 'bg-slate-900/50 border-slate-700/50'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting Pool ({tourneyWaitingPool.length})</span>
+                            {!isTourneyLocked && <span className="text-[10px] text-slate-500 italic hidden sm:block">Drag team to bracket slot</span>}
+                        </div>
+                        
+                        {tourneyWaitingPool.length === 0 ? (
+                            <div className="text-center py-6 text-slate-600 text-xs italic font-bold">모든 팀이 배치되었습니다.</div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
+                                {tourneyWaitingPool.map(t => (
+                                    <div key={t.id} draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
+                                        <TeamCard team={t} size="small" />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 🔥 다이내믹 피라미드 대진표 (모바일 세로형 + 데스크탑 그리드형) */}
+                    <div className="space-y-8 relative pb-8 w-full flex flex-col items-center px-2">
+                        <div className="w-full flex flex-col items-center gap-10 md:gap-16">
+                            {Array.from({ length: tourneyTargetSize > 0 ? Math.log2(tourneyTargetSize) : 0 })
+                                .map((_, i) => Math.log2(tourneyTargetSize) - i)
+                                .map((roundLevel) => {
+                                    const totalRounds = Math.log2(tourneyTargetSize);
+                                    const isFinal = roundLevel === totalRounds;
+                                    const isFirstRound = roundLevel === 1;
+                                    const matchesInRound = Math.pow(2, totalRounds - roundLevel);
+
+                                    const getRoundTitle = (level: number) => {
+                                        if (level === totalRounds) return "👑 챔피언 결정전 (GRAND FINAL)";
+                                        if (level === totalRounds - 1) return "🔥 4강전 (SEMI-FINAL)";
+                                        if (level === totalRounds - 2) return "⚔️ 8강전 (QUARTER-FINAL)";
+                                        if (level === totalRounds - 3) return "🛡️ 16강전 (ROUND OF 16)";
+                                        return `Round ${level}`;
+                                    };
+
+                                    return (
+                                        <div key={roundLevel} className="flex flex-col items-center w-full relative">
+                                            {/* Title for the Round Row */}
+                                            <div className="text-center mb-6">
+                                                <span className={`text-[14px] sm:text-[16px] font-black italic tracking-widest uppercase ${isFinal ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)]' : isFirstRound ? 'text-blue-400' : 'text-slate-400'}`}>
+                                                    {getRoundTitle(roundLevel)}
+                                                </span>
+                                            </div>
+
+                                            {/* 🔥 Matches Row: 모바일 수직 (1열), 큰 화면 수평 (다열 그리드) 완벽 제어 */}
+                                            <div className={`grid grid-cols-1 gap-6 sm:gap-8 justify-items-center w-full max-w-7xl mx-auto ${
+                                                matchesInRound === 1 ? 'md:grid-cols-1' :
+                                                matchesInRound === 2 ? 'md:grid-cols-2' :
+                                                matchesInRound === 4 ? 'md:grid-cols-2 lg:grid-cols-4' :
+                                                'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                                            }`}>
+                                                {Array.from({ length: matchesInRound }).map((_, mIdx) => {
+                                                    if (isFirstRound) {
+                                                        const homeIdx = mIdx * 2;
+                                                        const awayIdx = mIdx * 2 + 1;
+                                                        const hTeam = tourneyBracket[homeIdx];
+                                                        const aTeam = tourneyBracket[awayIdx];
+                                                        const isInnerCivilWar = hTeam && aTeam && (hTeam.ownerUid === aTeam.ownerUid || hTeam.ownerName === aTeam.ownerName);
+
+                                                        return (
+                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border transition-all w-full max-w-[340px] ${isTourneyLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/40 border-blue-500/50 shadow-xl shadow-blue-900/20'}`}>
+                                                                <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
+                                                                    <span className="text-[10px] text-blue-400 font-black italic tracking-widest uppercase">Match {mIdx + 1}</span>
+                                                                </div>
+                                                                
+                                                                <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
+                                                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                                                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div>
+                                                                    </div>
+
+                                                                    {[homeIdx, awayIdx].map(slotIdx => (
+                                                                        <div key={slotIdx} onDragOver={isTourneyLocked ? undefined : handleDragOver} onDrop={(e) => !isTourneyLocked && handleTourneyDrop(e, slotIdx)} onClick={() => !isTourneyLocked && handleTourneySlotClick(slotIdx)} 
+                                                                            className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
+                                                                                isTourneyLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
+                                                                                tourneyBracket[slotIdx] ? 'border-blue-500/30 bg-blue-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-blue-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
+                                                                            }`}
+                                                                        >
+                                                                            <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">Slot {slotIdx + 1}</span>
+                                                                            {tourneyBracket[slotIdx] ? (
+                                                                                <div className="w-full h-full pt-4 relative" draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'bracket', slotIdx, tourneyBracket[slotIdx])}>
+                                                                                    <TeamCard team={tourneyBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isTourneyLocked ? 'grayscale opacity-80' : ''}`} />
+                                                                                    {!isTourneyLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-blue-500">
+                                                                                    <span className="text-xl font-black mb-1">+</span>
+                                                                                    <span className="text-[11px] font-black uppercase tracking-widest">TBD</span>
+                                                                                    <span className="text-[8px] font-bold text-slate-500">(ADD TEAM)</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+
+                                                                {!isTourneyLocked && isInnerCivilWar && (
+                                                                    <div className="mt-3 bg-red-950/80 border border-red-500 text-red-400 text-[10px] font-bold py-1.5 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-full max-w-[340px] opacity-80 pointer-events-none`}>
+                                                                <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
+                                                                    <span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">{isFinal ? '결승전' : `Match ${mIdx + 1}`}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
+                                                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+                                                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
+                                                                    </div>
+                                                                    <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center text-center px-1">
+                                                                        <span className="text-2xl text-slate-600 mb-1">⚔️</span>
+                                                                        <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-tight">하위 {mIdx * 2 + 1}경기 승자</span>
+                                                                    </div>
+                                                                    <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center text-center px-1">
+                                                                        <span className="text-2xl text-slate-600 mb-1">⚔️</span>
+                                                                        <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-tight">하위 {mIdx * 2 + 2}경기 승자</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                        </div>
+                    </div>
+
                     {/* Footer */}
                     <div className="mt-2 pt-6 border-t border-slate-800 flex justify-center">
-                        {isPoLocked ? (
+                        {isTourneyLocked ? (
                             <div className="px-10 py-5 bg-slate-900 text-slate-500 font-black italic rounded-2xl border border-slate-800 flex items-center gap-3 cursor-not-allowed select-none shadow-inner">
-                                <span>🔒</span> PLAYOFF BRACKET IS LOCKED
+                                <span>🔒</span> TOURNAMENT IS IN PROGRESS
                             </div>
                         ) : (
-                            <button onClick={handleConfirmPlayoffBracket} className="px-10 py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl shadow-emerald-900/50 text-lg transition-transform active:scale-95 flex items-center gap-3">
-                                <span>🚀</span> CONFIRM & GENERATE PLAYOFF
+                            <button onClick={handleConfirmTourneyBracket} className="px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white font-black italic rounded-2xl shadow-2xl shadow-blue-900/50 text-lg transition-transform active:scale-95 flex items-center gap-3">
+                                <span>⚔️</span> CONFIRM MATCHUPS
                             </button>
                         )}
                     </div>
