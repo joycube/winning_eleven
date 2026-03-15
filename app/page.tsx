@@ -14,7 +14,6 @@ import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
 
-// 🔥 [에러 픽스] 중괄호 { } 를 씌워서 정확한 Named Import로 수정했습니다!
 import { ScrollToTop } from './components/ScrollToTop';
 
 import InAppBrowserGuard from './components/InAppBrowserGuard';
@@ -51,6 +50,10 @@ export default function FootballLeagueApp() {
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
+  // 🔥 [수술 포인트 1] 무거운 연산의 비동기 상태 관리 (메인 스레드 블로킹 해제)
+  const [combinedHistoryData, setCombinedHistoryData] = useState<any>(null);
+  const [knockoutStages, setKnockoutStages] = useState<any>(null);
+
   const getOwnerUidByName = (targetName: string) => {
       if (!targetName || ['-', 'TBD', 'BYE', 'SYSTEM', 'CPU'].includes(targetName.trim())) return undefined;
       const search = targetName.trim();
@@ -58,154 +61,162 @@ export default function FootballLeagueApp() {
       return found?.uid || found?.docId || undefined;
   };
 
-  const combinedHistoryData = useMemo(() => {
-      const mergedOwnersMap = new Map();
-      const mergedTeamsMap = new Map();
-      const mergedPlayersMap = new Map();
+  // 🔥 [수술 포인트 2] useMemo 대신 useEffect + setTimeout으로 화면부터 그리고 계산 시작!
+  useEffect(() => {
+      if (!isLoaded || !owners || !seasons) return;
 
-      const uidLookup = new Map<string, string>();
-      
-      historyRecords?.forEach((hr: any) => {
-          hr.teams?.forEach((t: any) => {
-              if (t.owner && t.ownerId) uidLookup.set(t.owner, t.ownerId);
-              if (t.legacyName && t.ownerId) uidLookup.set(t.legacyName, t.ownerId);
-          });
-          hr.players?.forEach((p: any) => {
-              if (p.owner && p.ownerId) uidLookup.set(p.owner, p.ownerId);
-              if (p.legacyName && p.ownerId) uidLookup.set(p.legacyName, p.ownerId);
-          });
-      });
+      const timer = setTimeout(() => {
+          const mergedOwnersMap = new Map();
+          const mergedTeamsMap = new Map();
+          const mergedPlayersMap = new Map();
 
-      owners?.forEach((o: any) => {
-          if (o.nickname && o.uid) uidLookup.set(o.nickname, o.uid);
-          if (o.legacyName && o.uid) uidLookup.set(o.legacyName, o.uid);
-          if (o.legacyNames && Array.isArray(o.legacyNames)) {
-              o.legacyNames.forEach((ln: string) => uidLookup.set(ln, o.uid));
-          }
-      });
-
-      historyData?.owners?.forEach((o: any) => {
-          const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name; 
+          const uidLookup = new Map<string, string>();
           
-          if (!mergedOwnersMap.has(uid)) {
-              mergedOwnersMap.set(uid, { ...o, uid }); 
-          } else {
-              const ex = mergedOwnersMap.get(uid);
-              ex.win += o.win || 0; ex.draw += o.draw || 0; ex.loss += o.loss || 0;
-              ex.points += o.points || 0; ex.prize += o.prize || 0;
-              ex.golds += o.golds || 0; ex.silvers += o.silvers || 0; ex.bronzes += o.bronzes || 0;
-          }
-      });
-
-      historyData?.teams?.forEach((t: any) => {
-          const uid = t.ownerId || t.ownerUid || uidLookup.get(t.owner) || t.owner;
-          mergedTeamsMap.set(t.name, { ...t, ownerUid: uid });
-      });
-
-      historyData?.players?.forEach((p: any) => {
-          const uid = p.ownerId || p.ownerUid || uidLookup.get(p.owner) || p.owner;
-          const pk = `${p.name}_${p.team}`; 
-          mergedPlayersMap.set(pk, { ...p, ownerUid: uid });
-      });
-
-      const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
-      
-      activeSeasons.forEach((s: any) => {
-          s.rounds?.forEach((r: any) => {
-              r.matches?.forEach((m: any) => {
-                  if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
-                      
-                      const hUid = m.homeOwnerUid || uidLookup.get(m.homeOwner) || m.homeOwner || "";
-                      const aUid = m.awayOwnerUid || uidLookup.get(m.awayOwner) || m.awayOwner || "";
-
-                      if (!mergedTeamsMap.has(m.home)) mergedTeamsMap.set(m.home, { name: m.home, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, ownerUid: hUid });
-                      if (!mergedTeamsMap.has(m.away)) mergedTeamsMap.set(m.away, { name: m.away, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, ownerUid: aUid });
-                      
-                      const hTeam = mergedTeamsMap.get(m.home);
-                      const aTeam = mergedTeamsMap.get(m.away);
-
-                      if (!mergedOwnersMap.has(hUid)) mergedOwnersMap.set(hUid, { uid: hUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
-                      if (!mergedOwnersMap.has(aUid)) mergedOwnersMap.set(aUid, { uid: aUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
-
-                      const hOwner = mergedOwnersMap.get(hUid);
-                      const aOwner = mergedOwnersMap.get(aUid);
-
-                      const hScore = Number(m.homeScore || 0);
-                      const aScore = Number(m.awayScore || 0);
-
-                      hTeam.gf += hScore; hTeam.ga += aScore; hTeam.gd += (hScore - aScore);
-                      aTeam.gf += aScore; aTeam.ga += hScore; aTeam.gd += (aScore - hScore);
-
-                      if (hScore > aScore) {
-                          hTeam.win += 1; hTeam.points += 3; aTeam.loss += 1;
-                          hOwner.win += 1; hOwner.points += 3; aOwner.loss += 1;
-                      } else if (aScore > hScore) {
-                          aTeam.win += 1; aTeam.points += 3; hTeam.loss += 1;
-                          aOwner.win += 1; aOwner.points += 3; hOwner.loss += 1;
-                      } else {
-                          hTeam.draw += 1; hTeam.points += 1; aTeam.draw += 1; aTeam.points += 1;
-                          hOwner.draw += 1; hOwner.points += 1; aOwner.draw += 1; aOwner.points += 1;
-                      }
-
-                      const processPlayers = (playersList: any[], teamName: string, teamLogo: string, ownerUid: string, isGoal: boolean) => {
-                          playersList?.forEach((p: any) => {
-                              const pName = p.name?.trim();
-                              if (!pName) return;
-                              const pk = `${pName}_${teamName}`;
-                              
-                              if (!mergedPlayersMap.has(pk)) {
-                                  mergedPlayersMap.set(pk, { name: pName, team: teamName, goals: 0, assists: 0, teamLogo, ownerUid });
-                              }
-                              const pRec = mergedPlayersMap.get(pk);
-                              
-                              if (isGoal) pRec.goals += Number(p.count || 1);
-                              else pRec.assists += Number(p.count || 1);
-                              
-                              pRec.teamLogo = teamLogo;
-                              pRec.ownerUid = ownerUid; 
-                          });
-                      };
-
-                      processPlayers(m.homeScorers, m.home, m.homeLogo, hUid, true);
-                      processPlayers(m.awayScorers, m.away, m.awayLogo, aUid, true);
-                      processPlayers(m.homeAssists, m.home, m.homeLogo, hUid, false);
-                      processPlayers(m.awayAssists, m.away, m.awayLogo, aUid, false);
-                  }
+          historyRecords?.forEach((hr: any) => {
+              hr.teams?.forEach((t: any) => {
+                  if (t.owner && t.ownerId) uidLookup.set(t.owner, t.ownerId);
+                  if (t.legacyName && t.ownerId) uidLookup.set(t.legacyName, t.ownerId);
+              });
+              hr.players?.forEach((p: any) => {
+                  if (p.owner && p.ownerId) uidLookup.set(p.owner, p.ownerId);
+                  if (p.legacyName && p.ownerId) uidLookup.set(p.legacyName, p.ownerId);
               });
           });
-      });
 
-      const finalOwners = Array.from(mergedOwnersMap.values()).map(o => {
-          const latestOwner = owners.find(u => u.uid === o.uid || String(u.id) === o.uid || u.docId === o.uid);
-          return {
-              ...o,
-              name: latestOwner ? latestOwner.nickname : (o.name || o.uid) 
-          };
-      });
+          owners?.forEach((o: any) => {
+              if (o.nickname && o.uid) uidLookup.set(o.nickname, o.uid);
+              if (o.legacyName && o.uid) uidLookup.set(o.legacyName, o.uid);
+              if (o.legacyNames && Array.isArray(o.legacyNames)) {
+                  o.legacyNames.forEach((ln: string) => uidLookup.set(ln, o.uid));
+              }
+          });
 
-      const finalTeams = Array.from(mergedTeamsMap.values()).map(t => {
-          const latestOwner = owners.find(u => u.uid === t.ownerUid || String(u.id) === t.ownerUid || u.docId === t.ownerUid);
-          return {
-              ...t,
-              owner: latestOwner ? latestOwner.nickname : (t.owner || t.ownerUid)
-          };
-      });
+          historyData?.owners?.forEach((o: any) => {
+              const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name; 
+              
+              if (!mergedOwnersMap.has(uid)) {
+                  mergedOwnersMap.set(uid, { ...o, uid }); 
+              } else {
+                  const ex = mergedOwnersMap.get(uid);
+                  ex.win += o.win || 0; ex.draw += o.draw || 0; ex.loss += o.loss || 0;
+                  ex.points += o.points || 0; ex.prize += o.prize || 0;
+                  ex.golds += o.golds || 0; ex.silvers += o.silvers || 0; ex.bronzes += o.bronzes || 0;
+              }
+          });
 
-      const finalPlayers = Array.from(mergedPlayersMap.values()).map(p => {
-          const latestOwner = owners.find(u => u.uid === p.ownerUid || String(u.id) === p.ownerUid || u.docId === p.ownerUid);
-          return {
-              ...p,
-              owner: latestOwner ? latestOwner.nickname : (p.owner || p.ownerUid)
-          };
-      });
+          historyData?.teams?.forEach((t: any) => {
+              const uid = t.ownerId || t.ownerUid || uidLookup.get(t.owner) || t.owner;
+              mergedTeamsMap.set(t.name, { ...t, ownerUid: uid });
+          });
 
-      return {
-          teams: finalTeams,
-          owners: finalOwners.sort((a, b) => b.points - a.points || b.win - a.win),
-          players: finalPlayers,
-          allTimeStats: (historyData as any)?.allTimeStats || [] 
-      };
-  }, [historyData, seasons, owners, historyRecords]); 
+          historyData?.players?.forEach((p: any) => {
+              const uid = p.ownerId || p.ownerUid || uidLookup.get(p.owner) || p.owner;
+              const pk = `${p.name}_${p.team}`; 
+              mergedPlayersMap.set(pk, { ...p, ownerUid: uid });
+          });
+
+          const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
+          
+          activeSeasons.forEach((s: any) => {
+              s.rounds?.forEach((r: any) => {
+                  r.matches?.forEach((m: any) => {
+                      if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
+                          
+                          const hUid = m.homeOwnerUid || uidLookup.get(m.homeOwner) || m.homeOwner || "";
+                          const aUid = m.awayOwnerUid || uidLookup.get(m.awayOwner) || m.awayOwner || "";
+
+                          if (!mergedTeamsMap.has(m.home)) mergedTeamsMap.set(m.home, { name: m.home, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, ownerUid: hUid });
+                          if (!mergedTeamsMap.has(m.away)) mergedTeamsMap.set(m.away, { name: m.away, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, ownerUid: aUid });
+                          
+                          const hTeam = mergedTeamsMap.get(m.home);
+                          const aTeam = mergedTeamsMap.get(m.away);
+
+                          if (!mergedOwnersMap.has(hUid)) mergedOwnersMap.set(hUid, { uid: hUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+                          if (!mergedOwnersMap.has(aUid)) mergedOwnersMap.set(aUid, { uid: aUid, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0 });
+
+                          const hOwner = mergedOwnersMap.get(hUid);
+                          const aOwner = mergedOwnersMap.get(aUid);
+
+                          const hScore = Number(m.homeScore || 0);
+                          const aScore = Number(m.awayScore || 0);
+
+                          hTeam.gf += hScore; hTeam.ga += aScore; hTeam.gd += (hScore - aScore);
+                          aTeam.gf += aScore; aTeam.ga += hScore; aTeam.gd += (aScore - hScore);
+
+                          if (hScore > aScore) {
+                              hTeam.win += 1; hTeam.points += 3; aTeam.loss += 1;
+                              hOwner.win += 1; hOwner.points += 3; aOwner.loss += 1;
+                          } else if (aScore > hScore) {
+                              aTeam.win += 1; aTeam.points += 3; hTeam.loss += 1;
+                              aOwner.win += 1; aOwner.points += 3; hOwner.loss += 1;
+                          } else {
+                              hTeam.draw += 1; hTeam.points += 1; aTeam.draw += 1; aTeam.points += 1;
+                              hOwner.draw += 1; hOwner.points += 1; aOwner.draw += 1; aOwner.points += 1;
+                          }
+
+                          const processPlayers = (playersList: any[], teamName: string, teamLogo: string, ownerUid: string, isGoal: boolean) => {
+                              playersList?.forEach((p: any) => {
+                                  const pName = p.name?.trim();
+                                  if (!pName) return;
+                                  const pk = `${pName}_${teamName}`;
+                                  
+                                  if (!mergedPlayersMap.has(pk)) {
+                                      mergedPlayersMap.set(pk, { name: pName, team: teamName, goals: 0, assists: 0, teamLogo, ownerUid });
+                                  }
+                                  const pRec = mergedPlayersMap.get(pk);
+                                  
+                                  if (isGoal) pRec.goals += Number(p.count || 1);
+                                  else pRec.assists += Number(p.count || 1);
+                                  
+                                  pRec.teamLogo = teamLogo;
+                                  pRec.ownerUid = ownerUid; 
+                              });
+                          };
+
+                          processPlayers(m.homeScorers, m.home, m.homeLogo, hUid, true);
+                          processPlayers(m.awayScorers, m.away, m.awayLogo, aUid, true);
+                          processPlayers(m.homeAssists, m.home, m.homeLogo, hUid, false);
+                          processPlayers(m.awayAssists, m.away, m.awayLogo, aUid, false);
+                      }
+                  });
+              });
+          });
+
+          const finalOwners = Array.from(mergedOwnersMap.values()).map(o => {
+              const latestOwner = owners.find(u => u.uid === o.uid || String(u.id) === o.uid || u.docId === o.uid);
+              return {
+                  ...o,
+                  name: latestOwner ? latestOwner.nickname : (o.name || o.uid) 
+              };
+          });
+
+          const finalTeams = Array.from(mergedTeamsMap.values()).map(t => {
+              const latestOwner = owners.find(u => u.uid === t.ownerUid || String(u.id) === t.ownerUid || u.docId === t.ownerUid);
+              return {
+                  ...t,
+                  owner: latestOwner ? latestOwner.nickname : (t.owner || t.ownerUid)
+              };
+          });
+
+          const finalPlayers = Array.from(mergedPlayersMap.values()).map(p => {
+              const latestOwner = owners.find(u => u.uid === p.ownerUid || String(u.id) === p.ownerUid || u.docId === p.ownerUid);
+              return {
+                  ...p,
+                  owner: latestOwner ? latestOwner.nickname : (p.owner || p.ownerUid)
+              };
+          });
+
+          setCombinedHistoryData({
+              teams: finalTeams,
+              owners: finalOwners.sort((a, b) => b.points - a.points || b.win - a.win),
+              players: finalPlayers,
+              allTimeStats: (historyData as any)?.allTimeStats || [] 
+          });
+
+      }, 10); // 10ms 딜레이를 주어 UI가 먼저 렌더링되게 함
+
+      return () => clearTimeout(timer);
+  }, [historyData, seasons, owners, historyRecords, isLoaded]); 
 
   const handleViewChange = (newView: any) => {
       setCurrentView(newView);
@@ -290,101 +301,111 @@ export default function FootballLeagueApp() {
       }
   };
 
-  const knockoutStages = useMemo(() => {
-    const currentSeason = seasons.find(s => s.id === viewSeasonId);
-    if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) return null;
+  // 🔥 [수술 포인트 3] 대진표 계산도 비동기로 변경 (랭킹/스케줄 뷰일때만 연산)
+  useEffect(() => {
+      if (!isLoaded || (currentView !== 'RANKING' && currentView !== 'SCHEDULE')) return;
 
-    const getWinnerName = (match: Match | null): string => {
-        if (!match) return 'TBD';
-        const home = match.home?.trim();
-        const away = match.away?.trim();
+      const timer = setTimeout(() => {
+          const currentSeason = seasons.find(s => s.id === viewSeasonId);
+          if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) {
+              setKnockoutStages(null);
+              return;
+          }
 
-        if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
-        if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
-        if (match.status !== 'COMPLETED') return 'TBD';
-        
-        const h = Number(match.homeScore || 0);
-        const a = Number(match.awayScore || 0);
-        if (h > a) return match.home;
-        if (a > h) return match.away;
-        return 'TBD';
-    };
+          const getWinnerName = (match: Match | null): string => {
+              if (!match) return 'TBD';
+              const home = match.home?.trim();
+              const away = match.away?.trim();
 
-    const getTeamMeta = (name: string) => {
-        if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
-        if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM', ownerUid: undefined };
-        const normName = name.toLowerCase().trim();
-        const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
-        const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
-        
-        const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
-        return {
-            logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
-            owner: ownerName,
-            ownerUid: getOwnerUidByName(ownerName) 
-        };
-    };
+              if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+              if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+              if (match.status !== 'COMPLETED') return 'TBD';
+              
+              const h = Number(match.homeScore || 0);
+              const a = Number(match.awayScore || 0);
+              if (h > a) return match.home;
+              if (a > h) return match.away;
+              return 'TBD';
+          };
 
-    const createPlaceholder = (vId: string, stageName: string): Match => ({ 
-        id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
-        seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
-        homeOwnerUid: undefined, awayOwnerUid: undefined,
-        homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
-        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
-    } as Match);
+          const getTeamMeta = (name: string) => {
+              if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
+              if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM', ownerUid: undefined };
+              const normName = name.toLowerCase().trim();
+              const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
+              const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
+              
+              const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
+              return {
+                  logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
+                  owner: ownerName,
+                  ownerUid: getOwnerUidByName(ownerName) 
+              };
+          };
 
-    const slots = {
-        roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
-        roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
-        final: [createPlaceholder('v-final', 'FINAL')]
-    };
+          const createPlaceholder = (vId: string, stageName: string): Match => ({ 
+              id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
+              seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
+              homeOwnerUid: undefined, awayOwnerUid: undefined,
+              homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
+              homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+          } as Match);
 
-    let hasActualRoundOf8 = false;
+          const slots = {
+              roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
+              roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
+              final: [createPlaceholder('v-final', 'FINAL')]
+          };
 
-    currentSeason.rounds.forEach((round) => {
-        round.matches?.forEach((m) => {
-            const stage = m.stage?.toUpperCase() || "";
-            if (stage.includes("GROUP")) return;
+          let hasActualRoundOf8 = false;
 
-            const idMatch = m.id.match(/_(\d+)$/);
-            const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
+          currentSeason.rounds.forEach((round) => {
+              round.matches?.forEach((m) => {
+                  const stage = m.stage?.toUpperCase() || "";
+                  if (stage.includes("GROUP")) return;
 
-            if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
-                slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                if (idx < 2) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("ROUND_OF_8")) {
-                if (idx < 4) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-                hasActualRoundOf8 = true;
-            }
-        });
-    });
+                  const idMatch = m.id.match(/_(\d+)$/);
+                  const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
-    const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
-        if (!target || !source) return;
-        const winner = getWinnerName(source);
-        if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
-            target[side] = winner;
-            const meta = getTeamMeta(winner);
-            target[`${side}Logo`] = meta.logo;
-            target[`${side}Owner`] = meta.owner;
-            target[`${side}OwnerUid`] = meta.ownerUid; 
-            target[`${side}Score`] = '';
-        }
-    };
+                  if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+                      slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                  } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+                      if (idx < 2) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                  } else if (stage.includes("ROUND_OF_8")) {
+                      if (idx < 4) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                      hasActualRoundOf8 = true;
+                  }
+              });
+          });
 
-    sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
-    sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
-    sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
-    sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
-    sync(slots.final[0], 'home', slots.roundOf4[0]);
-    sync(slots.final[0], 'away', slots.roundOf4[1]);
+          const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
+              if (!target || !source) return;
+              const winner = getWinnerName(source);
+              if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                  target[side] = winner;
+                  const meta = getTeamMeta(winner);
+                  target[`${side}Logo`] = meta.logo;
+                  target[`${side}Owner`] = meta.owner;
+                  target[`${side}OwnerUid`] = meta.ownerUid; 
+                  target[`${side}Score`] = '';
+              }
+          };
 
-    return {
-        ...slots,
-        roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
-    };
-  }, [seasons, viewSeasonId, activeRankingData, masterTeams]);
+          sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+          sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+          sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+          sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+          sync(slots.final[0], 'home', slots.roundOf4[0]);
+          sync(slots.final[0], 'away', slots.roundOf4[1]);
+
+          setKnockoutStages({
+              ...slots,
+              roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
+          });
+      }, 10);
+
+      return () => clearTimeout(timer);
+  }, [seasons, viewSeasonId, activeRankingData, masterTeams, currentView, isLoaded]);
 
   useEffect(() => {
     if (seasons.length === 0) return;
@@ -763,7 +784,6 @@ export default function FootballLeagueApp() {
         />
       )}
 
-      {/* 🔥 글로벌 플로팅 스크롤 투 탑 버튼 */}
       <ScrollToTop />
     </div>
   );

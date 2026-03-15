@@ -1,7 +1,8 @@
 "use client";
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+// 🔥 [수술 포인트] increment (조회수 1 증가 함수) 임포트 추가
+import { doc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import StickerSelector from './StickerSelector';
@@ -59,11 +60,33 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     const [isSending, setIsSending] = useState(false); 
     const commentInputRef = useRef<HTMLInputElement>(null);
 
+    // 🔥 [수술 포인트] 이미 조회수를 올린 게시글인지 기억하는 안전장치 (무한 증가 방지)
+    const viewedPostRef = useRef<string | null>(null);
+
     const activePost = posts.find((p:any) => p.id === selectedPostId) || notices.find((n:any) => n.id === selectedPostId);
 
-    if (!activePost) return null;
+    const isNotice = !!notices.find((n:any) => n.id === activePost?.id);
 
-    const isNotice = !!notices.find((n:any) => n.id === activePost.id);
+    // 🔥 [수술 포인트] 상세 뷰가 화면에 렌더링될 때 정확히 1번만 조회수를 증가시킵니다.
+    useEffect(() => {
+        if (activePost && activePost.id && viewedPostRef.current !== activePost.id) {
+            viewedPostRef.current = activePost.id; // 현재 게시물 ID 저장
+
+            const incrementViewCount = async () => {
+                try {
+                    const postRef = doc(db, isNotice ? 'notices' : 'posts', activePost.id);
+                    await updateDoc(postRef, {
+                        views: increment(1) // 기존 조회수에서 안전하게 1 더하기
+                    });
+                } catch (error) {
+                    console.error("조회수 증가 실패:", error);
+                }
+            };
+            incrementViewCount();
+        }
+    }, [activePost?.id, isNotice]); // 게시물이 바뀔 때마다 실행
+
+    if (!activePost) return null;
 
     const isPostAuthor = user?.uid === (activePost.authorUid || activePost.ownerUid || activePost.authorId || activePost.ownerId) || 
                          normalizeName(user?.mappedOwnerId) === normalizeName(activePost.authorName || activePost.ownerName) || 
@@ -232,7 +255,8 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                 <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">{authorData.name}</span>
                                 <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
                                     <span>{formatDate(activePost.createdAt, true)}</span>
-                                    {activePost.views !== undefined && <span>• 조회 {activePost.views}</span>}
+                                    {/* 🔥 기존 조회수가 없어도 기본값 0을 띄워 깔끔하게 처리 */}
+                                    <span>• 조회 {activePost.views || 0}</span>
                                 </div>
                             </div>
                         </div>
@@ -324,7 +348,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                         </div>
                                     </div>
 
-                                    {/* 🔥 [수술 포인트 2] 대댓글(답글) 렌더링 로직 완벽 복구 */}
+                                    {/* 대댓글(답글) 렌더링 로직 */}
                                     {replies.length > 0 && (
                                         <div className="mt-4 space-y-4 pl-10 sm:pl-12 border-l-2 border-slate-800/50 ml-4">
                                             {replies.map((reply: any) => {
@@ -385,7 +409,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                         })}
                     </div>
                     
-                    {/* 🔥 [수술 포인트 1] 입력창 언마운트 버그 수정: 답글 작성 시에도 입력창 유지 및 UI 동적 변환 */}
                     {user && (
                         <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
                             {replyingTo && (

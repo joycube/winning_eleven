@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     userScalable: false,
   },
   themeColor: "#020617",
+  manifest: "/manifest.json", // 🔥 스마트폰이 앱으로 인식하게 만드는 마법의 한 줄 추가
   openGraph: {
     title: "eFootball™ Live evolution™",
     description: "eFootball 2025 기반 리그 매니지먼트 시스템",

@@ -1,0 +1,25 @@
+{
+    "name": "eFOOTBALL Live EVOLUTION",
+    "short_name": "eFOOTBALL",
+    "description": "우리들만의 eFOOTBALL 리그 전용 앱",
+    "theme_color": "#020617",
+    "background_color": "#020617",
+    "display": "standalone",
+    "orientation": "portrait",
+    "scope": "/",
+    "start_url": "/?view=LOCKERROOM",
+    "icons": [
+      {
+        "src": "/icons/icon-192x192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "maskable any"
+      },
+      {
+        "src": "/icons/icon-512x512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "maskable any"
+      }
+    ]
+  }

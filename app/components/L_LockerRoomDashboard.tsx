@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalendarDays, MessageSquare, Flame, ChevronRight, Image as ImageIcon, Clock } from 'lucide-react';
+import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock } from 'lucide-react'; // 🔥 ImageIcon 삭제됨
 import { FALLBACK_IMG } from '../types';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+// 🔥 [수술 포인트] 조회수 증가를 위한 doc, updateDoc, increment 임포트 추가
+import { collection, query, where, onSnapshot, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // 🔥 분리한 컴포넌트 임포트
@@ -62,6 +63,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
   
+  const isDataLoading = !owners || owners.length === 0 || !posts;
+
   const activeOrLatestSeason = useMemo(() => {
       if (!seasons || seasons.length === 0) return null;
       const active = seasons.find((s: any) => s.status === 'ACTIVE');
@@ -187,10 +190,22 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return matches.reverse().slice(0, 5); 
   }, [processedRounds]);
 
-  const hotPosts = [...posts].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
+  const hotPosts = [...(posts || [])].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
 
   // --- 네비게이션 핸들러 ---
-  const handlePostClick = (post: any) => {
+  const handlePostClick = async (post: any) => {
+      // 🔥 [수술 포인트] 게시글 클릭 시 DB의 views 카운트를 즉시 1 증가시킵니다.
+      if (post && post.id) {
+          try {
+              const postRef = doc(db, 'posts', post.id);
+              await updateDoc(postRef, {
+                  views: increment(1)
+              });
+          } catch (error) {
+              console.error("조회수 증가 실패:", error);
+          }
+      }
+
       setSelectedPostId(post.id);
       setViewMode('LIST');
       const params = new URLSearchParams(window.location.search);
@@ -322,9 +337,9 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           )}
 
-          {/* 🔥 2. 깔끔하게 분리된 독립 컴포넌트 호출 */}
+          {/* 2. 라이브 피드 전광판 */}
           <LiveFeed 
-              posts={posts} 
+              posts={posts || []} 
               owners={owners} 
               seasons={seasons} 
               selectedSeasonId={selectedSeasonId}
@@ -355,55 +370,91 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
 
                   <div className="p-4">
-                      {posts && posts.filter((p:any) => !!p.imageUrl).length > 0 && (
-                          <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
-                              {posts.filter((p:any) => !!p.imageUrl).slice(0, 5).map((post:any, i:number) => (
-                                  <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
-                                      <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors">
-                                          <img src={post.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="thumbnail" />
-                                          <div className="absolute top-1.5 right-1.5 bg-black/60 p-1 rounded text-white"><ImageIcon size={10}/></div>
+                      {/* 🔥 스켈레톤 UI (리그 커뮤니티) */}
+                      {isDataLoading ? (
+                          <>
+                              {/* 썸네일 박스 스켈레톤 */}
+                              <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
+                                  {[...Array(5)].map((_, i) => (
+                                      <div key={i} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 animate-pulse">
+                                          <div className="w-full h-[100px] bg-slate-800/60 rounded-xl"></div>
+                                          <div className="h-3 w-3/4 bg-slate-800/60 rounded mt-1"></div>
                                       </div>
-                                      <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
+                                  ))}
+                              </div>
+                              {/* 리스트 스켈레톤 */}
+                              <div className="flex flex-col divide-y divide-slate-800/50">
+                                  {[...Array(5)].map((_, i) => (
+                                      <div key={i} className="flex items-center justify-between py-4 px-2 animate-pulse">
+                                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                                              <div className="w-5 h-5 bg-slate-800/60 rounded shrink-0"></div>
+                                              <div className="flex flex-col flex-1 gap-2">
+                                                  <div className="h-3.5 w-2/3 bg-slate-800/60 rounded"></div>
+                                                  <div className="h-2 w-1/3 bg-slate-800/60 rounded"></div>
+                                              </div>
+                                          </div>
+                                          <div className="flex items-center gap-3 shrink-0 ml-2">
+                                              <div className="w-11 h-11 bg-slate-800/60 rounded-lg"></div>
+                                              <div className="w-11 h-11 bg-slate-800/60 rounded-xl"></div>
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          </>
+                      ) : (
+                          <>
+                              {/* 실제 데이터 렌더링 */}
+                              {posts && posts.filter((p:any) => !!p.imageUrl).length > 0 && (
+                                  <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
+                                      {posts.filter((p:any) => !!p.imageUrl).slice(0, 5).map((post:any, i:number) => (
+                                          <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
+                                              <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors">
+                                                  <img src={post.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="thumbnail" />
+                                                  {/* 🔥 [수술 포인트] 눈에 거슬리던 사진 아이콘 삭제 */}
+                                              </div>
+                                              <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
+                                          </div>
+                                      ))}
                                   </div>
-                              ))}
-                          </div>
+                              )}
+
+                              <div className="flex flex-col divide-y divide-slate-800/50">
+                                  {(communityTab === 'HOT' ? hotPosts : posts.slice(0, 5)).map((post:any, idx:number) => {
+                                      const ytMatch = post.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
+                                      const ytId = post.youtubeId || (ytMatch ? ytMatch[1] : null);
+                                      const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
+                                      const commentCount = post.comments?.length || 0;
+                                      const displayNum = communityTab === 'HOT' ? idx + 1 : posts.length - idx;
+
+                                      return (
+                                          <div key={post.id} onClick={() => handlePostClick(post)} className="flex items-center justify-between py-3 hover:bg-slate-800/40 transition-colors cursor-pointer group px-2">
+                                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                  <span className="text-slate-500 font-bold italic text-[14px] w-5 text-center shrink-0">{displayNum}</span>
+                                                  <div className="flex flex-col min-w-0 flex-1 gap-1">
+                                                      <div className="flex items-center gap-2 min-w-0">
+                                                          <span className="bg-slate-800 border border-slate-700/80 text-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">{post.cat}</span>
+                                                          <span className="text-slate-200 font-medium text-[14px] truncate pr-1">{post.title}</span>
+                                                      </div>
+                                                      <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 ml-[44px]">
+                                                          <span>{post.authorName}</span>
+                                                          <span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span>
+                                                          <span>조회 {post.views || 0}</span>
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                              <div className="flex items-center gap-3 shrink-0 ml-2">
+                                                  {thumbSrc && <img src={thumbSrc} className="w-11 h-11 rounded-lg object-cover border border-slate-700 block shrink-0" onError={(e: any) => { e.target.style.display = 'none'; }} />}
+                                                  <div className={`flex flex-col items-center justify-center rounded-xl w-11 h-11 border shrink-0 transition-colors ${commentCount > 0 ? 'bg-emerald-950/40 border-emerald-900/60 text-emerald-400' : 'bg-slate-800/50 border-slate-700 text-slate-500'}`}>
+                                                      <span className="text-[14px] font-black leading-none">{commentCount}</span>
+                                                      <span className="text-[9px] font-bold mt-0.5">댓글</span>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </>
                       )}
-
-                      <div className="flex flex-col divide-y divide-slate-800/50">
-                          {(communityTab === 'HOT' ? hotPosts : posts.slice(0, 5)).map((post:any, idx:number) => {
-                              const ytMatch = post.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
-                              const ytId = post.youtubeId || (ytMatch ? ytMatch[1] : null);
-                              const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
-                              const commentCount = post.comments?.length || 0;
-                              const displayNum = communityTab === 'HOT' ? idx + 1 : posts.length - idx;
-
-                              return (
-                                  <div key={post.id} onClick={() => handlePostClick(post)} className="flex items-center justify-between py-3 hover:bg-slate-800/40 transition-colors cursor-pointer group px-2">
-                                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                                          <span className="text-slate-500 font-bold italic text-[14px] w-5 text-center shrink-0">{displayNum}</span>
-                                          <div className="flex flex-col min-w-0 flex-1 gap-1">
-                                              <div className="flex items-center gap-2 min-w-0">
-                                                  <span className="bg-slate-800 border border-slate-700/80 text-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">{post.cat}</span>
-                                                  <span className="text-slate-200 font-medium text-[14px] truncate pr-1">{post.title}</span>
-                                              </div>
-                                              <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 ml-[44px]">
-                                                  <span>{post.authorName}</span>
-                                                  <span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span>
-                                                  <span>조회 {post.views || 0}</span>
-                                              </div>
-                                          </div>
-                                      </div>
-                                      <div className="flex items-center gap-3 shrink-0 ml-2">
-                                          {thumbSrc && <img src={thumbSrc} className="w-11 h-11 rounded-lg object-cover border border-slate-700 block shrink-0" onError={(e: any) => { e.target.style.display = 'none'; }} />}
-                                          <div className={`flex flex-col items-center justify-center rounded-xl w-11 h-11 border shrink-0 transition-colors ${commentCount > 0 ? 'bg-emerald-950/40 border-emerald-900/60 text-emerald-400' : 'bg-slate-800/50 border-slate-700 text-slate-500'}`}>
-                                              <span className="text-[14px] font-black leading-none">{commentCount}</span>
-                                              <span className="text-[9px] font-bold mt-0.5">댓글</span>
-                                          </div>
-                                      </div>
-                                  </div>
-                              );
-                          })}
-                      </div>
                   </div>
               </div>
           </div>
@@ -434,7 +485,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   )}
               </div>
 
-              {(!seasons || seasons.length === 0) ? (
+              {(!seasons || seasons.length === 0) && !isDataLoading ? (
                   <div className="bg-[#050b14] border border-slate-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center shadow-xl">
                       <CalendarDays size={40} className="text-slate-600 mb-4" />
                       <span className="text-sm font-black text-slate-300 italic">현재 진행 중인 시즌이 없습니다.</span>
@@ -451,19 +502,54 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
 
                       <div className="flex flex-col bg-[#050b14]">
-                          {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
+                          {/* 🔥 스켈레톤 UI (매치 센터) */}
+                          {isDataLoading ? (
                               <div className="flex flex-col divide-y divide-slate-800/80">
-                                  {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match: any, idx: number) => (
-                                      <React.Fragment key={idx}>
-                                          {renderMatchRow(match, matchTab === 'RECENT')}
-                                      </React.Fragment>
+                                  {[...Array(4)].map((_, i) => (
+                                      <div key={i} className="flex flex-col bg-slate-900/40 py-5 sm:py-6 px-2 sm:px-6 animate-pulse">
+                                          <div className="flex justify-between items-center">
+                                              {/* Home */}
+                                              <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end">
+                                                  <div className="flex flex-col items-end gap-2 mt-1">
+                                                      <div className="h-3.5 w-16 bg-slate-800/60 rounded"></div>
+                                                      <div className="h-2 w-10 bg-slate-800/60 rounded"></div>
+                                                  </div>
+                                                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800/60 rounded-full shrink-0"></div>
+                                              </div>
+                                              {/* Center */}
+                                              <div className="w-[80px] sm:w-[100px] shrink-0 flex flex-col items-center justify-center px-1 gap-2">
+                                                  <div className="h-2 w-12 bg-slate-800/60 rounded"></div>
+                                                  <div className="h-3 w-16 bg-slate-800/60 rounded"></div>
+                                                  <div className="h-4 w-8 bg-slate-800/60 rounded mt-1"></div>
+                                              </div>
+                                              {/* Away */}
+                                              <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-start">
+                                                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800/60 rounded-full shrink-0"></div>
+                                                  <div className="flex flex-col items-start gap-2 mt-1">
+                                                      <div className="h-3.5 w-16 bg-slate-800/60 rounded"></div>
+                                                      <div className="h-2 w-10 bg-slate-800/60 rounded"></div>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </div>
                                   ))}
                               </div>
                           ) : (
-                              <div className="bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center">
-                                  <CalendarDays size={32} className="text-slate-600 mb-2 opacity-50" />
-                                  <span className="text-xs font-bold text-slate-500">해당하는 매치 기록이 없습니다.</span>
-                              </div>
+                              /* 실제 데이터 렌더링 */
+                              (matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
+                                  <div className="flex flex-col divide-y divide-slate-800/80">
+                                      {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match: any, idx: number) => (
+                                          <React.Fragment key={idx}>
+                                              {renderMatchRow(match, matchTab === 'RECENT')}
+                                          </React.Fragment>
+                                      ))}
+                                  </div>
+                              ) : (
+                                  <div className="bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center">
+                                      <CalendarDays size={32} className="text-slate-600 mb-2 opacity-50" />
+                                      <span className="text-xs font-bold text-slate-500">해당하는 매치 기록이 없습니다.</span>
+                                  </div>
+                              )
                           )}
                       </div>
                   </div>
