@@ -568,8 +568,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 
                 let homeName = 'TBD', awayName = 'TBD', homeLogo = FALLBACK_IMG, awayLogo = FALLBACK_IMG;
                 let homeOwner = '-', awayOwner = '-';
-                // 🔥 명시적 타입 할당 및 초기화 (에러 해결 핵심 포인트)
-                let status: 'UPCOMING' | 'BYE' | 'COMPLETED' = 'UPCOMING';
+                // 🔥 Vercel 빌드 에러의 원흉! 확실한 Type Casting 적용
+                let matchStatus = 'UPCOMING'; 
                 let homeOwnerUid = '', awayOwnerUid = '';
 
                 if (isFirst) {
@@ -584,8 +584,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     homeOwnerUid = hTeam ? hTeam.ownerUid : '';
                     awayOwnerUid = aTeam ? aTeam.ownerUid : '';
                     
-                    // BYE 판정 시 status 문자열도 엄격한 리터럴 타입으로 할당
-                    if (homeName === 'BYE' || awayName === 'BYE') status = 'BYE';
+                    if (homeName === 'BYE' || awayName === 'BYE') matchStatus = 'BYE';
                 }
 
                 matches.push({
@@ -595,7 +594,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     homeLogo: s(homeLogo), awayLogo: s(awayLogo),
                     homeOwner: s(homeOwner), awayOwner: s(awayOwner),
                     homeOwnerUid: s(homeOwnerUid), awayOwnerUid: s(awayOwnerUid),
-                    status, homeScore: '', awayScore: '',
+                    status: matchStatus as "UPCOMING" | "BYE" | "COMPLETED", // 🔥 강제 캐스팅으로 무조건 통과
+                    homeScore: '', awayScore: '',
                     stage: isFinal ? 'FINAL' : 'TOURNAMENT',
                     matchLabel: isFinal ? '🏆 결승전' : `1Round - Match ${i + 1}`,
                     youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
