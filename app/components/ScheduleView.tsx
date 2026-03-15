@@ -6,8 +6,6 @@ import { MatchCard } from './MatchCard';
 import { CupSchedule } from './CupSchedule'; 
 import { Season, Match, MasterTeam, Owner } from '../types'; 
 import { MessageSquare } from 'lucide-react';
-
-// 🔥 [수술 포인트 1] LiveFeed 컴포넌트 임포트 추가
 import { LiveFeed } from './LiveFeed';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -150,7 +148,6 @@ export const ScheduleView = ({
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
-  
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
@@ -178,8 +175,9 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
+  // 🔥 [수술 포인트: 자동 스크롤 디벨롭]
   useEffect(() => {
-      if (viewMode === 'CUP' || !currentSeason?.rounds) return;
+      if (!currentSeason?.rounds) return;
 
       const params = new URLSearchParams(window.location.search);
       const urlMatchId = params.get('matchId');
@@ -187,31 +185,50 @@ export const ScheduleView = ({
       let targetMatchId: string | null = null;
       let urlTargetMatch: Match | null = null;
 
+      // 1. 모든 게임 진행 완료 여부 하이브리드 체크
+      let isAllFinished = currentSeason.status === 'COMPLETED'; // 어드민 마감
+      
+      if (!isAllFinished) {
+          let totalMatches = 0;
+          let finishedMatches = 0;
+
+          currentSeason.rounds.forEach(r => {
+              r.matches.forEach(m => {
+                  if (m.home !== 'BYE' && m.away !== 'BYE') {
+                      totalMatches++;
+                      // 스코어가 있거나 상태가 완료면 완료로 간주
+                      if (m.status === 'COMPLETED' || (m.homeScore !== '' && m.awayScore !== '')) {
+                          finishedMatches++;
+                      }
+                  }
+              });
+          });
+          if (totalMatches > 0 && totalMatches === finishedMatches) isAllFinished = true;
+      }
+
+      // 2. 스크롤 로직 판단
       if (urlMatchId) {
+          // [우선순위 1] URL에 matchId가 있으면 무조건 해당 매치로 이동 (의도적 진입)
           targetMatchId = urlMatchId;
           for (const round of currentSeason.rounds) {
               const found = round.matches.find(m => m.id === urlMatchId);
-              if (found) {
-                  urlTargetMatch = found;
-                  break;
-              }
+              if (found) { urlTargetMatch = found; break; }
           }
-      } else {
+      } else if (!isAllFinished) {
+          // [우선순위 2] 진행 중인 시즌: 최신 미진행 게임으로 이동
           for (const round of currentSeason.rounds) {
-              const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
+              const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED' && m.homeScore === '' && m.awayScore === '');
               if (upcomingMatch) {
                   targetMatchId = upcomingMatch.id;
                   break;
               }
           }
-          if (!targetMatchId && currentSeason.rounds.length > 0) {
-              const lastRound = currentSeason.rounds[currentSeason.rounds.length - 1];
-              if (lastRound.matches.length > 0) {
-                  targetMatchId = lastRound.matches[lastRound.matches.length - 1].id;
-              }
-          }
+      } else {
+          // [완료된 경우] 리그/컵 관계없이 스크롤 없음 (targetMatchId = null)
+          targetMatchId = null;
       }
 
+      // 3. 실제 스크롤 실행 (단 1번)
       if (targetMatchId && matchRefs.current[targetMatchId]) {
         const finalId = targetMatchId; 
         setTimeout(() => {
@@ -220,12 +237,7 @@ export const ScheduleView = ({
             if (urlTargetMatch) {
                 const translatedHomeOwner = resolveOwnerInfo(owners, urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid).nickname;
                 const translatedAwayOwner = resolveOwnerInfo(owners, urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid).nickname;
-                const safeMatch = { 
-                    ...urlTargetMatch, 
-                    homeOwner: translatedHomeOwner, 
-                    awayOwner: translatedAwayOwner,
-                };
-                onMatchClick(safeMatch);
+                onMatchClick({ ...urlTargetMatch, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner });
                 
                 params.delete('matchId');
                 window.history.replaceState(null, '', `?${params.toString()}`);
@@ -348,7 +360,6 @@ export const ScheduleView = ({
              </div>
         </div>
 
-        {/* 🔥 [수술 포인트 2] 스케줄표 상단에 1줄짜리 라이브 피드(매치톡 전용) 노출 */}
         <LiveFeed 
             mode="schedule" 
             seasons={seasons}
@@ -372,7 +383,6 @@ export const ScheduleView = ({
                     <div className="min-w-max md:min-w-[760px] px-2">
                         <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
                         <div className="bracket-tree no-scrollbar">
-                            
                             <div className="bracket-column">
                                 <div className="b-node">
                                     <BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} />
@@ -381,20 +391,17 @@ export const ScheduleView = ({
                                     <BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} />
                                 </div>
                             </div>
-
                             <div className="bracket-column">
                                 <div className="b-node">
                                     <BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} />
                                 </div>
                             </div>
-
                             <div className="bracket-column pl-4">
                                 <div className="b-node relative scale-110 ml-4">
                                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce z-20">👑</div>
                                     <BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} />
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 </div>
@@ -416,19 +423,13 @@ export const ScheduleView = ({
                                                     let customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                     if (m.matchLabel && m.matchLabel.includes('PO')) customMatchLabel = m.matchLabel; else if (m.matchLabel && m.matchLabel.includes('결승전')) customMatchLabel = m.matchLabel;
                                                     const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
-                                                    
                                                     const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                     const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                    
                                                     const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                                     const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                                    
                                                     const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
-
                                                     return (
-                                                        <div key={m.id} 
-                                                             ref={(el) => matchRefs.current[m.id] = el}
-                                                             className="flex flex-col mb-2">
+                                                        <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                             <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -452,33 +453,24 @@ export const ScheduleView = ({
                     const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
                     const totalMatchesInRound = r.matches.length;
                     const seasonType = currentSeason.type || 'LEAGUE';
-
                     return (
                         <div key={rIdx} className="space-y-6">
                             {uniqueStages.map((stageName) => {
                                 const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, seasonType);
                                 return (
                                     <div key={stageName} className="space-y-2">
-                                        <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">
-                                            {displayStageName}
-                                        </h3>
+                                        <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
                                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                 const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
-                                                
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                 const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                
                                                 const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                                 const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-
                                                 const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
-
                                                 return (
-                                                    <div key={m.id} 
-                                                         ref={(el) => matchRefs.current[m.id] = el}
-                                                         className="flex flex-col mb-2">
+                                                    <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>

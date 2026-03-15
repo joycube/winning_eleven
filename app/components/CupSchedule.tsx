@@ -227,12 +227,11 @@ export const CupSchedule = ({
 
   const displayStages = knockoutStages || internalKnockoutStages;
 
-  // 🔥 [핵심 수술 포인트] URL에서 matchId를 읽고, 해당 경기로 스크롤한 뒤 팝업(모달)을 자동으로 열어줍니다.
+  // 🔥 [핵심 스크롤 및 팝업 제어 로직]
   useEffect(() => {
     if (!currentSeason || !currentSeason.rounds) return; 
 
     let allMatches: Match[] = [];
-
     if (displayStages) { 
         currentSeason.rounds.forEach((r) => {
             const groupMatches = (r.matches || []).filter(m => m.stage.toUpperCase().includes('GROUP'));
@@ -247,21 +246,32 @@ export const CupSchedule = ({
         });
     }
 
+    const realMatches = allMatches.filter(m => m.id && !m.id.startsWith('v-'));
     const params = new URLSearchParams(window.location.search);
     const urlMatchId = params.get('matchId');
     
     let targetMatchId: string | null = null;
     let urlTargetMatch: Match | null = null;
 
+    // 시즌 완료 여부 판정
+    let isSeasonCompleted = currentSeason.status === 'COMPLETED';
+    if (!isSeasonCompleted && realMatches.length > 0) {
+        const totalValid = realMatches.filter(m => m.home !== 'BYE' && m.away !== 'BYE').length;
+        const finished = realMatches.filter(m => m.status === 'COMPLETED' || (m.homeScore !== '' && m.awayScore !== '')).length;
+        if (totalValid > 0 && totalValid === finished) isSeasonCompleted = true;
+    }
+
     if (urlMatchId) {
         targetMatchId = urlMatchId;
-        urlTargetMatch = allMatches.find(m => m.id === urlMatchId) || null;
-    } else {
-        const upcomingMatch = allMatches.find(m => m.status !== 'COMPLETED' && m.id && !m.id.startsWith('v-')); 
+        urlTargetMatch = realMatches.find(m => m.id === urlMatchId) || null;
+    } else if (!isSeasonCompleted) {
+        // 미진행 경기 중 첫 번째 우선
+        const upcomingMatch = realMatches.find(m => m.status !== 'COMPLETED' && m.homeScore === '' && m.awayScore === '');
         if (upcomingMatch) {
             targetMatchId = upcomingMatch.id;
         } else {
-            const completedMatches = allMatches.filter(m => m.status === 'COMPLETED' && m.id);
+            // 미진행이 없으면 마지막 완료 경기
+            const completedMatches = realMatches.filter(m => (m.status === 'COMPLETED' || m.homeScore !== '') && m.id);
             if (completedMatches.length > 0) {
                 targetMatchId = completedMatches[completedMatches.length - 1].id;
             }
@@ -271,10 +281,8 @@ export const CupSchedule = ({
     if (targetMatchId && matchRefs.current[targetMatchId]) {
         const finalId = targetMatchId; 
         setTimeout(() => {
-            // 해당 매치 카드로 부드럽게 스크롤
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // 🔥 URL을 통해 들어왔다면, 스크롤 직후 매치톡 팝업을 띄우고 URL을 청소합니다.
             if (urlTargetMatch) {
                 onMatchClick(urlTargetMatch);
                 params.delete('matchId');
