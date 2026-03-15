@@ -568,7 +568,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 
                 let homeName = 'TBD', awayName = 'TBD', homeLogo = FALLBACK_IMG, awayLogo = FALLBACK_IMG;
                 let homeOwner = '-', awayOwner = '-';
-                // 🔥 명시적 타입 할당으로 빌드 에러 방지
+                // 🔥 명시적 타입 할당 및 초기화 (에러 해결 핵심 포인트)
                 let status: 'UPCOMING' | 'BYE' | 'COMPLETED' = 'UPCOMING';
                 let homeOwnerUid = '', awayOwnerUid = '';
 
@@ -584,6 +584,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     homeOwnerUid = hTeam ? hTeam.ownerUid : '';
                     awayOwnerUid = aTeam ? aTeam.ownerUid : '';
                     
+                    // BYE 판정 시 status 문자열도 엄격한 리터럴 타입으로 할당
                     if (homeName === 'BYE' || awayName === 'BYE') status = 'BYE';
                 }
 
@@ -858,7 +859,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             )}
 
             {/* ==============================================================================
-                STEP 3. 토너먼트 대진표 에디터 (🔥 TOURNAMENT 다이내믹 피라미드 트리 디자인)
+                STEP 3. 토너먼트 대진표 에디터 (🔥 모바일 최적화 수직 스태킹 디자인)
             ============================================================================== */}
             {hasSchedule && targetSeason.type === 'TOURNAMENT' && (
                 <div id="tourney-setup-section" className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 overflow-hidden ${isTourneyLocked ? 'border-slate-800 bg-[#05070a]' : 'border-blue-900/50'}`}>
@@ -907,9 +908,9 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                         )}
                     </div>
 
-                    {/* 🔥 다이내믹 피라미드 대진표 (결승전부터 1라운드까지) */}
-                    <div className="space-y-8 relative pb-8 w-full overflow-x-auto no-scrollbar flex flex-col items-center">
-                        <div className="min-w-max flex flex-col items-center gap-8 md:gap-12">
+                    {/* 🔥 다이내믹 피라미드 대진표 (모바일 세로형 + 데스크탑 그리드형) */}
+                    <div className="space-y-8 relative pb-8 w-full flex flex-col items-center px-2">
+                        <div className="w-full flex flex-col items-center gap-10 md:gap-16">
                             {Array.from({ length: tourneyTargetSize > 0 ? Math.log2(tourneyTargetSize) : 0 })
                                 .map((_, i) => Math.log2(tourneyTargetSize) - i)
                                 .map((roundLevel) => {
@@ -929,19 +930,21 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                     return (
                                         <div key={roundLevel} className="flex flex-col items-center w-full relative">
                                             {/* Title for the Round Row */}
-                                            <div className="text-center mb-4">
+                                            <div className="text-center mb-6">
                                                 <span className={`text-[14px] sm:text-[16px] font-black italic tracking-widest uppercase ${isFinal ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)]' : isFirstRound ? 'text-blue-400' : 'text-slate-400'}`}>
                                                     {getRoundTitle(roundLevel)}
                                                 </span>
                                             </div>
 
-                                            {/* Matches Row */}
-                                            <div className="flex items-center justify-center gap-6 sm:gap-10">
+                                            {/* 🔥 Matches Row: 모바일 수직 (1열), 큰 화면 수평 (다열 그리드) 완벽 제어 */}
+                                            <div className={`grid grid-cols-1 gap-6 sm:gap-8 justify-items-center w-full max-w-7xl mx-auto ${
+                                                matchesInRound === 1 ? 'md:grid-cols-1' :
+                                                matchesInRound === 2 ? 'md:grid-cols-2' :
+                                                matchesInRound === 4 ? 'md:grid-cols-2 lg:grid-cols-4' :
+                                                'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                                            }`}>
                                                 {Array.from({ length: matchesInRound }).map((_, mIdx) => {
                                                     if (isFirstRound) {
-                                                        // ==========================================
-                                                        // INTERACTABLE ROUND 1 MATCHES
-                                                        // ==========================================
                                                         const homeIdx = mIdx * 2;
                                                         const awayIdx = mIdx * 2 + 1;
                                                         const hTeam = tourneyBracket[homeIdx];
@@ -949,7 +952,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                                         const isInnerCivilWar = hTeam && aTeam && (hTeam.ownerUid === aTeam.ownerUid || hTeam.ownerName === aTeam.ownerName);
 
                                                         return (
-                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border transition-all w-[300px] sm:w-[340px] ${isTourneyLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/40 border-blue-500/50 shadow-xl shadow-blue-900/20'}`}>
+                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border transition-all w-full max-w-[340px] ${isTourneyLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/40 border-blue-500/50 shadow-xl shadow-blue-900/20'}`}>
                                                                 <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
                                                                     <span className="text-[10px] text-blue-400 font-black italic tracking-widest uppercase">Match {mIdx + 1}</span>
                                                                 </div>
@@ -989,11 +992,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                                             </div>
                                                         );
                                                     } else {
-                                                        // ==========================================
-                                                        // FUTURE PLACEHOLDER MATCHES
-                                                        // ==========================================
                                                         return (
-                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-[260px] sm:w-[320px] opacity-80 pointer-events-none`}>
+                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-full max-w-[340px] opacity-80 pointer-events-none`}>
                                                                 <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
                                                                     <span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">{isFinal ? '결승전' : `Match ${mIdx + 1}`}</span>
                                                                 </div>
