@@ -225,7 +225,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 tier = opTeamData?.tier || 'C';
             } else {
                 let opOwnerData = null;
-                // 🔥 오너 ID 또는 이름으로 검색 강화
                 if (targetUid) {
                     opOwnerData = owners?.find((o:any) => o.uid === targetUid || o.docId === targetUid || String(o.id) === targetUid);
                 }
@@ -428,7 +427,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                         <div className="relative">
                             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-600 via-white/80 to-slate-800 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
                                 <div className="w-full h-full rounded-full bg-[#050b14] p-1 flex items-center justify-center overflow-hidden">
-                                    {/* 🔥 프로필 이미지 에러 처리 추가 */}
                                     <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                 </div>
                             </div>
@@ -543,7 +541,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                 <div className="flex items-center gap-4 relative z-10">
                                     <div className="relative shrink-0">
                                         <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
-                                            {/* 🔥 상성 분석기 이미지 에러 처리 완벽 추가 */}
                                             <img src={card.data.logo || FALLBACK_IMG} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                         </div>
                                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border shadow-sm flex items-center justify-center 
@@ -599,7 +596,6 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                 <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-2 overflow-visible">
                                                     <div className="relative shrink-0">
                                                         <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
-                                                            {/* 🔥 최근 전적 이미지 에러 처리 */}
                                                             <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                         </div>
                                                         <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
@@ -607,8 +603,9 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col min-w-0">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate">{team.name}</span>
+                                                        {/* 🔥 [수술 포인트] gap-3으로 화살표 간격 벌리고, pr-1.5로 이탤릭체 잘림 방지 */}
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate pr-1.5">{team.name}</span>
                                                             <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} bg-emerald-500 text-white`}>
                                                                 <ChevronRight size={12} strokeWidth={4} />
                                                             </div>
@@ -681,12 +678,15 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                         <React.Fragment key={idx}>
                                             <div onClick={() => setExpandedPlayer(isExpanded ? null : p.name)} className={`flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all cursor-pointer h-[64px] ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}>
                                                 <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
-                                                <div className="w-[35%] ml-4 pr-2 min-w-0 overflow-hidden flex items-center gap-1.5">
-                                                    <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate">{p.name}</span>
+                                                
+                                                {/* 🔥 [수술 포인트] gap-3으로 화살표 간격 벌리고, pr-1.5로 이탤릭체 잘림 방지 */}
+                                                <div className="w-[35%] ml-4 pr-2 min-w-0 overflow-hidden flex items-center gap-3">
+                                                    <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate pr-1.5">{p.name}</span>
                                                     <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${playerTab === 'GOAL' ? 'bg-yellow-400 text-slate-900' : 'bg-red-500 text-white'}`}>
                                                         <ChevronRight size={12} strokeWidth={4} />
                                                     </div>
                                                 </div>
+                                                
                                                 <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-2 overflow-visible ml-2">
                                                     <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
                                                         <img src={p.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
@@ -700,22 +700,22 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                             {isExpanded && (
                                                 <div className="bg-[#0b0e14] py-3 px-4 shadow-inner border-x border-b border-slate-800/60 rounded-b-2xl mb-2 animate-in slide-in-from-top-2 duration-200">
                                                     <span className={`text-[9px] font-black uppercase tracking-widest mb-2 block border-b border-slate-800 pb-1.5 ${pTabStr === 'GOAL' ? 'text-yellow-500' : 'text-red-500'}`}>{pTabStr === 'GOAL' ? 'GOAL DISTRIBUTION (TOP 5)' : 'ASSIST DISTRIBUTION (TOP 5)'}</span>
-                                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                                                    <div className="flex flex-col gap-2 pb-1">
                                                         {(() => {
                                                             const dist = playerDistributionMap[p.name]?.[pTabStr] || {};
                                                             const opponents = Object.keys(dist).sort((a, b) => dist[b].count - dist[a].count).slice(0, 5);
                                                             if (opponents.length === 0) return <div className="text-[10px] text-slate-500 italic py-1">상세 기록을 찾을 수 없습니다.</div>;
                                                             return opponents.map(op => (
-                                                                <div key={op} className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 rounded-lg p-2 min-w-[130px] shrink-0 hover:border-slate-700 transition-colors">
-                                                                    <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm">
+                                                                <div key={op} className="flex items-center bg-slate-900/80 border border-slate-800 rounded-lg p-2 w-full shrink-0 hover:border-slate-700 transition-colors">
+                                                                    <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm mr-3">
                                                                         <img src={dist[op].logo} className="w-full h-full object-contain" alt="" />
                                                                     </div>
-                                                                    <div className="flex flex-col min-w-0 text-left">
-                                                                        <div className="flex items-baseline gap-1">
-                                                                            <span className="text-[11px] font-black text-white uppercase truncate">{op}</span>
-                                                                            <span className={`text-[12px] font-black ${pTabStr === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>{dist[op].count}</span>
-                                                                        </div>
-                                                                        <span className="text-[9px] text-slate-500 font-bold italic truncate">({dist[op].owner})</span>
+                                                                    <div className="flex flex-col flex-1 min-w-0 pr-2">
+                                                                        <span className="text-[12px] font-black text-white uppercase truncate leading-tight">{op}</span>
+                                                                        <span className="text-[10px] text-slate-500 font-bold italic truncate mt-0.5">{dist[op].owner}</span>
+                                                                    </div>
+                                                                    <div className={`text-[14px] font-black pr-2 shrink-0 ${pTabStr === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                                        {dist[op].count}
                                                                     </div>
                                                                 </div>
                                                             ));
