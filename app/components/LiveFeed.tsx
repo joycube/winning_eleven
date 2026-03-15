@@ -14,19 +14,29 @@ const getTimestamp = (val: any) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
-export const LiveFeed = ({ posts, owners, seasons, selectedSeasonId, onNavigateToPost, onNavigateToMatch }: any) => {
+export const LiveFeed = ({ 
+    mode = 'dashboard', 
+    posts = [], 
+    owners, 
+    seasons, 
+    selectedSeasonId, 
+    onNavigateToPost, 
+    onNavigateToMatch 
+}: any) => {
     const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
-    // 🔥 데이터 로딩 상태 추가
     const [isFetching, setIsFetching] = useState(true);
 
-    // 1. 매치톡 실시간 데이터 수신
+    // 1. 매치톡 실시간 데이터 수신 (🔥 넉넉하게 200개를 가져와서 클라이언트에서 완벽 필터링)
     useEffect(() => {
-        const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(15));
+        setIsFetching(true);
+        const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(200));
+
         const unsubscribe = onSnapshot(q, (snap) => {
             const docs = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
             setMatchCommentsData(docs);
-            setIsFetching(false); // 데이터 도착 완료!
+            setIsFetching(false);
         });
+
         return () => unsubscribe();
     }, []);
 
@@ -42,6 +52,8 @@ export const LiveFeed = ({ posts, owners, seasons, selectedSeasonId, onNavigateT
 
     // 2. 커뮤니티 데이터 가공
     const communityComments = useMemo(() => {
+        if (mode !== 'dashboard') return [];
+
         let allComments: any[] = [];
         posts.forEach((p: any) => {
             if (p.comments && Array.isArray(p.comments)) {
@@ -67,12 +79,29 @@ export const LiveFeed = ({ posts, owners, seasons, selectedSeasonId, onNavigateT
             return owners?.slice(0, 3).map((o:any) => ({ id: Math.random(), name: o.nickname, uid: o.uid, text: "오늘도 활기찬 리그! 🔥", type: 'COMMUNITY', targetId: '' })) || [];
         }
         return recent;
-    }, [posts, owners]);
+    }, [posts, owners, mode]);
 
-    // 3. 매치톡 데이터 가공
+    // 3. 매치톡 데이터 가공 (🔥 가상 ID 버그 완벽 해결)
     const matchComments = useMemo(() => {
-        const sortedMatchComments = [...matchCommentsData].sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
+        const validMatchIds = new Set();
+        if (mode === 'schedule' && selectedSeasonId && seasons) {
+            const currentSeason = seasons.find((s: any) => String(s.id) === String(selectedSeasonId));
+            currentSeason?.rounds?.forEach((r: any) => {
+                r.matches?.forEach((m: any) => validMatchIds.add(m.id));
+            });
+        }
+
+        let sortedMatchComments = [...matchCommentsData].sort((a, b) => getTimestamp(b.createdAt) - getTimestamp(a.createdAt));
         
+        if (mode === 'schedule' && selectedSeasonId) {
+            sortedMatchComments = sortedMatchComments.filter(c => {
+                // 🔥 시즌 ID가 일치하거나 (가상 매치 포함), 실제 DB 매치 ID에 포함되어 있으면 노출!
+                const isMatchingSeasonId = c.seasonId && String(c.seasonId) === String(selectedSeasonId);
+                const isMatchingRoundId = validMatchIds.has(c.matchId);
+                return isMatchingSeasonId || isMatchingRoundId;
+            });
+        }
+
         const recent = sortedMatchComments.slice(0, 10).map((c: any) => ({
             id: c.id,
             name: c.authorName || c.ownerName || '익명',
@@ -84,17 +113,21 @@ export const LiveFeed = ({ posts, owners, seasons, selectedSeasonId, onNavigateT
         }));
 
         if (recent.length === 0 && !isFetching) {
+            if (mode === 'schedule') {
+                return [{ id: 'empty', name: 'SYSTEM', uid: 'system', text: "아직 등록된 매치톡이 없습니다. 첫 코멘트의 주인공이 되어보세요! 🔥", type: 'EMPTY' }];
+            }
             return owners?.slice(0, 3).map((o:any) => ({ id: Math.random(), name: o.nickname, uid: o.uid, text: "경기 기대됩니다! ⚽", type: 'MATCH', targetId: '' })) || [];
         }
         return recent;
-    }, [matchCommentsData, owners, isFetching]);
+    }, [matchCommentsData, owners, isFetching, mode, selectedSeasonId, seasons]);
 
     // 4. 클릭 라우팅 핸들러
     const handleItemClick = (msg: any) => {
-        if (!msg.targetId) return;
-        if (msg.type === 'COMMUNITY') {
+        if (msg.type === 'EMPTY' || !msg.targetId) return;
+
+        if (msg.type === 'COMMUNITY' && onNavigateToPost) {
             onNavigateToPost({ id: msg.targetId });
-        } else if (msg.type === 'MATCH') {
+        } else if (msg.type === 'MATCH' && onNavigateToMatch) {
             let sId = msg.seasonId;
             if (!sId) {
                 for (const s of seasons) {
@@ -112,59 +145,71 @@ export const LiveFeed = ({ posts, owners, seasons, selectedSeasonId, onNavigateT
 
     const renderTickerMessage = (msg: any) => {
         const isSticker = msg.text?.startsWith('[STICKER]');
+        const isEmpty = msg.type === 'EMPTY';
+
         return (
-            <div key={msg.id + Math.random()} onClick={() => handleItemClick(msg)} className="flex items-center shrink-0 mx-1.5 cursor-pointer hover:bg-slate-800/80 px-3 py-1 rounded-xl transition-all group/item">
+            <div key={msg.id + Math.random()} onClick={() => handleItemClick(msg)} className={`flex items-center shrink-0 mx-1.5 ${isEmpty ? '' : 'cursor-pointer hover:bg-slate-800/80'} px-3 py-1 rounded-xl transition-all group/item`}>
                 <div className="flex items-center gap-1.5 mr-1.5 shrink-0">
-                    <img src={getOwnerProfile(msg.uid, msg.name)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0 shadow-sm" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
-                    <span className="text-[11px] text-blue-400 font-black whitespace-nowrap shrink-0 group-hover/item:text-blue-300 transition-colors">{msg.name}:</span>
+                    {isEmpty ? (
+                        <div className="w-5 h-5 rounded-full bg-emerald-900/50 border border-emerald-500/50 flex items-center justify-center shrink-0 shadow-sm"><MessageSquare size={10} className="text-emerald-400"/></div>
+                    ) : (
+                        <img src={getOwnerProfile(msg.uid, msg.name)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0 shadow-sm" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                    )}
+                    <span className={`text-[11px] font-black whitespace-nowrap shrink-0 transition-colors ${isEmpty ? 'text-emerald-400' : 'text-blue-400 group-hover/item:text-blue-300'}`}>{msg.name}:</span>
                 </div>
                 {isSticker ? (
                     <img src={msg.text.replace('[STICKER]', '')} className="h-6 w-auto object-contain drop-shadow-sm ml-0.5" alt="sticker" />
                 ) : (
-                    <span className="text-slate-300 text-[12px] font-medium whitespace-nowrap shrink-0 group-hover/item:text-white transition-colors">{msg.text}</span>
+                    <span className={`text-[12px] font-medium whitespace-nowrap shrink-0 transition-colors ${isEmpty ? 'text-emerald-300' : 'text-slate-300 group-hover/item:text-white'}`}>{msg.text}</span>
                 )}
             </div>
         );
     };
 
     return (
-        <div className="bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2 relative overflow-hidden shadow-lg mb-6 min-h-[96px]">
+        <div className={`bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col relative overflow-hidden shadow-lg mb-6 transition-all ${mode === 'dashboard' ? 'gap-2 min-h-[96px]' : 'gap-1 h-[68px] justify-center'}`}>
+            {/* 🔥 스크롤 속도 쾌속 모드 (약 2.5배 빠름) */}
             <style jsx>{`
                 @keyframes ticker-ltr { 0% { transform: translateX(-50%); } 100% { transform: translateX(0); } }
-                .ticker-track-1 { display: flex; width: max-content; animation: ticker-ltr 45s linear infinite; }
+                .ticker-track-1 { display: flex; width: max-content; animation: ticker-ltr 15s linear infinite; }
                 .ticker-track-1:hover { animation-play-state: paused; }
-                .ticker-track-2 { display: flex; width: max-content; animation: ticker-ltr 32s linear infinite; animation-delay: -16s; }
+                .ticker-track-2 { display: flex; width: max-content; animation: ticker-ltr 12s linear infinite; animation-delay: -6s; }
                 .ticker-track-2:hover { animation-play-state: paused; }
             `}</style>
             
             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 z-20"></div>
             
-            <div className="flex items-center gap-2 pl-2 mb-1 z-20">
+            <div className={`flex items-center z-20 ${mode === 'dashboard' ? 'pl-2 mb-1 gap-2' : 'absolute left-3 top-1/2 -translate-y-1/2 gap-1.5 bg-[#0B1120] py-2 pr-4 pl-1 rounded-r-3xl'}`}>
                 <div className="bg-blue-900/30 p-1.5 rounded-lg shrink-0">
-                    <MessageSquare size={14} className="text-blue-400" />
+                    <MessageSquare size={mode === 'dashboard' ? 14 : 12} className="text-blue-400" />
                 </div>
-                <span className="text-xs font-black text-white italic uppercase tracking-widest">LIVE FEED</span>
-                <span className="text-[9px] text-emerald-400 font-bold px-2 py-0.5 bg-emerald-950/30 rounded-full border border-emerald-900/50 animate-pulse ml-2">REAL-TIME</span>
+                <span className={`font-black text-white italic uppercase tracking-widest ${mode === 'dashboard' ? 'text-xs' : 'text-[10px]'}`}>LIVE FEED</span>
+                {mode === 'dashboard' && <span className="text-[9px] text-emerald-400 font-bold px-2 py-0.5 bg-emerald-950/30 rounded-full border border-emerald-900/50 animate-pulse ml-2">REAL-TIME</span>}
             </div>
 
-            {/* 🔥 데이터를 가져오는 중일 때는 깔끔한 스켈레톤 로딩을 보여줍니다. */}
             {isFetching ? (
-                <div className="flex flex-col gap-2 mt-1 px-4 animate-pulse">
-                    <div className="h-4 w-3/4 bg-slate-800/80 rounded"></div>
-                    <div className="h-4 w-1/2 bg-slate-800/80 rounded"></div>
+                <div className={`flex flex-col animate-pulse ${mode === 'dashboard' ? 'gap-2 mt-1 px-4' : 'gap-1 ml-28'}`}>
+                    <div className={`bg-slate-800/80 rounded ${mode === 'dashboard' ? 'h-4 w-3/4' : 'h-3 w-1/2'}`}></div>
+                    {mode === 'dashboard' && <div className="h-4 w-1/2 bg-slate-800/80 rounded"></div>}
                 </div>
             ) : (
                 <>
-                    <div className="absolute left-0 w-12 h-full bg-gradient-to-r from-[#0B1120] to-transparent z-10 pointer-events-none"></div>
+                    <div className={`absolute left-0 h-full bg-gradient-to-r from-[#0B1120] to-transparent z-10 pointer-events-none ${mode === 'dashboard' ? 'w-12' : 'w-28'}`}></div>
                     <div className="absolute right-0 w-12 h-full bg-gradient-to-l from-slate-900 to-transparent z-10 pointer-events-none"></div>
 
-                    <div className="flex flex-col gap-1 overflow-hidden relative z-0 py-1">
+                    <div className={`flex flex-col overflow-hidden relative z-0 ${mode === 'dashboard' ? 'gap-1 py-1' : ''}`}>
                         <div className="ticker-track-1">
-                            {[...communityComments, ...communityComments].map(renderTickerMessage)}
+                            {mode === 'dashboard' 
+                                ? [...communityComments, ...communityComments].map(renderTickerMessage)
+                                : [...matchComments, ...matchComments].map(renderTickerMessage)
+                            }
                         </div>
-                        <div className="ticker-track-2">
-                            {[...matchComments, ...matchComments].map(renderTickerMessage)}
-                        </div>
+                        
+                        {mode === 'dashboard' && (
+                            <div className="ticker-track-2">
+                                {[...matchComments, ...matchComments].map(renderTickerMessage)}
+                            </div>
+                        )}
                     </div>
                 </>
             )}

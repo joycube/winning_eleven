@@ -7,6 +7,9 @@ import { CupSchedule } from './CupSchedule';
 import { Season, Match, MasterTeam, Owner } from '../types'; 
 import { MessageSquare } from 'lucide-react';
 
+// 🔥 [수술 포인트 1] LiveFeed 컴포넌트 임포트 추가
+import { LiveFeed } from './LiveFeed';
+
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
@@ -175,7 +178,6 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
-  // 🔥 [수술 포인트] URL에서 matchId를 읽고, 해당 경기로 스크롤한 뒤 팝업(모달)을 자동으로 열어줍니다.
   useEffect(() => {
       if (viewMode === 'CUP' || !currentSeason?.rounds) return;
 
@@ -187,7 +189,6 @@ export const ScheduleView = ({
 
       if (urlMatchId) {
           targetMatchId = urlMatchId;
-          // 전체 매치 속에서 urlMatchId에 해당하는 객체를 찾습니다.
           for (const round of currentSeason.rounds) {
               const found = round.matches.find(m => m.id === urlMatchId);
               if (found) {
@@ -196,7 +197,6 @@ export const ScheduleView = ({
               }
           }
       } else {
-          // 원래 있던 기본 스크롤 로직 (가장 최근 경기 위치로 이동)
           for (const round of currentSeason.rounds) {
               const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED');
               if (upcomingMatch) {
@@ -215,19 +215,15 @@ export const ScheduleView = ({
       if (targetMatchId && matchRefs.current[targetMatchId]) {
         const finalId = targetMatchId; 
         setTimeout(() => {
-            // 부드러운 스크롤 이동
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // 🔥 URL 파라미터가 있었다면, 스크롤 후 매치톡 팝업을 띄우고 URL을 청소합니다.
             if (urlTargetMatch) {
-                // 부모로부터 받아온 onMatchClick 함수를 실행해서 모달을 띄움
                 const translatedHomeOwner = resolveOwnerInfo(owners, urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid).nickname;
                 const translatedAwayOwner = resolveOwnerInfo(owners, urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid).nickname;
                 const safeMatch = { 
                     ...urlTargetMatch, 
                     homeOwner: translatedHomeOwner, 
                     awayOwner: translatedAwayOwner,
-                    // matchLabel 등은 모달이 알아서 띄우므로 원본 넘김
                 };
                 onMatchClick(safeMatch);
                 
@@ -351,6 +347,15 @@ export const ScheduleView = ({
                 </select>
              </div>
         </div>
+
+        {/* 🔥 [수술 포인트 2] 스케줄표 상단에 1줄짜리 라이브 피드(매치톡 전용) 노출 */}
+        <LiveFeed 
+            mode="schedule" 
+            seasons={seasons}
+            selectedSeasonId={viewSeasonId} 
+            owners={owners} 
+            onNavigateToMatch={onMatchClick}
+        />
 
         {viewMode === 'CUP' ? (
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
