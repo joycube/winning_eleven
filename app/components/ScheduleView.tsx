@@ -1,1040 +1,496 @@
-"use client";
+// components/ScheduleView.tsx
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
+import { db } from '../firebase'; 
+import { MatchCard } from './MatchCard'; 
+import { CupSchedule } from './CupSchedule'; 
+import { Season, Match, MasterTeam, Owner } from '../types'; 
+import { MessageSquare } from 'lucide-react';
+import { LiveFeed } from './LiveFeed';
 
-/* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { db } from '../firebase';
-import { updateDoc, doc, collection, writeBatch } from 'firebase/firestore';
-import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG, Match } from '../types';
-import { generateRoundsLogic } from '../utils/scheduler';
-import { getSortedLeagues, getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers';
-import { QuickDraftModal } from './QuickDraftModal';
-import { TeamCard } from './TeamCard'; 
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
 
-const recordEntryFees = async (seasonId: number | string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
-    try {
-        if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
-        const entryFee = Math.floor(totalPrize / ownerIds.length);
-        if (entryFee <= 0) return;
-
-        const batch = writeBatch(db);
-        const ledgerRef = collection(db, 'finance_ledger');
-
-        ownerIds.forEach(ownerId => {
-            const newDocRef = doc(ledgerRef); 
-            batch.set(newDocRef, {
-                seasonId: String(seasonId),
-                ownerId: String(ownerId),
-                type: 'EXPENSE',
-                amount: entryFee,
-                title: `${seasonName} 참가비 🎫`,
-                createdAt: new Date().toISOString()
-            });
-        });
-
-        await batch.commit();
-    } catch (error) {
-        console.error("🚨 [Finance] 참가비 기록 중 에러 발생:", error);
-    }
+const getTodayFormatted = () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}.${month}.${day}`;
 };
 
-interface Props {
-    targetSeason: Season;
-    owners: Owner[];
-    leagues: League[];
-    masterTeams: MasterTeam[];
-    onNavigateToSchedule: (id: number) => void;
-    onDeleteSchedule: (id: number) => void;
-}
+const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
+    const search = ownerName.trim();
+    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
+    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
+    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
+    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
+};
 
-export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule, onDeleteSchedule }: Props) => {
-    const [selectedOwnerId, setSelectedOwnerId] = useState('');
-    const [selectedMasterTeamDocId, setSelectedMasterTeamDocId] = useState('');
-    const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
-    const [isRolling, setIsRolling] = useState(false);
-    const [isFlipping, setIsFlipping] = useState(false); 
-    const [isDraftOpen, setIsDraftOpen] = useState(false);
-
-    // ==========================================
-    // LEAGUE_PLAYOFF 전용 상태
-    // ==========================================
-    const [poWaitingPool, setPoWaitingPool] = useState<any[]>([]);
-    const [poBracket, setPoBracket] = useState<(any | null)[]>(Array(5).fill(null));
-
-    // ==========================================
-    // TOURNAMENT 전용 상태
-    // ==========================================
-    const [tourneyWaitingPool, setTourneyWaitingPool] = useState<any[]>([]);
-    const [tourneyBracket, setTourneyBracket] = useState<(any | null)[]>([]);
-    const [tourneyTargetSize, setTourneyTargetSize] = useState<number>(0);
-
-    const [filterCategory, setFilterCategory] = useState('ALL');
-    const [filterLeague, setFilterLeague] = useState('');
-    const [filterTier, setFilterTier] = useState('ALL');
-    const [searchTeam, setSearchTeam] = useState('');
-
-    const intervalRef = useRef<NodeJS.Timeout | null>(null);
-    const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
-
-    // --- PLAYOFF 잠금 확인 ---
-    const isPoLocked = useMemo(() => {
-        if (targetSeason.type !== 'LEAGUE_PLAYOFF' || !targetSeason.rounds) return false;
-        const finalRound = targetSeason.rounds.find(r => r.name === 'FINAL');
-        if (!finalRound || !finalRound.matches || finalRound.matches.length === 0) return false;
-        
-        const finalHome = finalRound.matches[0]?.home || '';
-        return finalHome !== 'TBD' && finalHome !== 'BYE' && !finalHome.includes('1위');
-    }, [targetSeason.rounds, targetSeason.type]);
-
-    // --- TOURNAMENT 잠금 확인 ---
-    const isTourneyLocked = useMemo(() => {
-        if (targetSeason.type !== 'TOURNAMENT' || !targetSeason.rounds || targetSeason.rounds.length === 0) return false;
-        return targetSeason.rounds[0].matches.some(m => m.status === 'COMPLETED' || m.homeScore !== '' || m.awayScore !== '');
-    }, [targetSeason.rounds, targetSeason.type]);
+const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
+    const [latestComment, setLatestComment] = useState<any>(null);
+    const [commentCount, setCommentCount] = useState(0);
 
     useEffect(() => {
-        if (isPoLocked && targetSeason.rounds && targetSeason.type === 'LEAGUE_PLAYOFF') {
-            const getTeam = (name: string) => targetSeason.teams?.find(t => t.name === name) || null;
-            const finalMatch = targetSeason.rounds.find(r => r.name === 'FINAL')?.matches?.[0];
-            const r4Match1 = targetSeason.rounds.find(r => r.name === 'ROUND_OF_4')?.matches?.find(m => m.matchLabel?.includes('1차전') && m.matchLabel?.includes('5위'));
-            const r4Match2 = targetSeason.rounds.find(r => r.name === 'ROUND_OF_4')?.matches?.find(m => m.matchLabel?.includes('1차전') && m.matchLabel?.includes('4위'));
-
-            let t1 = finalMatch ? getTeam(finalMatch.home) : null;
-            let t2 = r4Match1 ? getTeam(r4Match1.away) : null;
-            let t5 = r4Match1 ? getTeam(r4Match1.home) : null;
-            let t3 = r4Match2 ? getTeam(r4Match2.away) : null;
-            let t4 = r4Match2 ? getTeam(r4Match2.home) : null;
-
-            setPoBracket([t1, t2, t5, t3, t4]);
-            setPoWaitingPool([]);
-        }
-    }, [isPoLocked, targetSeason]);
-
-    useEffect(() => {
-        if (hasSchedule && targetSeason.type === 'TOURNAMENT' && targetSeason.rounds) {
-            const teams = targetSeason.teams || [];
-            const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(2, teams.length))));
-            setTourneyTargetSize(nextPowerOf2);
-
-            const firstRoundMatches = targetSeason.rounds[0].matches.slice(0, nextPowerOf2 / 2);
-            const currentBracket: (any|null)[] = Array(nextPowerOf2).fill(null);
-            
-            firstRoundMatches.forEach((m, idx) => {
-                if (m.home !== 'BYE' && m.home !== 'TBD') {
-                    currentBracket[idx * 2] = teams.find(t => t.name === m.home) || null;
-                }
-                if (m.away !== 'BYE' && m.away !== 'TBD') {
-                    currentBracket[idx * 2 + 1] = teams.find(t => t.name === m.away) || null;
-                }
-            });
-
-            setTourneyBracket(currentBracket);
-            
-            const bracketTeamNames = currentBracket.filter(Boolean).map(t => t.name);
-            setTourneyWaitingPool(teams.filter(t => !bracketTeamNames.includes(t.name)));
-        }
-    }, [hasSchedule, targetSeason]);
-
-    useEffect(() => { 
-        if (randomResult && !isRolling) setRandomResult(null); 
-    }, [filterCategory, filterLeague, filterTier, searchTeam]);
-
-    useEffect(() => {
-        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, []);
-
-    const displaySortedLeagues = useMemo(() => {
-        let targets = leagues;
-        if (filterCategory !== 'ALL') targets = targets.filter(l => l.category === filterCategory);
-        const sortedNames = getSortedLeagues(targets.map(l => l.name));
-        return sortedNames.map(name => targets.find(l => l.name === name)).filter(Boolean) as League[];
-    }, [leagues, filterCategory]);
-
-    const availableTeams = useMemo(() => {
-        const assignedNames = new Set(targetSeason.teams?.map(t => t.name) || []);
-        let teams = masterTeams.filter(t => !assignedNames.has(t.name));
-        if (filterCategory !== 'ALL') teams = teams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
-        if (filterLeague) teams = teams.filter(t => t.region === filterLeague);
-        if (filterTier !== 'ALL') teams = teams.filter(t => t.tier?.trim() === filterTier);
-        if (searchTeam) teams = teams.filter(t => t.name.toLowerCase().includes(searchTeam.toLowerCase()));
-        return getSortedTeamsLogic(teams, '');
-    }, [masterTeams, targetSeason, filterCategory, filterLeague, filterTier, searchTeam]);
-
-    const handleRandom = () => {
-        if (hasSchedule) return alert("🚫 스케줄이 이미 생성되어 팀을 추가할 수 없습니다.");
-        if (!selectedOwnerId) return alert("오너를 먼저 선택해주세요.");
-        if (availableTeams.length === 0) return alert("조건에 맞는 남은 팀이 없습니다.");
-        if (isRolling) return;
-
-        setIsRolling(true);
-        setIsFlipping(false);
-        setRandomResult(null);
-
-        const winnerIndex = Math.floor(Math.random() * availableTeams.length);
-        const finalWinner = availableTeams[winnerIndex];
-
-        let shuffleCount = 0;
-        intervalRef.current = setInterval(() => {
-            const tempIndex = Math.floor(Math.random() * availableTeams.length);
-            setRandomResult(availableTeams[tempIndex]);
-            shuffleCount++;
-            
-            if (shuffleCount > 20 && intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = setInterval(() => {
-                    const slowIndex = Math.floor(Math.random() * availableTeams.length);
-                    setRandomResult(availableTeams[slowIndex]);
-                }, 150);
+        if (!matchId) return;
+        const q = query(collection(db, 'match_comments'), where('matchId', '==', matchId));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            const docs = snap.docs.map(d => d.data());
+            setCommentCount(docs.length);
+            if (docs.length > 0) {
+                docs.sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
+                setLatestComment(docs[docs.length - 1]);
+            } else {
+                setLatestComment(null);
             }
-        }, 60);
-
-        setTimeout(() => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            setRandomResult(finalWinner);
-            setSelectedMasterTeamDocId(finalWinner.docId || String(finalWinner.id));
-            
-            setIsFlipping(true);
-            setIsRolling(false); 
-
-            setTimeout(() => {
-                document.getElementById(`team-card-${finalWinner.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 500);
-        }, 2500);
-    };
-
-    const handleAddTeam = async () => {
-        if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 팀을 추가할 수 없습니다.");
-        if (isRolling) return;
-        if (!selectedOwnerId || !selectedMasterTeamDocId) return alert("오너와 팀을 선택하세요.");
-        
-        const owner = owners.find(o => String(o.id) === selectedOwnerId || o.uid === selectedOwnerId);
-        const mTeam = masterTeams.find(t => (t.docId || String(t.id)) === selectedMasterTeamDocId);
-        if (!owner || !mTeam) return;
-
-        const isDuplicate = targetSeason.teams?.some(t => t.name === mTeam.name);
-        if (isDuplicate) return alert(`🚫 이미 등록된 팀입니다: ${mTeam.name}\n다른 팀을 선택해주세요.`);
-
-        const newTeam: Team = {
-            id: Date.now(), seasonId: targetSeason.id, name: mTeam.name, logo: mTeam.logo, 
-            ownerName: owner.nickname, ownerUid: owner.uid || owner.docId || '', 
-            region: mTeam.region, tier: mTeam.tier, 
-            win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0
-        };
-        
-        const updatedTeams = [...(targetSeason.teams || []), newTeam];
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
-        setSelectedMasterTeamDocId('');
-        setRandomResult(null);
-        setIsFlipping(false);
-    };
-
-    const handleRemoveTeam = async (teamId: number, teamName: string) => {
-        if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 팀을 삭제할 수 없습니다.");
-        if (!confirm("정말 삭제하시겠습니까?")) return;
-        const updatedTeams = targetSeason.teams.filter(t => t.id !== teamId);
-        let updatedRounds = targetSeason.rounds ? [...targetSeason.rounds] : [];
-        if (updatedRounds.length > 0) {
-            updatedRounds = updatedRounds.map(r => ({
-                ...r, matches: (r.matches || []).filter(m => m.home !== teamName && m.away !== teamName)
-            })).filter(r => r.matches && r.matches.length > 0);
-        }
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams, rounds: updatedRounds });
-    };
-
-    const handleGenerateSchedule = async (isRegen = false) => {
-        if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
-        
-        const teamNames = targetSeason.teams.map(t => t.name);
-        const uniqueNames = new Set(teamNames);
-        if (teamNames.length !== uniqueNames.size) return alert("🚫 중복된 팀이 등록되어 있습니다!");
-
-        if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
-
-        const refreshedTeams = targetSeason.teams.map(seasonTeam => {
-            const master = masterTeams.find(m => m.name === seasonTeam.name);
-            if (master) return { ...seasonTeam, logo: master.logo, tier: master.tier, region: master.region, ownerUid: (seasonTeam as any).ownerUid || master.ownerUid };
-            return seasonTeam;
         });
+        return () => unsubscribe();
+    }, [matchId]);
 
-        const shuffledTeams = [...refreshedTeams].sort(() => Math.random() - 0.5);
-        const tempSeason = { ...targetSeason, teams: shuffledTeams, rounds: [] };
-        
-        const rounds = generateRoundsLogic(tempSeason);
-        
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
+    if (commentCount === 0) return null;
 
-        if (!isRegen && (targetSeason as any).totalPrize) {
-            const uniqueOwnerUids = Array.from(new Set(shuffledTeams.map(t => (t as any).ownerUid))).filter(uid => uid);
-            let finalOwnerUids = [...uniqueOwnerUids];
-            if (finalOwnerUids.length === 0) {
-                const uniqueOwnerNames = Array.from(new Set(shuffledTeams.map(t => t.ownerName)));
-                finalOwnerUids = uniqueOwnerNames.map(name => {
-                    const owner = owners.find(o => o.nickname === name);
-                    return owner ? String(owner.uid || owner.id) : '';
-                }).filter(id => id !== '');
-            }
-            recordEntryFees(targetSeason.id, targetSeason.name, (targetSeason as any).totalPrize, finalOwnerUids);
-        }
+    const authorInfo = latestComment ? resolveOwnerInfo(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : null;
 
-        if (targetSeason.type === 'TOURNAMENT') {
-            alert("스케줄 생성이 완료되었습니다.\n하단 [Step 3]에서 1라운드 대진표를 원하는 대로 배치해주세요!");
-        } else {
-            if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
-        }
-    };
-
-    const handleDraftApply = async (newTeams: Team[]) => {
-        const existingNames = new Set(targetSeason.teams?.map(t => t.name) || []);
-        const filteredNewTeams = newTeams.filter(t => !existingNames.has(t.name));
-        if (filteredNewTeams.length === 0) return;
-        const teamsWithSeason = filteredNewTeams.map(t => ({ ...t, seasonId: targetSeason.id }));
-        const updatedTeams = [...(targetSeason.teams || []), ...teamsWithSeason];
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams });
-    };
-
-    // =======================================================
-    // PLAYOFF 전용 핸들러
-    // =======================================================
-    const handleLoadPlayoffTeams = () => {
-        if (!targetSeason.rounds) return;
-        
-        const leagueMatches = targetSeason.rounds
-            .filter(r => !['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name))
-            .flatMap(r => r.matches || [])
-            .filter(m => m.status === 'COMPLETED');
-
-        const statsMap: Record<string, any> = {};
-        targetSeason.teams.forEach(t => {
-            const master = masterTeams.find(m => m.name === t.name);
-            statsMap[t.name] = { 
-                ...t, logo: master?.logo || t.logo, tier: master?.tier || t.tier, ownerUid: (t as any).ownerUid || master?.ownerUid,
-                win: 0, draw: 0, loss: 0, points: 0, gd: 0, gf: 0 
-            };
-        });
-
-        leagueMatches.forEach(m => {
-            if (!statsMap[m.home] || !statsMap[m.away]) return;
-            const hScore = Number(m.homeScore); const aScore = Number(m.awayScore);
-            statsMap[m.home].gf += hScore; statsMap[m.away].gf += aScore;
-            statsMap[m.home].gd += (hScore - aScore); statsMap[m.away].gd += (aScore - hScore);
-            if (hScore > aScore) { statsMap[m.home].win += 1; statsMap[m.home].points += 3; statsMap[m.away].loss += 1; } 
-            else if (aScore > hScore) { statsMap[m.away].win += 1; statsMap[m.away].points += 3; statsMap[m.home].loss += 1; } 
-            else { statsMap[m.home].draw += 1; statsMap[m.home].points += 1; statsMap[m.away].draw += 1; statsMap[m.away].points += 1; }
-        });
-
-        const rankedTeams = Object.values(statsMap).sort((a, b) => {
-            if (b.points !== a.points) return b.points - a.points;
-            if (b.gd !== a.gd) return b.gd - a.gd;
-            return b.gf - a.gf;
-        }).slice(0, 5).map((t, idx) => ({ ...t, _realRank: idx + 1 })); 
-
-        if (rankedTeams.length < 5) return alert("리그에 참가한 팀이 5팀 미만이라 PO를 구성할 수 없습니다.");
-
-        setPoWaitingPool(rankedTeams);
-        setPoBracket(Array(5).fill(null)); 
-        
-        setTimeout(() => { document.getElementById('po-setup-section')?.scrollIntoView({ behavior: 'smooth' }); }, 100);
-    };
-
-    const handleAutoFillPoBracket = () => {
-        if (isPoLocked) return alert("이미 확정되었습니다. 해제 후 이용하세요.");
-        const allTeams = [...poWaitingPool, ...poBracket.filter(Boolean)];
-        const newBracket = Array(5).fill(null);
-        allTeams.forEach(t => {
-            if (t._realRank === 1) newBracket[0] = t; 
-            if (t._realRank === 2) newBracket[1] = t; 
-            if (t._realRank === 5) newBracket[2] = t; 
-            if (t._realRank === 3) newBracket[3] = t; 
-            if (t._realRank === 4) newBracket[4] = t; 
-        });
-        setPoBracket(newBracket);
-        setPoWaitingPool([]);
-    };
-
-    const handleResetPoBracket = () => {
-        if (isPoLocked) return alert("이미 확정되었습니다. 해제 후 이용하세요.");
-        const allTeams = [...poWaitingPool, ...poBracket.filter(Boolean)].sort((a, b) => a._realRank - b._realRank);
-        setPoWaitingPool(allTeams);
-        setPoBracket(Array(5).fill(null));
-    };
-
-    const handleUnlockPoBracket = async () => {
-        if (!confirm("확정된 대진을 해제하고 초기화하시겠습니까?")) return;
-        const filteredRounds = targetSeason.rounds?.filter(r => !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)) || [];
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: filteredRounds });
-        handleLoadPlayoffTeams();
-    };
-
-    const handleDragStart = (e: React.DragEvent, source: 'pool' | 'bracket', index: number | null, team: any) => {
-        if (isPoLocked) return;
-        e.dataTransfer.setData('text/plain', JSON.stringify({ source, index, teamId: team.id }));
-    };
-
-    const handleDragOver = (e: React.DragEvent) => { if (!isPoLocked) e.preventDefault(); };
-
-    const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-        if (isPoLocked) return;
-        e.preventDefault();
-        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-        const { source, index, teamId } = data;
-
-        let team = source === 'pool' ? poWaitingPool.find(t => t.id === teamId) : poBracket[index!];
-        if (!team) return;
-
-        const newBracket = [...poBracket];
-        const newPool = [...poWaitingPool];
-        const existingTeam = newBracket[targetIndex];
-
-        newBracket[targetIndex] = team;
-
-        if (source === 'pool') {
-            newPool.splice(newPool.findIndex(t => t.id === teamId), 1);
-        } else if (source === 'bracket') {
-            newBracket[index!] = existingTeam; 
-        }
-
-        if (source === 'pool' && existingTeam) {
-            newPool.push(existingTeam); 
-            newPool.sort((a, b) => a._realRank - b._realRank);
-        }
-
-        setPoBracket(newBracket);
-        setPoWaitingPool(newPool);
-    };
-
-    const handleSlotClick = (index: number) => {
-        if (isPoLocked) return;
-        const team = poBracket[index];
-        if (!team) return;
-        const newBracket = [...poBracket];
-        newBracket[index] = null;
-        
-        const newPool = [...poWaitingPool, team].sort((a, b) => a._realRank - b._realRank);
-        setPoBracket(newBracket);
-        setPoWaitingPool(newPool);
-    };
-
-    const handleConfirmPlayoffBracket = async () => {
-        if (isPoLocked) return;
-        if (poBracket.includes(null)) return alert("🚨 5개의 모든 대진 슬롯에 팀을 배치해주세요.\n(대진표 가장 위의 '리그 1위 직행' 슬롯도 채워야 합니다.)");
-
-        const [t1, t2, t5, t3, t4] = poBracket; 
-        const isCivilWar = (t2.ownerUid && t5.ownerUid && t2.ownerUid === t5.ownerUid) || (t3.ownerUid && t4.ownerUid && t3.ownerUid === t4.ownerUid) || (t2.ownerName === t5.ownerName) || (t3.ownerName === t4.ownerName);
-
-        if (isCivilWar) {
-            const forceGenerate = confirm("🚨 [경고] 4강 대진에 동일 오너(내전) 매치업이 포함되어 있습니다!\n무시하고 플레이오프 스케줄을 강제로 발행하시겠습니까?");
-            if (!forceGenerate) return;
-        } else {
-            if (!confirm("현재 설정된 대진표로 플레이오프 스케줄을 공식 발행하시겠습니까?")) return;
-        }
-
-        try {
-            const filteredRounds = targetSeason.rounds?.filter(r => !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)) || [];
-            const s = (val: any) => val === undefined ? '' : val;
-
-            const roundOf4 = {
-                name: 'ROUND_OF_4',
-                matches: [
-                    { id: `po_4_1_1`, home: s(t5.name), away: s(t2.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t5.logo), awayLogo: s(t2.logo), homeOwner: s(t5.ownerName), awayOwner: s(t2.ownerName), matchLabel: 'PO 4강 1경기 (1차전: 5위 홈 vs 2위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t5.ownerUid), awayOwnerUid: s(t2.ownerUid) },
-                    { id: `po_4_1_2`, home: s(t2.name), away: s(t5.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t2.logo), awayLogo: s(t5.logo), homeOwner: s(t2.ownerName), awayOwner: s(t5.ownerName), matchLabel: 'PO 4강 1경기 (2차전: 2위 홈 vs 5위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t2.ownerUid), awayOwnerUid: s(t5.ownerUid) },
-                    { id: `po_4_2_1`, home: s(t4.name), away: s(t3.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t4.logo), awayLogo: s(t3.logo), homeOwner: s(t4.ownerName), awayOwner: s(t3.ownerName), matchLabel: 'PO 4강 2경기 (1차전: 4위 홈 vs 3위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t4.ownerUid), awayOwnerUid: s(t3.ownerUid) },
-                    { id: `po_4_2_2`, home: s(t3.name), away: s(t4.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t3.logo), awayLogo: s(t4.logo), homeOwner: s(t3.ownerName), awayOwner: s(t4.ownerName), matchLabel: 'PO 4강 2경기 (2차전: 3위 홈 vs 4위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t3.ownerUid), awayOwnerUid: s(t4.ownerUid) },
-                ]
-            };
-
-            const poFinal = {
-                name: 'SEMI_FINAL', 
-                matches: [
-                    { id: `po_fin_1`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (1차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
-                    { id: `po_fin_2`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (2차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
-                ]
-            };
-
-            const grandFinal = {
-                name: 'FINAL',
-                matches: [
-                    { id: `grand_fin_1`, home: s(t1.name), away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t1.logo), awayLogo: '', homeOwner: s(t1.ownerName), awayOwner: '-', matchLabel: '🏆 최종 챔피언 결정전 (단판)', stage: 'FINAL', seasonId: targetSeason.id, homeOwnerUid: s(t1.ownerUid) },
-                ]
-            };
-
-            const updatedRounds = [...filteredRounds, roundOf4, poFinal, grandFinal];
-            await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
-            alert(`🎉 플레이오프 대진표 확정 완료!\n1위 ${t1.name}가 최종 결승전에 선착했습니다.`);
+    return (
+        <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
+            {authorInfo ? (
+                <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
+            ) : (
+                <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
+            )}
             
-        } catch (error) { console.error("Firebase Update Error: ", error); alert("🚨 저장 에러 발생."); }
-    };
+            <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
+                {authorInfo ? authorInfo.nickname : ''}
+            </div>
+            <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
+                {latestComment?.text}
+            </div>
+            <div className="bg-slate-900 px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-500 border border-slate-700 shrink-0 shadow-inner flex items-center leading-none ml-1">
+                +{commentCount}
+            </div>
+        </div>
+    );
+};
 
-    // =======================================================
-    // TOURNAMENT 전용 핸들러
-    // =======================================================
-    const handleAutoFillTourneyBracket = () => {
-        if (isTourneyLocked) return;
-        const newBracket = [...tourneyBracket];
-        let poolIdx = 0;
-        for (let i = 0; i < newBracket.length; i++) {
-            if (!newBracket[i] && poolIdx < tourneyWaitingPool.length) {
-                newBracket[i] = tourneyWaitingPool[poolIdx];
-                poolIdx++;
-            }
+const BracketMatchBox = ({ match, title, owners, highlight = false, isByeSlot = false }: any) => {
+    if (!match) return null;
+    
+    const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
+    const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+    
+    let winner = match.aggWinner || 'TBD'; 
+    if (winner === 'TBD' && match.status === 'COMPLETED') {
+        if (hScore !== null && aScore !== null) {
+            if (hScore > aScore) winner = match.home;
+            else if (aScore > hScore) winner = match.away;
         }
-        setTourneyBracket(newBracket);
-        setTourneyWaitingPool(tourneyWaitingPool.slice(poolIdx));
-    };
+    }
 
-    const handleResetTourneyBracket = () => {
-        if (isTourneyLocked) return;
-        const allTeams = [...tourneyWaitingPool, ...tourneyBracket.filter(Boolean)];
-        setTourneyWaitingPool(allTeams);
-        setTourneyBracket(Array(tourneyTargetSize).fill(null));
-    };
+    const isHomeWin = winner !== 'TBD' && winner === match.home;
+    const isAwayWin = winner !== 'TBD' && winner === match.away;
 
-    const handleTourneyDragStart = (e: React.DragEvent, source: 'pool' | 'bracket', index: number | null, team: any) => {
-        if (isTourneyLocked) return;
-        e.dataTransfer.setData('text/plain', JSON.stringify({ source, index, teamId: team.id }));
-    };
-
-    const handleTourneyDrop = (e: React.DragEvent, targetIndex: number) => {
-        if (isTourneyLocked) return;
-        e.preventDefault();
-        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-        const { source, index, teamId } = data;
-
-        let team = source === 'pool' ? tourneyWaitingPool.find(t => t.id === teamId) : tourneyBracket[index!];
-        if (!team) return;
-
-        const newBracket = [...tourneyBracket];
-        const newPool = [...tourneyWaitingPool];
-        const existingTeam = newBracket[targetIndex];
-
-        newBracket[targetIndex] = team;
-
-        if (source === 'pool') {
-            newPool.splice(newPool.findIndex(t => t.id === teamId), 1);
-        } else if (source === 'bracket') {
-            newBracket[index!] = existingTeam; 
-        }
-
-        if (source === 'pool' && existingTeam) {
-            newPool.push(existingTeam); 
-        }
-
-        setTourneyBracket(newBracket);
-        setTourneyWaitingPool(newPool);
-    };
-
-    const handleTourneySlotClick = (index: number) => {
-        if (isTourneyLocked) return;
-        const team = tourneyBracket[index];
-        if (!team) return;
-        const newBracket = [...tourneyBracket];
-        newBracket[index] = null;
+    const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, ownerUid: string | undefined, logo: string) => {
+        const isTbd = teamName === 'TBD' || !teamName;
+        const isBye = teamName === 'BYE';
+        const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
         
-        const newPool = [...tourneyWaitingPool, team];
-        setTourneyBracket(newBracket);
-        setTourneyWaitingPool(newPool);
-    };
+        const dispOwner = resolveOwnerInfo(owners, owner, ownerUid).nickname || '-';
 
-    const handleConfirmTourneyBracket = async () => {
-        if (isTourneyLocked) return;
-        const placedCount = tourneyBracket.filter(Boolean).length;
-        if (placedCount < targetSeason.teams.length) {
-            return alert("🚨 리그에 등록된 모든 팀을 대진표에 배치해주세요.");
-        }
-
-        let isCivilWar = false;
-        for (let i = 0; i < tourneyTargetSize / 2; i++) {
-            const hTeam = tourneyBracket[i * 2];
-            const aTeam = tourneyBracket[i * 2 + 1];
-            if (hTeam && aTeam && (hTeam.ownerUid === aTeam.ownerUid || hTeam.ownerName === aTeam.ownerName)) {
-                isCivilWar = true;
-                break;
-            }
-        }
-
-        if (isCivilWar) {
-            const forceGenerate = confirm("🚨 [경고] 1라운드에 동일 오너(내전) 매치업이 포함되어 있습니다!\n무시하고 토너먼트 스케줄을 강제로 발행하시겠습니까?");
-            if (!forceGenerate) return;
-        } else {
-            if (!confirm("현재 설정된 대진표로 토너먼트 스케줄을 공식 발행하시겠습니까?")) return;
-        }
-
-        try {
-            const s = (val: any) => val === undefined ? '' : val;
-            const matches: Match[] = [];
-            const totalMatches = tourneyTargetSize - 1;
-
-            for (let i = 0; i < totalMatches; i++) {
-                const isFirst = i < tourneyTargetSize / 2;
-                const isFinal = i === totalMatches - 1;
-                
-                let homeName = 'TBD', awayName = 'TBD', homeLogo = FALLBACK_IMG, awayLogo = FALLBACK_IMG;
-                let homeOwner = '-', awayOwner = '-';
-                // 🔥 Vercel 빌드 에러의 원흉! 확실한 Type Casting 적용
-                let matchStatus = 'UPCOMING'; 
-                let homeOwnerUid = '', awayOwnerUid = '';
-
-                if (isFirst) {
-                    const hTeam = tourneyBracket[i * 2];
-                    const aTeam = tourneyBracket[i * 2 + 1];
-                    homeName = hTeam ? hTeam.name : 'BYE';
-                    awayName = aTeam ? aTeam.name : 'BYE';
-                    homeLogo = hTeam ? hTeam.logo : FALLBACK_IMG;
-                    awayLogo = aTeam ? aTeam.logo : FALLBACK_IMG;
-                    homeOwner = hTeam ? hTeam.ownerName : '-';
-                    awayOwner = aTeam ? aTeam.ownerName : '-';
-                    homeOwnerUid = hTeam ? hTeam.ownerUid : '';
-                    awayOwnerUid = aTeam ? aTeam.ownerUid : '';
-                    
-                    if (homeName === 'BYE' || awayName === 'BYE') matchStatus = 'BYE';
-                }
-
-                matches.push({
-                    id: `${targetSeason.id}_M${i}`,
-                    seasonId: targetSeason.id,
-                    home: s(homeName), away: s(awayName),
-                    homeLogo: s(homeLogo), awayLogo: s(awayLogo),
-                    homeOwner: s(homeOwner), awayOwner: s(awayOwner),
-                    homeOwnerUid: s(homeOwnerUid), awayOwnerUid: s(awayOwnerUid),
-                    status: matchStatus as "UPCOMING" | "BYE" | "COMPLETED", // 🔥 강제 캐스팅으로 무조건 통과
-                    homeScore: '', awayScore: '',
-                    stage: isFinal ? 'FINAL' : 'TOURNAMENT',
-                    matchLabel: isFinal ? '🏆 결승전' : `1Round - Match ${i + 1}`,
-                    youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
-                });
-            }
-
-            const updatedRounds = [{ round: 1, name: 'Tournament Bracket', seasonId: targetSeason.id, matches }];
-            await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
-            alert("🎉 토너먼트 대진표 확정이 완료되었습니다!");
-            onNavigateToSchedule(targetSeason.id);
-            
-        } catch (error) { console.error("Firebase Update Error: ", error); alert("🚨 저장 에러 발생."); }
+        return (
+            <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
+                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                    </div>
+                    <div className="flex flex-col justify-center min-w-0">
+                        <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {teamName || 'TBD'}
+                        </span>
+                        {!isTbd && !isBye && (
+                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
+                        )}
+                        {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned</span>}
+                    </div>
+                </div>
+                <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
+                    {isBye ? '0' : (score ?? '-')}
+                </div>
+            </div>
+        );
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in relative">
-            <style jsx>{`
-                .stage-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 50; backdrop-filter: blur(8px); animation: fadeIn 0.3s ease-out forwards; }
-                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .reveal-flash { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: white; z-index: 60; pointer-events: none; animation: flashAnim 0.6s ease-out forwards; }
-                @keyframes flashAnim { 0% { opacity: 0; } 10% { opacity: 0.8; } 100% { opacity: 0; } }
-                .blast-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.5); width: 100px; height: 100px; border-radius: 50%; border: 4px solid ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; box-shadow: 0 0 50px ${randomResult?.tier === 'S' ? '#fbbf24' : '#34d399'}; z-index: 52; pointer-events: none; animation: blastOut 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards; }
-                @keyframes blastOut { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; border-width: 10px; } 100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 0px; } }
-                .fc-card-reveal { animation: card-flip 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; z-index: 55; }
-                @keyframes card-flip { 0% { transform: rotateY(90deg) scale(0.8); filter: brightness(3); } 100% { transform: rotateY(0deg) scale(1.1); filter: brightness(1); } }
-                .fc-gold-glow { animation: gold-glow 2s infinite; }
-                @keyframes gold-glow { 0%, 100% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); } 50% { box-shadow: 0 0 60px rgba(251, 191, 36, 0.8); } }
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-            `}</style>
-
-            {(isRolling || isFlipping) && <div className="stage-overlay" />}
-            {isFlipping && <div className="reveal-flash" />}
-
-            {/* ==========================================
-                STEP 1. 팀 매칭
-            ========================================== */}
-            <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
-                <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
-
-                <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-2">
-                    <div className="flex-1 flex flex-col items-center justify-center text-center">
-                        <div className="text-white font-black italic flex items-center gap-2 text-sm">
-                            <span className="text-yellow-400">⚡</span> 퀵 팀매칭 (Quick Match)
-                            <span className="text-[9px] bg-yellow-500 text-black px-1.5 rounded font-black tracking-tighter">HOT</span>
-                        </div>
-                        <p className="text-sm text-white mt-1 font-bold">✨ 지금 자동으로 팀을 추천 받으세요 ✨</p>
-                    </div>
-                    <button onClick={() => { if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 실행할 수 없습니다.\n[Step 2]에서 스케줄을 먼저 삭제해주세요."); setIsDraftOpen(true); }} disabled={hasSchedule} className={`h-10 px-6 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all flex items-center justify-center gap-2 ${hasSchedule ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}><span>⚡</span> 퀵 매칭 시작</button>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-500 font-bold">1. Select Owner (Manual)</label>
-                    <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm font-bold">
-                        <option value="">👤 Select Owner</option>
-                        {owners.map(o => <option key={o.id} value={o.uid || o.docId || String(o.id)}>{o.nickname}</option>)}
-                    </select>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
-                    <div className="flex justify-between items-center">
-                        <label className="text-[10px] text-slate-500 font-bold">2. Search Options (Manual)</label>
-                        <button onClick={handleRandom} disabled={isRolling || hasSchedule} className={`h-10 px-6 rounded-lg text-xs font-black italic tracking-tighter text-white shadow-lg border border-purple-500 flex items-center justify-center gap-2 transition-all ${isRolling || hasSchedule ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95 hover:shadow-purple-500/50'}`}>{isRolling ? <span className="animate-spin text-lg">🎰</span> : <span className="text-lg">🎲</span>} {isRolling ? 'OPENING...' : '랜덤 매칭 시작'}</button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
-                        <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="">All Leagues</option>{getSortedLeagues(leagues.map(l => l.name)).map(l => <option key={l} value={l}>{l}</option>)}</select>
-                        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Tiers</option><option value="S">S Tier</option><option value="A">A Tier</option><option value="B">B Tier</option><option value="C">C Tier</option></select>
-                        <input type="text" value={searchTeam} onChange={e => setSearchTeam(e.target.value)} disabled={isRolling} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs font-bold" />
-                    </div>
-                </div>
-
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center"><label className="text-[10px] text-slate-500 font-bold">3. Pack Result</label>{!isRolling && (filterLeague || randomResult) && <button onClick={() => { setFilterLeague(''); setRandomResult(null); setIsFlipping(false); }} className="text-[10px] text-slate-400 border border-slate-700 px-2 rounded hover:text-white font-bold">↩ Back to Leagues</button>}</div>
-                    {randomResult ? (
-                        <div className="flex justify-center py-8 relative" style={{ perspective: '1000px' }}>
-                            {isFlipping && <div className="blast-circle" />}
-                            <div className={`relative p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 transition-all duration-500 min-w-[240px] ${isFlipping ? 'fc-card-reveal' : ''} ${randomResult.tier === 'S' ? 'bg-gradient-to-b from-yellow-600/30 to slate-900 border-yellow-500 fc-gold-glow' : 'bg-slate-900 border-emerald-500'} ${isRolling ? 'blur-md scale-90 grayscale opacity-60' : 'scale-100 opacity-100'}`}>
-                                <div className={`absolute -top-4 text-white text-xs font-black italic tracking-tighter px-4 py-1.5 rounded-full shadow-2xl transition-all ${isRolling ? 'bg-purple-600 animate-pulse' : 'bg-gradient-to-r from-emerald-600 to-teal-600'}`}>{isRolling ? '🎰 SHUFFLING PACK...' : '🏆 PACK OPENED!'}</div>
-                                <div className={`w-32 h-32 bg-white rounded-full flex items-center justify-center p-4 shadow-2xl relative z-10 ${randomResult.tier === 'S' ? 'ring-4 ring-yellow-400/50' : 'ring-4 ring-emerald-400/30'}`}><img src={randomResult.logo} className={`w-full h-full object-contain ${isRolling ? 'animate-bounce' : ''}`} alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div>
-                                <div className="text-center relative z-10"><p className="text-2xl font-black italic tracking-tighter text-white uppercase leading-none">{randomResult.name}</p><div className="flex items-center justify-center gap-2 mt-2"><span className="text-[10px] font-black italic text-slate-400 uppercase tracking-widest">{randomResult.region}</span><span className={`text-xs px-3 py-0.5 rounded-full font-black italic ${getTierBadgeColor(randomResult.tier)} shadow-lg`}>{randomResult.tier} TIER</span></div></div>
-                                {randomResult.tier === 'S' && !isRolling && <div className="absolute inset-0 bg-yellow-400/10 blur-[60px] rounded-full -z-10 animate-pulse"></div>}
-                            </div>
-                        </div>
-                    ) : (
-                        !filterLeague && !searchTeam ? (
-                            <div className="space-y-6 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
-                                {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (<div><p className="text-[10px] text-emerald-500 font-black italic mb-2 ml-1 border-l-4 border-emerald-500 pl-2 uppercase tracking-tighter">Club Leagues</p><div className="grid grid-cols-3 gap-3">{displaySortedLeagues.filter(l=>l.category==='CLUB').map(l => { const count = masterTeams.filter(t => t.region === l.name).length; return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>); })}</div></div>)}
-                                {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (<div><p className="text-[10px] text-blue-500 font-black italic mb-2 ml-1 border-l-4 border-blue-500 pl-2 uppercase tracking-tighter">National Teams</p><div className="grid grid-cols-3 gap-3">{displaySortedLeagues.filter(l=>l.category==='NATIONAL').map(l => { const count = masterTeams.filter(t => t.region === l.name).length; return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>); })}</div></div>)}
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-1">{availableTeams.map(t => { const isSelected = selectedMasterTeamDocId === (t.docId || String(t.id)); return (<div id={`team-card-${t.id}`} key={t.id} onClick={() => setSelectedMasterTeamDocId(t.docId || String(t.id))} className={`relative bg-slate-900 p-3 rounded-2xl border flex flex-col items-center cursor-pointer group transition-all ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500 bg-emerald-900/10' : 'border-slate-800 hover:border-slate-600'}`}><div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-2xl p-2 mb-2"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div><span className="text-[10px] text-center text-slate-300 w-full truncate font-black italic tracking-tighter group-hover:text-white uppercase">{t.name}</span><span className={`text-[9px] px-2 py-0.5 rounded-full mt-1 font-black italic ${getTierBadgeColor(t.tier)}`}>{t.tier}</span></div>); })}</div>
-                        )
-                    )}
-                </div>
-
-                <button onClick={handleAddTeam} disabled={isRolling || hasSchedule} className={`w-full py-4 font-black italic tracking-tighter rounded-2xl shadow-2xl text-sm transition-all ${isRolling || hasSchedule ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white uppercase active:scale-95'}`}>{hasSchedule ? '🔒 SCHEDULE GENERATED (LOCKED)' : (isRolling ? 'PACK OPENING...' : '✅ SIGN THIS TEAM TO SEASON')}</button>
+        <div className={`flex flex-col w-[200px] sm:w-[220px] ${isByeSlot ? 'opacity-70' : ''}`}>
+            {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
+            <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
+                {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeOwnerUid, match.homeLogo)}
+                <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayOwnerUid, match.awayLogo)}
             </div>
+        </div>
+    );
+};
 
-            {/* ==========================================
-                STEP 2. 시즌 멤버 및 정규 스케줄 생성
-            ========================================== */}
-            <div className="bg-black p-5 rounded-[2rem] border border-slate-800">
-                <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 mb-6 border-b border-slate-800 pb-4">
-                    <h3 className="text-white font-black italic tracking-tighter uppercase w-full md:w-auto">Step 2. Season Members ({targetSeason.teams?.length || 0})</h3>
-                    <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
-                        {hasSchedule ? (
-                            <>
-                                {targetSeason.type === 'LEAGUE_PLAYOFF' && !isPoLocked && (
-                                    <button onClick={handleLoadPlayoffTeams} className="bg-emerald-600 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-emerald-500 shadow-lg shadow-emerald-900/50 animate-pulse">🌟 PO 진출팀 대기실로 이동</button>
-                                )}
-                                {targetSeason.type === 'TOURNAMENT' && !isTourneyLocked && (
-                                    <button onClick={() => { document.getElementById('tourney-setup-section')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-blue-600 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-500 shadow-lg shadow-blue-900/50 animate-pulse">🌟 토너먼트 대진표 세팅</button>
-                                )}
-                                <button onClick={() => handleGenerateSchedule(true)} className="bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-blue-600">Re-Gen</button>
-                                <button onClick={() => onDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded-lg text-[10px] font-black italic tracking-tighter uppercase hover:bg-red-700">Clear</button>
-                            </>
-                        ) : (<button onClick={() => handleGenerateSchedule(false)} className="bg-purple-700 px-4 py-2 rounded-lg text-xs font-black italic tracking-tighter uppercase hover:bg-purple-600 shadow-xl shadow-purple-900/50 animate-pulse">Generate Schedule</button>)}
-                    </div>
-                </div>
+interface ScheduleViewProps {
+  seasons: Season[];
+  viewSeasonId: number;
+  setViewSeasonId: (id: number) => void;
+  onMatchClick: (m: Match) => void;
+  activeRankingData: any;
+  historyData: any;
+}
+
+export const ScheduleView = ({ 
+  seasons, viewSeasonId, setViewSeasonId, onMatchClick,
+  activeRankingData, historyData 
+}: ScheduleViewProps) => {
+  const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF'>('LEAGUE');
+  const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  const currentSeason = seasons.find(s => s.id === viewSeasonId);
+
+  useEffect(() => {
+    if (currentSeason?.type === 'CUP') setViewMode('CUP');
+    else if (currentSeason?.type === 'LEAGUE_PLAYOFF') setViewMode('LEAGUE_PLAYOFF');
+    else setViewMode('LEAGUE');
+  }, [viewSeasonId, seasons, currentSeason]); 
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const teamQ = query(collection(db, 'master_teams'));
+        const teamSnapshot = await getDocs(teamQ);
+        const teams = teamSnapshot.docs.map(doc => ({ id: doc.data().id, ...doc.data() })) as MasterTeam[];
+        setMasterTeams(teams);
+
+        const userQ = query(collection(db, 'users'));
+        const userSnapshot = await getDocs(userQ);
+        const userList = userSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })) as Owner[];
+        setOwners(userList);
+      } catch (error) { console.error(error); }
+    };
+    fetchData();
+  }, []);
+
+  // 🔥 [수술 포인트: 자동 스크롤 디벨롭]
+  useEffect(() => {
+      if (!currentSeason?.rounds) return;
+
+      const params = new URLSearchParams(window.location.search);
+      const urlMatchId = params.get('matchId');
+
+      let targetMatchId: string | null = null;
+      let urlTargetMatch: Match | null = null;
+
+      // 1. 모든 게임 진행 완료 여부 하이브리드 체크
+      let isAllFinished = currentSeason.status === 'COMPLETED'; // 어드민 마감
+      
+      if (!isAllFinished) {
+          let totalMatches = 0;
+          let finishedMatches = 0;
+
+          currentSeason.rounds.forEach(r => {
+              r.matches.forEach(m => {
+                  if (m.home !== 'BYE' && m.away !== 'BYE') {
+                      totalMatches++;
+                      // 스코어가 있거나 상태가 완료면 완료로 간주
+                      if (m.status === 'COMPLETED' || (m.homeScore !== '' && m.awayScore !== '')) {
+                          finishedMatches++;
+                      }
+                  }
+              });
+          });
+          if (totalMatches > 0 && totalMatches === finishedMatches) isAllFinished = true;
+      }
+
+      // 2. 스크롤 로직 판단
+      if (urlMatchId) {
+          // [우선순위 1] URL에 matchId가 있으면 무조건 해당 매치로 이동 (의도적 진입)
+          targetMatchId = urlMatchId;
+          for (const round of currentSeason.rounds) {
+              const found = round.matches.find(m => m.id === urlMatchId);
+              if (found) { urlTargetMatch = found; break; }
+          }
+      } else if (!isAllFinished) {
+          // [우선순위 2] 진행 중인 시즌: 최신 미진행 게임으로 이동
+          for (const round of currentSeason.rounds) {
+              const upcomingMatch = round.matches.find(m => m.status !== 'COMPLETED' && m.homeScore === '' && m.awayScore === '');
+              if (upcomingMatch) {
+                  targetMatchId = upcomingMatch.id;
+                  break;
+              }
+          }
+      } else {
+          // [완료된 경우] 리그/컵 관계없이 스크롤 없음 (targetMatchId = null)
+          targetMatchId = null;
+      }
+
+      // 3. 실제 스크롤 실행 (단 1번)
+      if (targetMatchId && matchRefs.current[targetMatchId]) {
+        const finalId = targetMatchId; 
+        setTimeout(() => {
+            matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            if (urlTargetMatch) {
+                const translatedHomeOwner = resolveOwnerInfo(owners, urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid).nickname;
+                const translatedAwayOwner = resolveOwnerInfo(owners, urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid).nickname;
+                onMatchClick({ ...urlTargetMatch, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner });
                 
-                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                    {targetSeason.teams?.map(t => {
-                        const master = masterTeams.find(m => m.name === t.name);
-                        const displayTeam = { ...t, logo: master ? master.logo : t.logo, tier: master ? master.tier : t.tier, region: master ? master.region : t.region };
+                params.delete('matchId');
+                window.history.replaceState(null, '', `?${params.toString()}`);
+            }
+        }, 300);
+    }
+  }, [currentSeason, viewMode, owners]);
+
+  const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
+    const s = stage.toUpperCase();
+    if (seasonType === 'LEAGUE' || seasonType === 'LEAGUE_PLAYOFF') {
+        if (s.includes('ROUND_OF_4')) return '🔥 플레이오프 (4강)';
+        if (s.includes('SEMI_FINAL')) return '🔥 플레이오프 (결승)';
+        if (s.includes('FINAL')) return '🏆 대망의 최종 결승전';
+        if (s.includes('ROUND') && /\d/.test(s)) return s.replace(/ROUND\s/i, '라운드 ').replace(/GAME/i, '경기');
+    }
+    if (s.includes('34') || s.includes('3RD')) return '🥉 3·4위전';
+    if (s === 'FINAL') return '🏆 결승전';
+    if (s.includes('SEMI')) return '4강 (준결승)';
+    if (matchCount === 16) return '32강';
+    if (matchCount === 8) return '16강';
+    if (matchCount === 4) return '8강';
+    if (matchCount === 2) return '4강 (준결승)';
+    if (matchCount === 1) return '🏆 결승전';
+    return stage;
+  };
+
+  const getTeamInfo = (teamName: string, snapOwnerName?: string, snapOwnerUid?: string) => {
+      if (!teamName || teamName === 'TBD' || teamName === 'BYE') return { name: teamName || 'TBD', logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
+      const tNorm = teamName.trim().toLowerCase().replace(/\s+/g, '');
+      const stats = activeRankingData?.teams?.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
+      const master = masterTeams.find(m => m.name.trim().toLowerCase().replace(/\s+/g, '') === tNorm);
+      
+      const rawOwnerName = snapOwnerName || stats?.ownerName || (master as any)?.ownerName || '-';
+      const rawOwnerUid = snapOwnerUid || stats?.ownerUid || (master as any)?.ownerUid;
+
+      return {
+          name: stats?.name || master?.name || teamName,
+          logo: stats?.logo || master?.logo || FALLBACK_IMG,
+          owner: resolveOwnerInfo(owners, rawOwnerName, rawOwnerUid).nickname, 
+          ownerUid: rawOwnerUid
+      };
+  };
+
+  const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
+      if (!leg1) return null;
+      let s1 = 0, s2 = 0;
+      let isLeg1Done = leg1.status === 'COMPLETED';
+      let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
+      const t1 = leg1.home; const t2 = leg1.away;
+      
+      if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+      if (isLeg2Done && leg2) { 
+          if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); } 
+          else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+      }
+      
+      let aggWinner = 'TBD';
+      
+      if (leg2 && (leg2 as any).aggWinner && (leg2 as any).aggWinner !== 'TBD') {
+          aggWinner = (leg2 as any).aggWinner;
+      } else if ((leg1 as any).aggWinner && (leg1 as any).aggWinner !== 'TBD') {
+          aggWinner = (leg1 as any).aggWinner;
+      } 
+      else if (isLeg1Done && (!leg2 || isLeg2Done)) {
+          if (s1 > s2) aggWinner = t1;
+          else if (s2 > s1) aggWinner = t2;
+      }
+
+      return { ...leg1, homeScore: isLeg1Done||isLeg2Done?String(s1):'', awayScore: isLeg1Done||isLeg2Done?String(s2):'', status: (isLeg1Done&&(!leg2||isLeg2Done))?'COMPLETED':'UPCOMING', aggWinner };
+  };
+
+  const displayRounds = currentSeason?.rounds ? JSON.parse(JSON.stringify(currentSeason.rounds)) : [];
+
+  const po4Rounds = displayRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
+  const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
+  const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
+
+  const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
+  const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
+  const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
+  const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
+
+  const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
+  const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+
+  if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
+      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi1.aggWinner); m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.owner; m.homeOwnerUid = info.ownerUid; });
+  }
+  if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
+      poFinalRounds.forEach((m: any) => { const info = getTeamInfo(compSemi2.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; m.awayOwnerUid = info.ownerUid; });
+  }
+
+  const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+  const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
+  const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+
+  if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
+      grandFinalRounds.forEach((m: any) => { const info = getTeamInfo(compPoFinal.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.owner; m.awayOwnerUid = info.ownerUid; });
+  }
+
+  const displayGrandFinal = grandFinalRounds.length > 0 ? grandFinalRounds[0] : null;
+
+  return (
+    <div className="space-y-6 animate-in fade-in pb-10">
+        <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 shadow-lg">
+             <div className="flex items-center gap-3">
+                <span className="text-slate-400 text-sm font-bold whitespace-nowrap hidden md:block">SELECT SEASON:</span>
+                <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm font-bold p-3 rounded-xl border border-slate-700 focus:border-emerald-500 outline-none cursor-pointer transition-colors hover:border-slate-500">
+                    {seasons.map(s => (
+                        <option key={s.id} value={s.id}>
+                            {(() => {
+                                const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '');
+                                let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️'; if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
+                                return `${icon} ${pureName}`;
+                            })()}
+                        </option>
+                    ))}
+                </select>
+             </div>
+        </div>
+
+        <LiveFeed 
+            mode="schedule" 
+            seasons={seasons}
+            selectedSeasonId={viewSeasonId} 
+            owners={owners} 
+            onNavigateToMatch={onMatchClick}
+        />
+
+        {viewMode === 'CUP' ? (
+            <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} />
+        ) : viewMode === 'LEAGUE_PLAYOFF' ? (
+            <div className="space-y-12">
+                <style dangerouslySetInnerHTML={{ __html: `
+                    .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
+                    .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
+                    .no-scrollbar::-webkit-scrollbar { display: none; }
+                    .b-node { position: relative; z-index: 10; }
+                `}} />
+
+                <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
+                    <div className="min-w-max md:min-w-[760px] px-2">
+                        <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
+                        <div className="bracket-tree no-scrollbar">
+                            <div className="bracket-column">
+                                <div className="b-node">
+                                    <BracketMatchBox match={compSemi1} title="PO 4강 1경기 (합산)" owners={owners} />
+                                </div>
+                                <div className="b-node">
+                                    <BracketMatchBox match={compSemi2} title="PO 4강 2경기 (합산)" owners={owners} />
+                                </div>
+                            </div>
+                            <div className="bracket-column">
+                                <div className="b-node">
+                                    <BracketMatchBox match={compPoFinal} title="PO 결승 (합산)" owners={owners} />
+                                </div>
+                            </div>
+                            <div className="bracket-column pl-4">
+                                <div className="b-node relative scale-110 ml-4">
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce z-20">👑</div>
+                                    <BracketMatchBox match={displayGrandFinal} title="🏆 Grand Final (단판)" highlight owners={owners} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    <div className="flex items-center gap-3 mb-4"><div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">MATCH SCHEDULE</h3></div>
+                    {displayRounds.map((r: any, rIdx: number) => {
+                        const uniqueStages = Array.from(new Set(r.matches.map((m: any) => m.stage)));
+                        const totalMatchesInRound = r.matches.length;
                         return (
-                            <div key={t.id} className="relative group"><TeamCard team={displayTeam} /><button onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} className={`absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 text-white transition-colors ${hasSchedule ? 'cursor-not-allowed opacity-50' : ''}`}><span className="text-[10px] font-bold">{hasSchedule ? '🔒' : '✕'}</span></button></div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <QuickDraftModal isOpen={isDraftOpen} onClose={() => setIsDraftOpen(false)} owners={owners} masterTeams={masterTeams} onConfirm={handleDraftApply} />
-
-            {/* ==============================================================================
-                STEP 3. 플레이오프 3단계 대진표 인라인 에디터 (LEAGUE_PLAYOFF 모드)
-            ============================================================================== */}
-            {hasSchedule && targetSeason.type === 'LEAGUE_PLAYOFF' && (
-                <div id="po-setup-section" className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 overflow-hidden ${isPoLocked ? 'border-slate-800 bg-[#05070a]' : 'border-slate-800'}`}>
-                    
-                    {/* Header */}
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Playoff Bracket Setup</h3>
-                            {isPoLocked && (
-                                <div className="flex items-center gap-1 bg-red-900/30 border border-red-500/30 px-3 py-1 rounded-full">
-                                    <span className="text-sm">🔒</span><span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">LOCKED</span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            {isPoLocked ? (
-                                <button onClick={handleUnlockPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-red-900/80 text-red-400 hover:bg-red-800 hover:text-white border border-red-800/50">
-                                    🔄 UNLOCK & RESET
-                                </button>
-                            ) : (
-                                <>
-                                    <button onClick={handleAutoFillPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-indigo-600 text-white hover:bg-indigo-50 active:scale-95">
-                                        ⚡ AUTO (순위 기반)
-                                    </button>
-                                    <button onClick={handleResetPoBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">
-                                        🔄 대기실로 빼기
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Waiting Pool */}
-                    <div className={`mb-8 p-4 rounded-2xl border transition-all duration-300 ${isPoLocked ? 'bg-black/40 border-slate-800/50 opacity-40 grayscale pointer-events-none' : 'bg-slate-900/50 border-slate-700/50'}`}>
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Qualified Teams Inventory ({poWaitingPool.length})</span>
-                            {!isPoLocked && <span className="text-[10px] text-slate-500 italic hidden sm:block">Drag team to bracket slot</span>}
-                        </div>
-                        
-                        {poWaitingPool.length === 0 ? (
-                            <div className="text-center py-6 text-slate-600 text-xs italic font-bold">진출팀이 대기실에 없습니다. (정규리그 마감 후 버튼을 누르세요)</div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
-                                {poWaitingPool.map(t => (
-                                    <div key={t.id} draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
-                                        <span className="absolute -top-2.5 -right-1 bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-lg z-10 border border-emerald-400">{t._realRank}위</span>
-                                        <TeamCard team={t} size="small" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 수직 피라미드 대진표 */}
-                    <div className="space-y-6 relative pb-8 max-w-4xl mx-auto flex flex-col items-center">
-                        <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all shadow-xl w-full max-w-2xl ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-yellow-500/30'}`}>
-                            <div className="text-center mb-5 border-b border-slate-800/50 pb-2 relative">
-                                <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-3xl animate-bounce drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]">👑</span>
-                                <span className="text-[12px] text-yellow-500 font-black italic tracking-widest uppercase">챔피언 결정전 (Grand Final)</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 relative items-center">
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
-                                <div onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, 0)} onClick={() => !isPoLocked && handleSlotClick(0)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[0] ? 'border-yellow-500 bg-yellow-900/20 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-yellow-700/50 bg-slate-900/30 hover:border-yellow-500 border-dashed cursor-pointer'}`}>
-                                    <span className="absolute -top-0 w-full bg-yellow-600 text-black text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">리그 1위 직행</span>
-                                    {poBracket[0] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', 0, poBracket[0])}><TeamCard team={poBracket[0]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 group-hover:text-yellow-500 pt-3"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
-                                </div>
-                                <div className="relative min-h-[110px] rounded-xl border-2 border-slate-800 bg-slate-900/30 flex flex-col items-center justify-center opacity-60 cursor-not-allowed select-none">
-                                    <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">최종 도전자</span><span className="text-3xl mb-1 mt-3">⚔️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest mt-1">PO 결승 승자</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="w-px h-8 bg-slate-700"></div>
-
-                        <div className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-full max-w-[400px] opacity-80 pointer-events-none`}>
-                            <div className="text-center mb-4 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">플레이오프 결승 (PO Final)</span></div>
-                            <div className="grid grid-cols-2 gap-4 relative items-center">
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div></div>
-                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center"><span className="text-2xl text-slate-600 mb-1">🛡️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 1경기 승자</span></div>
-                                <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center"><span className="text-2xl text-slate-600 mb-1">🛡️</span><span className="text-[9px] font-bold text-slate-500 tracking-widest text-center leading-tight">4강 2경기 승자</span></div>
-                            </div>
-                        </div>
-
-                        <div className="w-full flex justify-center relative h-10">
-                            <div className="w-px h-full bg-slate-700"></div><div className="absolute top-1/2 left-[25%] right-[25%] h-px bg-slate-700"></div><div className="absolute top-1/2 left-[25%] bottom-0 w-px bg-slate-700"></div><div className="absolute top-1/2 right-[25%] bottom-0 w-px bg-slate-700"></div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 relative w-full">
-                            <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50 shadow-xl'}`}>
-                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 1경기</span></div>
-                                <div className="grid grid-cols-2 gap-4 relative items-center">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
-                                    {[1, 2].map((slotIdx) => (
-                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'}`}>
-                                            <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">{slotIdx === 1 ? '2위 자리' : '5위 자리'}</span>
-                                            {poBracket[slotIdx] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}><TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
-                                        </div>
-                                    ))}
-                                </div>
-                                {!isPoLocked && poBracket[1] && poBracket[2] && poBracket[1].ownerUid === poBracket[2].ownerUid && (<div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>)}
-                            </div>
-
-                            <div className={`relative flex flex-col p-5 sm:p-6 rounded-3xl border transition-all ${isPoLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/20 border-slate-800/50 shadow-xl'}`}>
-                                <div className="text-center mb-5 border-b border-slate-800/50 pb-2"><span className="text-[10px] text-emerald-500 font-black italic tracking-widest uppercase">PO 4강 2경기</span></div>
-                                <div className="grid grid-cols-2 gap-4 relative items-center">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"><div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div></div>
-                                    {[3, 4].map((slotIdx) => (
-                                        <div key={slotIdx} onDragOver={isPoLocked ? undefined : handleDragOver} onDrop={(e) => !isPoLocked && handleDrop(e, slotIdx)} onClick={() => !isPoLocked && handleSlotClick(slotIdx)} className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${isPoLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : poBracket[slotIdx] ? 'border-emerald-500/30 bg-emerald-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-emerald-500/50 hover:bg-slate-800 border-dashed cursor-pointer'}`}>
-                                            <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">{slotIdx === 3 ? '3위 자리' : '4위 자리'}</span>
-                                            {poBracket[slotIdx] ? (<div className="w-full h-full pt-4 relative" draggable={!isPoLocked} onDragStart={(e) => !isPoLocked && handleDragStart(e, 'bracket', slotIdx, poBracket[slotIdx])}><TeamCard team={poBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isPoLocked ? 'grayscale opacity-80' : ''}`} />{!isPoLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}</div>) : <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-emerald-500"><span className="text-xl font-black">+</span><span className="text-[9px] font-bold">ADD TEAM</span></div>}
-                                        </div>
-                                    ))}
-                                </div>
-                                {!isPoLocked && poBracket[3] && poBracket[4] && poBracket[3].ownerUid === poBracket[4].ownerUid && (<div className="mt-4 bg-red-950/80 border border-red-500 text-red-400 text-[11px] font-bold py-2 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>)}
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <div className="mt-2 pt-6 border-t border-slate-800 flex justify-center">
-                        {isPoLocked ? (<div className="px-10 py-5 bg-slate-900 text-slate-500 font-black italic rounded-2xl border border-slate-800 flex items-center gap-3 cursor-not-allowed select-none shadow-inner"><span>🔒</span> PLAYOFF BRACKET IS LOCKED</div>) : (<button onClick={handleConfirmPlayoffBracket} className="px-10 py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-black italic rounded-2xl shadow-2xl shadow-emerald-900/50 text-lg transition-transform active:scale-95 flex items-center gap-3"><span>🚀</span> CONFIRM & GENERATE PLAYOFF</button>)}
-                    </div>
-                </div>
-            )}
-
-            {/* ==============================================================================
-                STEP 3. 토너먼트 대진표 에디터 (🔥 모바일 최적화 수직 스태킹 디자인)
-            ============================================================================== */}
-            {hasSchedule && targetSeason.type === 'TOURNAMENT' && (
-                <div id="tourney-setup-section" className={`bg-[#0b0e14] p-4 md:p-6 rounded-[2.5rem] border relative transition-all duration-300 overflow-hidden ${isTourneyLocked ? 'border-slate-800 bg-[#05070a]' : 'border-blue-900/50'}`}>
-                    
-                    {/* Header */}
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4 gap-4">
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-white font-black italic uppercase tracking-tighter text-xl">Step 3. Tournament Bracket Setup</h3>
-                            {isTourneyLocked && (
-                                <div className="flex items-center gap-1 bg-red-900/30 border border-red-500/30 px-3 py-1 rounded-full">
-                                    <span className="text-sm">🔒</span><span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">IN PROGRESS</span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            {!isTourneyLocked && (
-                                <>
-                                    <button onClick={handleAutoFillTourneyBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-blue-600 text-white hover:bg-blue-500 active:scale-95">
-                                        ⚡ AUTO FILL
-                                    </button>
-                                    <button onClick={handleResetTourneyBracket} className="px-4 py-2 rounded-xl font-black italic text-xs shadow-lg transition-all bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700">
-                                        🔄 대기실로 빼기
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Waiting Pool */}
-                    <div className={`mb-8 p-4 rounded-2xl border transition-all duration-300 ${isTourneyLocked ? 'bg-black/40 border-slate-800/50 opacity-40 grayscale pointer-events-none' : 'bg-slate-900/50 border-slate-700/50'}`}>
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting Pool ({tourneyWaitingPool.length})</span>
-                            {!isTourneyLocked && <span className="text-[10px] text-slate-500 italic hidden sm:block">Drag team to bracket slot</span>}
-                        </div>
-                        
-                        {tourneyWaitingPool.length === 0 ? (
-                            <div className="text-center py-6 text-slate-600 text-xs italic font-bold">모든 팀이 배치되었습니다.</div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
-                                {tourneyWaitingPool.map(t => (
-                                    <div key={t.id} draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
-                                        <TeamCard team={t} size="small" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 🔥 다이내믹 피라미드 대진표 (모바일 세로형 + 데스크탑 그리드형) */}
-                    <div className="space-y-8 relative pb-8 w-full flex flex-col items-center px-2">
-                        <div className="w-full flex flex-col items-center gap-10 md:gap-16">
-                            {Array.from({ length: tourneyTargetSize > 0 ? Math.log2(tourneyTargetSize) : 0 })
-                                .map((_, i) => Math.log2(tourneyTargetSize) - i)
-                                .map((roundLevel) => {
-                                    const totalRounds = Math.log2(tourneyTargetSize);
-                                    const isFinal = roundLevel === totalRounds;
-                                    const isFirstRound = roundLevel === 1;
-                                    const matchesInRound = Math.pow(2, totalRounds - roundLevel);
-
-                                    const getRoundTitle = (level: number) => {
-                                        if (level === totalRounds) return "👑 챔피언 결정전 (GRAND FINAL)";
-                                        if (level === totalRounds - 1) return "🔥 4강전 (SEMI-FINAL)";
-                                        if (level === totalRounds - 2) return "⚔️ 8강전 (QUARTER-FINAL)";
-                                        if (level === totalRounds - 3) return "🛡️ 16강전 (ROUND OF 16)";
-                                        return `Round ${level}`;
-                                    };
-
+                            <div key={`hybrid-r-${rIdx}`} className="space-y-6">
+                                {uniqueStages.map((stageName: any) => {
+                                    const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, 'LEAGUE_PLAYOFF');
                                     return (
-                                        <div key={roundLevel} className="flex flex-col items-center w-full relative">
-                                            {/* Title for the Round Row */}
-                                            <div className="text-center mb-6">
-                                                <span className={`text-[14px] sm:text-[16px] font-black italic tracking-widest uppercase ${isFinal ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)]' : isFirstRound ? 'text-blue-400' : 'text-slate-400'}`}>
-                                                    {getRoundTitle(roundLevel)}
-                                                </span>
-                                            </div>
-
-                                            {/* 🔥 Matches Row: 모바일 수직 (1열), 큰 화면 수평 (다열 그리드) 완벽 제어 */}
-                                            <div className={`grid grid-cols-1 gap-6 sm:gap-8 justify-items-center w-full max-w-7xl mx-auto ${
-                                                matchesInRound === 1 ? 'md:grid-cols-1' :
-                                                matchesInRound === 2 ? 'md:grid-cols-2' :
-                                                matchesInRound === 4 ? 'md:grid-cols-2 lg:grid-cols-4' :
-                                                'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                                            }`}>
-                                                {Array.from({ length: matchesInRound }).map((_, mIdx) => {
-                                                    if (isFirstRound) {
-                                                        const homeIdx = mIdx * 2;
-                                                        const awayIdx = mIdx * 2 + 1;
-                                                        const hTeam = tourneyBracket[homeIdx];
-                                                        const aTeam = tourneyBracket[awayIdx];
-                                                        const isInnerCivilWar = hTeam && aTeam && (hTeam.ownerUid === aTeam.ownerUid || hTeam.ownerName === aTeam.ownerName);
-
-                                                        return (
-                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border transition-all w-full max-w-[340px] ${isTourneyLocked ? 'bg-black/20 border-slate-800/30' : 'bg-slate-900/40 border-blue-500/50 shadow-xl shadow-blue-900/20'}`}>
-                                                                <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
-                                                                    <span className="text-[10px] text-blue-400 font-black italic tracking-widest uppercase">Match {mIdx + 1}</span>
-                                                                </div>
-                                                                
-                                                                <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
-                                                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                                                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[10px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                                                    </div>
-
-                                                                    {[homeIdx, awayIdx].map(slotIdx => (
-                                                                        <div key={slotIdx} onDragOver={isTourneyLocked ? undefined : handleDragOver} onDrop={(e) => !isTourneyLocked && handleTourneyDrop(e, slotIdx)} onClick={() => !isTourneyLocked && handleTourneySlotClick(slotIdx)} 
-                                                                            className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
-                                                                                isTourneyLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
-                                                                                tourneyBracket[slotIdx] ? 'border-blue-500/30 bg-blue-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-blue-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
-                                                                            }`}
-                                                                        >
-                                                                            <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">Slot {slotIdx + 1}</span>
-                                                                            {tourneyBracket[slotIdx] ? (
-                                                                                <div className="w-full h-full pt-4 relative" draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'bracket', slotIdx, tourneyBracket[slotIdx])}>
-                                                                                    <TeamCard team={tourneyBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isTourneyLocked ? 'grayscale opacity-80' : ''}`} />
-                                                                                    {!isTourneyLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="flex flex-col items-center text-slate-600 pt-3 group-hover:text-blue-500">
-                                                                                    <span className="text-xl font-black mb-1">+</span>
-                                                                                    <span className="text-[11px] font-black uppercase tracking-widest">TBD</span>
-                                                                                    <span className="text-[8px] font-bold text-slate-500">(ADD TEAM)</span>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-
-                                                                {!isTourneyLocked && isInnerCivilWar && (
-                                                                    <div className="mt-3 bg-red-950/80 border border-red-500 text-red-400 text-[10px] font-bold py-1.5 rounded-lg text-center animate-pulse shadow-lg shadow-red-900/20">🚨 동일 오너(내전) 매치업 발생!</div>
-                                                                )}
+                                        <div key={stageName} className="space-y-2">
+                                            <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
+                                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {r.matches.filter((m: any) => m.stage === stageName).map((m: any, mIdx: number) => {
+                                                    let customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
+                                                    if (m.matchLabel && m.matchLabel.includes('PO')) customMatchLabel = m.matchLabel; else if (m.matchLabel && m.matchLabel.includes('결승전')) customMatchLabel = m.matchLabel;
+                                                    const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
+                                                    const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
+                                                    const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
+                                                    const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
+                                                    const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
+                                                    const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                    return (
+                                                        <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
+                                                            <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                                <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
-                                                        );
-                                                    } else {
-                                                        return (
-                                                            <div key={mIdx} className={`relative flex flex-col p-4 sm:p-5 rounded-3xl border bg-slate-900/40 border-slate-800/50 shadow-xl w-full max-w-[340px] opacity-80 pointer-events-none`}>
-                                                                <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
-                                                                    <span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">{isFinal ? '결승전' : `Match ${mIdx + 1}`}</span>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
-                                                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                                                                        <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                                                    </div>
-                                                                    <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center text-center px-1">
-                                                                        <span className="text-2xl text-slate-600 mb-1">⚔️</span>
-                                                                        <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-tight">하위 {mIdx * 2 + 1}경기 승자</span>
-                                                                    </div>
-                                                                    <div className="h-[90px] rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col items-center justify-center text-center px-1">
-                                                                        <span className="text-2xl text-slate-600 mb-1">⚔️</span>
-                                                                        <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-tight">하위 {mIdx * 2 + 2}경기 승자</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
+                                                            <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
+                                                        </div>
+                                                    );
                                                 })}
                                             </div>
                                         </div>
                                     );
                                 })}
-                        </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="mt-2 pt-6 border-t border-slate-800 flex justify-center">
-                        {isTourneyLocked ? (
-                            <div className="px-10 py-5 bg-slate-900 text-slate-500 font-black italic rounded-2xl border border-slate-800 flex items-center gap-3 cursor-not-allowed select-none shadow-inner">
-                                <span>🔒</span> TOURNAMENT IS IN PROGRESS
                             </div>
-                        ) : (
-                            <button onClick={handleConfirmTourneyBracket} className="px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white font-black italic rounded-2xl shadow-2xl shadow-blue-900/50 text-lg transition-transform active:scale-95 flex items-center gap-3">
-                                <span>⚔️</span> CONFIRM MATCHUPS
-                            </button>
-                        )}
-                    </div>
+                        );
+                    })}
                 </div>
-            )}
-        </div>
-    );
+            </div>
+        ) : (
+            <>
+                {currentSeason?.rounds?.map((r, rIdx) => {
+                    const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
+                    const totalMatchesInRound = r.matches.length;
+                    const seasonType = currentSeason.type || 'LEAGUE';
+                    return (
+                        <div key={rIdx} className="space-y-6">
+                            {uniqueStages.map((stageName) => {
+                                const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, seasonType);
+                                return (
+                                    <div key={stageName} className="space-y-2">
+                                        <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
+                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
+                                                const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
+                                                const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
+                                                const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
+                                                const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
+                                                const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                return (
+                                                    <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
+                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                            <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
+                                                            <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
+                                                        </div>
+                                                        <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })}
+                {(!currentSeason?.rounds || currentSeason.rounds.length === 0) && (
+                    <div className="text-center py-10 text-slate-500">등록된 스케줄이 없습니다.</div>
+                )}
+            </>
+        )}
+    </div>
+  );
 };

@@ -431,28 +431,31 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
             const filteredRounds = targetSeason.rounds?.filter(r => !['ROUND_OF_4', 'PO_FINAL', 'SEMI_FINAL', 'FINAL'].includes(r.name)) || [];
             const s = (val: any) => val === undefined ? '' : val;
 
+            // 🔥 [TypeScript Fix] 명시적 타입 할당으로 빌드 에러 방지
+            const matchStatus: 'UPCOMING' | 'BYE' | 'COMPLETED' = 'UPCOMING';
+
             const roundOf4 = {
                 name: 'ROUND_OF_4',
                 matches: [
-                    { id: `po_4_1_1`, home: s(t5.name), away: s(t2.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t5.logo), awayLogo: s(t2.logo), homeOwner: s(t5.ownerName), awayOwner: s(t2.ownerName), matchLabel: 'PO 4강 1경기 (1차전: 5위 홈 vs 2위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t5.ownerUid), awayOwnerUid: s(t2.ownerUid) },
-                    { id: `po_4_1_2`, home: s(t2.name), away: s(t5.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t2.logo), awayLogo: s(t5.logo), homeOwner: s(t2.ownerName), awayOwner: s(t5.ownerName), matchLabel: 'PO 4강 1경기 (2차전: 2위 홈 vs 5위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t2.ownerUid), awayOwnerUid: s(t5.ownerUid) },
-                    { id: `po_4_2_1`, home: s(t4.name), away: s(t3.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t4.logo), awayLogo: s(t3.logo), homeOwner: s(t4.ownerName), awayOwner: s(t3.ownerName), matchLabel: 'PO 4강 2경기 (1차전: 4위 홈 vs 3위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t4.ownerUid), awayOwnerUid: s(t3.ownerUid) },
-                    { id: `po_4_2_2`, home: s(t3.name), away: s(t4.name), homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t3.logo), awayLogo: s(t4.logo), homeOwner: s(t3.ownerName), awayOwner: s(t4.ownerName), matchLabel: 'PO 4강 2경기 (2차전: 3위 홈 vs 4위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t3.ownerUid), awayOwnerUid: s(t4.ownerUid) },
+                    { id: `po_4_1_1`, home: s(t5.name), away: s(t2.name), homeScore: '', awayScore: '', status: matchStatus, homeLogo: s(t5.logo), awayLogo: s(t2.logo), homeOwner: s(t5.ownerName), awayOwner: s(t2.ownerName), matchLabel: 'PO 4강 1경기 (1차전: 5위 홈 vs 2위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t5.ownerUid), awayOwnerUid: s(t2.ownerUid), youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
+                    { id: `po_4_1_2`, home: s(t2.name), away: s(t5.name), homeScore: '', awayScore: '', status: matchStatus, homeLogo: s(t2.logo), awayLogo: s(t5.logo), homeOwner: s(t2.ownerName), awayOwner: s(t5.ownerName), matchLabel: 'PO 4강 1경기 (2차전: 2위 홈 vs 5위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t2.ownerUid), awayOwnerUid: s(t5.ownerUid), youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
+                    { id: `po_4_2_1`, home: s(t4.name), away: s(t3.name), homeScore: '', awayScore: '', status: matchStatus, homeLogo: s(t4.logo), awayLogo: s(t3.logo), homeOwner: s(t4.ownerName), awayOwner: s(t3.ownerName), matchLabel: 'PO 4강 2경기 (1차전: 4위 홈 vs 3위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t4.ownerUid), awayOwnerUid: s(t3.ownerUid), youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
+                    { id: `po_4_2_2`, home: s(t3.name), away: s(t4.name), homeScore: '', awayScore: '', status: matchStatus, homeLogo: s(t3.logo), awayLogo: s(t4.logo), homeOwner: s(t3.ownerName), awayOwner: s(t4.ownerName), matchLabel: 'PO 4강 2경기 (2차전: 3위 홈 vs 4위)', stage: 'ROUND_OF_4', seasonId: targetSeason.id, homeOwnerUid: s(t3.ownerUid), awayOwnerUid: s(t4.ownerUid), youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
                 ]
             };
 
             const poFinal = {
                 name: 'SEMI_FINAL', 
                 matches: [
-                    { id: `po_fin_1`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (1차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
-                    { id: `po_fin_2`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (2차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id },
+                    { id: `po_fin_1`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: matchStatus, homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (1차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id, youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
+                    { id: `po_fin_2`, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: matchStatus, homeLogo: '', awayLogo: '', homeOwner: '-', awayOwner: '-', matchLabel: 'PO 결승 (2차전)', stage: 'SEMI_FINAL', seasonId: targetSeason.id, youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
                 ]
             };
 
             const grandFinal = {
                 name: 'FINAL',
                 matches: [
-                    { id: `grand_fin_1`, home: s(t1.name), away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING', homeLogo: s(t1.logo), awayLogo: '', homeOwner: s(t1.ownerName), awayOwner: '-', matchLabel: '🏆 최종 챔피언 결정전 (단판)', stage: 'FINAL', seasonId: targetSeason.id, homeOwnerUid: s(t1.ownerUid) },
+                    { id: `grand_fin_1`, home: s(t1.name), away: 'TBD', homeScore: '', awayScore: '', status: matchStatus, homeLogo: s(t1.logo), awayLogo: '', homeOwner: s(t1.ownerName), awayOwner: '-', matchLabel: '🏆 최종 챔피언 결정전 (단판)', stage: 'FINAL', seasonId: targetSeason.id, homeOwnerUid: s(t1.ownerUid), youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] },
                 ]
             };
 
@@ -567,7 +570,11 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 const isFinal = i === totalMatches - 1;
                 
                 let homeName = 'TBD', awayName = 'TBD', homeLogo = FALLBACK_IMG, awayLogo = FALLBACK_IMG;
-                let homeOwner = '-', awayOwner = '-', status = 'UPCOMING';
+                let homeOwner = '-', awayOwner = '-';
+                
+                // 🔥 [TypeScript Fix] 리터럴 타입 명시로 string 할당 에러 원천 차단
+                let currentStatus: 'UPCOMING' | 'BYE' | 'COMPLETED' = 'UPCOMING';
+                
                 let homeOwnerUid = '', awayOwnerUid = '';
 
                 if (isFirst) {
@@ -582,7 +589,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     homeOwnerUid = hTeam ? hTeam.ownerUid : '';
                     awayOwnerUid = aTeam ? aTeam.ownerUid : '';
                     
-                    if (homeName === 'BYE' || awayName === 'BYE') status = 'BYE';
+                    if (homeName === 'BYE' || awayName === 'BYE') currentStatus = 'BYE';
                 }
 
                 matches.push({
@@ -592,7 +599,8 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                     homeLogo: s(homeLogo), awayLogo: s(awayLogo),
                     homeOwner: s(homeOwner), awayOwner: s(awayOwner),
                     homeOwnerUid: s(homeOwnerUid), awayOwnerUid: s(awayOwnerUid),
-                    status, homeScore: '', awayScore: '',
+                    status: currentStatus, // 타입이 'UPCOMING' | 'BYE' | 'COMPLETED' 로 고정됨
+                    homeScore: '', awayScore: '',
                     stage: isFinal ? 'FINAL' : 'TOURNAMENT',
                     matchLabel: isFinal ? '🏆 결승전' : `1Round - Match ${i + 1}`,
                     youtubeUrl: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
@@ -897,7 +905,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
                                 {tourneyWaitingPool.map(t => (
-                                    <div key={t.id} draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
+                                    <div key={t.id} draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
                                         <TeamCard team={t} size="small" />
                                     </div>
                                 ))}
@@ -926,14 +934,12 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
 
                                     return (
                                         <div key={roundLevel} className="flex flex-col items-center w-full relative">
-                                            {/* Title for the Round Row */}
                                             <div className="text-center mb-6">
                                                 <span className={`text-[14px] sm:text-[16px] font-black italic tracking-widest uppercase ${isFinal ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)]' : isFirstRound ? 'text-blue-400' : 'text-slate-400'}`}>
                                                     {getRoundTitle(roundLevel)}
                                                 </span>
                                             </div>
 
-                                            {/* 🔥 Matches Row: 모바일 수직 (1열), 큰 화면 수평 (다열 그리드) 완벽 제어 */}
                                             <div className={`grid grid-cols-1 gap-6 sm:gap-8 justify-items-center w-full max-w-7xl mx-auto ${
                                                 matchesInRound === 1 ? 'md:grid-cols-1' :
                                                 matchesInRound === 2 ? 'md:grid-cols-2' :
@@ -960,7 +966,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                                                     </div>
 
                                                                     {[homeIdx, awayIdx].map(slotIdx => (
-                                                                        <div key={slotIdx} onDragOver={isTourneyLocked ? undefined : handleDragOver} onDrop={(e) => !isTourneyLocked && handleTourneyDrop(e, slotIdx)} onClick={() => !isTourneyLocked && handleTourneySlotClick(slotIdx)} 
+                                                                        <div key={slotIdx} onDragOver={isTourneyLocked ? undefined : handleDragOver} onDrop={(e) => !isTourneyLocked && handleDrop(e, slotIdx, 'TOUR')} onClick={() => !isTourneyLocked && handleTourneySlotClick(slotIdx)} 
                                                                             className={`relative min-h-[110px] rounded-xl border-2 flex flex-col items-center justify-center transition-all group overflow-hidden ${
                                                                                 isTourneyLocked ? 'border-slate-800/50 bg-black/20 cursor-default' : 
                                                                                 tourneyBracket[slotIdx] ? 'border-blue-500/30 bg-blue-900/10 hover:border-red-500/50 hover:bg-red-900/10 cursor-pointer border-solid' : 'border-slate-700 bg-slate-900/30 hover:border-blue-500/50 hover:bg-slate-800 border-dashed cursor-pointer'
@@ -968,7 +974,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                                                                         >
                                                                             <span className="absolute -top-0 w-full bg-slate-800 text-slate-400 text-[8px] font-black py-0.5 text-center tracking-widest uppercase z-10">Slot {slotIdx + 1}</span>
                                                                             {tourneyBracket[slotIdx] ? (
-                                                                                <div className="w-full h-full pt-4 relative" draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleTourneyDragStart(e, 'bracket', slotIdx, tourneyBracket[slotIdx])}>
+                                                                                <div className="w-full h-full pt-4 relative" draggable={!isTourneyLocked} onDragStart={(e) => !isTourneyLocked && handleDragStart(e, 'bracket', slotIdx, tourneyBracket[slotIdx])}>
                                                                                     <TeamCard team={tourneyBracket[slotIdx]} size="small" className={`w-full h-full border-none shadow-none bg-transparent ${isTourneyLocked ? 'grayscale opacity-80' : ''}`} />
                                                                                     {!isTourneyLocked && <div className="absolute inset-0 flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-30"><span className="text-red-400 font-black text-[10px] uppercase">REMOVE ✕</span></div>}
                                                                                 </div>
