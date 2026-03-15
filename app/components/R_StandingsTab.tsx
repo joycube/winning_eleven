@@ -19,6 +19,75 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
 
+  // 🔥 [핵심 수술] 외부 데이터를 믿지 않고, currentSeason.rounds를 읽어 팀 순위표를 직접 계산합니다.
+  const computedTeamsData = useMemo(() => {
+    const teamStats: Record<string, any> = {};
+
+    // 1. 기존 데이터 복사 (id, 로고, 구단주 등 메타데이터 유지)
+    (activeRankingData?.teams || []).forEach((t: any) => {
+        teamStats[t.name] = { ...t, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 };
+    });
+
+    if (!currentSeason?.rounds) return activeRankingData?.teams || [];
+
+    const playoffKeywords = ['ROUND', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트'];
+
+    currentSeason.rounds.forEach((r: any) => {
+        const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
+
+        r.matches?.forEach((m: any) => {
+            if (m.status !== 'COMPLETED') return;
+            if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
+
+            const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
+            const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
+
+            // 🔥 [대표님 룰 적용]: 컵 모드나 리그+PO 모드의 '토너먼트/PO' 경기는 정규 순위표 합산에서 제외!
+            // 단, 순수 토너먼트(TOURNAMENT)나 일반 리그(LEAGUE)는 '결승전 포함' 모든 경기를 합산!
+            if ((currentSeason.type === 'CUP' || currentSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) {
+                return; // 합산 스킵
+            }
+
+            const hTeam = m.home;
+            const aTeam = m.away;
+            const hScore = Number(m.homeScore);
+            const aScore = Number(m.awayScore);
+
+            // 데이터에 없는 팀이 경기 로그에 있으면 임시 생성
+            if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: hTeam };
+            if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: aTeam };
+
+            // 스탯 덧셈
+            teamStats[hTeam].played += 1;
+            teamStats[aTeam].played += 1;
+            teamStats[hTeam].gf += hScore;
+            teamStats[aTeam].gf += aScore;
+            teamStats[hTeam].ga += aScore;
+            teamStats[aTeam].ga += hScore;
+
+            if (hScore > aScore) {
+                teamStats[hTeam].win += 1;
+                teamStats[hTeam].points += 3;
+                teamStats[aTeam].loss += 1;
+            } else if (hScore < aScore) {
+                teamStats[aTeam].win += 1;
+                teamStats[aTeam].points += 3;
+                teamStats[hTeam].loss += 1;
+            } else {
+                teamStats[hTeam].draw += 1;
+                teamStats[aTeam].draw += 1;
+                teamStats[hTeam].points += 1;
+                teamStats[aTeam].points += 1;
+            }
+
+            teamStats[hTeam].gd = teamStats[hTeam].gf - teamStats[hTeam].ga;
+            teamStats[aTeam].gd = teamStats[aTeam].gf - teamStats[aTeam].ga;
+        });
+    });
+
+    return Object.values(teamStats);
+  }, [currentSeason, activeRankingData?.teams]);
+
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
     try {
         if (!ownerName) return '-';
@@ -56,7 +125,8 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     return ranked;
   };
 
-  const sortedTeams = useMemo(() => getRankedTeams(activeRankingData?.teams || []), [activeRankingData?.teams]);
+  // 🔥 계산된 computedTeamsData를 기반으로 순위표 정렬
+  const sortedTeams = useMemo(() => getRankedTeams(computedTeamsData), [computedTeamsData]);
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
 
@@ -66,7 +136,8 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     if (teamIdentifier === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
     
     const normId = normalize(teamIdentifier);
-    let stats = activeRankingData?.teams?.find((t: any) => normalize(t.name) === normId);
+    // 🔥 팀 정보 검색도 computedTeamsData 기반으로 변경
+    let stats = computedTeamsData.find((t: any) => normalize(t.name) === normId);
     let master = masterTeams.find((m: any) => m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier);
     
     const rawOwnerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
@@ -253,18 +324,19 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     );
   };
 
+  // 🔥 조별 순위도 computedTeamsData 기반으로 변경
   const groupStandings = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.groups) return null;
     const groups: { [key: string]: any[] } = {};
     Object.keys(currentSeason.groups).forEach(gName => {
       const teamIds = currentSeason.groups![gName];
       if (teamIds && teamIds.length > 0) {
-        const groupTeams = (activeRankingData?.teams || []).filter((t: any) => teamIds.includes(t.id));
+        const groupTeams = computedTeamsData.filter((t: any) => teamIds.includes(t.id));
         groups[gName] = getRankedTeams(groupTeams);
       }
     });
     return groups;
-  }, [currentSeason, activeRankingData?.teams]);
+  }, [currentSeason, computedTeamsData]);
 
   const sortedGroupKeys = useMemo(() => groupStandings ? Object.keys(groupStandings).sort() : [], [groupStandings]);
 

@@ -2,14 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo } from 'react';
-import { FALLBACK_IMG, Owner, Match } from '../types';
+import { FALLBACK_IMG, Owner } from '../types';
 import { ChevronRight } from 'lucide-react'; 
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface RPlayersTabProps {
-  currentSeason: any; // 🔥 경기 로그 분석을 위해 추가
-  activeRankingData: any;
+  currentSeason: any; 
+  activeRankingData: any; // 프롭스 구조 유지를 위해 남겨두지만, 실제 계산에서는 무시합니다.
   isHybridSeason: boolean;
   owners: Owner[];
 }
@@ -17,8 +17,6 @@ interface RPlayersTabProps {
 export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [rankPlayerStageMode, setRankPlayerStageMode] = useState<'REGULAR' | 'PLAYOFF'>('REGULAR');
-  
-  // 🔥 [수술 포인트] 어떤 선수의 아코디언이 열려있는지 관리
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
@@ -37,80 +35,105 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
     }
   };
 
-  // 🔥 [수술 포인트] 시즌의 모든 경기를 분석하여 선수별/상대팀별 득점 도움 지도를 만듭니다.
-  const distributionMap = useMemo(() => {
-    const map: any = {};
-    if (!currentSeason?.rounds) return map;
+  // 🔥 핵심: 메인 랭킹 숫자와 아코디언 분포도를 currentSeason.rounds에서 '동시에 자체 계산'합니다.
+  const { rankedPlayers, distributionMap } = useMemo(() => {
+      const distMap: any = {};
+      const playerStats: any = {}; 
 
-    currentSeason.rounds.forEach((r: any) => {
-        r.matches?.forEach((m: any) => {
-            if (m.status !== 'COMPLETED') return;
+      // 토너먼트/PO 성격의 라운드인지 판별하기 위한 키워드
+      const playoffKeywords = ['ROUND', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트'];
 
-            const processStats = (scorersOrAssists: any[], isHome: boolean) => {
-                const opponentName = isHome ? m.away : m.home;
-                const opponentLogo = isHome ? (m.awayLogo || SAFE_TBD_LOGO) : (m.homeLogo || SAFE_TBD_LOGO);
-                const opponentOwner = isHome ? m.awayOwner : m.homeOwner;
-                const opponentOwnerUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
+      if (currentSeason?.rounds) {
+          currentSeason.rounds.forEach((r: any) => {
+              // 라운드 이름으로 PO 여부 1차 판별
+              const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
 
-                scorersOrAssists.forEach((s: any) => {
-                    const pName = s.name;
-                    if (!map[pName]) map[pName] = {};
-                    if (!map[pName][opponentName]) {
-                        map[pName][opponentName] = {
-                            count: 0,
-                            logo: opponentLogo,
-                            owner: resolveOwnerNickname(opponentOwner, opponentOwnerUid)
-                        };
-                    }
-                    map[pName][opponentName].count += (s.count || 1);
-                });
-            };
+              r.matches?.forEach((m: any) => {
+                  if (m.status !== 'COMPLETED') return;
 
-            if (rankPlayerMode === 'GOAL') {
-                processStats(m.homeScorers || [], true);
-                processStats(m.awayScorers || [], false);
-            } else {
-                processStats(m.homeAssists || [], true);
-                processStats(m.awayAssists || [], false);
-            }
-        });
-    });
-    return map;
-  }, [currentSeason, rankPlayerMode, owners]);
+                  // 매치 라벨이나 스테이지 이름으로 PO 여부 2차 판별
+                  const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
+                  const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
-  const getPlayerRanking = (players: any[]) => {
-    const sortedPlayers = [...(players || [])]
-      .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-      .sort((a: any, b: any) => {
-        if (rankPlayerMode === 'GOAL') return b.goals - a.goals || b.assists - a.assists;
-        return b.assists - a.assists || b.goals - a.goals;
-      });
-    
-    const ranked: any[] = [];
-    sortedPlayers.forEach((player, index) => {
-      let rank = index + 1;
-      if (index > 0) {
-        const prev = ranked[index - 1];
-        const isTie = rankPlayerMode === 'GOAL' 
-          ? (player.goals === prev.goals && player.assists === prev.assists)
-          : (player.assists === prev.assists && player.goals === prev.goals);
-        if (isTie) rank = prev.rank;
+                  // [필터링 로직] 사용자가 선택한 모드(정규/PO)에 맞지 않는 경기는 무시하여 스탯 분리
+                  if (isHybridSeason) {
+                      if (rankPlayerStageMode === 'REGULAR' && isPlayoffMatch) return; 
+                      if (rankPlayerStageMode === 'PLAYOFF' && !isPlayoffMatch) return; 
+                  }
+
+                  const processStats = (scorersOrAssists: any[], isHome: boolean, isGoal: boolean) => {
+                      const myTeam = isHome ? m.home : m.away;
+                      const myTeamLogo = isHome ? m.homeLogo : m.awayLogo;
+                      const myOwner = isHome ? m.homeOwner : m.awayOwner;
+                      const myOwnerUid = isHome ? m.homeOwnerUid : m.awayOwnerUid;
+
+                      const opTeam = isHome ? m.away : m.home;
+                      const opLogo = isHome ? (m.awayLogo || SAFE_TBD_LOGO) : (m.homeLogo || SAFE_TBD_LOGO);
+                      const opOwner = isHome ? m.awayOwner : m.homeOwner;
+                      const opOwnerUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
+
+                      scorersOrAssists.forEach((s: any) => {
+                          const pName = s.name;
+                          const count = s.count || 1;
+
+                          // 1. 개인 전체 스탯(총 골/도움) 누적 -> 이 숫자가 메인 랭킹표에 찍힘
+                          if (!playerStats[pName]) {
+                              playerStats[pName] = {
+                                  name: pName,
+                                  team: myTeam,
+                                  teamLogo: myTeamLogo,
+                                  owner: resolveOwnerNickname(myOwner, myOwnerUid),
+                                  goals: 0,
+                                  assists: 0
+                              };
+                          }
+                          if (isGoal) playerStats[pName].goals += count;
+                          else playerStats[pName].assists += count;
+
+                          // 2. 상대팀별 상세 분포도 누적 -> 이 숫자가 아코디언에 찍힘
+                          if ((rankPlayerMode === 'GOAL' && isGoal) || (rankPlayerMode === 'ASSIST' && !isGoal)) {
+                              if (!distMap[pName]) distMap[pName] = {};
+                              if (!distMap[pName][opTeam]) {
+                                  distMap[pName][opTeam] = { count: 0, logo: opLogo, owner: resolveOwnerNickname(opOwner, opOwnerUid) };
+                              }
+                              distMap[pName][opTeam].count += count;
+                          }
+                      });
+                  };
+
+                  processStats(m.homeScorers || [], true, true);   
+                  processStats(m.awayScorers || [], false, true);  
+                  processStats(m.homeAssists || [], true, false);  
+                  processStats(m.awayAssists || [], false, false); 
+              });
+          });
       }
-      ranked.push({ ...player, rank, owner: resolveOwnerNickname(player.owner, player.ownerUid) });
-    });
-    return ranked;
-  };
 
-  const rankedPlayers = useMemo(() => {
-      if (isHybridSeason) {
-          if (rankPlayerStageMode === 'PLAYOFF') {
-              return getPlayerRanking(activeRankingData?.playoffPlayers || []);
-          } else {
-              return getPlayerRanking(activeRankingData?.regularPlayers || []);
+      // 3. 누적된 스탯을 바탕으로 정렬 (다득점->다도움 순)
+      const sortedPlayers = Object.values(playerStats)
+          .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
+          .sort((a: any, b: any) => {
+              if (rankPlayerMode === 'GOAL') return b.goals - a.goals || b.assists - a.assists; 
+              return b.assists - a.assists || b.goals - a.goals; 
+          });
+
+      // 4. 동률 순위(Rank) 계산
+      const ranked: any[] = [];
+      sortedPlayers.forEach((player: any, index: number) => {
+          let rank = index + 1;
+          if (index > 0) {
+              const prev = ranked[index - 1];
+              const isTie = rankPlayerMode === 'GOAL' 
+                  ? (player.goals === prev.goals && player.assists === prev.assists)
+                  : (player.assists === prev.assists && player.goals === prev.goals);
+              if (isTie) rank = prev.rank;
           }
-      }
-      return getPlayerRanking(activeRankingData?.players || []);
-  }, [activeRankingData, rankPlayerMode, rankPlayerStageMode, isHybridSeason, owners]);
+          ranked.push({ ...player, rank });
+      });
+
+      return { rankedPlayers: ranked, distributionMap: distMap };
+
+  }, [currentSeason, rankPlayerMode, rankPlayerStageMode, isHybridSeason, owners]);
 
   return (
     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col animate-in fade-in">
@@ -118,13 +141,13 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
       {isHybridSeason && (
         <div className="flex bg-[#0b0e14] p-2 sm:p-3 border-b border-slate-800 gap-2">
             <button 
-                onClick={() => setRankPlayerStageMode('REGULAR')} 
+                onClick={() => { setRankPlayerStageMode('REGULAR'); setExpandedPlayer(null); }} 
                 className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${rankPlayerStageMode === 'REGULAR' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
             >
                 🚩 REGULAR (정규/조별)
             </button>
             <button 
-                onClick={() => setRankPlayerStageMode('PLAYOFF')} 
+                onClick={() => { setRankPlayerStageMode('PLAYOFF'); setExpandedPlayer(null); }} 
                 className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${rankPlayerStageMode === 'PLAYOFF' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
             >
                 🏆 PLAYOFF (토너먼트)
@@ -182,7 +205,6 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                                             <span className="font-bold text-white uppercase text-sm shrink-0">{p.name}</span>
                                             <span className="text-[11px] text-slate-500 font-bold tracking-tight italic truncate pr-1">({p.owner})</span>
                                         </div>
-                                        {/* 🔥 [수술 포인트] 스탠딩과 동일한 아코디언 버튼 배치 (모드별 색상 변경) */}
                                         <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${rankPlayerMode === 'GOAL' ? 'bg-yellow-400 text-slate-900' : 'bg-blue-500 text-white'}`}>
                                             <ChevronRight size={12} strokeWidth={4} />
                                         </div>
@@ -199,7 +221,6 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                                 </td>
                             </tr>
 
-                            {/* 🔥 [수술 포인트] 아코디언 상세 영역: 상대팀별 분포도 (가로 스크롤 카드) */}
                             {isExpanded && (
                                 <tr>
                                     <td colSpan={4} className="p-0 border-b border-slate-800 bg-[#0b0e14]">
