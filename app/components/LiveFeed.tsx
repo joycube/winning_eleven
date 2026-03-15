@@ -26,7 +26,7 @@ export const LiveFeed = ({
     const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
     const [isFetching, setIsFetching] = useState(true);
 
-    // 1. 매치톡 실시간 데이터 수신 (🔥 넉넉하게 200개를 가져와서 클라이언트에서 완벽 필터링)
+    // 1. 매치톡 실시간 데이터 수신
     useEffect(() => {
         setIsFetching(true);
         const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(200));
@@ -81,7 +81,7 @@ export const LiveFeed = ({
         return recent;
     }, [posts, owners, mode]);
 
-    // 3. 매치톡 데이터 가공 (🔥 가상 ID 버그 완벽 해결)
+    // 3. 매치톡 데이터 가공
     const matchComments = useMemo(() => {
         const validMatchIds = new Set();
         if (mode === 'schedule' && selectedSeasonId && seasons) {
@@ -95,7 +95,6 @@ export const LiveFeed = ({
         
         if (mode === 'schedule' && selectedSeasonId) {
             sortedMatchComments = sortedMatchComments.filter(c => {
-                // 🔥 시즌 ID가 일치하거나 (가상 매치 포함), 실제 DB 매치 ID에 포함되어 있으면 노출!
                 const isMatchingSeasonId = c.seasonId && String(c.seasonId) === String(selectedSeasonId);
                 const isMatchingRoundId = validMatchIds.has(c.matchId);
                 return isMatchingSeasonId || isMatchingRoundId;
@@ -168,12 +167,12 @@ export const LiveFeed = ({
 
     return (
         <div className={`bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col relative overflow-hidden shadow-lg mb-6 transition-all ${mode === 'dashboard' ? 'gap-2 min-h-[96px]' : 'gap-1 h-[68px] justify-center'}`}>
-            {/* 🔥 스크롤 속도 쾌속 모드 (약 2.5배 빠름) */}
+            {/* 🔥 애니메이션 방향 수정: 0% -> -50% (오른쪽에서 왼쪽으로 흐름) */}
             <style jsx>{`
-                @keyframes ticker-ltr { 0% { transform: translateX(-50%); } 100% { transform: translateX(0); } }
-                .ticker-track-1 { display: flex; width: max-content; animation: ticker-ltr 15s linear infinite; }
+                @keyframes ticker-rtl { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+                .ticker-track-1 { display: flex; width: max-content; animation: ticker-rtl 15s linear infinite; }
                 .ticker-track-1:hover { animation-play-state: paused; }
-                .ticker-track-2 { display: flex; width: max-content; animation: ticker-ltr 12s linear infinite; animation-delay: -6s; }
+                .ticker-track-2 { display: flex; width: max-content; animation: ticker-rtl 12s linear infinite; animation-delay: -6s; }
                 .ticker-track-2:hover { animation-play-state: paused; }
             `}</style>
             
