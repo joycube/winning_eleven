@@ -5,6 +5,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { ChevronRight, PlayCircle } from 'lucide-react'; 
 
+// 🔥 신규 뷰어 컴포넌트 임포트
+import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
+import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
+
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface R_StandingsTabProps {
@@ -19,11 +23,9 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
 
-  // 🔥 [핵심 수술] 외부 데이터를 믿지 않고, currentSeason.rounds를 읽어 팀 순위표를 직접 계산합니다.
   const computedTeamsData = useMemo(() => {
     const teamStats: Record<string, any> = {};
 
-    // 1. 기존 데이터 복사 (id, 로고, 구단주 등 메타데이터 유지)
     (activeRankingData?.teams || []).forEach((t: any) => {
         teamStats[t.name] = { ...t, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 };
     });
@@ -42,10 +44,8 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
             const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
-            // 🔥 [대표님 룰 적용]: 컵 모드나 리그+PO 모드의 '토너먼트/PO' 경기는 정규 순위표 합산에서 제외!
-            // 단, 순수 토너먼트(TOURNAMENT)나 일반 리그(LEAGUE)는 '결승전 포함' 모든 경기를 합산!
             if ((currentSeason.type === 'CUP' || currentSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) {
-                return; // 합산 스킵
+                return; 
             }
 
             const hTeam = m.home;
@@ -53,11 +53,9 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             const hScore = Number(m.homeScore);
             const aScore = Number(m.awayScore);
 
-            // 데이터에 없는 팀이 경기 로그에 있으면 임시 생성
             if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: hTeam };
             if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: aTeam };
 
-            // 스탯 덧셈
             teamStats[hTeam].played += 1;
             teamStats[aTeam].played += 1;
             teamStats[hTeam].gf += hScore;
@@ -125,7 +123,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     return ranked;
   };
 
-  // 🔥 계산된 computedTeamsData를 기반으로 순위표 정렬
   const sortedTeams = useMemo(() => getRankedTeams(computedTeamsData), [computedTeamsData]);
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
@@ -136,7 +133,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     if (teamIdentifier === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
     
     const normId = normalize(teamIdentifier);
-    // 🔥 팀 정보 검색도 computedTeamsData 기반으로 변경
     let stats = computedTeamsData.find((t: any) => normalize(t.name) === normId);
     let master = masterTeams.find((m: any) => m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier);
     
@@ -324,7 +320,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     );
   };
 
-  // 🔥 조별 순위도 computedTeamsData 기반으로 변경
   const groupStandings = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.groups) return null;
     const groups: { [key: string]: any[] } = {};
@@ -344,85 +339,42 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  const hybridPlayoffData = useMemo(() => {
-      if (currentSeason?.type !== 'LEAGUE_PLAYOFF' || !currentSeason?.rounds) return null;
-
-      const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
-          if (!leg1) return null;
-          let s1 = 0, s2 = 0;
-          let isLeg1Done = leg1.status === 'COMPLETED';
-          let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
-          const t1 = leg1.home; const t2 = leg1.away;
-          if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
-          if (isLeg2Done && leg2) { 
-              if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); }
-              else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
-          }
-          let aggWinner = 'TBD';
-          if (isLeg1Done && (!leg2 || isLeg2Done)) {
-              if (s1 > s2) aggWinner = t1; else if (s2 > s1) aggWinner = t2;
-          }
-          return { ...leg1, homeScore: isLeg1Done || isLeg2Done ? String(s1) : '', awayScore: isLeg1Done || isLeg2Done ? String(s2) : '', status: (isLeg1Done && (!leg2 || isLeg2Done)) ? 'COMPLETED' : 'UPCOMING', aggWinner };
-      };
-
-      const playoffRounds = currentSeason.rounds.filter((r: any) => ['ROUND_OF_4', 'SEMI_FINAL', 'FINAL'].includes(r.name));
-      const displayRounds = JSON.parse(JSON.stringify(playoffRounds)); 
-      const po4Rounds = displayRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
-      const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
-      const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
-
-      const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
-      const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
-      const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
-      const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
-
-      const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
-      const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
-
-      if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
-          poFinalRounds.forEach((m: any) => { const info = getTeamExtendedInfo(compSemi1.aggWinner); m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.ownerName; m.homeOwnerUid = info.ownerUid; });
-      }
-      if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
-          poFinalRounds.forEach((m: any) => { const info = getTeamExtendedInfo(compSemi2.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.ownerName; m.awayOwnerUid = info.ownerUid; });
-      }
-
-      const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
-      const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
-      const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
-
-      if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
-          grandFinalRounds.forEach((m: any) => { const info = getTeamExtendedInfo(compPoFinal.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.ownerName; m.awayOwnerUid = info.ownerUid; });
-      }
-
-      return { compSemi1, compSemi2, compPoFinal, displayGrandFinal: grandFinalRounds.length > 0 ? grandFinalRounds[0] : null };
-  }, [currentSeason, activeRankingData, masterTeams, owners]);
-
   return (
     <div className="space-y-12 fade-in">
-        {currentSeason?.type === 'LEAGUE_PLAYOFF' && hybridPlayoffData && (
+        
+        {/* 1. 순수 토너먼트 모드일 경우 뷰어 렌더링 */}
+        {currentSeason?.type === 'TOURNAMENT' && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
-            <div className="min-w-max md:min-w-[760px] px-2">
-                <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3></div>
-                
-                <div className="bracket-tree no-scrollbar">
-                    <div className="bracket-column">
-                        <BracketMatchBox match={hybridPlayoffData.compSemi1} title="PO 4강 1경기 (합산)" />
-                        <BracketMatchBox match={hybridPlayoffData.compSemi2} title="PO 4강 2경기 (합산)" />
+                <div className="min-w-max md:min-w-[760px] px-2">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                     </div>
-                    <div className="bracket-column">
-                        <BracketMatchBox match={hybridPlayoffData.compPoFinal} title="PO 결승 (합산)" />
-                    </div>
-                    <div className="bracket-column">
-                        <div className="relative scale-110 ml-4">
-                            <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
-                            <BracketMatchBox match={hybridPlayoffData.displayGrandFinal} title="🏆 Grand Final (단판)" highlight />
-                        </div>
-                    </div>
+                    <AdminMatching_TournamentBracketView matches={currentSeason.rounds?.[0]?.matches || []} />
                 </div>
             </div>
-        </div>
         )}
 
+        {/* 🔥 2. 리그+PO 모드일 경우 신규 공통 뷰어 렌더링 */}
+        {currentSeason?.type === 'LEAGUE_PLAYOFF' && (
+            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
+                <div className="min-w-max md:min-w-[760px] px-2">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3>
+                    </div>
+                    {/* 우리가 만든 공통 컴포넌트 단 한 줄로 대체! */}
+                    <AdminMatching_LeaguePOBracketView 
+                        currentSeason={currentSeason} 
+                        owners={owners} 
+                        masterTeams={masterTeams} 
+                        activeRankingData={activeRankingData}
+                    />
+                </div>
+            </div>
+        )}
+
+        {/* 3. 컵 모드 대진표 및 조별 순위표 */}
         {currentSeason?.type === 'CUP' && knockoutStages && (
         <div className="overflow-x-auto pb-4 no-scrollbar">
             <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
@@ -448,8 +400,14 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                 ))}</tbody></table></div></div>
         )}
 
+        {/* 4. 모든 모드(리그, 토너먼트, 리그+PO)에서 공통으로 렌더링되는 통합 순위표 */}
         <div className="space-y-4">
-        <div className="flex items-center gap-3 px-2"><div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">{currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'Regular League Standing' : 'League Total Standing'}</h3></div>
+        <div className="flex items-center gap-3 px-2">
+            <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+            <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">
+                {currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'Regular League Standing' : 'League Total Standing'}
+            </h3>
+        </div>
         <div className="bg-[#0f172a] rounded-xl border border-slate-800 shadow-2xl">
             <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase">

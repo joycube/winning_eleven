@@ -273,3 +273,92 @@ export const generateRoundsLogic = (season: Season): Round[] => {
         return [{ round: 1, name: 'Tournament Bracket', seasonId: season.id, matches }];
     }
 };
+
+// ============================================================================
+// 🔥 [신규 추가] 토너먼트 승자 자동 진출 (Auto-Advancement) 엔진
+// ============================================================================
+
+/**
+ * 경기 결과(스코어)를 분석하여 승자를 찾고, 이진 트리 공식을 활용해
+ * 다음 라운드의 정확한 매치 슬롯(Home or Away)에 승자 데이터를 꽂아 넣습니다.
+ * * @param currentMatches 현재 토너먼트의 전체 매치 배열 (1라운드 ~ 결승전)
+ * @param matchId 방금 점수가 입력 및 확정된 매치의 ID
+ * @param homeScore 홈팀의 최종 점수
+ * @param awayScore 원정팀의 최종 점수
+ * @returns 승자가 다음 라운드로 이동 적용된 새로운 전체 매치 배열
+ */
+export const processTournamentAdvancement = (
+    currentMatches: Match[],
+    matchId: string,
+    homeScore: number,
+    awayScore: number
+): Match[] => {
+    // 1. 원본 훼손 방지를 위한 깊은 복사 (Deep Copy)
+    const newMatches = JSON.parse(JSON.stringify(currentMatches)) as Match[];
+    
+    // 2. 점수가 입력된 현재 매치의 배열 내 인덱스 찾기
+    const matchIndex = newMatches.findIndex(m => m.id === matchId);
+    if (matchIndex === -1) return newMatches; // 매치를 못 찾으면 원본 그대로 반환
+
+    const currentMatch = newMatches[matchIndex];
+    const totalMatches = newMatches.length; // 예: 8팀 출전 시 총 7경기
+    
+    // 3. 현재 라운드가 전체 배열 중 어디서 시작하는지(Index), 경기 수가 몇 개인지 찾기
+    let roundStartIndex = 0;
+    let matchesInRound = (totalMatches + 1) / 2; // 1라운드의 총 경기 수 (예: 4)
+
+    // 반복문을 돌며 내가 속한 라운드의 블록 구간을 찾음
+    while (matchIndex >= roundStartIndex + matchesInRound) {
+        roundStartIndex += matchesInRound;
+        matchesInRound /= 2;
+    }
+
+    // 현재 매치가 이미 결승전(해당 라운드 경기 수가 1)이면 올라갈 다음 라운드가 없으므로 종료
+    if (matchesInRound <= 1) return newMatches;
+
+    // 4. 다음 라운드의 정확한 매치 슬롯(Index) 계산 (🌟 이진 트리 핵심 공식)
+    const relIdx = matchIndex - roundStartIndex; // 현재 라운드 내에서의 내 위치 (예: 0, 1, 2, 3)
+    const nextRoundStartIndex = roundStartIndex + matchesInRound; // 다음 라운드의 배열 내 시작 인덱스
+    const nextMatchIndex = nextRoundStartIndex + Math.floor(relIdx / 2); // 내가 들어갈 다음 매치 인덱스
+    const isHomeSlot = relIdx % 2 === 0; // 내 위치가 짝수면 Home, 홀수면 Away 자리로 들어감
+
+    // 5. 점수에 따른 승자(Winner) 판별
+    let winner: any = null;
+    if (homeScore > awayScore) {
+        winner = { 
+            name: currentMatch.home, 
+            logo: currentMatch.homeLogo, 
+            ownerName: currentMatch.homeOwner, 
+            ownerUid: currentMatch.homeOwnerUid, 
+            tier: (currentMatch as any).homeTier 
+        };
+    } else if (awayScore > homeScore) {
+        winner = { 
+            name: currentMatch.away, 
+            logo: currentMatch.awayLogo, 
+            ownerName: currentMatch.awayOwner, 
+            ownerUid: currentMatch.awayOwnerUid, 
+            tier: (currentMatch as any).awayTier 
+        };
+    }
+    // ※ 동점(무승부)일 경우는 승부차기 등의 이유로 승자가 확정되지 않았다고 판단하여 진행하지 않음
+
+    // 6. 승자가 확정되었다면, 다음 매치 슬롯의 데이터를 덮어씌움
+    if (winner && newMatches[nextMatchIndex]) {
+        if (isHomeSlot) {
+            newMatches[nextMatchIndex].home = winner.name;
+            newMatches[nextMatchIndex].homeLogo = winner.logo;
+            newMatches[nextMatchIndex].homeOwner = winner.ownerName;
+            newMatches[nextMatchIndex].homeOwnerUid = winner.ownerUid;
+            (newMatches[nextMatchIndex] as any).homeTier = winner.tier;
+        } else {
+            newMatches[nextMatchIndex].away = winner.name;
+            newMatches[nextMatchIndex].awayLogo = winner.logo;
+            newMatches[nextMatchIndex].awayOwner = winner.ownerName;
+            newMatches[nextMatchIndex].awayOwnerUid = winner.ownerUid;
+            (newMatches[nextMatchIndex] as any).awayTier = winner.tier;
+        }
+    }
+
+    return newMatches; // 업데이트된 새로운 배열 반환
+};

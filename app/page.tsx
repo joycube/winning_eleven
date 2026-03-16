@@ -23,6 +23,9 @@ import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
 
+// 🔥 [새로 추가된 마법의 이진 트리 엔진] 
+import { processTournamentAdvancement } from './utils/scheduler';
+
 const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
 const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
 const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
@@ -50,7 +53,6 @@ export default function FootballLeagueApp() {
   const [hideTicker, setHideTicker] = useState(false);
   const [hasNewNotice, setHasNewNotice] = useState(false);
 
-  // 🔥 [수술 포인트 1] 무거운 연산의 비동기 상태 관리 (메인 스레드 블로킹 해제)
   const [combinedHistoryData, setCombinedHistoryData] = useState<any>(null);
   const [knockoutStages, setKnockoutStages] = useState<any>(null);
 
@@ -61,7 +63,6 @@ export default function FootballLeagueApp() {
       return found?.uid || found?.docId || undefined;
   };
 
-  // 🔥 [수술 포인트 2] useMemo 대신 useEffect + setTimeout으로 화면부터 그리고 계산 시작!
   useEffect(() => {
       if (!isLoaded || !owners || !seasons) return;
 
@@ -213,7 +214,7 @@ export default function FootballLeagueApp() {
               allTimeStats: (historyData as any)?.allTimeStats || [] 
           });
 
-      }, 10); // 10ms 딜레이를 주어 UI가 먼저 렌더링되게 함
+      }, 10); 
 
       return () => clearTimeout(timer);
   }, [historyData, seasons, owners, historyRecords, isLoaded]); 
@@ -301,7 +302,6 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [수술 포인트 3] 대진표 계산도 비동기로 변경 (랭킹/스케줄 뷰일때만 연산)
   useEffect(() => {
       if (!isLoaded || (currentView !== 'RANKING' && currentView !== 'SCHEDULE')) return;
 
@@ -428,6 +428,9 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // ==========================================================
+  // 🔥 [핵심 수술 파트] 점수 저장 및 Auto-Advancement 처리
+  // ==========================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -435,10 +438,7 @@ export default function FootballLeagueApp() {
 
       const injectUidToPlayers = (players: any[], teamOwnerName: string) => {
           const ownerUid = getOwnerUidByName(teamOwnerName);
-          return players.map((p: any) => ({
-              ...p,
-              ownerUid: ownerUid 
-          }));
+          return players.map((p: any) => ({ ...p, ownerUid: ownerUid }));
       };
 
       const safeRecords = {
@@ -448,69 +448,56 @@ export default function FootballLeagueApp() {
           awayAssists: injectUidToPlayers(records?.awayAssists || [], editingMatch.awayOwner)
       };
 
-      type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
-      const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
-      const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
-
+      // 🏆 1. 순수 토너먼트 모드일 때 (우리가 만든 마법의 함수 통과!)
       if (s.type === 'TOURNAMENT') {
           let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
-          let matches = newRounds[0].matches; 
           
-          let winningTeam: WinTeamType | null = null;
-          const h = Number(hScore); const a = Number(aScore);
+          // 1) 일단 스코어와 기록을 최신화합니다.
+          const matchIndex = newRounds[0].matches.findIndex((m: any) => m.id === matchId);
+          if (matchIndex === -1) return;
           
-          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
-          else if (editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') winningTeam = aTeam;
-          else if (manualWinner === 'HOME') winningTeam = hTeam;
-          else if (manualWinner === 'AWAY') winningTeam = aTeam;
-          else if (h > a) winningTeam = hTeam;
-          else if (a > h) winningTeam = aTeam;
-          else return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
-
-          const currentMatchIndex = matches.findIndex((m: any) => m.id === matchId);
-          if (currentMatchIndex === -1) return;
-
-          matches[currentMatchIndex] = {
-              ...matches[currentMatchIndex],
+          newRounds[0].matches[matchIndex] = {
+              ...newRounds[0].matches[matchIndex],
               homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
               ...safeRecords
           };
 
-          const totalMatches = matches.length;
-          let nextMatchIndex = -1;
-          let isNextMatchHomeSide = currentMatchIndex % 2 === 0;
+          // 2) 🚨 승자를 찾지 못하면(무승부) 진출시키지 않고 그대로 저장합니다.
+          const h = Number(hScore); const a = Number(aScore);
+          let isDraw = false;
 
-          if (totalMatches === 3) { 
-              if (currentMatchIndex <= 1) nextMatchIndex = 2;
-          } else if (totalMatches === 7) { 
-              if (currentMatchIndex <= 3) nextMatchIndex = 4 + Math.floor(currentMatchIndex / 2);
-              else if (currentMatchIndex <= 5) nextMatchIndex = 6;
-          } else if (totalMatches === 15) { 
-              if (currentMatchIndex <= 7) nextMatchIndex = 8 + Math.floor(currentMatchIndex / 2);
-              else if (currentMatchIndex <= 11) nextMatchIndex = 12 + Math.floor((currentMatchIndex - 8) / 2);
-              else if (currentMatchIndex <= 13) nextMatchIndex = 14;
+          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)' || editingMatch.home === 'BYE' || editingMatch.home === 'BYE (부전승)') {
+              // 부전승은 그냥 넘어감
+          } else if (manualWinner) {
+              // 강제 진출 지정을 했으면 넘어감
+          } else if (h === a) {
+              isDraw = true;
           }
 
-          if (nextMatchIndex !== -1 && winningTeam) {
-              if (isNextMatchHomeSide) {
-                  matches[nextMatchIndex].home = winningTeam.name;
-                  matches[nextMatchIndex].homeLogo = winningTeam.logo;
-                  matches[nextMatchIndex].homeOwner = winningTeam.owner;
-                  matches[nextMatchIndex].homeOwnerUid = winningTeam.ownerUid; 
-              } else {
-                  matches[nextMatchIndex].away = winningTeam.name;
-                  matches[nextMatchIndex].awayLogo = winningTeam.logo;
-                  matches[nextMatchIndex].awayOwner = winningTeam.owner;
-                  matches[nextMatchIndex].awayOwnerUid = winningTeam.ownerUid; 
-              }
+          if (isDraw) {
+              alert("⚠️ 무승부입니다! 연장/승부차기 진행 후, 점수를 다시 입력하거나 [강제 진출 지정] 버튼으로 승자를 선택해주세요.");
+          } else {
+              // 3) 🔥 이진 트리 유틸리티 함수로 통과시켜서 다음 라운드로 밀어올립니다!
+              let effectiveHScore = h;
+              let effectiveAScore = a;
+              if (manualWinner === 'HOME') { effectiveHScore = 1; effectiveAScore = 0; }
+              if (manualWinner === 'AWAY') { effectiveHScore = 0; effectiveAScore = 1; }
+
+              const advancedMatches = processTournamentAdvancement(
+                  newRounds[0].matches, 
+                  matchId, 
+                  effectiveHScore, 
+                  effectiveAScore
+              );
+              newRounds[0].matches = advancedMatches;
           }
 
-          newRounds[0].matches = matches;
           await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
           setEditingMatch(null);
           return; 
       }
 
+      // 🏆 2. 리그, 리그+PO, 컵 모드일 때 (기존 로직 그대로 유지)
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
 
@@ -577,6 +564,10 @@ export default function FootballLeagueApp() {
       });
 
       if (s.type === 'CUP' && currentRoundIndex !== -1) {
+          type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
+          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
+          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
+
           let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
           const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
