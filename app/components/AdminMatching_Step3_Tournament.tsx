@@ -3,14 +3,14 @@
 import React from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc } from 'firebase/firestore';
-import { Season, Match, FALLBACK_IMG } from '../types';
+import { Season, Match, FALLBACK_IMG, Team } from '../types'; // 🔥 Team 타입 추가
 import { TeamCard } from './TeamCard';
 
 // 🔥 새롭게 만든 퍼블릭 토너먼트 뷰어를 불러옵니다.
 import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
 
 interface Props {
-    state: any;
+    state: any; // Context state이므로 any 유지 (필요 시 더 구체화 가능)
     targetSeason: Season;
     onNavigateToSchedule: (id: number) => void;
 }
@@ -216,7 +216,8 @@ export const AdminMatching_Step3_Tournament = ({ state, targetSeason, onNavigate
                             <div className="text-center py-6 text-slate-600 text-xs italic font-bold">모든 팀이 배치되었습니다.</div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
-                                {tourneyWaitingPool.map(t => (
+                                {/* 🔥 [핵심 수정] 파라미터 t 에 명시적 any 타입을 부여하여 Vercel 빌드 에러 해결 */}
+                                {tourneyWaitingPool.map((t: any) => (
                                     <div key={t.id} draggable onDragStart={(e) => handleTourneyDragStart(e, 'pool', null, t)} className="relative cursor-grab active:cursor-grabbing hover:-translate-y-1 transition-transform">
                                         <TeamCard team={t} size="small" />
                                     </div>
