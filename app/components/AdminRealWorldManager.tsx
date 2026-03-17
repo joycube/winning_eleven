@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo } from 'react';
-import * as XLSX from 'xlsx'; // 엑셀 라이브러리
+import * as XLSX from 'xlsx'; 
 import { db } from '../firebase';
 import { writeBatch, doc } from 'firebase/firestore';
 import { League, MasterTeam, FALLBACK_IMG } from '../types';
@@ -91,7 +91,6 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
         setSearchTerm('');
     };
 
-    // 데이터 리스트에서 팀 제거 핸들러 (수정: string | number 타입을 모두 허용하도록 변경)
     const handleRemoveTeam = (docIdOrId: string | number) => {
         setEditTeams(prev => prev.filter(t => String(t.docId || t.id) !== String(docIdOrId)));
     };
@@ -156,15 +155,12 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
             
             const isSelectMode = viewMode === 'SELECT';
             
-            // 🔥 [수정] 엑셀 매칭 대상 제한 로직
             let baseTeams: MasterTeam[] = [];
             if (isSelectMode) {
-                // 선택 모드일 경우: 선택된 리그가 있다면 해당 리그 내에서만, 없다면 전체(기존 유지)
                 baseTeams = selectedLeagueIds.length > 0 
                     ? masterTeams.filter(t => selectedLeagueIds.includes(t.region))
                     : masterTeams;
             } else {
-                // 편집 모드일 경우: 현재 편집 중인 리스트 내에서만 매칭
                 baseTeams = editTeams;
             }
 
@@ -356,48 +352,60 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right-10 fade-in duration-300 pb-24">
-            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 border-b border-slate-800 pb-6">
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                        <button onClick={handleBack} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-white transition-colors">←</button>
-                        <div><h2 className="text-xl font-bold text-white">📝 데이터 편집 <span className="text-emerald-400">({editTeams.length}팀)</span></h2><p className="text-xs text-slate-400 mt-1">선택한 팀들의 순위와 컨디션을 수정합니다.</p></div>
+            <div className="bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6 border-b border-slate-800 pb-4 sm:pb-6">
+                    <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                        <button onClick={handleBack} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-white transition-colors shrink-0">←</button>
+                        <div className="min-w-0">
+                            <h2 className="text-lg sm:text-xl font-bold text-white truncate">📝 데이터 편집 <span className="text-emerald-400">({editTeams.length}팀)</span></h2>
+                            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">순위와 컨디션을 수정합니다.</p>
+                        </div>
                     </div>
                 </div>
 
                 <div className="space-y-4">
-                    <div className="bg-slate-950 rounded-xl border border-slate-800 p-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-slate-950 rounded-xl border border-slate-800 p-3 sm:p-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                             {editTeams.map((t) => (
-                                <div key={t.docId || t.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-sm hover:border-slate-700 transition-colors relative group pr-10 sm:pr-4">
+                                // 🔥 [핵심 디벨롭] 좁은 스마트폰에서도 절대 깨지지 않도록 레이아웃 슬림화 및 flex-wrap 적용
+                                <div key={t.docId || t.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 shadow-sm hover:border-slate-700 transition-colors relative group">
                                     <button 
                                         onClick={() => handleRemoveTeam(String(t.docId || t.id))}
-                                        className="absolute top-2 right-2 w-7 h-7 bg-slate-800/80 hover:bg-red-900 text-slate-400 hover:text-white rounded-full flex items-center justify-center transition-all z-10 text-xs font-bold backdrop-blur-sm"
+                                        className="absolute top-2 right-2 w-6 h-6 bg-slate-800/80 hover:bg-red-900 text-slate-400 hover:text-white rounded-full flex items-center justify-center transition-all z-10 text-[10px] font-bold backdrop-blur-sm"
                                         title="목록에서 제거"
                                     >
                                         ✕
                                     </button>
 
-                                    <div className="flex items-center gap-4 flex-1 w-full min-w-0">
-                                        <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.1)] p-3.5 shrink-0"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/></div>
-                                        <div className="flex flex-col gap-1 min-w-0 flex-1">
-                                            <div className="flex flex-col gap-0.5 min-w-0">
-                                                <h3 className="text-base sm:text-lg font-black text-white tracking-tight truncate" title={t.name}>{t.name}</h3>
-                                                <span className="text-[10px] text-slate-500 font-bold bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 self-start truncate max-w-full">{t.region}</span>
+                                    {/* 좌측: 팀 정보 영역 (슬림화) */}
+                                    <div className="flex items-center gap-3 flex-1 w-full min-w-0 pr-6">
+                                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center shadow-inner p-2 shrink-0">
+                                            <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG}/>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                            <h3 className="text-sm sm:text-base font-black text-white tracking-tight truncate leading-tight" title={t.name}>{t.name}</h3>
+                                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap mt-0.5">
+                                                <span className="text-[9px] text-slate-500 font-bold bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 truncate max-w-[100px] sm:max-w-[120px]">{t.region}</span>
+                                                <span className="bg-white text-slate-900 text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-md inline-flex items-center gap-1 shrink-0">
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${t.tier === 'S' ? 'bg-yellow-400' : t.tier === 'A' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
+                                                    {t.tier} CLASS
+                                                </span>
                                             </div>
-                                            <span className="bg-white text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow-md self-start inline-flex items-center gap-1 mt-1 shrink-0"><span className={`w-1.5 h-1.5 rounded-full ${t.tier === 'S' ? 'bg-yellow-400' : t.tier === 'A' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>{t.tier} CLASS</span>
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[240px] bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 shrink-0">
-                                        <div className="flex items-center justify-between gap-3 border-b border-slate-800/50 pb-2 mb-1">
+                                    {/* 우측: 랭크 및 컨디션 입력 영역 (가로 넘침 방지) */}
+                                    <div className="flex flex-col gap-2 w-full sm:w-auto bg-slate-950/50 p-2.5 sm:p-3 rounded-xl border border-slate-800/50 shrink-0">
+                                        <div className="flex items-center justify-between gap-3 border-b border-slate-800/50 pb-2 mb-0.5">
                                             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Real Rank</span>
-                                            <input type="number" value={t.real_rank || ''} onChange={(e) => handleRankChange(t, e.target.value)} placeholder="-" className="w-16 h-8 bg-slate-900 border border-slate-700 rounded-lg text-center text-white text-lg font-black focus:border-emerald-500 outline-none shadow-inner"/>
+                                            <input type="number" value={t.real_rank || ''} onChange={(e) => handleRankChange(t, e.target.value)} placeholder="-" className="w-14 sm:w-16 h-7 sm:h-8 bg-slate-900 border border-slate-700 rounded-lg text-center text-white text-sm sm:text-base font-black focus:border-emerald-500 outline-none shadow-inner"/>
                                         </div>
-                                        <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center justify-between gap-2 sm:gap-3">
                                             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Condition</span>
-                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 gap-1 shadow-inner flex-1 justify-between max-w-[160px]">
+                                            <div className="flex bg-slate-900 rounded-md p-0.5 border border-slate-700 shadow-inner flex-1 justify-between max-w-[140px] sm:max-w-[160px]">
+                                                {/* 버튼 사이즈를 줄여 좁은 화면에서도 5개가 한 줄에 들어가도록 처리 */}
                                                 {['A','B','C','D','E'].map(cond => (
-                                                    <button key={cond} onClick={() => handleConditionChange(t, cond)} className={`w-6 h-6 sm:w-7 sm:h-7 text-[10px] sm:text-[11px] font-black rounded flex items-center justify-center transition-all duration-200 ${(t.condition || 'C') === cond ? cond === 'A' ? 'bg-emerald-500 text-black' : cond === 'B' ? 'bg-teal-500 text-black' : cond === 'D' ? 'bg-orange-500 text-black' : cond === 'E' ? 'bg-red-500 text-white' : 'bg-slate-500 text-white' : 'text-slate-600 hover:bg-slate-800'}`}>{cond}</button>
+                                                    <button key={cond} onClick={() => handleConditionChange(t, cond)} className={`w-5 h-5 sm:w-6 sm:h-6 text-[9px] sm:text-[10px] font-black rounded flex items-center justify-center transition-all duration-200 ${(t.condition || 'C') === cond ? cond === 'A' ? 'bg-emerald-500 text-black' : cond === 'B' ? 'bg-teal-500 text-black' : cond === 'D' ? 'bg-orange-500 text-black' : cond === 'E' ? 'bg-red-500 text-white' : 'bg-slate-500 text-white' : 'text-slate-600 hover:bg-slate-800'}`}>{cond}</button>
                                                 ))}
                                             </div>
                                         </div>
@@ -409,17 +417,17 @@ export const AdminRealWorldManager = ({ leagues, masterTeams }: Props) => {
                     </div>
                 </div>
 
-                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[95%] max-w-5xl z-50">
-                    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-600 p-4 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex items-center justify-between gap-4">
-                        <div className="text-white font-bold text-sm ml-2 hidden sm:block">
-                            <span className="text-emerald-400">{editTeams.filter(t => t.real_rank !== masterTeams.find(mt => mt.id === t.id)?.real_rank || t.condition !== masterTeams.find(mt => mt.id === t.id)?.condition).length}개 팀</span> 정보 수정 중
+                <div className="fixed bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 w-[95%] max-w-5xl z-50">
+                    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-600 p-3 sm:p-4 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+                        <div className="text-white font-bold text-xs sm:text-sm ml-2 self-start sm:self-center">
+                            <span className="text-emerald-400">{editTeams.filter(t => t.real_rank !== masterTeams.find(mt => mt.id === t.id)?.real_rank || t.condition !== masterTeams.find(mt => mt.id === t.id)?.condition).length}개 팀</span> 수정 중
                         </div>
                         <div className="flex gap-2 w-full sm:w-auto">
-                             <label className="flex-1 sm:flex-none bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-xl border border-blue-500 shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 text-sm whitespace-nowrap group">
+                             <label className="flex-1 sm:flex-none bg-blue-700 hover:bg-blue-600 text-white font-bold py-2.5 sm:py-3 px-3 sm:px-5 rounded-xl border border-blue-500 shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm whitespace-nowrap group">
                                 <span className="group-hover:animate-bounce">🚀</span> 엑셀 추가
                                 <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
                             </label>
-                            <button onClick={handleSaveAll} disabled={isSaving} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl border border-emerald-500 shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 text-sm whitespace-nowrap">
+                            <button onClick={handleSaveAll} disabled={isSaving} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 sm:py-3 px-6 sm:px-8 rounded-xl border border-emerald-500 shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
                                 {isSaving ? '저장 중...' : '💾 저장하기'}
                             </button>
                         </div>
