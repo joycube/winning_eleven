@@ -62,8 +62,8 @@ export default function R_OwnersTab({
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* 🏆 그랜드 파이널 챔피언 (CUP / PLAYOFF 전용) */}
-      {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF') && grandChampionInfo && (() => {
+      {/* 🏆 그랜드 파이널 챔피언 (CUP / PLAYOFF / TOURNAMENT 전용) */}
+      {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT') && grandChampionInfo && (() => {
           const resolvedNick = resolveOwnerNickname(grandChampionInfo.ownerName, grandChampionInfo.ownerUid);
           const champOwnerInfo = owners.find(o => o.nickname === resolvedNick);
           const displayPhoto = champOwnerInfo?.photo || FALLBACK_IMG;
@@ -123,8 +123,8 @@ export default function R_OwnersTab({
           );
       })()}
 
-      {/* 🚩 리그 1위 전용 카드 (경기가 한 번이라도 진행되었을 때 노출) */}
-      {sortedTeams && sortedTeams.length > 0 && (sortedTeams[0].win > 0 || sortedTeams[0].draw > 0 || sortedTeams[0].loss > 0) && (() => {
+      {/* 🚩 리그 1위 전용 카드 (🔥 [수정] 토너먼트 모드에서는 렌더링하지 않음) */}
+      {currentSeason?.type !== 'TOURNAMENT' && sortedTeams && sortedTeams.length > 0 && (sortedTeams[0].win > 0 || sortedTeams[0].draw > 0 || sortedTeams[0].loss > 0) && (() => {
           const team = sortedTeams[0];
           const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);
           const ownerInfo = owners.find(o => o.nickname === resolvedNick);

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useMemo } from 'react';
-import { MessageSquare } from 'lucide-react'; // 🔥 더보기(ChevronRight) 아이콘 삭제
+import { MessageSquare } from 'lucide-react';
 import { Season, Owner, MasterTeam, Match, FALLBACK_IMG } from '../types';
 
 const DEFAULT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
@@ -15,13 +15,42 @@ const getTimestamp = (val: any) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
+// 🔥 [추가] 리얼 랭크 & 폼(컨디션) 렌더러
+const renderRankCondition = (rank?: number, condition?: string) => {
+    const rColors = rank === 1 ? 'text-yellow-500' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-orange-400' : 'text-slate-400';
+    const cConfig: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
+    const cColor: any = { 'A': 'text-emerald-400', 'B': 'text-teal-400', 'C': 'text-slate-400', 'D': 'text-orange-400', 'E': 'text-red-500' };
+    const cond = condition?.toUpperCase() || 'C';
+    
+    return (
+        <div className="flex items-center gap-1 text-[9px] font-black bg-slate-950 px-1.5 py-[2px] rounded border border-slate-700/50 shadow-inner shrink-0 mb-0.5">
+            {rank && rank > 0 ? <span className={rColors}>R.{rank}</span> : <span className="text-slate-600">R.-</span>}
+            <span className={cColor[cond]}>{cConfig[cond]}</span>
+        </div>
+    );
+};
+
+// 🔥 [추가] 엠블럼 오버레이 뱃지 렌더러
+const renderTierOverlay = (tier?: string) => {
+    const t = (tier || 'C').toUpperCase();
+    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : 
+                 t === 'A' ? 'bg-slate-300 text-black border-white' : 
+                 t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 
+                 t === 'D' ? 'bg-orange-600 text-white border-orange-400' :
+                 'bg-slate-800 text-slate-400 border-slate-700';
+    return (
+        <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-5 h-5 rounded-full border-[2px] border-[#0a0f1a] font-black text-[10px] z-20 shadow-md ${colors}`}>
+            {t}
+        </div>
+    );
+};
+
 interface MatchTalkCarouselProps {
     seasons: Season[];
     matchCommentsData: any[];
     owners: Owner[];
     masterTeams: MasterTeam[];
     onNavigateToMatch: (params: { id: string, seasonId: number }) => void;
-    // 🔥 onViewAll 프로퍼티 완전 삭제
 }
 
 export const MatchTalkCarousel = ({ 
@@ -32,7 +61,6 @@ export const MatchTalkCarousel = ({
     onNavigateToMatch
 }: MatchTalkCarouselProps) => {
 
-    // 🔥 [TBD 픽스] 카루셀 내부에서도 플레이오프 합산 스코어를 계산하여 TBD를 실제 팀으로 뚫어줍니다.
     const processedSeasons = useMemo(() => {
         return seasons.map(season => {
             if (season.type !== 'LEAGUE_PLAYOFF' || !season.rounds) return season;
@@ -119,7 +147,6 @@ export const MatchTalkCarousel = ({
             let matchObj: Match | null = null;
             let seasonId: number | null = null;
 
-            // 🔥 TBD가 해결된 processedSeasons를 돌면서 매치를 찾습니다.
             for (const s of processedSeasons) {
                 for (const r of s.rounds || []) {
                     const found = r.matches?.find((m: Match) => m.id === matchId);
@@ -153,25 +180,9 @@ export const MatchTalkCarousel = ({
         return (photo && photo.trim() !== '') ? photo : DEFAULT_AVATAR;
     };
 
-    const getTeamTier = (teamName: string) => {
-        if (!teamName || teamName === 'TBD' || teamName === 'BYE') return null;
-        const mt = masterTeams.find(m => m.name === teamName);
-        return mt?.tier || 'C';
-    };
-
-    const renderTierBadge = (tier: string | null) => {
-        if (!tier) return null;
-        const t = tier.toUpperCase();
-        let colors = t === 'S' ? 'bg-yellow-500 text-black' : 
-                     t === 'A' ? 'bg-slate-300 text-black' : 
-                     t === 'B' ? 'bg-amber-600 text-white' : 
-                     t === 'D' ? 'bg-orange-600 text-white' : 
-                     'bg-slate-700 text-slate-300';
-        return (
-            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black leading-none shadow-sm ${colors}`}>
-                {t}
-            </span>
-        );
+    const getTeamMasterInfo = (teamName: string) => {
+        if (!teamName || teamName === 'TBD' || teamName === 'BYE') return undefined;
+        return masterTeams.find(m => m.name === teamName);
     };
 
     if (recentActiveMatches.length === 0) return null; 
@@ -179,7 +190,7 @@ export const MatchTalkCarousel = ({
     return (
         <div className="mb-8">
             <div className="flex items-center justify-between mb-4 px-1">
-                <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2">
+                <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2 pr-2">
                     <MessageSquare size={16} className="text-blue-500" /> LIVE MATCH TALK
                 </h3>
             </div>
@@ -188,8 +199,10 @@ export const MatchTalkCarousel = ({
                 {recentActiveMatches.map((item, idx) => {
                     if (!item) return null;
                     const { match, seasonId, latestComment, totalComments } = item;
-                    const hTier = getTeamTier(match.home);
-                    const aTier = getTeamTier(match.away);
+                    
+                    const hMaster = getTeamMasterInfo(match.home);
+                    const aMaster = getTeamMasterInfo(match.away);
+                    
                     const isCompleted = match.status === 'COMPLETED';
 
                     return (
@@ -199,47 +212,58 @@ export const MatchTalkCarousel = ({
                             className="min-w-[280px] sm:min-w-[320px] max-w-[320px] shrink-0 snap-center bg-[#0a0f1a] border border-slate-800 hover:border-slate-600 rounded-2xl overflow-hidden cursor-pointer transition-all hover:-translate-y-1 shadow-xl flex flex-col group"
                         >
                             <div className="bg-slate-950/80 px-4 py-2 border-b border-slate-800/50 flex justify-between items-center">
-                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">
+                                {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 및 line-height 조정 */}
+                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase italic pr-1 leading-snug">
                                     🏆 {match.matchLabel || match.stage}
                                 </span>
                             </div>
 
                             <div className="p-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                                <div className="flex flex-col items-center gap-1.5 min-w-0">
-                                    <div className="w-10 h-10 bg-white rounded-full p-1.5 shadow-md flex items-center justify-center">
-                                        <img src={match.homeLogo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                {/* Home Team */}
+                                <div className="flex flex-col items-center min-w-0">
+                                    <div className="relative w-12 h-12 shrink-0 mb-2">
+                                        <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
+                                            <img src={match.homeLogo} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                        </div>
+                                        {/* 🔥 [팀등급 오버레이 추가] */}
+                                        {match.home !== 'TBD' && renderTierOverlay(hMaster?.tier)}
                                     </div>
                                     <div className="flex flex-col items-center min-w-0 w-full text-center">
-                                        <div className="flex items-center gap-1 justify-center w-full">
-                                            {renderTierBadge(hTier)}
-                                            <span className="text-xs font-black text-white truncate leading-tight">{match.home}</span>
-                                        </div>
-                                        <span className="text-[9px] text-slate-500 font-bold truncate w-full mt-0.5">{match.homeOwner}</span>
+                                        {/* 🔥 [리얼 등수 & 폼 추가] */}
+                                        {match.home !== 'TBD' && renderRankCondition(hMaster?.real_rank, hMaster?.condition)}
+                                        {/* 🔥 [이탤릭체 잘림 방지] pr-0.5 추가 */}
+                                        <span className="text-xs font-black italic text-white truncate leading-tight w-full pr-0.5">{match.home}</span>
+                                        {/* 🔥 [오너명 이탤릭체 잘림 방지] pr-1 추가 */}
+                                        <span className="text-[9px] text-slate-500 font-bold italic truncate w-full mt-0.5 pr-1">{match.homeOwner}</span>
                                     </div>
                                 </div>
 
+                                {/* Score / VS */}
                                 <div className="flex flex-col items-center justify-center px-2">
                                     {isCompleted ? (
-                                        <div className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-800 flex items-center gap-1.5 shadow-inner">
-                                            <span className="text-lg font-black text-emerald-400">{match.homeScore}</span>
-                                            <span className="text-slate-600 text-xs">:</span>
-                                            <span className="text-lg font-black text-emerald-400">{match.awayScore}</span>
+                                        <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5 shadow-inner">
+                                            {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 */}
+                                            <span className="text-xl font-black italic text-emerald-400 pr-1">{match.homeScore}</span>
+                                            <span className="text-slate-600 text-sm">:</span>
+                                            <span className="text-xl font-black italic text-emerald-400 pr-1">{match.awayScore}</span>
                                         </div>
                                     ) : (
-                                        <span className="text-xs font-black text-slate-600 italic bg-slate-900 px-2 py-1 rounded-md border border-slate-800">VS</span>
+                                        <span className="text-sm font-black text-slate-600 italic bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 pr-1">VS</span>
                                     )}
                                 </div>
 
-                                <div className="flex flex-col items-center gap-1.5 min-w-0">
-                                    <div className="w-10 h-10 bg-white rounded-full p-1.5 shadow-md flex items-center justify-center">
-                                        <img src={match.awayLogo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                {/* Away Team */}
+                                <div className="flex flex-col items-center min-w-0">
+                                    <div className="relative w-12 h-12 shrink-0 mb-2">
+                                        <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
+                                            <img src={match.awayLogo} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                        </div>
+                                        {match.away !== 'TBD' && renderTierOverlay(aMaster?.tier)}
                                     </div>
                                     <div className="flex flex-col items-center min-w-0 w-full text-center">
-                                        <div className="flex items-center gap-1 justify-center w-full">
-                                            <span className="text-xs font-black text-white truncate leading-tight">{match.away}</span>
-                                            {renderTierBadge(aTier)}
-                                        </div>
-                                        <span className="text-[9px] text-slate-500 font-bold truncate w-full mt-0.5">{match.awayOwner}</span>
+                                        {match.away !== 'TBD' && renderRankCondition(aMaster?.real_rank, aMaster?.condition)}
+                                        <span className="text-xs font-black italic text-white truncate leading-tight w-full pr-0.5">{match.away}</span>
+                                        <span className="text-[9px] text-slate-500 font-bold italic truncate w-full mt-0.5 pr-1">{match.awayOwner}</span>
                                     </div>
                                 </div>
                             </div>
@@ -253,12 +277,14 @@ export const MatchTalkCarousel = ({
                                 />
                                 <div className="flex flex-col min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                                        <span className="text-[10px] font-black text-blue-400 truncate">{latestComment.authorName}</span>
-                                        <span className="text-[9px] font-black text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-900/50 shrink-0">
+                                        {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 */}
+                                        <span className="text-[10px] font-black italic text-blue-400 truncate pr-1">{latestComment.authorName}</span>
+                                        <span className="text-[9px] font-black italic text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-900/50 shrink-0 pr-1">
                                             💬 +{totalComments}
                                         </span>
                                     </div>
-                                    <span className="text-xs text-slate-300 font-medium line-clamp-2 leading-snug">
+                                    {/* 🔥 [이탤릭체 잘림 방지] pr-1, pb-0.5 추가 및 line-height 조정 */}
+                                    <span className="text-xs text-slate-300 font-medium italic line-clamp-2 leading-relaxed pr-1 pb-0.5">
                                         {latestComment.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : latestComment.text}
                                     </span>
                                 </div>
@@ -266,7 +292,6 @@ export const MatchTalkCarousel = ({
                         </div>
                     );
                 })}
-                {/* 🔥 더보기 카드 삭제됨 */}
             </div>
         </div>
     );
