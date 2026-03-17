@@ -7,6 +7,8 @@ import { collection, query, where, onSnapshot, doc, updateDoc, increment, orderB
 import { db } from '../firebase';
 import { LiveFeed } from './LiveFeed';
 import { MatchTalkCarousel } from './MatchTalkCarousel';
+// 🔥 [추가] 챔피언 카루셀 임포트
+import { ChampionsCarousel } from './ChampionsCarousel';
 
 const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     const [latestComment, setLatestComment] = useState<any>(null);
@@ -357,6 +359,13 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           )}
 
+          {/* 🔥 [신규 추가] 라이브 피드 전광판 위에 역대 챔피언 카루셀 배치! */}
+          <ChampionsCarousel 
+              seasons={seasons}
+              owners={owners}
+              masterTeams={masterTeams}
+          />
+
           {/* 2. 라이브 피드 전광판 */}
           <LiveFeed 
               posts={posts || []} 
@@ -480,7 +489,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               owners={owners}
               masterTeams={masterTeams}
               onNavigateToMatch={handleMatchTalkClick}
-              // 🔥 삭제 된 부분 확인 바람
           />
 
           {/* 4. 경기 정보 (UPCOMING / RECENT) */}
