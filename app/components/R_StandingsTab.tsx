@@ -355,7 +355,7 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             </div>
         )}
 
-        {/* 🔥 2. 리그+PO 모드일 경우 신규 공통 뷰어 렌더링 */}
+        {/* 2. 리그+PO 모드일 경우 공통 뷰어 렌더링 */}
         {currentSeason?.type === 'LEAGUE_PLAYOFF' && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -363,7 +363,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                         <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                         <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3>
                     </div>
-                    {/* 우리가 만든 공통 컴포넌트 단 한 줄로 대체! */}
                     <AdminMatching_LeaguePOBracketView 
                         currentSeason={currentSeason} 
                         owners={owners} 
@@ -400,7 +399,7 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                 ))}</tbody></table></div></div>
         )}
 
-        {/* 4. 모든 모드(리그, 토너먼트, 리그+PO)에서 공통으로 렌더링되는 통합 순위표 */}
+        {/* 4. 모든 모드(리그, 토너먼트, 리그+PO) 공통 통합 순위표 */}
         <div className="space-y-4">
         <div className="flex items-center gap-3 px-2">
             <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
@@ -444,98 +443,72 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                                         {teamMatches.length === 0 ? (
                                             <div className="text-slate-500 text-[11px] italic text-center py-4">완료된 경기가 없습니다.</div>
                                         ) : (
-                                            <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                            <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pb-2">
+                                                
+                                                {/* 🔥 [디벨롭] 게임명(라운드명)을 별도의 헤더로 분리하여 레이아웃 숨통 틔우기 */}
                                                 {teamMatches.map((m, idx) => (
-                                                    <div key={idx} className="flex flex-col lg:flex-row lg:items-center bg-[#0f141e] border border-slate-800/80 rounded-xl p-3 hover:bg-slate-800/50 transition-colors gap-2 relative pr-12">
+                                                    <div key={idx} className="flex flex-col bg-[#0f141e] border border-slate-800/80 rounded-xl overflow-hidden shadow-sm hover:border-slate-700 transition-colors relative">
                                                         
-                                                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                                                            <span className="text-[10px] font-black text-slate-500 tracking-widest w-8 shrink-0">{m.roundName?.replace('리그', '')}</span>
-                                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${m.resultColor} shrink-0`}>{m.result}</span>
-                                                            
-                                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                                <span className="text-slate-500 text-[10px] font-bold">vs</span>
-                                                                <img src={m.opponent.logo} className="w-4 h-4 sm:w-5 sm:h-5 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
-                                                                <span className="text-[11px] sm:text-[12px] font-black text-white uppercase truncate">{m.opponent.name}</span>
-                                                                <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate pr-1">({m.opponent.ownerName})</span>
+                                                        {/* 상단 헤더: 라운드명 & 승패 뱃지 */}
+                                                        <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800/50 flex items-center justify-between">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{m.roundName?.replace('리그', '')}</span>
                                                             </div>
-
-                                                            <div className="flex items-center gap-1 shrink-0 ml-1">
-                                                                <span className="text-[13px] sm:text-[15px] font-black text-emerald-400">{m.myScore}</span>
-                                                                <span className="text-[11px] text-slate-600">:</span>
-                                                                <span className="text-[13px] sm:text-[15px] font-black text-slate-400">{m.opScore}</span>
-                                                            </div>
-
-                                                            <div className="hidden lg:flex items-center gap-3 ml-2 min-w-0">
-                                                                {(m.scorersStr || m.assistsStr) && (
-                                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                                        <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50">[{t.name}]</span>
-                                                                        <span className="text-[10px] sm:text-[11px] text-slate-200 pr-1">
-                                                                            {m.scorersStr && `⚽ ${m.scorersStr}`}
-                                                                            {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
-                                                                            {m.assistsStr && `🅰️ ${m.assistsStr}`}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                
-                                                                {(m.scorersStr || m.assistsStr) && (m.opScorersStr || m.opAssistsStr) && (
-                                                                    <div className="w-px h-3 bg-slate-700 shrink-0 hidden md:block"></div>
-                                                                )}
-                                                                
-                                                                {(m.opScorersStr || m.opAssistsStr) && (
-                                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                                        <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700">[{m.opponent.name}]</span>
-                                                                        <span className="text-[10px] sm:text-[11px] text-slate-400 pr-1">
-                                                                            {m.opScorersStr && `⚽ ${m.opScorersStr}`}
-                                                                            {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
-                                                                            {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                            <span className={`text-[9px] font-black px-1.5 py-[1px] rounded border ${m.resultColor}`}>{m.result}</span>
                                                         </div>
 
-                                                        <div className="flex lg:hidden flex-col pl-[40px] sm:pl-[44px] gap-1.5 mt-1 pr-12 min-w-0">
-                                                            {(m.scorersStr || m.assistsStr) && (
-                                                                <div className="flex flex-col gap-1">
-                                                                    {m.scorersStr && (
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
-                                                                            <span className="text-[10px] text-slate-200 truncate pr-1">⚽ {m.scorersStr}</span>
+                                                        {/* 하단 바디: 상대팀 정보, 스코어, 득점자 */}
+                                                        <div className="p-3 flex flex-col gap-2 relative pr-10">
+                                                            <div className="flex items-center justify-between w-full">
+                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                    <span className="text-slate-500 text-[10px] font-bold shrink-0">vs</span>
+                                                                    <img src={m.opponent.logo} className="w-5 h-5 sm:w-6 sm:h-6 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
+                                                                    <span className="text-[12px] sm:text-[13px] font-black text-white uppercase truncate">{m.opponent.name}</span>
+                                                                    <span className="text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-1.5 shrink-0 ml-2 bg-slate-900/50 px-2 py-0.5 rounded-lg border border-slate-800">
+                                                                    <span className="text-[14px] sm:text-[16px] font-black text-emerald-400">{m.myScore}</span>
+                                                                    <span className="text-[11px] text-slate-600">:</span>
+                                                                    <span className="text-[14px] sm:text-[16px] font-black text-slate-400">{m.opScore}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {(m.scorersStr || m.assistsStr || m.opScorersStr || m.opAssistsStr) && (
+                                                                <div className="flex flex-col gap-1.5 mt-1 border-t border-slate-800/50 pt-2">
+                                                                    {(m.scorersStr || m.assistsStr) && (
+                                                                        <div className="flex items-start gap-1.5 w-full">
+                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0 mt-0.5">[{t.name}]</span>
+                                                                            <span className="text-[10px] sm:text-[11px] text-slate-200 break-words flex-1 leading-snug">
+                                                                                {m.scorersStr && `⚽ ${m.scorersStr}`}
+                                                                                {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                                                {m.assistsStr && `🅰️ ${m.assistsStr}`}
+                                                                            </span>
                                                                         </div>
                                                                     )}
-                                                                    {m.assistsStr && (
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0">[{t.name}]</span>
-                                                                            <span className="text-[10px] text-slate-200 truncate pr-1">🅰️ {m.assistsStr}</span>
+                                                                    
+                                                                    {(m.opScorersStr || m.opAssistsStr) && (
+                                                                        <div className="flex items-start gap-1.5 w-full">
+                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0 mt-0.5">[{m.opponent.name}]</span>
+                                                                            <span className="text-[10px] sm:text-[11px] text-slate-400 break-words flex-1 leading-snug">
+                                                                                {m.opScorersStr && `⚽ ${m.opScorersStr}`}
+                                                                                {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                                                {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
+                                                                            </span>
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                             )}
-                                                            {(m.opScorersStr || m.opAssistsStr) && (
-                                                                <div className="flex flex-col gap-1 mt-0.5">
-                                                                    {m.opScorersStr && (
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
-                                                                            <span className="text-[10px] text-slate-400 truncate pr-1">⚽ {m.opScorersStr}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {m.opAssistsStr && (
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0">[{m.opponent.name}]</span>
-                                                                            <span className="text-[10px] text-slate-400 truncate pr-1">🅰️ {m.opAssistsStr}</span>
-                                                                        </div>
-                                                                    )}
+
+                                                            {/* 유튜브 하이라이트 */}
+                                                            {m.youtubeUrl && (
+                                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
+                                                                    <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
+                                                                        <PlayCircle size={22} strokeWidth={2} />
+                                                                    </button>
                                                                 </div>
                                                             )}
                                                         </div>
-
-                                                        {m.youtubeUrl && (
-                                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
-                                                                <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
-                                                                    <PlayCircle size={22} strokeWidth={2} />
-                                                                </button>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 ))}
                                             </div>

@@ -1,16 +1,12 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock } from 'lucide-react'; // 🔥 ImageIcon 삭제됨
+import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock } from 'lucide-react'; 
 import { FALLBACK_IMG } from '../types';
-// 🔥 [수술 포인트] 조회수 증가를 위한 doc, updateDoc, increment 임포트 추가
 import { collection, query, where, onSnapshot, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
-
-// 🔥 분리한 컴포넌트 임포트
 import { LiveFeed } from './LiveFeed';
 
-// 실제 매치톡 DB를 참조하는 전용 프리뷰 컴포넌트
 const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     const [latestComment, setLatestComment] = useState<any>(null);
 
@@ -194,13 +190,10 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
   // --- 네비게이션 핸들러 ---
   const handlePostClick = async (post: any) => {
-      // 🔥 [수술 포인트] 게시글 클릭 시 DB의 views 카운트를 즉시 1 증가시킵니다.
       if (post && post.id) {
           try {
               const postRef = doc(db, 'posts', post.id);
-              await updateDoc(postRef, {
-                  views: increment(1)
-              });
+              await updateDoc(postRef, { views: increment(1) });
           } catch (error) {
               console.error("조회수 증가 실패:", error);
           }
@@ -220,14 +213,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   };
 
   // --- 컴포넌트 렌더러 ---
-  const renderTierBadge = (tier?: string) => {
-      const t = (tier || 'C').toUpperCase();
-      const colors = t === 'S' ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 
-                     t === 'A' ? 'bg-slate-300 text-black' : 
-                     t === 'B' ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-300';
-      return <span className={`px-1 py-[1px] rounded-[3px] text-[8px] font-black leading-none ${colors}`}>{t}</span>;
-  };
-
   const renderRankCondition = (rank?: number, condition?: string) => {
       const rColors = rank === 1 ? 'text-yellow-500' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-orange-400' : 'text-slate-400';
       const cConfig: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
@@ -242,63 +227,89 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       );
   };
 
+  // 🔥 [수술 핵심 로직] renderMatchRow 최적화
   const renderMatchRow = (m: any, isRecent: boolean) => {
       const homeMaster = getTeamMasterInfo(m.home);
       const awayMaster = getTeamMasterInfo(m.away);
       const hRate = Number(m.homePredictRate) > 0 ? Number(m.homePredictRate) : 50;
       const aRate = Number(m.awayPredictRate) > 0 ? Number(m.awayPredictRate) : 50;
-      
-      const pureSeasonName = currentDashboardSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
+
+      // 🔥 엠블럼 우측 하단에 오버레이될 티어 뱃지 렌더러
+      const renderTierOverlay = (tier?: string) => {
+          const t = (tier || 'C').toUpperCase();
+          let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : 
+                       t === 'A' ? 'bg-slate-300 text-black border-white' : 
+                       t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 
+                       'bg-slate-800 text-slate-400 border-slate-700';
+          return (
+              <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full border-[2px] border-[#0f172a] font-black text-[9px] sm:text-[10px] z-20 shadow-md ${colors}`}>
+                  {t}
+              </div>
+          );
+      };
 
       return (
-          <div className="flex flex-col bg-slate-900/40 relative transition-colors group">
+          <div className="flex flex-col bg-slate-900/40 relative transition-colors group pt-3 sm:pt-4">
+              
+              {/* 🔥 상단 게임명(라운드명) 분리 및 중앙 배치 (시즌명은 완벽히 삭제) */}
+              <div className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-10 w-full flex justify-center px-4 pointer-events-none">
+                  <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold bg-[#0b1221] px-3 py-1 rounded-full border border-slate-800 uppercase tracking-widest text-center shadow-md truncate max-w-[80%]">
+                      {m.matchLabel || 'MATCH'}
+                  </span>
+              </div>
+
+              {/* 경기 정보 메인 바디 */}
               <div 
                   onClick={() => isRecent && handleMatchTalkClick(m)} 
-                  className={`flex justify-between items-center px-2 py-5 sm:px-6 sm:py-6 ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
+                  className={`flex justify-between items-center px-2 pb-5 pt-8 sm:px-6 sm:pb-6 sm:pt-10 ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
               >
+                  {/* Home Team */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
-                      <div className="flex flex-col items-end gap-1 min-w-0">
-                          <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none">{m.home}</span>
-                          <div className="flex items-center gap-1 mt-1">
-                              {m.home !== 'TBD' && renderTierBadge(homeMaster?.tier)}
-                              {m.home !== 'TBD' && renderRankCondition(homeMaster?.real_rank, homeMaster?.condition)}
-                          </div>
+                      <div className="flex flex-col items-end gap-0.5 min-w-0 mt-1">
+                          <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none mb-0.5">{m.home}</span>
+                          {m.home !== 'TBD' && renderRankCondition(homeMaster?.real_rank, homeMaster?.condition)}
+                          {m.home !== 'TBD' && <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold italic truncate max-w-[85px] sm:max-w-[140px] pr-0.5 mt-0.5">{m.homeOwner || homeMaster?.ownerName || '-'}</span>}
                       </div>
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full p-1.5 shadow-md shrink-0">
-                          <img src={getRealLogoLocal(m.home, m.homeLogo)} className="w-full h-full object-contain" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                      <div className="relative w-10 h-10 sm:w-12 sm:h-12 shrink-0">
+                          <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
+                              <img src={getRealLogoLocal(m.home, m.homeLogo)} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                          </div>
+                          {m.home !== 'TBD' && renderTierOverlay(homeMaster?.tier)}
                       </div>
                   </div>
                   
-                  <div className="w-[80px] sm:w-[100px] shrink-0 flex flex-col items-center justify-center px-1">
-                      <span className="text-[8px] text-blue-400 font-black mb-0.5 truncate w-full text-center tracking-tighter opacity-80">{pureSeasonName}</span>
-                      <span className="text-[9px] text-slate-500 font-bold mb-1.5 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 uppercase tracking-widest text-center line-clamp-1">{m.matchLabel || 'MATCH'}</span>
+                  {/* Score / VS Center */}
+                  <div className="w-[50px] sm:w-[70px] shrink-0 flex flex-col items-center justify-center px-1 z-10">
                       {isRecent ? (
-                          <div className="flex items-center gap-1.5 text-[20px] sm:text-[24px] font-black italic tracking-tighter leading-none">
+                          <div className="flex items-center gap-1 text-[20px] sm:text-[24px] font-black italic tracking-tighter leading-none">
                               <span className={Number(m.homeScore) > Number(m.awayScore) ? 'text-emerald-400' : 'text-slate-200'}>{m.homeScore}</span>
                               <span className="text-slate-600 text-sm">:</span>
                               <span className={Number(m.awayScore) > Number(m.homeScore) ? 'text-emerald-400' : 'text-slate-200'}>{m.awayScore}</span>
                           </div>
                       ) : (
-                          <span className="text-[12px] sm:text-[14px] font-black text-slate-600 italic mt-1">VS</span>
+                          <span className="text-[12px] sm:text-[14px] font-black text-slate-600 italic">VS</span>
                       )}
                   </div>
 
+                  {/* Away Team */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-start min-w-0">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full p-1.5 shadow-md shrink-0">
-                          <img src={getRealLogoLocal(m.away, m.awayLogo)} className="w-full h-full object-contain" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
-                      </div>
-                      <div className="flex flex-col items-start gap-1 min-w-0">
-                          <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none">{m.away}</span>
-                          <div className="flex items-center gap-1 mt-1">
-                              {m.away !== 'TBD' && renderRankCondition(awayMaster?.real_rank, awayMaster?.condition)}
-                              {m.away !== 'TBD' && renderTierBadge(awayMaster?.tier)}
+                      <div className="relative w-10 h-10 sm:w-12 sm:h-12 shrink-0">
+                          <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
+                              <img src={getRealLogoLocal(m.away, m.awayLogo)} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
                           </div>
+                          {m.away !== 'TBD' && renderTierOverlay(awayMaster?.tier)}
+                      </div>
+                      <div className="flex flex-col items-start gap-0.5 min-w-0 mt-1">
+                          <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none mb-0.5">{m.away}</span>
+                          {m.away !== 'TBD' && renderRankCondition(awayMaster?.real_rank, awayMaster?.condition)}
+                          {m.away !== 'TBD' && <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold italic truncate max-w-[85px] sm:max-w-[140px] pl-0.5 mt-0.5">{m.awayOwner || awayMaster?.ownerName || '-'}</span>}
                       </div>
                   </div>
               </div>
 
+              {/* Predict Bar */}
               {!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && (
-                  <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none">
+                  <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none mt-[-5px]">
                       <div className="flex justify-between text-[8px] font-black px-1">
                           <span className="text-emerald-500">{hRate}%</span>
                           <span className="text-slate-600 tracking-widest uppercase scale-90">WIN PROBABILITY</span>
@@ -311,6 +322,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               )}
 
+              {/* Match Talk Preview */}
               {isRecent && <RecentMatchTalkPreview match={m} owners={owners} onEnter={() => handleMatchTalkClick(m)} />}
           </div>
       );
@@ -370,10 +382,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
 
                   <div className="p-4">
-                      {/* 🔥 스켈레톤 UI (리그 커뮤니티) */}
                       {isDataLoading ? (
                           <>
-                              {/* 썸네일 박스 스켈레톤 */}
                               <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
                                   {[...Array(5)].map((_, i) => (
                                       <div key={i} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 animate-pulse">
@@ -382,7 +392,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                       </div>
                                   ))}
                               </div>
-                              {/* 리스트 스켈레톤 */}
                               <div className="flex flex-col divide-y divide-slate-800/50">
                                   {[...Array(5)].map((_, i) => (
                                       <div key={i} className="flex items-center justify-between py-4 px-2 animate-pulse">
@@ -403,14 +412,12 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                           </>
                       ) : (
                           <>
-                              {/* 실제 데이터 렌더링 */}
                               {posts && posts.filter((p:any) => !!p.imageUrl).length > 0 && (
                                   <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
                                       {posts.filter((p:any) => !!p.imageUrl).slice(0, 5).map((post:any, i:number) => (
                                           <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
                                               <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors">
                                                   <img src={post.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="thumbnail" />
-                                                  {/* 🔥 [수술 포인트] 눈에 거슬리던 사진 아이콘 삭제 */}
                                               </div>
                                               <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
                                           </div>
@@ -502,13 +509,11 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
 
                       <div className="flex flex-col bg-[#050b14]">
-                          {/* 🔥 스켈레톤 UI (매치 센터) */}
                           {isDataLoading ? (
                               <div className="flex flex-col divide-y divide-slate-800/80">
                                   {[...Array(4)].map((_, i) => (
                                       <div key={i} className="flex flex-col bg-slate-900/40 py-5 sm:py-6 px-2 sm:px-6 animate-pulse">
                                           <div className="flex justify-between items-center">
-                                              {/* Home */}
                                               <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end">
                                                   <div className="flex flex-col items-end gap-2 mt-1">
                                                       <div className="h-3.5 w-16 bg-slate-800/60 rounded"></div>
@@ -516,13 +521,11 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                                   </div>
                                                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800/60 rounded-full shrink-0"></div>
                                               </div>
-                                              {/* Center */}
                                               <div className="w-[80px] sm:w-[100px] shrink-0 flex flex-col items-center justify-center px-1 gap-2">
                                                   <div className="h-2 w-12 bg-slate-800/60 rounded"></div>
                                                   <div className="h-3 w-16 bg-slate-800/60 rounded"></div>
                                                   <div className="h-4 w-8 bg-slate-800/60 rounded mt-1"></div>
                                               </div>
-                                              {/* Away */}
                                               <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-start">
                                                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800/60 rounded-full shrink-0"></div>
                                                   <div className="flex flex-col items-start gap-2 mt-1">
@@ -535,7 +538,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                   ))}
                               </div>
                           ) : (
-                              /* 실제 데이터 렌더링 */
                               (matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
                                   <div className="flex flex-col divide-y divide-slate-800/80">
                                       {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match: any, idx: number) => (

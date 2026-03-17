@@ -6,6 +6,9 @@ import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestor
 import { db } from '../firebase';
 import { FALLBACK_IMG } from '../types';
 
+// 🔥 [핵심 디벨롭] 구글 기본 프로필 스타일의 내장 SVG 이미지 (절대 깨지지 않음)
+const DEFAULT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
 const getTimestamp = (val: any) => {
     if (!val) return 0;
     if (typeof val === 'number') return val;
@@ -40,6 +43,7 @@ export const LiveFeed = ({
         return () => unsubscribe();
     }, []);
 
+    // 🔥 [디벨롭] 프로필이 없으면 무조건 내장 DEFAULT_AVATAR 반환
     const getOwnerProfile = (idOrName: string, fallbackName?: string) => {
         const search1 = idOrName?.toString().trim();
         const search2 = fallbackName?.toString().trim();
@@ -47,7 +51,9 @@ export const LiveFeed = ({
             o.docId === search1 || String(o.id) === search1 || o.uid === search1 || o.nickname === search1 ||
             (search2 && o.nickname === search2)
         );
-        return found?.photo || FALLBACK_IMG;
+        
+        const photo = found?.photo || found?.profileImage || found?.photoUrl;
+        return (photo && photo.trim() !== '') ? photo : DEFAULT_AVATAR;
     };
 
     // 2. 커뮤니티 데이터 가공
@@ -152,7 +158,13 @@ export const LiveFeed = ({
                     {isEmpty ? (
                         <div className="w-5 h-5 rounded-full bg-emerald-900/50 border border-emerald-500/50 flex items-center justify-center shrink-0 shadow-sm"><MessageSquare size={10} className="text-emerald-400"/></div>
                     ) : (
-                        <img src={getOwnerProfile(msg.uid, msg.name)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0 shadow-sm" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                        // 🔥 [디벨롭] 이미지 에러 발생 시에도 DEFAULT_AVATAR를 강제 주입
+                        <img 
+                            src={getOwnerProfile(msg.uid, msg.name) || DEFAULT_AVATAR} 
+                            className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0 shadow-sm" 
+                            alt="" 
+                            onError={(e:any) => { e.target.src = DEFAULT_AVATAR; }} 
+                        />
                     )}
                     <span className={`text-[11px] font-black whitespace-nowrap shrink-0 transition-colors ${isEmpty ? 'text-emerald-400' : 'text-blue-400 group-hover/item:text-blue-300'}`}>{msg.name}:</span>
                 </div>
@@ -167,7 +179,6 @@ export const LiveFeed = ({
 
     return (
         <div className={`bg-gradient-to-r from-[#0B1120] to-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col relative overflow-hidden shadow-lg mb-6 transition-all ${mode === 'dashboard' ? 'gap-2 min-h-[96px]' : 'gap-1 h-[68px] justify-center'}`}>
-            {/* 🔥 애니메이션 방향 수정: 0% -> -50% (오른쪽에서 왼쪽으로 흐름) */}
             <style jsx>{`
                 @keyframes ticker-rtl { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
                 .ticker-track-1 { display: flex; width: max-content; animation: ticker-rtl 15s linear infinite; }
