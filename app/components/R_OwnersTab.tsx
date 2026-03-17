@@ -53,6 +53,7 @@ export default function R_OwnersTab({
     if (checkMatch(1)) totalPrize += (prizeRule.second || 0);
     if (checkMatch(2)) totalPrize += (prizeRule.third || 0);
     
+    // 🔥 오직 부모가 준 정식 grandChampionInfo 데이터만 의존합니다.
     if (grandChampionInfo && resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
         totalPrize += (prizeRule.champion || 0);
     }
@@ -123,7 +124,7 @@ export default function R_OwnersTab({
           );
       })()}
 
-      {/* 🚩 리그 1위 전용 카드 (🔥 [수정] 토너먼트 모드에서는 렌더링하지 않음) */}
+      {/* 🚩 리그 1위 전용 카드 (🔥 토너먼트 모드에서는 렌더링하지 않음) */}
       {currentSeason?.type !== 'TOURNAMENT' && sortedTeams && sortedTeams.length > 0 && (sortedTeams[0].win > 0 || sortedTeams[0].draw > 0 || sortedTeams[0].loss > 0) && (() => {
           const team = sortedTeams[0];
           const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);

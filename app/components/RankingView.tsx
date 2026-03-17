@@ -51,7 +51,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const todayDate = getTodayFormatted();
   const footerText = `시즌 '${seasonName}' / ${todayDate}`;
   const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0, scorer: 0, assist: 0, poScorer: 0, poAssist: 0 };
-  const isHybridSeason = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF';
+  // 🔥 토너먼트도 챔피언 노출 대상이므로 isHybridSeason 판별에 추가합니다.
+  const isHybridSeason = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT';
 
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
@@ -111,7 +112,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     };
   };
 
-  // 🔥 [핵심 수술 포인트] 스케줄 뷰와 완벽하게 동일한 실시간 대진표 계산(TBD 치환) 로직 이식!
+  // 실시간 합산 스코어 기반 대진표 재구성
   const processedRounds = useMemo(() => {
       if (!currentSeason?.rounds) return [];
       const roundsCopy = JSON.parse(JSON.stringify(currentSeason.rounds));
@@ -168,19 +169,37 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       return roundsCopy;
   }, [currentSeason]);
 
-  // DB 데이터가 아니라, 실시간으로 계산된 processedRounds 에서 결승전을 가져옵니다.
+  // 🔥 [핵심 수술 포인트] 결승전 탐지 알고리즘 강화
   const grandFinalMatch = useMemo(() => {
       if (processedRounds.length === 0) return null;
-      
+
       const allMatches = processedRounds.flatMap((r: any) => r.matches || []);
-      return allMatches.find((m: any) => {
+      if (allMatches.length === 0) return null;
+
+      // 1순위 탐지: 명시적으로 'FINAL' 또는 '결승' 키워드가 들어간 마지막 매치 (단, 3/4위전은 제외)
+      const explicitFinalMatches = allMatches.filter((m: any) => {
           const s = (m.stage || '').toUpperCase();
           const l = (m.matchLabel || '').toUpperCase();
           const isFinalText = s.includes('FINAL') || s.includes('결승') || l.includes('FINAL') || l.includes('결승');
           const isNotSemi = !(s.includes('SEMI') || s.includes('4강') || l.includes('SEMI') || l.includes('4강') || s.includes('34') || l.includes('34'));
           return isFinalText && isNotSemi;
       });
-  }, [processedRounds]);
+
+      if (explicitFinalMatches.length > 0) {
+          // 키워드가 겹치는 경기가 있다면 가장 맨 뒤에 있는(최종) 경기를 리턴
+          return explicitFinalMatches[explicitFinalMatches.length - 1];
+      }
+
+      // 2순위 탐지: 키워드가 없더라도, 토너먼트/CUP/PLAYOFF의 경우 "대진표 상의 가장 마지막 라운드의 마지막 경기"를 결승전으로 간주
+      if (currentSeason?.type === 'TOURNAMENT' || currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF') {
+          const lastRound = processedRounds[processedRounds.length - 1];
+          if (lastRound && lastRound.matches && lastRound.matches.length > 0) {
+              return lastRound.matches[lastRound.matches.length - 1];
+          }
+      }
+
+      return null;
+  }, [processedRounds, currentSeason?.type]);
 
   const grandChampionInfo = useMemo(() => {
       if (!grandFinalMatch) return null;
@@ -188,19 +207,22 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       const hScoreText = grandFinalMatch.homeScore;
       const aScoreText = grandFinalMatch.awayScore;
       
-      // 결승전 자리에 팀이 없거나, 점수가 안 들어갔으면 아직 우승자가 없는 것
-      if (grandFinalMatch.home === 'TBD' || grandFinalMatch.away === 'TBD') return null;
+      // 결승전 경기가 완료(COMPLETED)되지 않았다면 우승자는 아직 없음
       if (grandFinalMatch.status !== 'COMPLETED') return null;
 
       let winnerName = null;
 
+      // 만약 aggWinner 값이 명시적으로 세팅되어 있다면 최우선 사용
       if ((grandFinalMatch as any).aggWinner && (grandFinalMatch as any).aggWinner !== 'TBD') {
           winnerName = (grandFinalMatch as any).aggWinner;
       } else {
+          // 스코어를 숫자로 비교하여 우승자 도출
           const hScore = Number(hScoreText || 0);
           const aScore = Number(aScoreText || 0);
           if (hScore > aScore) winnerName = grandFinalMatch.home;
           else if (aScore > hScore) winnerName = grandFinalMatch.away;
+          // ※ 참고: 결승전에서 무승부(승부차기 등)인 경우를 대비해 winnerName이 안 잡힐 수 있습니다. 
+          // 만약 무승부 입력 후 승부차기 결과를 별도 필드로 넣는 구조라면, 여기에 추가 조건 로직이 필요할 수 있습니다.
       }
 
       if (!winnerName || winnerName === 'TBD') return null;
