@@ -113,7 +113,8 @@ export const AdminLiveBracket_Tournament = ({ targetSeason, tourneyTargetSize }:
                                                 <div key={sIdx} className={`relative min-h-[96px] sm:min-h-[110px] rounded-xl border-2 border-slate-800 flex flex-col items-center justify-center transition-all overflow-hidden ${slot.teamObj ? 'bg-slate-900/50' : 'bg-slate-900/80'}`}>
                                                     {slot.teamObj ? (
                                                         <div className="w-full h-full relative pointer-events-none">
-                                                            <TeamCard team={slot.teamObj} size="small" className="w-full h-full border-none shadow-none bg-transparent flex items-center justify-center grayscale opacity-80" />
+                                                            {/* 🔥 [에러 해결] Vercel Strict Mode 대응으로 as any 처리 */}
+                                                            <TeamCard team={slot.teamObj as any} size="small" className="w-full h-full border-none shadow-none bg-transparent flex items-center justify-center grayscale opacity-80" />
                                                             {renderScore(slot.teamObj.score)}
                                                         </div>
                                                     ) : (
