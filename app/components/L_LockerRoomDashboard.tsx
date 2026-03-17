@@ -3,9 +3,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock } from 'lucide-react'; 
 import { FALLBACK_IMG } from '../types';
-import { collection, query, where, onSnapshot, doc, updateDoc, increment } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, increment, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { LiveFeed } from './LiveFeed';
+import { MatchTalkCarousel } from './MatchTalkCarousel';
 
 const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     const [latestComment, setLatestComment] = useState<any>(null);
@@ -59,6 +60,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
   
+  const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
+
   const isDataLoading = !owners || owners.length === 0 || !posts;
 
   const activeOrLatestSeason = useMemo(() => {
@@ -75,11 +78,18 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       }
   }, [activeOrLatestSeason, selectedSeasonId]);
 
+  useEffect(() => {
+      const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(100));
+      const unsubscribe = onSnapshot(q, (snap) => {
+          setMatchCommentsData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
+      return () => unsubscribe();
+  }, []);
+
   const currentDashboardSeason = useMemo(() => {
       return seasons?.find((s: any) => s.id === selectedSeasonId) || activeOrLatestSeason;
   }, [seasons, selectedSeasonId, activeOrLatestSeason]);
 
-  // --- 유틸 함수 ---
   const getRealLogoLocal = (teamName: string, fallback: string) => {
       if (!teamName || teamName === 'TBD' || teamName === 'BYE') return fallback || FALLBACK_IMG;
       const matched = masterTeams?.find((m: any) => (m.name || '').toLowerCase() === teamName.toLowerCase() || (m.teamName || '').toLowerCase() === teamName.toLowerCase());
@@ -92,7 +102,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return (masterTeams as any[]).find((t: any) => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
   };
 
-  // --- 대진표 재계산 ---
   const processedRounds = useMemo(() => {
       if (!currentDashboardSeason || !currentDashboardSeason.rounds) return [];
 
@@ -186,9 +195,18 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return matches.reverse().slice(0, 5); 
   }, [processedRounds]);
 
+  useEffect(() => {
+      if (!isDataLoading) {
+          if (upcomingMatchesList.length === 0 && recentMatchesList.length > 0) {
+              setMatchTab('RECENT');
+          } else if (upcomingMatchesList.length > 0) {
+              setMatchTab('UPCOMING');
+          }
+      }
+  }, [selectedSeasonId, isDataLoading, upcomingMatchesList.length, recentMatchesList.length]);
+
   const hotPosts = [...(posts || [])].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
 
-  // --- 네비게이션 핸들러 ---
   const handlePostClick = async (post: any) => {
       if (post && post.id) {
           try {
@@ -212,7 +230,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       window.location.href = `/?view=SCHEDULE&season=${targetSeasonId}&matchId=${m.id}`;
   };
 
-  // --- 컴포넌트 렌더러 ---
   const renderRankCondition = (rank?: number, condition?: string) => {
       const rColors = rank === 1 ? 'text-yellow-500' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-orange-400' : 'text-slate-400';
       const cConfig: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
@@ -227,14 +244,12 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       );
   };
 
-  // 🔥 [수술 핵심 로직] renderMatchRow 최적화
   const renderMatchRow = (m: any, isRecent: boolean) => {
       const homeMaster = getTeamMasterInfo(m.home);
       const awayMaster = getTeamMasterInfo(m.away);
       const hRate = Number(m.homePredictRate) > 0 ? Number(m.homePredictRate) : 50;
       const aRate = Number(m.awayPredictRate) > 0 ? Number(m.awayPredictRate) : 50;
 
-      // 🔥 엠블럼 우측 하단에 오버레이될 티어 뱃지 렌더러
       const renderTierOverlay = (tier?: string) => {
           const t = (tier || 'C').toUpperCase();
           let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : 
@@ -251,19 +266,16 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       return (
           <div className="flex flex-col bg-slate-900/40 relative transition-colors group pt-3 sm:pt-4">
               
-              {/* 🔥 상단 게임명(라운드명) 분리 및 중앙 배치 (시즌명은 완벽히 삭제) */}
               <div className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-10 w-full flex justify-center px-4 pointer-events-none">
                   <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold bg-[#0b1221] px-3 py-1 rounded-full border border-slate-800 uppercase tracking-widest text-center shadow-md truncate max-w-[80%]">
                       {m.matchLabel || 'MATCH'}
                   </span>
               </div>
 
-              {/* 경기 정보 메인 바디 */}
               <div 
                   onClick={() => isRecent && handleMatchTalkClick(m)} 
                   className={`flex justify-between items-center px-2 pb-5 pt-8 sm:px-6 sm:pb-6 sm:pt-10 ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}
               >
-                  {/* Home Team */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
                       <div className="flex flex-col items-end gap-0.5 min-w-0 mt-1">
                           <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[85px] sm:max-w-[140px] leading-none mb-0.5">{m.home}</span>
@@ -278,7 +290,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
                   </div>
                   
-                  {/* Score / VS Center */}
                   <div className="w-[50px] sm:w-[70px] shrink-0 flex flex-col items-center justify-center px-1 z-10">
                       {isRecent ? (
                           <div className="flex items-center gap-1 text-[20px] sm:text-[24px] font-black italic tracking-tighter leading-none">
@@ -291,7 +302,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       )}
                   </div>
 
-                  {/* Away Team */}
                   <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-start min-w-0">
                       <div className="relative w-10 h-10 sm:w-12 sm:h-12 shrink-0">
                           <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
@@ -307,7 +317,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               </div>
 
-              {/* Predict Bar */}
               {!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && (
                   <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none mt-[-5px]">
                       <div className="flex justify-between text-[8px] font-black px-1">
@@ -322,7 +331,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </div>
               )}
 
-              {/* Match Talk Preview */}
               {isRecent && <RecentMatchTalkPreview match={m} owners={owners} onEnter={() => handleMatchTalkClick(m)} />}
           </div>
       );
@@ -466,6 +474,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           </div>
 
+          <MatchTalkCarousel 
+              seasons={seasons}
+              matchCommentsData={matchCommentsData}
+              owners={owners}
+              masterTeams={masterTeams}
+              onNavigateToMatch={handleMatchTalkClick}
+              // 🔥 삭제 된 부분 확인 바람
+          />
+
           {/* 4. 경기 정보 (UPCOMING / RECENT) */}
           <div className="mb-8">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 px-1 gap-3">
@@ -509,6 +526,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
 
                       <div className="flex flex-col bg-[#050b14]">
+                          {/* 🔥 스켈레톤 UI (매치 센터) */}
                           {isDataLoading ? (
                               <div className="flex flex-col divide-y divide-slate-800/80">
                                   {[...Array(4)].map((_, i) => (
@@ -538,6 +556,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                   ))}
                               </div>
                           ) : (
+                              /* 실제 데이터 렌더링 */
                               (matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).length > 0 ? (
                                   <div className="flex flex-col divide-y divide-slate-800/80">
                                       {(matchTab === 'UPCOMING' ? upcomingMatchesList : recentMatchesList).map((match: any, idx: number) => (

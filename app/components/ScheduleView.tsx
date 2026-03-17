@@ -1,5 +1,4 @@
-// components/ScheduleView.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
 import { MatchCard } from './MatchCard'; 
@@ -122,6 +121,81 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
+  // 🔥 [핵심 수술 파트] 스케줄 리스트에도 실시간 TBD 뚫어주기 (계산 로직 추가)
+  const displayRounds = useMemo(() => {
+      if (!currentSeason || !currentSeason.rounds) return [];
+      
+      const clonedRounds = JSON.parse(JSON.stringify(currentSeason.rounds));
+
+      const getTeamMasterInfo = (teamName: string) => {
+          if (!masterTeams || masterTeams.length === 0) return undefined;
+          const cleanTarget = teamName.replace(/\s+/g, '').toLowerCase();
+          return masterTeams.find((t: any) => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
+      };
+
+      const fillTeamData = (match: any, side: 'home' | 'away', teamName: string) => {
+          match[side] = teamName;
+          const master = getTeamMasterInfo(teamName);
+          match[`${side}Logo`] = master?.logo || FALLBACK_IMG;
+          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName);
+          match[`${side}Owner`] = owner?.nickname || master?.ownerName || '-';
+          match[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
+      };
+
+      if (currentSeason.type === 'LEAGUE_PLAYOFF') {
+          const calcAgg = (leg1: any, leg2: any) => {
+              if (!leg1) return null;
+              let s1 = 0, s2 = 0;
+              let isLeg1Done = leg1.status === 'COMPLETED';
+              let isLeg2Done = leg2 && leg2.status === 'COMPLETED';
+              const t1 = leg1.home; const t2 = leg1.away;
+              
+              if (isLeg1Done) { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+              if (isLeg2Done && leg2) { 
+                  if (leg2.home === t2) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); } 
+                  else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+              }
+              
+              let aggWinner = 'TBD';
+              if (leg2 && leg2.aggWinner && leg2.aggWinner !== 'TBD') aggWinner = leg2.aggWinner;
+              else if (leg1 && leg1.aggWinner && leg1.aggWinner !== 'TBD') aggWinner = leg1.aggWinner;
+              else if (isLeg1Done && (!leg2 || isLeg2Done)) {
+                  if (s1 > s2) aggWinner = t1;
+                  else if (s2 > s1) aggWinner = t2;
+              }
+              return { ...leg1, aggWinner };
+          };
+
+          const po4Rounds = clonedRounds.filter((r: any) => r.name === 'ROUND_OF_4').flatMap((r: any) => r.matches);
+          const poFinalRounds = clonedRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
+          const grandFinalRounds = clonedRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
+
+          const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
+          const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
+          const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
+          const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
+
+          const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
+          const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+
+          if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => fillTeamData(m, 'home', compSemi1.aggWinner));
+          }
+          if (compSemi2?.aggWinner && compSemi2.aggWinner !== 'TBD') {
+              poFinalRounds.forEach((m: any) => fillTeamData(m, 'away', compSemi2.aggWinner));
+          }
+
+          const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+          const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
+          const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+
+          if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
+              grandFinalRounds.forEach((m: any) => fillTeamData(m, 'away', compPoFinal.aggWinner));
+          }
+      }
+      return clonedRounds;
+  }, [currentSeason, masterTeams, owners]);
+
   useEffect(() => {
       if (!currentSeason?.rounds) return;
 
@@ -204,8 +278,6 @@ export const ScheduleView = ({
     return stage;
   };
 
-  const displayRounds = currentSeason?.rounds ? JSON.parse(JSON.stringify(currentSeason.rounds)) : [];
-
   return (
     <div className="space-y-6 animate-in fade-in pb-10">
         <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 shadow-lg">
@@ -237,7 +309,6 @@ export const ScheduleView = ({
             <CupSchedule seasons={seasons} viewSeasonId={viewSeasonId} onMatchClick={onMatchClick} masterTeams={masterTeams} activeRankingData={activeRankingData} historyData={historyData} owners={owners} knockoutStages={knockoutStages} />
         ) : viewMode === 'LEAGUE_PLAYOFF' ? (
             <div className="space-y-12">
-                {/* 🔥 우리가 만든 공통 뷰어로 리그+PO 대진표 렌더링 */}
                 {currentSeason && (
                     <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                         <div className="min-w-max md:min-w-[760px] px-2">
@@ -297,9 +368,7 @@ export const ScheduleView = ({
                 </div>
             </div>
         ) : (
-            // 🔥 LEAGUE 또는 TOURNAMENT 일 때의 렌더링
             <>
-                {/* TOURNAMENT 일 때는 껍데기 박스 없이 뷰어만 렌더링 */}
                 {viewMode === 'TOURNAMENT' && (
                     <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                         <div className="min-w-max md:min-w-[760px] px-2">
@@ -312,24 +381,23 @@ export const ScheduleView = ({
                     </div>
                 )}
 
-                {/* 기존 매치 카드 리스트 */}
-                {currentSeason?.rounds?.map((r, rIdx) => {
-                    const uniqueStages = Array.from(new Set(r.matches.map(m => m.stage)));
+                {displayRounds?.map((r: any, rIdx: number) => {
+                    const uniqueStages = Array.from(new Set(r.matches.map((m: any) => m.stage)));
                     const totalMatchesInRound = r.matches.length;
-                    const seasonType = currentSeason.type || 'LEAGUE';
+                    const seasonType = currentSeason?.type || 'LEAGUE';
                     return (
                         <div key={rIdx} className="space-y-6 mb-8">
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div>
                                 <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">MATCH SCHEDULE</h3>
                             </div>
-                            {uniqueStages.map((stageName) => {
+                            {uniqueStages.map((stageName: any) => {
                                 const displayStageName = getKoreanStageName(stageName, totalMatchesInRound, seasonType);
                                 return (
                                     <div key={stageName} className="space-y-2">
                                         <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
                                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
+                                            {r.matches.filter((m: any) => m.stage === stageName).map((m: any, mIdx: number) => {
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                 const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
@@ -354,7 +422,7 @@ export const ScheduleView = ({
                         </div>
                     );
                 })}
-                {(!currentSeason?.rounds || currentSeason.rounds.length === 0) && (
+                {(!displayRounds || displayRounds.length === 0) && (
                     <div className="text-center py-10 text-slate-500">등록된 스케줄이 없습니다.</div>
                 )}
             </>
