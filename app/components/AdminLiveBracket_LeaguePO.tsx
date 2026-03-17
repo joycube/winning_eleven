@@ -15,7 +15,8 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
     
     const resolveTeam = (tName: string) => {
         if (!tName || tName === 'TBD' || tName === 'BYE') return null;
-        const mTeam = masterTeams.find(m => m.name === tName || m.teamName === tName);
+        // 🔥 [빌드 에러 해결] Vercel Strict Mode 대응을 위해 (m as any) 타입 단언 적용
+        const mTeam = masterTeams.find(m => m.name === tName || (m as any).teamName === tName);
         if (mTeam) {
             const owner = owners.find(o => o.uid === mTeam.ownerUid || o.docId === mTeam.ownerUid) || owners.find(o => o.nickname === mTeam.ownerName);
             return { name: tName, logo: mTeam.logo, ownerName: owner ? owner.nickname : mTeam.ownerName, ownerUid: mTeam.ownerUid };
