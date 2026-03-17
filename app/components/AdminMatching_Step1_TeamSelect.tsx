@@ -2,9 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { Owner, MasterTeam, FALLBACK_IMG } from '../types'; // 경로 수정됨
-import { getTierBadgeColor } from '../utils/helpers'; // 경로 수정됨
-import { QuickDraftModal } from './QuickDraftModal'; // 경로 수정됨
+import { Owner, MasterTeam, FALLBACK_IMG } from '../types'; 
+import { getTierBadgeColor } from '../utils/helpers'; 
+import { QuickDraftModal } from './QuickDraftModal'; 
 
 interface Props {
     state: any; 
@@ -54,7 +54,17 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
                     <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="">All Leagues</option>{displaySortedLeagues.map((l:any) => <option key={l.id} value={l.name}>{l.name}</option>)}</select>
-                    <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Tiers</option><option value="S">S Tier</option><option value="A">A Tier</option><option value="B">B Tier</option><option value="C">C Tier</option></select>
+                    
+                    {/* 🔥 [D 등급 추가] 랜덤/수동 매칭 필터에 D Tier 옵션 추가 */}
+                    <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold">
+                        <option value="ALL">All Tiers</option>
+                        <option value="S">S Tier</option>
+                        <option value="A">A Tier</option>
+                        <option value="B">B Tier</option>
+                        <option value="C">C Tier</option>
+                        <option value="D">D Tier</option>
+                    </select>
+
                     <input type="text" value={searchTeam} onChange={e => setSearchTeam(e.target.value)} disabled={isRolling} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs font-bold" />
                 </div>
             </div>
@@ -78,7 +88,20 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
                             {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (<div><p className="text-[10px] text-blue-500 font-black italic mb-2 ml-1 border-l-4 border-blue-500 pl-2 uppercase tracking-tighter">National Teams</p><div className="grid grid-cols-3 gap-3">{displaySortedLeagues.filter((l:any)=>l.category==='NATIONAL').map((l:any) => { const count = masterTeams.filter(t => t.region === l.name).length; return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>); })}</div></div>)}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-1">{availableTeams.map((t:any) => { const isSelected = selectedMasterTeamDocId === (t.docId || String(t.id)); return (<div id={`team-card-${t.id}`} key={t.id} onClick={() => setSelectedMasterTeamDocId(t.docId || String(t.id))} className={`relative bg-slate-900 p-3 rounded-2xl border flex flex-col items-center cursor-pointer group transition-all ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500 bg-emerald-900/10' : 'border-slate-800 hover:border-slate-600'}`}><div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-2xl p-2 mb-2"><img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div><span className="text-[10px] text-center text-slate-300 w-full truncate font-black italic tracking-tighter group-hover:text-white uppercase">{t.name}</span><span className={`text-[9px] px-2 py-0.5 rounded-full mt-1 font-black italic ${getTierBadgeColor(t.tier)}`}>{t.tier}</span></div>); })}</div>
+                        <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
+                            {availableTeams.map((t:any) => { 
+                                const isSelected = selectedMasterTeamDocId === (t.docId || String(t.id)); 
+                                return (
+                                    <div id={`team-card-${t.id}`} key={t.id} onClick={() => setSelectedMasterTeamDocId(t.docId || String(t.id))} className={`relative bg-slate-900 p-3 rounded-2xl border flex flex-col items-center cursor-pointer group transition-all ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500 bg-emerald-900/10' : 'border-slate-800 hover:border-slate-600'}`}>
+                                        <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-2xl p-2 mb-2">
+                                            <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} />
+                                        </div>
+                                        <span className="text-[10px] text-center text-slate-300 w-full truncate font-black italic tracking-tighter group-hover:text-white uppercase">{t.name}</span>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full mt-1 font-black italic ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
+                                    </div>
+                                ); 
+                            })}
+                        </div>
                     )
                 )}
             </div>

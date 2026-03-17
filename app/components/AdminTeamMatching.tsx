@@ -19,16 +19,20 @@ interface Props {
 }
 
 export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule, onDeleteSchedule }: Props) => {
+    // 🔥 모든 로직과 상태를 중앙에서 관리하는 커스텀 훅
     const state = useAdminMatching(targetSeason, owners, leagues, masterTeams, onNavigateToSchedule);
 
     return (
         <div className="space-y-6 animate-in fade-in relative">
+            {/* Step 1: 팀 선택 및 매칭 (🚨 D등급 필터 UI는 이 컴포넌트 내부에 있습니다) */}
             <AdminMatching_Step1_TeamSelect state={state} owners={owners} masterTeams={masterTeams} />
+            
+            {/* Step 2: 배정된 로스터 확인 */}
             <AdminMatching_Step2_Roster state={state} targetSeason={targetSeason} masterTeams={masterTeams} owners={owners} onDeleteSchedule={onDeleteSchedule} />
 
+            {/* Step 3: 스케줄 생성 후 대진표 세팅 */}
             {state.hasSchedule && (
                 <>
-                    {/* 🔥 주석 위치 수정 완료! 에러가 나지 않습니다. */}
                     {targetSeason.type === 'LEAGUE_PLAYOFF' && (
                         <AdminMatching_Step3_LeaguePO 
                             state={state} 
