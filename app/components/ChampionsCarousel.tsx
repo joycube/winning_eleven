@@ -86,6 +86,10 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
             const seasonHistory = historyData[String(season.id)];
             const theme = season.type === 'LEAGUE' ? 'BLUE' : 'GOLD';
 
+            // ==========================================
+            // CASE 1: 순수 리그 (LEAGUE)
+            // 리그는 DB(history_records)의 순위가 100% 정확하므로 DB를 믿습니다.
+            // ==========================================
             if (season.type === 'LEAGUE') {
                 if (!seasonHistory || !seasonHistory.teams || seasonHistory.teams.length === 0) return;
 
@@ -120,6 +124,10 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                     points: topTeam.points !== undefined ? topTeam.points : (topTeam.pts !== undefined ? topTeam.pts : ((topTeam.win || 0) * 3 + (topTeam.draw || 0)))
                 };
             } 
+            // ==========================================
+            // CASE 2: 토너먼트, PO, 컵
+            // DB 백엔드 버그(마지막 1경기만 저장됨) 우회를 위해 프론트에서 실제 승무패를 카운트합니다.
+            // ==========================================
             else {
                 if (!season.rounds || season.rounds.length === 0) return;
                 const allMatches = season.rounds.flatMap((r: any) => r.matches || []);
@@ -158,28 +166,34 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                 rawOwnerName = winnerTeamName === finalMatch.home ? finalMatch.homeOwner : finalMatch.awayOwner;
                 rawOwnerUid = winnerTeamName === finalMatch.home ? finalMatch.homeOwnerUid : finalMatch.awayOwnerUid;
 
-                if (seasonHistory) {
-                    if (seasonHistory.owners && seasonHistory.owners.length > 0) {
-                        const targetRawLower = String(rawOwnerName).trim().toLowerCase();
-                        const ownerStat = seasonHistory.owners.find((o: any) => {
-                            const dbName = String(o.name || o.owner || o.legacyName || '').trim().toLowerCase();
-                            return dbName === targetRawLower;
-                        });
-                        if (ownerStat) {
-                            const w = ownerStat.win || 0, d = ownerStat.draw || 0, l = ownerStat.loss || 0;
-                            const p = ownerStat.points !== undefined ? ownerStat.points : (ownerStat.pts !== undefined ? ownerStat.pts : (w * 3 + d));
-                            teamStats = { win: w, draw: d, loss: l, points: p };
+                // 🔥 [강력 픽스] DB에 의존하지 않고 해당 우승팀의 실제 경기 기록을 스케줄에서 직접 셉니다 (속도 지연 없음)
+                let w = 0, d = 0, l = 0;
+                season.rounds.forEach((r: any) => {
+                    (r.matches || []).forEach((m: any) => {
+                        if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE') {
+                            if (m.home === winnerTeamName) {
+                                const hs = Number(m.homeScore || 0);
+                                const as = Number(m.awayScore || 0);
+                                if (hs > as) w++;
+                                else if (hs === as) d++;
+                                else l++;
+                            } else if (m.away === winnerTeamName) {
+                                const hs = Number(m.homeScore || 0);
+                                const as = Number(m.awayScore || 0);
+                                if (as > hs) w++;
+                                else if (as === hs) d++;
+                                else l++;
+                            }
                         }
-                    }
-                    if (!teamStats && seasonHistory.teams && seasonHistory.teams.length > 0) {
-                        const teamStat = seasonHistory.teams.find((t: any) => t.name.trim().toLowerCase().replace(/\s+/g, '') === winnerTeamName?.trim().toLowerCase().replace(/\s+/g, ''));
-                        if (teamStat) {
-                            const w = teamStat.win || 0, d = teamStat.draw || 0, l = teamStat.loss || 0;
-                            const p = teamStat.points !== undefined ? teamStat.points : (teamStat.pts !== undefined ? teamStat.pts : (w * 3 + d));
-                            teamStats = { win: w, draw: d, loss: l, points: p };
-                        }
-                    }
-                }
+                    });
+                });
+
+                teamStats = {
+                    win: w,
+                    draw: d,
+                    loss: l,
+                    points: (w * 3) + d
+                };
             }
 
             if (!winnerTeamName) return;
