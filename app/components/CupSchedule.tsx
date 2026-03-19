@@ -1,3 +1,5 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore'; 
@@ -168,7 +170,8 @@ export const CupSchedule = ({
   };
 
   const internalKnockoutStages = useMemo(() => {
-    if (currentSeason?.type !== 'CUP' || !currentSeason?.rounds) return null;
+    if (!['CUP', 'TOURNAMENT'].includes(currentSeason?.type || '') || !currentSeason?.rounds) return null;
+    
     const createPlaceholder = (vId: string, stageName: string): Match => ({ 
         id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
         seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
@@ -180,10 +183,13 @@ export const CupSchedule = ({
     const slots = {
         roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
         roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'SEMI_FINAL')),
+        thirdPlace: [createPlaceholder('v-3rd', '3RD_PLACE')],
         final: [createPlaceholder('v-final', 'FINAL')]
     };
 
+    // 🔥 [수술 포인트] 참가 팀 수에 기반한 멍청한 추측 로직을 싹 날려버리고, DB만 봅니다!
     let hasActualRoundOf8 = false;
+
     currentSeason.rounds.forEach((round) => {
         if (!round.matches) return;
         round.matches.forEach((m) => {
@@ -191,13 +197,17 @@ export const CupSchedule = ({
             if (stage.includes("GROUP")) return;
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
-            if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+            
+            if (stage.includes("3RD_PLACE") || stage.includes("34") || stage.includes("THIRD")) {
+                slots.thirdPlace[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+            } else if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                 slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
                 if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("ROUND_OF_8")) {
+            } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
                 if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-                hasActualRoundOf8 = true;
+                // 🔥 진짜 8강 매치 데이터가 있을 때만 8강을 그립니다!
+                hasActualRoundOf8 = true; 
             }
         });
     });
@@ -215,19 +225,44 @@ export const CupSchedule = ({
         }
     };
 
-    syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
-    syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
-    syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
-    syncWinner(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+    const syncLoser = (target: any, side: 'home' | 'away', source: Match | null) => {
+        if (!target || !source) return;
+        const winner = getWinnerName(source);
+        if (winner !== 'TBD' && winner !== 'BYE') {
+            const loser = winner === source.home ? source.away : source.home;
+            if (loser !== 'TBD' && loser !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                target[side] = loser;
+                const info = getTeamExtendedInfo(loser);
+                target[`${side}Logo`] = info.logo;
+                target[`${side}Owner`] = info.ownerName;
+                target[`${side}OwnerUid`] = info.ownerUid; 
+                target[`${side}Id`] = info.id; 
+            }
+        }
+    };
+
+    // 8강 승자 -> 4강 세팅 (8강이 존재할 때만 실행)
+    if (hasActualRoundOf8) {
+        syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+        syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+        syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+        syncWinner(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+    }
+    
+    // 4강 승자 -> 결승 세팅
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
+    // 4강 패자 -> 3·4위전 세팅
+    syncLoser(slots.thirdPlace[0], 'home', slots.roundOf4[0]);
+    syncLoser(slots.thirdPlace[0], 'away', slots.roundOf4[1]);
+
+    // 🔥 8강이 없으면 slots.roundOf8에 null을 던져서 렌더링을 완전히 막습니다!
     return { ...slots, roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null };
   }, [currentSeason, viewSeasonId, activeRankingData, masterTeams, owners]);
 
-  const displayStages = knockoutStages || internalKnockoutStages;
+  const displayStages = currentSeason?.type === 'LEAGUE_PLAYOFF' ? knockoutStages : internalKnockoutStages;
 
-  // 🔥 [핵심 스크롤 및 팝업 제어 로직]
   useEffect(() => {
     if (!currentSeason || !currentSeason.rounds) return; 
 
@@ -239,6 +274,7 @@ export const CupSchedule = ({
         });
         if (displayStages.roundOf8) allMatches.push(...displayStages.roundOf8);
         if (displayStages.roundOf4) allMatches.push(...displayStages.roundOf4);
+        if (displayStages.thirdPlace) allMatches.push(...displayStages.thirdPlace); 
         if (displayStages.final) allMatches.push(...displayStages.final);
     } else { 
         currentSeason.rounds.forEach((r) => {
@@ -253,7 +289,6 @@ export const CupSchedule = ({
     let targetMatchId: string | null = null;
     let urlTargetMatch: Match | null = null;
 
-    // 시즌 완료 여부 판정
     let isSeasonCompleted = currentSeason.status === 'COMPLETED';
     if (!isSeasonCompleted && realMatches.length > 0) {
         const totalValid = realMatches.filter(m => m.home !== 'BYE' && m.away !== 'BYE').length;
@@ -265,12 +300,10 @@ export const CupSchedule = ({
         targetMatchId = urlMatchId;
         urlTargetMatch = realMatches.find(m => m.id === urlMatchId) || null;
     } else if (!isSeasonCompleted) {
-        // 미진행 경기 중 첫 번째 우선
         const upcomingMatch = realMatches.find(m => m.status !== 'COMPLETED' && m.homeScore === '' && m.awayScore === '');
         if (upcomingMatch) {
             targetMatchId = upcomingMatch.id;
         } else {
-            // 미진행이 없으면 마지막 완료 경기
             const completedMatches = realMatches.filter(m => (m.status === 'COMPLETED' || m.homeScore !== '') && m.id);
             if (completedMatches.length > 0) {
                 targetMatchId = completedMatches[completedMatches.length - 1].id;
@@ -356,9 +389,20 @@ export const CupSchedule = ({
                 <div className="min-w-max md:min-w-[760px] px-2">
                     <div className="flex items-center gap-3 mb-6"><div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3></div>
                     <div className="bracket-tree no-scrollbar">
-                        {displayStages.roundOf8 && (<div className="bracket-column">{displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Match ${i+1}`} match={m} />)}</div>)}
-                        <div className="bracket-column">{displayStages.roundOf4.map((m: any, i: number) => <TournamentMatchBox key={`r4-${i}`} title={`Semi ${i+1}`} match={m} />)}</div>
-                        <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><TournamentMatchBox title="Final" match={displayStages.final[0]} highlight /></div></div>
+                        {displayStages.roundOf8 && (<div className="bracket-column">{displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Quarter-Final ${i+1}`} match={m} />)}</div>)}
+                        <div className="bracket-column">{displayStages.roundOf4.map((m: any, i: number) => <TournamentMatchBox key={`r4-${i}`} title={`Semi-Final ${i+1}`} match={m} />)}</div>
+                        
+                        <div className="bracket-column flex flex-col justify-center">
+                            <div className="relative scale-110 ml-4 mb-8">
+                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
+                                <TournamentMatchBox title="Grand Final" match={displayStages.final[0]} highlight />
+                            </div>
+                            {displayStages.thirdPlace && (
+                                <div className="relative scale-95 ml-4 opacity-90 mt-4">
+                                    <TournamentMatchBox title="3rd Place Match" match={displayStages.thirdPlace[0]} />
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -367,46 +411,53 @@ export const CupSchedule = ({
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
-                    {/* 1. 조별리그 */}
                     {currentSeason?.rounds?.map((r, rIdx) => {
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
                         if (groupMatches.length === 0) return null;
                         const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
-                        return uniqueGroups.map(gName => (
-                            <div key={`group-${rIdx}-${gName}`} className="space-y-6">
-                                <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
-                                    {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                        const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                        const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
-                                        
-                                        return (
-                                            <div key={m.id} 
-                                                 ref={(el) => matchRefs.current[m.id] = el}
-                                                 className="flex flex-col mb-2">
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
-                                                    {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
-                                                </div>
-                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ));
+                        return (
+                            <React.Fragment key={`group-stage-${rIdx}`}>
+                                {uniqueGroups.map(gName => (
+                                    <div key={`group-${rIdx}-${gName}`} className="space-y-6">
+                                        <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
+                                            {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
+                                                const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                
+                                                return (
+                                                    <div key={m.id} 
+                                                         ref={(el) => matchRefs.current[m.id] = el}
+                                                         className="flex flex-col mb-2">
+                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                            <MatchCard match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
+                                                            {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
+                                                            <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
+                                                        </div>
+                                                        <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </React.Fragment>
+                        );
                     })}
 
-                    {/* 2. 토너먼트 리스트 */}
-                    {[ { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' }, { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' }, { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' } ].map((section) => (
+                    {[ 
+                        { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' }, 
+                        { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' }, 
+                        { title: '🥉 3rd Place Match (3·4위전)', matches: displayStages.thirdPlace, id: 'tp' },
+                        { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' } 
+                    ].map((section) => (
                         section.matches && (
                             <div key={section.id} className="space-y-6">
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{section.title}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
-                                        if (m.id && m.id.startsWith('v-')) return null;
+                                        const isPlaceholder = m.id && m.id.startsWith('v-');
 
                                         const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
@@ -414,14 +465,14 @@ export const CupSchedule = ({
                                         
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} 
-                                                 ref={(el) => { if (m.id) matchRefs.current[m.id] = el; }}
-                                                 className="flex flex-col mb-2">
+                                                 ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }}
+                                                 className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard match={{ ...safeMatch, matchLabel: `${section.title} / ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
-                                                    {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
+                                                    <MatchCard match={{ ...safeMatch, matchLabel: `${section.title.split(' ')[0]} / ${mIdx + 1}경기` }} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
+                                                    {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
-                                                <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
+                                                {!isPlaceholder && <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />}
                                             </div>
                                         );
                                     })}
@@ -431,7 +482,6 @@ export const CupSchedule = ({
                     ))}
                 </>
             ) : (
-                /* 3. 기본 라운드 형태 */
                 currentSeason?.rounds?.map((r, rIdx) => (
                     <div key={rIdx} className="space-y-8">
                          {Array.from(new Set(r.matches.map(m => m.stage))).map((stageName) => (
