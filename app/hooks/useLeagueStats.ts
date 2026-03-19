@@ -37,21 +37,35 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         const regularPlayerStatsMap = new Map<string, any>(); 
         const playoffPlayerStatsMap = new Map<string, any>(); 
 
+        // 🔥 [수술 핵심 포인트 1] 토너먼트 모드인지 미리 확인
+        const isTournamentMode = targetSeason.type === 'TOURNAMENT';
+
         targetSeason.rounds?.forEach(r => (r.matches || []).forEach(m => {
           const canonicalHomeOwner = getCanonicalOwnerName(m.homeOwner);
           const canonicalAwayOwner = getCanonicalOwnerName(m.awayOwner);
           
-          // 🔥 [방어막 1] stage가 undefined이거나 숫자로 들어올 경우를 대비한 형변환
           const stageUpper = String(m.stage || '').toUpperCase();
           const roundNameUpper = String(r.name || '').toUpperCase();
           const isPlayoffMatch = ['FINAL', 'SEMI', 'QUARTER', 'ROUND_OF', 'PO', '34'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
 
           if(m.status === 'COMPLETED' || m.status === 'BYE') {
-            if (!isPlayoffMatch) {
+            // 🔥 [수술 핵심 포인트 2] "토너먼트 모드이거나, 플레이오프 매치가 아닐 때만" 스탯을 합산해라!
+            if (isTournamentMode || !isPlayoffMatch) {
                 const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
                 const ht = teamStats.get(m.home); const at = teamStats.get(m.away);
-                if(ht) { ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } }
-                if(at && m.away !== 'BYE' && !m.away.includes('BYE')) { at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } }
+                
+                if(ht) { 
+                    ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; 
+                    if(h>a) { ht.win++; ht.points+=3; } 
+                    else if(h<a) { ht.loss++; } 
+                    else { ht.draw++; ht.points++; } 
+                }
+                if(at && m.away !== 'BYE' && !m.away.includes('BYE')) { 
+                    at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; 
+                    if(a>h) { at.win++; at.points+=3; } 
+                    else if(a<h) { at.loss++; } 
+                    else { at.draw++; at.points++; } 
+                }
             }
           }
           
@@ -60,7 +74,6 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
                 records.forEach(s => { 
                     const owner = isHome ? canonicalHomeOwner : canonicalAwayOwner;
                     const team = isHome ? m.home : m.away;
-                    // 🔥 [방어막 2] s가 문자열일 경우를 대비한 안전한 참조
                     const pName = (s.name || s).toString().trim();
                     const key = `${pName}-${team}-${owner}`;
                     
@@ -104,7 +117,7 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         };
     }, [seasons, viewSeasonId, owners]);
 
-    // 2. 🔥 역대 통합 기록 엔진
+    // 2. 역대 통합 기록 엔진
     const historyData = useMemo(() => {
         const ownerHist = new Map<string, any>(); 
         const teamHist = new Map<string, any>(); 
@@ -165,11 +178,15 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
             const sTeamStats = new Map<string, any>();
             s.teams?.forEach(t => sTeamStats.set(t.name, { ...t, ownerName: getCanonicalOwnerName(t.ownerName), win:0, draw:0, loss:0, points:0 }));
 
+            // 🔥 [수술 핵심 포인트 3] 역대 기록 합산 시에도 토너먼트 모드 처리
+            const isTourney = s.type === 'TOURNAMENT';
+
             s.rounds?.forEach(r => (r.matches || []).forEach(m => {
                 if(m.status === 'COMPLETED' || m.status === 'BYE') {
-                    // 🔥 [방어막 3] 진행 중인 시즌 합산 시 stage 참조 에러 방지
                     const isKnockout = ['FINAL', 'SEMI', 'QUARTER'].some(k => String(m.stage||'').toUpperCase().includes(k));
-                    if (!isKnockout) {
+                    
+                    // 토너먼트 모드면 모든 경기 포함, 그 외엔 Knockout 제외
+                    if (isTourney || !isKnockout) {
                         const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
                         const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
                         if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }

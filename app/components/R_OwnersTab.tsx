@@ -8,8 +8,9 @@ interface ROwnersTabProps {
   currentSeason: any;
   activeRankingData: any;
   owners: Owner[];
-  sortedTeams: any[];
-  grandChampionInfo: any;
+  sortedTeams: any[]; // 정규리그/조별리그 순위 배열
+  grandChampionInfo: any; // 최종 우승팀 정보 (CUP, TOURNAMENT, LEAGUE_PLAYOFF 공통)
+  poTournamentResult?: { champion: string, runnerUp: string, thirdPlace: string }; // 🔥 [디벨롭] 리그+PO 모드 전용 토너먼트 결과
   prizeRule: any;
   footerText: string;
 }
@@ -20,6 +21,7 @@ export default function R_OwnersTab({
   owners,
   sortedTeams,
   grandChampionInfo,
+  poTournamentResult,
   prizeRule,
   footerText
 }: ROwnersTabProps) {
@@ -40,22 +42,52 @@ export default function R_OwnersTab({
     }
   };
 
+  const getOwnerNameByTeamName = (teamName: string) => {
+      if (!teamName || teamName === 'TBD') return '-';
+      const statsTeam = activeRankingData?.teams?.find((t:any) => t.name === teamName);
+      if (statsTeam) return resolveOwnerNickname(statsTeam.ownerName, statsTeam.ownerUid);
+      return '-';
+  };
+
+  // 🔥 [핵심 디벨롭] 시즌 타입에 따른 완벽한 상금 계산 로직 분리
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
     const resolvedInput = resolveOwnerNickname(ownerName);
     
-    const checkMatch = (idx: number) => {
-        const teamOwner = sortedTeams[idx]?.ownerName;
-        return teamOwner && resolveOwnerNickname(teamOwner) === resolvedInput;
-    };
-    
-    if (checkMatch(0)) totalPrize += (prizeRule.first || 0);
-    if (checkMatch(1)) totalPrize += (prizeRule.second || 0);
-    if (checkMatch(2)) totalPrize += (prizeRule.third || 0);
-    
-    // 🔥 오직 부모가 준 정식 grandChampionInfo 데이터만 의존합니다.
-    if (grandChampionInfo && resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
-        totalPrize += (prizeRule.champion || 0);
+    // [1] LEAGUE_PLAYOFF 모드 상금 계산 (황금 밸런스 룰 적용)
+    if (currentSeason?.type === 'LEAGUE_PLAYOFF') {
+        // 1. 리그 우승 (정규 1위) = prizeRule.first
+        if (sortedTeams[0] && resolveOwnerNickname(sortedTeams[0].ownerName) === resolvedInput) {
+            totalPrize += (prizeRule.first || 0);
+        }
+        
+        // 2. 토너먼트 시상 (poTournamentResult 기반 또는 grandChampionInfo 기반)
+        if (poTournamentResult) {
+            // 부모가 PO 결과를 넘겨준 경우 (가장 정확함)
+            if (getOwnerNameByTeamName(poTournamentResult.champion) === resolvedInput) totalPrize += (prizeRule.champion || 0);
+            if (getOwnerNameByTeamName(poTournamentResult.runnerUp) === resolvedInput) totalPrize += (prizeRule.second || 0);
+            if (getOwnerNameByTeamName(poTournamentResult.thirdPlace) === resolvedInput) totalPrize += (prizeRule.third || 0);
+        } else if (grandChampionInfo) {
+            // 부모가 PO 결과를 안 넘겨줬을 때의 Fallback (최소한 최종 우승자는 챙김)
+            if (resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
+                totalPrize += (prizeRule.champion || 0);
+            }
+        }
+    } 
+    // [2] 일반 CUP / TOURNAMENT / LEAGUE 모드 상금 계산 (기존 로직)
+    else {
+        const checkMatch = (idx: number) => {
+            const teamOwner = sortedTeams[idx]?.ownerName;
+            return teamOwner && resolveOwnerNickname(teamOwner) === resolvedInput;
+        };
+        
+        if (checkMatch(0)) totalPrize += (prizeRule.first || 0);
+        if (checkMatch(1)) totalPrize += (prizeRule.second || 0);
+        if (checkMatch(2)) totalPrize += (prizeRule.third || 0);
+        
+        if (grandChampionInfo && resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
+            totalPrize += (prizeRule.champion || 0);
+        }
     }
     
     return totalPrize;
@@ -93,7 +125,8 @@ export default function R_OwnersTab({
                         </div>
                         <div className="flex-1 text-center md:text-left">
                             <div className="inline-flex items-center gap-2 bg-yellow-500 text-black px-4 py-1 rounded-full font-black text-xs tracking-widest mb-4 shadow-lg uppercase">
-                                <span>👑</span> GRAND FINAL CHAMPION
+                                <span>👑</span> 
+                                {currentSeason?.type === 'LEAGUE_PLAYOFF' ? 'TOURNAMENT CHAMPION' : 'GRAND FINAL CHAMPION'}
                             </div>
                             <h2 className="text-4xl md:text-6xl font-black text-white mb-2 tracking-tighter italic drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">{resolvedNick}</h2>
                             <p className="text-yellow-400 font-bold tracking-widest text-sm md:text-base opacity-80 uppercase italic mb-6">With {team.name}</p>
@@ -132,7 +165,7 @@ export default function R_OwnersTab({
           const displayPhoto = ownerInfo?.photo || FALLBACK_IMG;
           
           let title = "🚩 CURRENT LEAGUE 1ST";
-          if (currentSeason?.type === 'LEAGUE_PLAYOFF') title = "🚩 REGULAR LEAGUE 1ST";
+          if (currentSeason?.type === 'LEAGUE_PLAYOFF') title = "🥇 REGULAR LEAGUE WINNER";
           else if (currentSeason?.status === 'COMPLETED') title = "🏆 LEAGUE CHAMPION";
 
           return (
