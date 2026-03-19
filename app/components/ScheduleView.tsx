@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore'; 
 import { db } from '../firebase'; 
@@ -7,7 +9,6 @@ import { Season, Match, MasterTeam, Owner } from '../types';
 import { MessageSquare } from 'lucide-react';
 import { LiveFeed } from './LiveFeed';
 
-// 🔥 신규 공통 뷰어 컴포넌트 임포트
 import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
 import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
 
@@ -121,7 +122,6 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
-  // 🔥 [핵심 수술 파트] 스케줄 리스트에도 실시간 TBD 뚫어주기 (계산 로직 추가)
   const displayRounds = useMemo(() => {
       if (!currentSeason || !currentSeason.rounds) return [];
       
@@ -134,6 +134,9 @@ export const ScheduleView = ({
       };
 
       const fillTeamData = (match: any, side: 'home' | 'away', teamName: string) => {
+          // 🔥 [핵심 방탄 로직] DB에 이미 수동 지정(강제 진출 등)으로 팀이 들어가 있다면 절대 덮어쓰지 않음!
+          if (match[side] !== 'TBD' && match[side] !== 'BYE' && match[side] !== '') return;
+
           match[side] = teamName;
           const master = getTeamMasterInfo(teamName);
           match[`${side}Logo`] = master?.logo || FALLBACK_IMG;

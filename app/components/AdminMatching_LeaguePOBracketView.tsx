@@ -14,7 +14,6 @@ interface Props {
 
 export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, masterTeams, activeRankingData }: Props) => {
     
-    // 🧠 오너 닉네임 매핑 함수
     const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
         try {
             if (!ownerName) return '-';
@@ -31,7 +30,6 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
         }
     };
 
-    // 🧠 팀 상세 정보(로고 등) 매핑 함수
     const getTeamExtendedInfo = (teamIdentifier: string) => {
         const tbdTeam = { name: teamIdentifier || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-', ownerUid: undefined as string | undefined };
         if (!teamIdentifier || teamIdentifier === 'TBD') return tbdTeam;
@@ -51,11 +49,10 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
         };
     };
 
-    // 🧠 1차전+2차전 합산 스코어 계산 및 승자 판별 로직
     const hybridPlayoffData = useMemo(() => {
         if (currentSeason?.type !== 'LEAGUE_PLAYOFF' || !currentSeason?.rounds) return null;
 
-        const calcAgg = (leg1: Match | undefined, leg2: Match | undefined) => {
+        const calcAgg = (leg1: Match | undefined, leg2: Match | undefined, targetNextSlotTeam: string | undefined = undefined) => {
             if (!leg1) return null;
             let s1 = 0, s2 = 0;
             let isLeg1Done = leg1.status === 'COMPLETED';
@@ -69,7 +66,19 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
             }
             
             let aggWinner = 'TBD';
-            if (isLeg1Done && (!leg2 || isLeg2Done)) {
+            
+            // 🔥 [수술 핵심 1순위] DB에 저장된 명시적 승자(aggWinner)가 있는지 최우선 확인 (승부차기, 강제 지정)
+            if (leg2 && (leg2 as any).aggWinner && (leg2 as any).aggWinner !== 'TBD') {
+                aggWinner = (leg2 as any).aggWinner;
+            } else if (leg1 && (leg1 as any).aggWinner && (leg1 as any).aggWinner !== 'TBD') {
+                aggWinner = (leg1 as any).aggWinner;
+            }
+            // 🔥 2순위: 다음 라운드 슬롯에 이미 팀이 진출해 있는지 확인
+            else if (targetNextSlotTeam && targetNextSlotTeam !== 'TBD' && targetNextSlotTeam !== 'BYE' && targetNextSlotTeam !== '') {
+                aggWinner = targetNextSlotTeam;
+            } 
+            // 🔥 3순위: 일반적인 점수 합산으로 승자 계산
+            else if (isLeg1Done && (!leg2 || isLeg2Done)) {
                 if (s1 > s2) aggWinner = t1; else if (s2 > s1) aggWinner = t2;
             }
             
@@ -88,13 +97,16 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
         const poFinalRounds = displayRounds.filter((r: any) => r.name === 'SEMI_FINAL').flatMap((r: any) => r.matches);
         const grandFinalRounds = displayRounds.filter((r: any) => r.name === 'FINAL').flatMap((r: any) => r.matches);
 
+        const actualPoFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
+        const actualGrandFinal = grandFinalRounds.length > 0 ? grandFinalRounds[0] : null;
+
         const poSemi1_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전'));
         const poSemi1_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전'));
         const poSemi2_leg1 = po4Rounds.find((m: any) => m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전'));
         const poSemi2_leg2 = po4Rounds.find((m: any) => m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전'));
 
-        const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2);
-        const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2);
+        const compSemi1 = calcAgg(poSemi1_leg1, poSemi1_leg2, actualPoFinal_leg1?.home);
+        const compSemi2 = calcAgg(poSemi2_leg1, poSemi2_leg2, actualPoFinal_leg1?.away);
 
         if (compSemi1?.aggWinner && compSemi1.aggWinner !== 'TBD') {
             poFinalRounds.forEach((m: any) => { const info = getTeamExtendedInfo(compSemi1.aggWinner); m.home = info.name; m.homeLogo = info.logo; m.homeOwner = info.ownerName; m.homeOwnerUid = info.ownerUid; });
@@ -105,7 +117,8 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
 
         const poFinal_leg1 = poFinalRounds.find((m: any) => m.matchLabel?.includes('1차전'));
         const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
-        const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
+        
+        const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2, actualGrandFinal?.away);
 
         if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') {
             grandFinalRounds.forEach((m: any) => { const info = getTeamExtendedInfo(compPoFinal.aggWinner); m.away = info.name; m.awayLogo = info.logo; m.awayOwner = info.ownerName; m.awayOwnerUid = info.ownerUid; });
@@ -114,11 +127,11 @@ export const AdminMatching_LeaguePOBracketView = ({ currentSeason, owners, maste
         return { compSemi1, compSemi2, compPoFinal, displayGrandFinal: grandFinalRounds.length > 0 ? grandFinalRounds[0] : null };
     }, [currentSeason, activeRankingData, masterTeams, owners]);
 
-    // 🎨 UI: 매치 카드 그리기 컴포넌트
     const BracketMatchBox = ({ match, title, highlight = false }: any) => {
         if (!match) return null;
         const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
         const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+        
         let winner = match.aggWinner || 'TBD'; 
         if (winner === 'TBD' && match.status === 'COMPLETED') {
             if (hScore !== null && aScore !== null) {

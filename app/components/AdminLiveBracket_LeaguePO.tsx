@@ -15,7 +15,6 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
     
     const resolveTeam = (tName: string) => {
         if (!tName || tName === 'TBD' || tName === 'BYE') return null;
-        // 🔥 [빌드 에러 해결] Vercel Strict Mode 대응을 위해 (m as any) 타입 단언 적용
         const mTeam = masterTeams.find(m => m.name === tName || (m as any).teamName === tName);
         if (mTeam) {
             const owner = owners.find(o => o.uid === mTeam.ownerUid || o.docId === mTeam.ownerUid) || owners.find(o => o.nickname === mTeam.ownerName);
@@ -37,8 +36,17 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
     };
 
     const getAggScore = (leg1: Match | undefined, leg2: Match | undefined) => {
-        if (!leg1) return { home: '', away: '' };
+        if (!leg1) return { home: '', away: '', aggWinner: 'TBD' };
         let hs = 0, as = 0, hasS = false;
+        let aggWinner = 'TBD';
+
+        // 🔥 [수술 포인트] DB에 저장된 강제 진출(승부차기 승 등) 도장(aggWinner) 최우선 확보
+        if (leg2 && (leg2 as any).aggWinner && (leg2 as any).aggWinner !== 'TBD') {
+            aggWinner = (leg2 as any).aggWinner;
+        } else if (leg1 && (leg1 as any).aggWinner && (leg1 as any).aggWinner !== 'TBD') {
+            aggWinner = (leg1 as any).aggWinner;
+        }
+
         [leg1, leg2].forEach(m => {
             if (m && (m.status === 'COMPLETED' || m.homeScore !== '' || m.awayScore !== '')) {
                 hasS = true;
@@ -51,13 +59,17 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
                 }
             }
         });
-        return { home: hasS ? String(hs) : '', away: hasS ? String(as) : '' };
+        return { 
+            home: hasS ? String(hs) : '', 
+            away: hasS ? String(as) : '',
+            aggWinner 
+        };
     };
 
     let dbLive = {
-        qf1_t1: null as any, qf1_t2: null as any, qf1_s1: '', qf1_s2: '',
-        qf2_t1: null as any, qf2_t2: null as any, qf2_s1: '', qf2_s2: '',
-        sf_t1: null as any, sf_t2: null as any, sf_s1: '', sf_s2: '',
+        qf1_t1: null as any, qf1_t2: null as any, qf1_s1: '', qf1_s2: '', qf1_aggW: 'TBD',
+        qf2_t1: null as any, qf2_t2: null as any, qf2_s1: '', qf2_s2: '', qf2_aggW: 'TBD',
+        sf_t1: null as any, sf_t2: null as any, sf_s1: '', sf_s2: '', sf_aggW: 'TBD',
         gf_t1: null as any, gf_t2: null as any, gf_s1: '', gf_s2: ''
     };
 
@@ -73,6 +85,7 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
             const agg = getAggScore(r4[0], r4[1]);
             dbLive.qf1_s1 = agg.away;
             dbLive.qf1_s2 = agg.home;
+            dbLive.qf1_aggW = agg.aggWinner;
         }
 
         // QF2
@@ -82,6 +95,7 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
             const agg = getAggScore(r4[2], r4[3]);
             dbLive.qf2_s1 = agg.away;
             dbLive.qf2_s2 = agg.home;
+            dbLive.qf2_aggW = agg.aggWinner;
         }
 
         // SF
@@ -91,6 +105,7 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
             const agg = getAggScore(sf[0], sf[1]);
             dbLive.sf_s1 = agg.home;
             dbLive.sf_s2 = agg.away;
+            dbLive.sf_aggW = agg.aggWinner;
         }
 
         // GF
@@ -102,17 +117,25 @@ export const AdminLiveBracket_LeaguePO = ({ targetSeason, masterTeams, owners }:
             dbLive.gf_s2 = agg.away;
         }
 
-        // 실시간 승자 예측
-        const predictWinner = (t1: any, s1: string, t2: any, s2: string) => {
+        // 🔥 [가장 핵심 수술] 1순위: DB 강제 진출 여부 / 2순위: 다음 라운드 TBD 여부 / 3순위: 점수 비교
+        const getWinner = (t1: any, s1: string, t2: any, s2: string, nextRoundTeamDB: any, explicitAggWinner: string) => {
+            if (explicitAggWinner && explicitAggWinner !== 'TBD') {
+                if (t1 && t1.name === explicitAggWinner) return t1;
+                if (t2 && t2.name === explicitAggWinner) return t2;
+                return resolveTeam(explicitAggWinner); 
+            }
+            
+            if (nextRoundTeamDB) return nextRoundTeamDB;
+            
             if (!t1 || !t2 || s1 === '' || s2 === '') return null;
             if (Number(s1) > Number(s2)) return t1;
             if (Number(s2) > Number(s1)) return t2;
             return null;
         };
 
-        if (!dbLive.sf_t1) dbLive.sf_t1 = predictWinner(dbLive.qf1_t1, dbLive.qf1_s1, dbLive.qf1_t2, dbLive.qf1_s2);
-        if (!dbLive.sf_t2) dbLive.sf_t2 = predictWinner(dbLive.qf2_t1, dbLive.qf2_s1, dbLive.qf2_t2, dbLive.qf2_s2);
-        if (!dbLive.gf_t2) dbLive.gf_t2 = predictWinner(dbLive.sf_t1, dbLive.sf_s1, dbLive.sf_t2, dbLive.sf_s2);
+        dbLive.sf_t1 = getWinner(dbLive.qf1_t1, dbLive.qf1_s1, dbLive.qf1_t2, dbLive.qf1_s2, dbLive.sf_t1, dbLive.qf1_aggW);
+        dbLive.sf_t2 = getWinner(dbLive.qf2_t1, dbLive.qf2_s1, dbLive.qf2_t2, dbLive.qf2_s2, dbLive.sf_t2, dbLive.qf2_aggW);
+        dbLive.gf_t2 = getWinner(dbLive.sf_t1, dbLive.sf_s1, dbLive.sf_t2, dbLive.sf_s2, dbLive.gf_t2, dbLive.sf_aggW);
     }
 
     const renderScore = (score: string) => {
