@@ -19,12 +19,13 @@ interface AdminCupStep2Props {
     onAutoDraw: () => void;
     onResetDraw: () => void;
     onCreateSchedule: () => void;
+    onResetAll?: () => void; // 🔥 Vercel 빌드 에러 해결을 위해 추가된 타입 정의
 }
 
 export const AdminCupStep2 = ({
     unassignedPool, groups, customConfig, configMode, isLocked = false,
     onDragStart, onDrop, onDragOver, onSlotClick, onUpdateStructure,
-    onAutoDraw, onResetDraw, onCreateSchedule
+    onAutoDraw, onResetDraw, onCreateSchedule, onResetAll // 🔥 Props 수신 추가
 }: AdminCupStep2Props) => {
     
     const handleLockedAction = (action: () => void) => {
