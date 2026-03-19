@@ -3,6 +3,9 @@ import { Season, Team, Owner, Prizes, FALLBACK_IMG } from '../types';
 
 export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: Owner[] = [], historyRecords: any[] = []) => {
     
+    // 유틸리티: 팀명 표준화 (매칭 정확도 100% 보장)
+    const norm = (s: any) => s ? String(s).trim().toLowerCase().replace(/\s+/g, '') : "";
+
     const getCanonicalOwnerName = (rawIdOrName: string) => {
         if (!rawIdOrName) return 'Unknown';
         const searchInput = rawIdOrName.toString().trim();
@@ -22,6 +25,80 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         return ownerByName ? ownerByName.nickname : rawIdOrName;
     };
 
+    // 🔥 'TBD' 유령 추적 및 실제 팀명 치환 (안전하게 유지)
+    const resolveTbdMatches = (seasonId: string | number, seasonType: string, rawMatches: any[]) => {
+        let resolved = rawMatches.map(m => ({ ...m })); 
+        
+        const getWinner = (m: any) => {
+            if (!m || m.status !== 'COMPLETED') return 'TBD';
+            if (m.aggWinner && m.aggWinner !== 'TBD') return m.aggWinner;
+            const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
+            return h > a ? m.home : (a > h ? m.away : 'TBD');
+        };
+
+        if (seasonType === 'TOURNAMENT' || seasonType === 'CUP') {
+            const orderedStages = ['ROUND_OF_32', 'ROUND_OF_16', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL'];
+            for (let i = 0; i < orderedStages.length - 1; i++) {
+                const currStageMatches = resolved.filter((m:any) => m.stage === orderedStages[i]).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
+                const nextStageMatches = resolved.filter((m:any) => m.stage === orderedStages[i+1]).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
+                
+                if (currStageMatches.length > 0 && nextStageMatches.length > 0) {
+                    nextStageMatches.forEach((nextM: any, idx: number) => {
+                        if (nextM.home === 'TBD' || nextM.home === 'BYE') {
+                            const m1 = currStageMatches[idx * 2];
+                            if (m1) { nextM.home = getWinner(m1); nextM.homeLogo = (getWinner(m1) === m1.home ? m1.homeLogo : m1.awayLogo) || FALLBACK_IMG; }
+                        }
+                        if (nextM.away === 'TBD' || nextM.away === 'BYE') {
+                            const m2 = currStageMatches[idx * 2 + 1];
+                            if (m2) { nextM.away = getWinner(m2); nextM.awayLogo = (getWinner(m2) === m2.home ? m2.homeLogo : m2.awayLogo) || FALLBACK_IMG; }
+                        }
+                    });
+                }
+            }
+        }
+        else if (seasonType === 'LEAGUE_PLAYOFF') {
+            const calcAggWinner = (leg1: any, leg2: any) => {
+                if (!leg1) return 'TBD';
+                if (leg2?.aggWinner && leg2.aggWinner !== 'TBD') return leg2.aggWinner;
+                if (leg1?.aggWinner && leg1.aggWinner !== 'TBD') return leg1.aggWinner;
+                let s1 = 0, s2 = 0;
+                if (leg1.status === 'COMPLETED') { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+                if (leg2?.status === 'COMPLETED') {
+                    if (leg2.home === leg1.away) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); }
+                    else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+                }
+                if (s1 > s2) return leg1.home;
+                if (s2 > s1) return leg1.away;
+                return 'TBD';
+            };
+
+            const sId = seasonId;
+            const poSemi1_leg1 = resolved.find((m:any) => m.id === `po_${sId}_4_1_1` || (m.matchLabel?.includes('5위') && m.matchLabel?.includes('1차전')));
+            const poSemi1_leg2 = resolved.find((m:any) => m.id === `po_${sId}_4_1_2` || (m.matchLabel?.includes('2위') && m.matchLabel?.includes('2차전')));
+            const poSemi2_leg1 = resolved.find((m:any) => m.id === `po_${sId}_4_2_1` || (m.matchLabel?.includes('4위') && m.matchLabel?.includes('1차전')));
+            const poSemi2_leg2 = resolved.find((m:any) => m.id === `po_${sId}_4_2_2` || (m.matchLabel?.includes('3위') && m.matchLabel?.includes('2차전')));
+
+            const wSemi1 = calcAggWinner(poSemi1_leg1, poSemi1_leg2);
+            const wSemi2 = calcAggWinner(poSemi2_leg1, poSemi2_leg2);
+
+            const poFinals = resolved.filter((m:any) => m.stage === 'SEMI_FINAL');
+            poFinals.forEach((m:any) => {
+                if (m.home === 'TBD') m.home = wSemi1;
+                if (m.away === 'TBD') m.away = wSemi2;
+            });
+
+            const pf_leg1 = poFinals.find((m:any) => m.matchLabel?.includes('1차전') || m.id === `po_${sId}_fin_1`);
+            const pf_leg2 = poFinals.find((m:any) => m.matchLabel?.includes('2차전') || m.id === `po_${sId}_fin_2`);
+            const wPoFinal = calcAggWinner(pf_leg1, pf_leg2);
+
+            const grandFinals = resolved.filter((m:any) => m.stage === 'FINAL');
+            grandFinals.forEach((m:any) => {
+                if (m.away === 'TBD') m.away = wPoFinal;
+            });
+        }
+        return resolved;
+    };
+
     // 1. 현재 선택된 시즌의 실시간 랭킹
     const activeRankingData = useMemo(() => {
         if (!seasons || seasons.length === 0) return { teams: [], owners: [], players: [], regularPlayers: [], playoffPlayers: [], highlights: [] };
@@ -31,28 +108,40 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         const teamStats = new Map<string, Team>();
         targetSeason.teams.forEach(t => {
             const correctedOwnerName = getCanonicalOwnerName(t.ownerName);
-            teamStats.set(t.name, { ...t, ownerName: correctedOwnerName, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 });
+            // 🔥 [디벨롭] 팀 스탯 Map의 키를 표준화(norm)하여 저장
+            teamStats.set(norm(t.name), { ...t, ownerName: correctedOwnerName, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 });
         });
 
         const regularPlayerStatsMap = new Map<string, any>(); 
         const playoffPlayerStatsMap = new Map<string, any>(); 
-
-        // 🔥 [수술 핵심 포인트 1] 토너먼트 모드인지 미리 확인
         const isTournamentMode = targetSeason.type === 'TOURNAMENT';
 
-        targetSeason.rounds?.forEach(r => (r.matches || []).forEach(m => {
+        let rawMatches: any[] = [];
+        targetSeason.rounds?.forEach(r => {
+            (r.matches || []).forEach(m => {
+                rawMatches.push({ ...m, roundName: r.name });
+            });
+        });
+        
+        let allMatches = resolveTbdMatches(targetSeason.id, targetSeason.type, rawMatches);
+
+        allMatches.forEach(m => {
           const canonicalHomeOwner = getCanonicalOwnerName(m.homeOwner);
           const canonicalAwayOwner = getCanonicalOwnerName(m.awayOwner);
           
           const stageUpper = String(m.stage || '').toUpperCase();
-          const roundNameUpper = String(r.name || '').toUpperCase();
-          const isPlayoffMatch = ['FINAL', 'SEMI', 'QUARTER', 'ROUND_OF', 'PO', '34'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
+          const roundNameUpper = String((m as any).roundName || '').toUpperCase();
+          
+          // 🔥 [디벨롭] 플레이오프 매치 판별 기준 정교화 (순위표 제외용)
+          const isPlayoffMatch = ['FINAL', 'SEMI', 'QUARTER', '34', 'KNOCKOUT'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
 
           if(m.status === 'COMPLETED' || m.status === 'BYE') {
-            // 🔥 [수술 핵심 포인트 2] "토너먼트 모드이거나, 플레이오프 매치가 아닐 때만" 스탯을 합산해라!
+            // 토너먼트 모드이거나, 플레이오프 매치가 아닌 경우(정규 리그)에만 순위표 집계
             if (isTournamentMode || !isPlayoffMatch) {
                 const h = Number(m.homeScore || 0), a = Number(m.awayScore || 0);
-                const ht = teamStats.get(m.home); const at = teamStats.get(m.away);
+                // 🔥 [디벨롭] 팀 탐색 시 표준화(norm) 적용 - 대소문자 무시
+                const ht = teamStats.get(norm(m.home)); 
+                const at = teamStats.get(norm(m.away));
                 
                 if(ht) { 
                     ht.gf+=h; ht.ga+=a; ht.gd = ht.gf - ht.ga; 
@@ -60,7 +149,7 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
                     else if(h<a) { ht.loss++; } 
                     else { ht.draw++; ht.points++; } 
                 }
-                if(at && m.away !== 'BYE' && !m.away.includes('BYE')) { 
+                if(at && norm(m.away) !== 'bye') { 
                     at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; 
                     if(a>h) { at.win++; at.points+=3; } 
                     else if(a<h) { at.loss++; } 
@@ -70,12 +159,17 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
           }
           
           if(m.status === 'COMPLETED') {
+            let safeHomeOwner = canonicalHomeOwner;
+            let safeAwayOwner = canonicalAwayOwner;
+            if (m.home !== 'TBD' && m.home !== 'BYE') { const ht = teamStats.get(norm(m.home)); if (ht) safeHomeOwner = ht.ownerName; }
+            if (m.away !== 'TBD' && m.away !== 'BYE') { const at = teamStats.get(norm(m.away)); if (at) safeAwayOwner = at.ownerName; }
+
             const processPlayers = (records: any[], isHome: boolean, type: 'goals'|'assists') => {
                 records.forEach(s => { 
-                    const owner = isHome ? canonicalHomeOwner : canonicalAwayOwner;
+                    const owner = isHome ? safeHomeOwner : safeAwayOwner;
                     const team = isHome ? m.home : m.away;
                     const pName = (s.name || s).toString().trim();
-                    const key = `${pName}-${team}-${owner}`;
+                    const key = `${pName}-${norm(team)}-${owner}`;
                     
                     const targetMap = isPlayoffMatch ? playoffPlayerStatsMap : regularPlayerStatsMap;
 
@@ -86,7 +180,7 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
             processPlayers(m.homeScorers || [], true, 'goals'); processPlayers(m.awayScorers || [], false, 'goals');
             processPlayers(m.homeAssists || [], true, 'assists'); processPlayers(m.awayAssists || [], false, 'assists');
           }
-        }));
+        });
     
         const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => {
             let prize = 0;
@@ -176,24 +270,34 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         const activeSeasons = seasons?.filter(s => s.status !== 'COMPLETED') || [];
         activeSeasons.forEach(s => {
             const sTeamStats = new Map<string, any>();
-            s.teams?.forEach(t => sTeamStats.set(t.name, { ...t, ownerName: getCanonicalOwnerName(t.ownerName), win:0, draw:0, loss:0, points:0 }));
+            s.teams?.forEach(t => sTeamStats.set(norm(t.name), { ...t, ownerName: getCanonicalOwnerName(t.ownerName), win:0, draw:0, loss:0, points:0 }));
 
-            // 🔥 [수술 핵심 포인트 3] 역대 기록 합산 시에도 토너먼트 모드 처리
             const isTourney = s.type === 'TOURNAMENT';
+            
+            let rawMatches: any[] = [];
+            s.rounds?.forEach(r => {
+                (r.matches || []).forEach(m => {
+                    rawMatches.push({ ...m, roundName: r.name });
+                });
+            });
+            
+            let allMatches = resolveTbdMatches(s.id, s.type, rawMatches);
 
-            s.rounds?.forEach(r => (r.matches || []).forEach(m => {
+            allMatches.forEach(m => {
                 if(m.status === 'COMPLETED' || m.status === 'BYE') {
-                    const isKnockout = ['FINAL', 'SEMI', 'QUARTER'].some(k => String(m.stage||'').toUpperCase().includes(k));
+                    const stageUpper = String(m.stage || '').toUpperCase();
+                    const roundNameUpper = String((m as any).roundName || '').toUpperCase();
                     
-                    // 토너먼트 모드면 모든 경기 포함, 그 외엔 Knockout 제외
+                    const isKnockout = ['FINAL', 'SEMI', 'QUARTER', 'ROUND_OF', '34', 'KNOCKOUT'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
+                    
                     if (isTourney || !isKnockout) {
                         const h=Number(m.homeScore||0), a=Number(m.awayScore||0);
-                        const ht=sTeamStats.get(m.home), at=sTeamStats.get(m.away);
+                        const ht=sTeamStats.get(norm(m.home)), at=sTeamStats.get(norm(m.away));
                         if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
-                        if(at && m.away!=='BYE' && !m.away?.includes('BYE')) { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
+                        if(at && norm(m.away)!=='bye') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
                     }
                 }
-            }));
+            });
 
             Array.from(sTeamStats.values()).forEach(t => {
                 const o = initOwner(t.ownerName);

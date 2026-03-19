@@ -1,16 +1,16 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
 
 interface ROwnersTabProps {
   currentSeason: any;
   activeRankingData: any;
   owners: Owner[];
-  sortedTeams: any[]; // 정규리그/조별리그 순위 배열
-  grandChampionInfo: any; // 최종 우승팀 정보 (CUP, TOURNAMENT, LEAGUE_PLAYOFF 공통)
-  poTournamentResult?: { champion: string, runnerUp: string, thirdPlace: string }; // 🔥 [디벨롭] 리그+PO 모드 전용 토너먼트 결과
+  sortedTeams: any[]; 
+  grandChampionInfo: any; 
+  poTournamentResult?: { champion: string, runnerUp: string, thirdPlace: string }; 
   prizeRule: any;
   footerText: string;
 }
@@ -49,45 +49,77 @@ export default function R_OwnersTab({
       return '-';
   };
 
-  // 🔥 [핵심 디벨롭] 시즌 타입에 따른 완벽한 상금 계산 로직 분리
+  const placements = useMemo(() => {
+        let champion = null; let runnerUp = null; let thirdPlace = null;
+        if (!currentSeason?.rounds) return { champion, runnerUp, thirdPlace };
+        
+        const allMatches = currentSeason.rounds.flatMap((r: any) => r.matches || []);
+        
+        const getResult = (stageName: string) => {
+            const matches = allMatches.filter((m:any) => m.stage === stageName);
+            if (!matches.length) return { w: null, l: null };
+            
+            const withAgg = matches.find((m: any) => m.aggWinner && m.aggWinner !== 'TBD');
+            if (withAgg) {
+                const w = withAgg.aggWinner;
+                const l = (w === withAgg.home) ? withAgg.away : withAgg.home;
+                return { w, l };
+            }
+            
+            const calcAgg = (leg1:any, leg2:any) => {
+                if (!leg1) return {w: null, l: null};
+                if (leg2?.aggWinner && leg2.aggWinner !== 'TBD') return {w: leg2.aggWinner, l: leg2.aggWinner === leg2.home ? leg2.away : leg2.home};
+                if (leg1?.aggWinner && leg1.aggWinner !== 'TBD') return {w: leg1.aggWinner, l: leg1.aggWinner === leg1.home ? leg1.away : leg1.home};
+                let s1 = 0, s2 = 0;
+                if (leg1.status === 'COMPLETED') { s1 += Number(leg1.homeScore); s2 += Number(leg1.awayScore); }
+                if (leg2?.status === 'COMPLETED') {
+                    if (leg2.home === leg1.away) { s2 += Number(leg2.homeScore); s1 += Number(leg2.awayScore); }
+                    else { s1 += Number(leg2.homeScore); s2 += Number(leg2.awayScore); }
+                }
+                if (s1 > s2) return {w: leg1.home, l: leg1.away};
+                if (s2 > s1) return {w: leg1.away, l: leg1.home};
+                return {w: null, l: null};
+            };
+            return calcAgg(matches[0], matches[1]);
+        };
+
+        if (currentSeason.type === 'LEAGUE_PLAYOFF') {
+            const gf = getResult('FINAL'); champion = gf.w; runnerUp = gf.l;
+            const sf = getResult('SEMI_FINAL'); thirdPlace = sf.l;
+        } else if (currentSeason.type === 'CUP' || currentSeason.type === 'TOURNAMENT') {
+            const f = getResult('FINAL'); champion = f.w; runnerUp = f.l;
+            const t = getResult('34'); thirdPlace = t.w;
+        }
+        return { champion, runnerUp, thirdPlace };
+  }, [currentSeason]);
+
   const getOwnerPrize = (ownerName: string) => {
     let totalPrize = 0;
     const resolvedInput = resolveOwnerNickname(ownerName);
     
-    // [1] LEAGUE_PLAYOFF 모드 상금 계산 (황금 밸런스 룰 적용)
-    if (currentSeason?.type === 'LEAGUE_PLAYOFF') {
-        // 1. 리그 우승 (정규 1위) = prizeRule.first
-        if (sortedTeams[0] && resolveOwnerNickname(sortedTeams[0].ownerName) === resolvedInput) {
-            totalPrize += (prizeRule.first || 0);
-        }
-        
-        // 2. 토너먼트 시상 (poTournamentResult 기반 또는 grandChampionInfo 기반)
-        if (poTournamentResult) {
-            // 부모가 PO 결과를 넘겨준 경우 (가장 정확함)
-            if (getOwnerNameByTeamName(poTournamentResult.champion) === resolvedInput) totalPrize += (prizeRule.champion || 0);
-            if (getOwnerNameByTeamName(poTournamentResult.runnerUp) === resolvedInput) totalPrize += (prizeRule.second || 0);
-            if (getOwnerNameByTeamName(poTournamentResult.thirdPlace) === resolvedInput) totalPrize += (prizeRule.third || 0);
-        } else if (grandChampionInfo) {
-            // 부모가 PO 결과를 안 넘겨줬을 때의 Fallback (최소한 최종 우승자는 챙김)
-            if (resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
-                totalPrize += (prizeRule.champion || 0);
-            }
-        }
+    if (currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'CUP') {
+        if (sortedTeams[0] && resolveOwnerNickname(sortedTeams[0].ownerName) === resolvedInput) totalPrize += (prizeRule.first || 0);
+        if (placements.champion && getOwnerNameByTeamName(placements.champion) === resolvedInput) totalPrize += (prizeRule.champion || 0);
+        if (placements.runnerUp && getOwnerNameByTeamName(placements.runnerUp) === resolvedInput) totalPrize += (prizeRule.second || 0);
+        if (placements.thirdPlace && getOwnerNameByTeamName(placements.thirdPlace) === resolvedInput) totalPrize += (prizeRule.third || 0);
     } 
-    // [2] 일반 CUP / TOURNAMENT / LEAGUE 모드 상금 계산 (기존 로직)
+    else if (currentSeason?.type === 'TOURNAMENT') {
+        if (placements.champion && getOwnerNameByTeamName(placements.champion) === resolvedInput) totalPrize += (prizeRule.first || 0);
+        if (placements.runnerUp && getOwnerNameByTeamName(placements.runnerUp) === resolvedInput) totalPrize += (prizeRule.second || 0);
+        if (placements.thirdPlace && getOwnerNameByTeamName(placements.thirdPlace) === resolvedInput) totalPrize += (prizeRule.third || 0);
+    }
     else {
         const checkMatch = (idx: number) => {
             const teamOwner = sortedTeams[idx]?.ownerName;
             return teamOwner && resolveOwnerNickname(teamOwner) === resolvedInput;
         };
-        
         if (checkMatch(0)) totalPrize += (prizeRule.first || 0);
         if (checkMatch(1)) totalPrize += (prizeRule.second || 0);
         if (checkMatch(2)) totalPrize += (prizeRule.third || 0);
-        
-        if (grandChampionInfo && resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
-            totalPrize += (prizeRule.champion || 0);
-        }
+    }
+    
+    if (!placements.champion && grandChampionInfo && resolveOwnerNickname(grandChampionInfo.ownerName) === resolvedInput) {
+        totalPrize += (currentSeason?.type === 'TOURNAMENT' ? (prizeRule.first || 0) : (prizeRule.champion || 0));
     }
     
     return totalPrize;
@@ -95,7 +127,8 @@ export default function R_OwnersTab({
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* 🏆 그랜드 파이널 챔피언 (CUP / PLAYOFF / TOURNAMENT 전용) */}
+      
+      {/* 🥇 1. 토너먼트 우승 카드 (GRAND FINAL CHAMPION) */}
       {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT') && grandChampionInfo && (() => {
           const resolvedNick = resolveOwnerNickname(grandChampionInfo.ownerName, grandChampionInfo.ownerUid);
           const champOwnerInfo = owners.find(o => o.nickname === resolvedNick);
@@ -105,7 +138,7 @@ export default function R_OwnersTab({
           const topScorer = teamPlayers.length > 0 ? teamPlayers.sort((a: any, b: any) => b.goals - a.goals)[0] : null;
 
           return (
-            <div className="mb-8">
+            <div className="mb-6">
                 <div className="relative w-full rounded-xl overflow-hidden border-2 border-yellow-400/50 champion-glow transform transition-all duration-500 group bg-[#020617]">
                     <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/40 via-yellow-900/60 to-black z-0"></div>
                     <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none">
@@ -142,12 +175,6 @@ export default function R_OwnersTab({
                                         <span className="text-[10px] text-slate-400 font-medium">({team.gf || 0}득 / {team.ga || 0}실)</span>
                                     </div>
                                 </div>
-                                {topScorer && (
-                                    <div className="bg-gradient-to-r from-yellow-600/20 to-yellow-900/20 rounded-xl px-5 py-2.5 border border-yellow-400/50">
-                                        <span className="text-[10px] text-yellow-500 block font-black mb-0.5 uppercase">TEAM MVP (TOP SCORER)</span>
-                                        <span className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5 uppercase">⚽ {topScorer.name} <span className="text-sm text-yellow-400 ml-1">({topScorer.goals} Goals)</span></span>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
@@ -157,7 +184,99 @@ export default function R_OwnersTab({
           );
       })()}
 
-      {/* 🚩 리그 1위 전용 카드 (🔥 토너먼트 모드에서는 렌더링하지 않음) */}
+      {/* 🥈 2. 토너먼트 준우승 카드 (새로 추가됨!) */}
+      {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT') && poTournamentResult?.runnerUp && poTournamentResult.runnerUp !== 'TBD' && (() => {
+          const team = activeRankingData?.teams?.find((t: any) => t.name === poTournamentResult.runnerUp);
+          if (!team) return null;
+          const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);
+          const ownerInfo = owners.find(o => o.nickname === resolvedNick);
+          const displayPhoto = ownerInfo?.photo || FALLBACK_IMG;
+
+          return (
+            <div className="mb-6">
+                <div className="relative w-full rounded-xl overflow-hidden border border-slate-400/50 shadow-[0_0_30px_rgba(148,163,184,0.1)] transform transition-transform duration-300 bg-[#020617]">
+                    <div className="absolute inset-0 z-0 bg-gradient-to-tr from-slate-700/30 via-transparent to-transparent"></div>
+                    <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 pointer-events-none">
+                        <div className="w-[140px] h-[140px] filter drop-shadow-[0_0_20px_rgba(148,163,184,0.5)]" style={{ backgroundImage: `url(${team.logo})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
+                    </div>
+                    <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
+                        <div className="relative pt-3 shrink-0 pl-2">
+                            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-slate-300 via-slate-400 to-slate-200 shadow-xl relative z-10">
+                                <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
+                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                </div>
+                            </div>
+                            <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-slate-400 z-30 overflow-hidden flex items-center justify-center">
+                                <img src={team.logo || FALLBACK_IMG} className="w-[80%] h-[80%] object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                            </div>
+                        </div>
+                        <div className="flex-1 text-center md:text-left pt-3 md:pt-0 pl-2 md:pl-4">
+                            <div className="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-500/80 text-slate-300 px-3 py-1 rounded-full font-black text-[10px] tracking-widest mb-3 shadow-lg uppercase">
+                                🥈 TOURNAMENT RUNNER-UP
+                            </div>
+                            <h2 className="text-3xl md:text-4xl font-black text-white mb-1 drop-shadow-md tracking-tight italic">{resolvedNick}</h2>
+                            <p className="text-slate-400 font-bold tracking-widest text-xs md:text-sm opacity-80 uppercase italic mb-4">With {team.name}</p>
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                                <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]">
+                                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5 uppercase">RECORD</span>
+                                    <span className="text-lg font-bold text-white tracking-tight">{team.win}W <span className="text-slate-500">{team.draw}D</span> <span className="text-red-400">{team.loss}L</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="absolute bottom-2 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">{footerText}</div>
+                </div>
+            </div>
+          );
+      })()}
+
+      {/* 🥉 3. 토너먼트 3위 카드 (새로 추가됨!) */}
+      {(currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT') && poTournamentResult?.thirdPlace && poTournamentResult.thirdPlace !== 'TBD' && (() => {
+          const team = activeRankingData?.teams?.find((t: any) => t.name === poTournamentResult.thirdPlace);
+          if (!team) return null;
+          const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);
+          const ownerInfo = owners.find(o => o.nickname === resolvedNick);
+          const displayPhoto = ownerInfo?.photo || FALLBACK_IMG;
+
+          return (
+            <div className="mb-6">
+                <div className="relative w-full rounded-xl overflow-hidden border border-orange-500/40 shadow-[0_0_30px_rgba(249,115,22,0.1)] transform transition-transform duration-300 bg-[#020617]">
+                    <div className="absolute inset-0 z-0 bg-gradient-to-tr from-orange-900/30 via-transparent to-transparent"></div>
+                    <div className="absolute top-1/2 right-10 -translate-y-1/2 opacity-20 pointer-events-none">
+                        <div className="w-[140px] h-[140px] filter drop-shadow-[0_0_20px_rgba(249,115,22,0.5)]" style={{ backgroundImage: `url(${team.logo})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}></div>
+                    </div>
+                    <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
+                        <div className="relative pt-3 shrink-0 pl-2">
+                            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-orange-300 via-orange-500 to-orange-200 shadow-xl relative z-10">
+                                <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
+                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                </div>
+                            </div>
+                            <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-orange-400 z-30 overflow-hidden flex items-center justify-center">
+                                <img src={team.logo || FALLBACK_IMG} className="w-[80%] h-[80%] object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                            </div>
+                        </div>
+                        <div className="flex-1 text-center md:text-left pt-3 md:pt-0 pl-2 md:pl-4">
+                            <div className="inline-flex items-center gap-1.5 bg-orange-900/40 border border-orange-500/60 text-orange-400 px-3 py-1 rounded-full font-black text-[10px] tracking-widest mb-3 shadow-lg uppercase">
+                                🥉 TOURNAMENT 3RD PLACE
+                            </div>
+                            <h2 className="text-3xl md:text-4xl font-black text-white mb-1 drop-shadow-md tracking-tight italic">{resolvedNick}</h2>
+                            <p className="text-orange-400 font-bold tracking-widest text-xs md:text-sm opacity-80 uppercase italic mb-4">With {team.name}</p>
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                                <div className="bg-slate-950/80 rounded-xl px-4 py-2.5 border border-slate-800 min-w-[100px]">
+                                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5 uppercase">RECORD</span>
+                                    <span className="text-lg font-bold text-white tracking-tight">{team.win}W <span className="text-slate-500">{team.draw}D</span> <span className="text-red-400">{team.loss}L</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="absolute bottom-2 right-4 text-[9px] text-slate-500/60 font-bold italic tracking-wider z-20">{footerText}</div>
+                </div>
+            </div>
+          );
+      })()}
+
+      {/* 🟦 4. 리그 1위 (예선 1위) 전용 카드 (🔥 토너먼트 모드에서는 렌더링하지 않음) */}
       {currentSeason?.type !== 'TOURNAMENT' && sortedTeams && sortedTeams.length > 0 && (sortedTeams[0].win > 0 || sortedTeams[0].draw > 0 || sortedTeams[0].loss > 0) && (() => {
           const team = sortedTeams[0];
           const resolvedNick = resolveOwnerNickname(team.ownerName, team.ownerUid);
@@ -166,6 +285,7 @@ export default function R_OwnersTab({
           
           let title = "🚩 CURRENT LEAGUE 1ST";
           if (currentSeason?.type === 'LEAGUE_PLAYOFF') title = "🥇 REGULAR LEAGUE WINNER";
+          else if (currentSeason?.type === 'CUP') title = "🥇 GROUP STAGE 1ST";
           else if (currentSeason?.status === 'COMPLETED') title = "🏆 LEAGUE CHAMPION";
 
           return (
@@ -214,7 +334,7 @@ export default function R_OwnersTab({
           );
       })()}
 
-      {/* 🌟 1위 오너 포인트 정보 */}
+      {/* 🟩 5. 통합 승점 1위 (OVERALL TOP POINTS) */}
       {(!activeRankingData?.owners || activeRankingData.owners.length === 0) ? (
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 p-10 text-center text-slate-500 font-bold italic shadow-2xl">등록된 오너 포인트가 없습니다.</div>
       ) : (() => {
@@ -228,7 +348,7 @@ export default function R_OwnersTab({
               <div className="relative w-full rounded-xl overflow-hidden border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)] transform transition-transform duration-300 bg-[#020617]">
                   <div className="absolute inset-0 z-0 bg-gradient-to-tr from-emerald-900/40 via-transparent to-transparent"></div>
                   <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-4 bg-slate-900/60 backdrop-blur-sm pb-10">
-                      <div className="relative pt-3">
+                      <div className="relative pt-3 pl-2">
                           <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                               <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
                                   <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
@@ -238,7 +358,7 @@ export default function R_OwnersTab({
                               <span className="bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full border-2 border-slate-900 shadow-lg tracking-wider uppercase">TOP POINTS</span>
                           </div>
                       </div>
-                      <div className="flex-1 text-center md:text-left pt-3 md:pt-0">
+                      <div className="flex-1 text-center md:text-left pt-3 md:pt-0 pl-2 md:pl-4">
                           <h3 className="text-xs md:text-sm text-emerald-400 font-bold tracking-[0.2em] mb-0.5 uppercase">Overall Top Points</h3>
                           <h2 className="text-3xl md:text-4xl font-black text-white mb-3 drop-shadow-md tracking-tight">{resolvedNick}</h2>
                           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
@@ -263,7 +383,7 @@ export default function R_OwnersTab({
         );
       })()}
 
-      {/* 📊 2위 이하 오너 포인트 순위표 */}
+      {/* 📊 하단 순위표 (테이블) */}
       {activeRankingData?.owners && activeRankingData.owners.length > 1 && (
           <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs border-collapse">

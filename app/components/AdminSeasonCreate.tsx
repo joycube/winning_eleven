@@ -20,7 +20,6 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
     const [totalPrize, setTotalPrize] = useState(100000);
     const [displayPrize, setDisplayPrize] = useState('100,000');
     
-    // 🔥 [디벨롭 1] PO 전용 선수 상금 프로퍼티(poScorer, poAssist) 포함
     const [prizes, setPrizes] = useState({ 
         champion: 0, 
         first: 45000, 
@@ -42,37 +41,24 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
 
     useEffect(() => {
         if (isAuto) {
-            // 🔥 [디벨롭 핵심] 리그+PO 모드 전용 황금 밸런스 상금 배정
-            if (type === 'LEAGUE_PLAYOFF') {
+            if (type === 'LEAGUE_PLAYOFF' || type === 'CUP') {
                 setPrizes({
-                    champion: Math.floor(totalPrize * 0.35), // 토너먼트 최종우승 35%
-                    second: Math.floor(totalPrize * 0.20),   // 토너먼트 준우승 20%
-                    third: Math.floor(totalPrize * 0.10),    // 토너먼트 3위 10%
-                    first: Math.floor(totalPrize * 0.15),    // 리그 우승(정규 1위) 15%
-                    scorer: Math.floor(totalPrize * 0.05),   // 정규 득점왕 5%
-                    assist: Math.floor(totalPrize * 0.05),   // 정규 도움왕 5%
-                    poScorer: Math.floor(totalPrize * 0.05), // PO 득점왕 5%
-                    poAssist: Math.floor(totalPrize * 0.05)  // PO 도움왕 5%
-                });
-            } 
-            // 일반 CUP 모드
-            else if (type === 'CUP') {
-                setPrizes({
-                    champion: Math.floor(totalPrize * 0.30), 
-                    first: Math.floor(totalPrize * 0.20),    
-                    second: Math.floor(totalPrize * 0.15),   
-                    third: Math.floor(totalPrize * 0.15),    
+                    champion: Math.floor(totalPrize * 0.35), 
+                    second: Math.floor(totalPrize * 0.20),   
+                    third: Math.floor(totalPrize * 0.10),    
+                    first: Math.floor(totalPrize * 0.15),    
                     scorer: Math.floor(totalPrize * 0.05),   
                     assist: Math.floor(totalPrize * 0.05),   
                     poScorer: Math.floor(totalPrize * 0.05), 
                     poAssist: Math.floor(totalPrize * 0.05)  
                 });
             } 
-            // 일반 리그 모드 (PO 없음)
             else {
+                // 🔥 [수정] 토너먼트일 경우 1위 상금을 챔피언 상금으로 전환
+                const isTournament = type === 'TOURNAMENT';
                 setPrizes({
-                    champion: 0,                             
-                    first: Math.floor(totalPrize * 0.45),    
+                    champion: isTournament ? Math.floor(totalPrize * 0.45) : 0,                             
+                    first: isTournament ? 0 : Math.floor(totalPrize * 0.45),    
                     second: Math.floor(totalPrize * 0.25),   
                     third: Math.floor(totalPrize * 0.10),    
                     scorer: Math.floor(totalPrize * 0.10),   
@@ -99,14 +85,7 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
         const finalName = `${iconPrefix} ${name}`;
         
         const newSeason: any = {
-            id, 
-            name: finalName, 
-            type, 
-            status: 'ACTIVE', 
-            teams: [], 
-            rounds: [], 
-            totalPrize, 
-            prizes 
+            id, name: finalName, type, status: 'ACTIVE', teams: [], rounds: [], totalPrize, prizes 
         };
 
         if (type === 'LEAGUE') {
@@ -114,10 +93,7 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
         } else if (type === 'CUP') {
             newSeason.cupPhase = 'GROUP_STAGE';
             newSeason.groups = {};
-            newSeason.advancementRule = {
-                fromGroup: Number(cupAdvance),
-                method: 'CROSS'
-            };
+            newSeason.advancementRule = { fromGroup: Number(cupAdvance), method: 'CROSS' };
         } else if (type === 'LEAGUE_PLAYOFF') {
             newSeason.leagueMode = mode; 
         }
@@ -128,21 +104,20 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
             onCreateSuccess(id);
         } catch (error: any) {
             console.error("Season create error:", error);
-            alert(`🚨 시즌 생성 실패\n\n권한이 거부되었습니다. 파이어베이스 Rules의 관리자(ADMIN) 설정을 확인해주세요.\n\n상세: ${error.message}`);
+            alert(`🚨 시즌 생성 실패: ${error.message}`);
         }
     };
 
-    const hasChampionPrize = type === 'CUP' || type === 'LEAGUE_PLAYOFF';
+    // 🔥 [수정] 토너먼트 모드도 우승자(Champion) 상금을 사용하도록 변경
+    const hasChampionPrize = type === 'CUP' || type === 'LEAGUE_PLAYOFF' || type === 'TOURNAMENT';
 
     return (
         <div className="space-y-6 animate-in fade-in">
-            {/* 1. 시즌 이름 */}
             <div className="space-y-1">
                 <label className="text-xs text-slate-400 font-bold">1. Season Name</label>
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 2026 World Cup" className="bg-slate-950 w-full p-4 rounded border border-slate-700 text-base text-white" />
             </div>
 
-            {/* 2. 타입 및 모드 선택 */}
             <div className="space-y-1">
                 <label className="text-xs text-slate-400 font-bold">2. Type & Mode</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -175,7 +150,6 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
                 </div>
             </div>
 
-            {/* 3. 상금 설정 */}
             <div className="space-y-2">
                 <label className="text-xs text-slate-400 font-bold flex justify-between items-center">3. Prizes (Total)<button onClick={() => setIsAuto(!isAuto)} className={`text-xs px-2 py-1 rounded border ${isAuto ? 'border-emerald-500 text-emerald-400' : 'border-orange-500 text-orange-400'}`}>{isAuto ? '⚡ Auto Calc' : '✏️ Manual Input'}</button></label>
                 <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">₩</span><input type="text" value={displayPrize} onChange={e => handlePrizeChange(e.target.value)} className="bg-slate-950 w-full p-4 pl-8 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-1" placeholder="Total Prize" /></div>
@@ -192,14 +166,13 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
                         {hasChampionPrize && (
                             <div>
                                 <label className="text-[10px] text-yellow-500 font-bold">
-                                    {type === 'LEAGUE_PLAYOFF' ? '👑 Champion (토너먼트 최종우승)' : '👑 Champion (최종우승)'}
+                                    {type === 'LEAGUE_PLAYOFF' || type === 'CUP' ? '👑 Champion (토너먼트 최종우승)' : '👑 Champion (최종우승)'}
                                 </label>
                                 <input type="number" value={prizes.champion} onChange={e => setPrizes({ ...prizes, champion: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-yellow-500/50 text-right text-sm text-yellow-400 font-bold ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                             </div>
                         )}
 
-                        {/* 🔥 리그+PO 모드일 때는 UI 순서를 [토너먼트 우승 -> 준우승 -> 3위 -> 리그 우승] 순으로 자연스럽게 표시 */}
-                        {type === 'LEAGUE_PLAYOFF' ? (
+                        {type === 'LEAGUE_PLAYOFF' || type === 'CUP' ? (
                             <>
                                 <div>
                                     <label className="text-[10px] text-slate-300">🥈 2nd (토너먼트 준우승)</label>
@@ -210,16 +183,21 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
                                     <input type="number" value={prizes.third} onChange={e => setPrizes({ ...prizes, third: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                                 </div>
                                 <div className="mt-2 pt-2 border-t border-slate-800">
-                                    <label className="text-[10px] text-emerald-400 font-bold">🥇 1st (리그 우승)</label>
+                                    <label className="text-[10px] text-emerald-400 font-bold">
+                                        🥇 1st ({type === 'CUP' ? '조별리그 1위' : '리그 우승'})
+                                    </label>
                                     <input type="number" value={prizes.first} onChange={e => setPrizes({ ...prizes, first: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-emerald-900/50 text-right text-sm text-emerald-400 ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                                 </div>
                             </>
                         ) : (
                             <>
-                                <div>
-                                    <label className="text-[10px] text-slate-500">🥇 1st {hasChampionPrize && '(정규/조별 1위)'}</label>
-                                    <input type="number" value={prizes.first} onChange={e => setPrizes({ ...prizes, first: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
-                                </div>
+                                {/* 🔥 [수정] 토너먼트 모드일 때는 1st 항목을 출력하지 않음 */}
+                                {type !== 'TOURNAMENT' && (
+                                    <div>
+                                        <label className="text-[10px] text-slate-500">🥇 1st {hasChampionPrize && '(정규/조별 1위)'}</label>
+                                        <input type="number" value={prizes.first} onChange={e => setPrizes({ ...prizes, first: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                    </div>
+                                )}
                                 <div>
                                     <label className="text-[10px] text-slate-500">🥈 2nd {hasChampionPrize && '(정규/조별 2위)'}</label>
                                     <input type="number" value={prizes.second} onChange={e => setPrizes({ ...prizes, second: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
@@ -234,18 +212,14 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
 
                     <div className="space-y-2">
                         <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
-                        
-                        {/* 정규 득점/도움왕 */}
                         <div>
-                            <label className="text-[10px] text-slate-500">👟 Scorer {hasChampionPrize && '(정규)'}</label>
+                            <label className="text-[10px] text-slate-500">👟 Scorer {hasChampionPrize && '(정규/조별)'}</label>
                             <input type="number" value={prizes.scorer} onChange={e => setPrizes({ ...prizes, scorer: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                         </div>
                         <div>
-                            <label className="text-[10px] text-slate-500">🅰️ Assist {hasChampionPrize && '(정규)'}</label>
+                            <label className="text-[10px] text-slate-500">🅰️ Assist {hasChampionPrize && '(정규/조별)'}</label>
                             <input type="number" value={prizes.assist} onChange={e => setPrizes({ ...prizes, assist: Number(e.target.value) })} readOnly={isAuto} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`} />
                         </div>
-
-                        {/* PO 득점/도움왕 (토너먼트가 있는 시즌만 보임) */}
                         {hasChampionPrize && (
                             <>
                                 <div className="mt-2 pt-2 border-t border-slate-800">
