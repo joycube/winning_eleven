@@ -134,7 +134,6 @@ export const ScheduleView = ({
       };
 
       const fillTeamData = (match: any, side: 'home' | 'away', teamName: string) => {
-          // 🔥 [핵심 방탄 로직] DB에 이미 수동 지정(강제 진출 등)으로 팀이 들어가 있다면 절대 덮어쓰지 않음!
           if (match[side] !== 'TBD' && match[side] !== 'BYE' && match[side] !== '') return;
 
           match[side] = teamName;
@@ -379,7 +378,7 @@ export const ScheduleView = ({
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
                                 <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                             </div>
-                            <AdminMatching_TournamentBracketView matches={currentSeason?.rounds?.[0]?.matches || []} />
+                            <AdminMatching_TournamentBracketView knockoutStages={knockoutStages} />
                         </div>
                     </div>
                 )}
