@@ -8,6 +8,9 @@ import { Season, Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 import { MessageSquare } from 'lucide-react';
 
+// 🔥 전용 대진표 컴포넌트 임포트!
+import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
+
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 const getTodayFormatted = () => {
@@ -136,37 +139,6 @@ export const CupSchedule = ({
           condition: master?.condition || 'C',
           real_rank: master?.real_rank
       };
-  };
-
-  const getRealRankBadge = (rank: number | undefined | null) => {
-    if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none">R.-</div>;
-    let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
-    return <div className={`${bgClass} border text-[9px] font-black px-1.5 py-[1px] rounded-[3px] italic shadow-sm shrink-0 leading-none`}>R.{rank}</div>;
-  };
-
-  const getTierBadge = (tier?: string) => {
-    const t = (tier || 'C').toUpperCase();
-    let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : t === 'A' ? 'bg-slate-300 text-black border-white' : t === 'B' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-400 border-slate-700';
-    return <div className={`absolute -bottom-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full border border-slate-950 font-black text-[7px] z-20 shadow-sm ${colors}`}>{t}</div>;
-  };
-
-  const getConditionBadge = (condition?: string) => {
-    if (!condition) return null;
-    const config: any = { 'A': { icon: '↑', color: 'text-emerald-400' }, 'B': { icon: '↗', color: 'text-teal-400' }, 'C': { icon: '→', color: 'text-slate-400' }, 'D': { icon: '↘', color: 'text-orange-400' }, 'E': { icon: '⬇', color: 'text-red-500' } };
-    const c = config[condition.toUpperCase()] || config['C'];
-    return <div className="px-1 py-[1px] rounded bg-slate-900 border border-slate-800 flex items-center h-3.5 shadow-inner"><span className={`text-[10px] font-black ${c.color}`}>{c.icon}</span></div>;
-  };
-
-  const renderLogoWithTier = (logo: string, tier: string, isTbd: boolean = false) => {
-      const displayLogo = isTbd || logo?.includes('uefa.com') ? SAFE_TBD_LOGO : logo;
-      return (
-        <div className="relative w-9 h-9 flex-shrink-0">
-            <div className={`w-9 h-9 rounded-full shadow-sm flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-            </div>
-            {!isTbd && getTierBadge(tier)}
-        </div>
-      );
   };
 
   const internalKnockoutStages = useMemo(() => {
@@ -327,85 +299,18 @@ export const CupSchedule = ({
     }
   }, [currentSeason, displayStages, viewSeasonId]);
 
-  const TournamentTeamRow = ({ teamName, score, isWinner, ownerUid }: { teamName: string, score: number | null, isWinner: boolean, ownerUid?: string }) => {
-      const info = getTeamExtendedInfo(teamName);
-      const isTbd = teamName === 'TBD';
-      const isBye = teamName === 'BYE';
-      
-      const resolvedOwnerName = resolveOwnerInfo(owners, info.ownerName, ownerUid || info.ownerUid).nickname;
-
-      return (
-          <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
-              <div className="flex items-center gap-3 min-w-0">
-                  {renderLogoWithTier(info.logo, info.tier, isTbd || isBye)}
-                  <div className="flex flex-col justify-center min-w-0">
-                      <span className={`text-[13px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {teamName}
-                      </span>
-                      {!isTbd && !isBye && (
-                          <div className="flex items-center gap-1.5 mt-0.5 scale-[0.9] origin-left">
-                              {getRealRankBadge(info.real_rank)}
-                              {getConditionBadge(info.condition)}
-                              <span className="text-[9px] text-slate-500 font-bold italic truncate ml-0.5">{resolvedOwnerName}</span>
-                          </div>
-                      )}
-                      {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned Slot</span>}
-                  </div>
-              </div>
-              <div className={`text-xl font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
-                  {isBye ? '0' : (score ?? '-')}
-              </div>
-          </div>
-      );
-  };
-
-  const TournamentMatchBox = ({ match, title, highlight = false }: { match: any, title?: string, highlight?: boolean }) => {
-      const hScore = match.homeScore !== '' ? Number(match.homeScore) : (match.home === 'BYE' ? 0 : null);
-      const aScore = match.awayScore !== '' ? Number(match.awayScore) : (match.away === 'BYE' ? 0 : null);
-      const winner = getWinnerName(match);
-      const isHomeWin = winner !== 'TBD' && winner === match.home;
-      const isAwayWin = winner !== 'TBD' && winner === match.away;
-
-      return (
-          <div className="flex flex-col w-full" ref={(el) => { if (match.id && !match.id.startsWith('v-')) matchRefs.current[match.id] = el; }}> 
-              {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
-              <div className={`flex flex-col w-[220px] bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
-                  <TournamentTeamRow teamName={match.home} score={hScore} isWinner={isHomeWin} ownerUid={match.homeOwnerUid} />
-                  <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                  <TournamentTeamRow teamName={match.away} score={aScore} isWinner={isAwayWin} ownerUid={match.awayOwnerUid} />
-              </div>
-          </div>
-      );
-  };
-
   return (
     <div className="space-y-10">
-        <style dangerouslySetInnerHTML={{ __html: `
-            .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
-            .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 20px; position: relative; }
-            .no-scrollbar::-webkit-scrollbar { display: none; }
-        `}} />
 
+        {/* 🔥 전용 대진표 컴포넌트로 완벽 교체 완료! */}
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
-                    <div className="flex items-center gap-3 mb-6"><div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3></div>
-                    <div className="bracket-tree no-scrollbar">
-                        {displayStages.roundOf8 && (<div className="bracket-column">{displayStages.roundOf8.map((m: any, i: number) => <TournamentMatchBox key={`r8-${i}`} title={`Quarter-Final ${i+1}`} match={m} />)}</div>)}
-                        <div className="bracket-column">{displayStages.roundOf4.map((m: any, i: number) => <TournamentMatchBox key={`r4-${i}`} title={`Semi-Final ${i+1}`} match={m} />)}</div>
-                        
-                        <div className="bracket-column flex flex-col justify-center">
-                            <div className="relative scale-110 ml-4 mb-8">
-                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
-                                <TournamentMatchBox title="Grand Final" match={displayStages.final[0]} highlight />
-                            </div>
-                            {displayStages.thirdPlace && (
-                                <div className="relative scale-95 ml-4 opacity-90 mt-4">
-                                    <TournamentMatchBox title="3rd Place Match" match={displayStages.thirdPlace[0]} />
-                                </div>
-                            )}
-                        </div>
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                        <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                     </div>
+                    <AdminMatching_TournamentBracketView knockoutStages={displayStages} />
                 </div>
             </div>
         )}

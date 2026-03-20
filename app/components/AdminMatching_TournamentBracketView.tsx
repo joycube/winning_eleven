@@ -9,6 +9,7 @@ interface Props {
     knockoutStages: {
         roundOf8?: Match[] | null;
         roundOf4?: Match[];
+        thirdPlace?: Match[] | null; // 🔥 3, 4위전을 받기 위해 타입 추가!
         final?: Match[];
     };
 }
@@ -59,10 +60,22 @@ export const AdminMatching_TournamentBracketView = ({ knockoutStages }: Props) =
                     ))}
                 </div>
 
-                {/* 3열: 결승 */}
-                <div className="flex flex-col justify-center relative">
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div>
-                    <MatchBox title="Grand Final" match={knockoutStages.final?.[0]} isFinal />
+                {/* 3열: 결승 및 3·4위전 (통합) */}
+                <div className="flex flex-col justify-center gap-10 relative">
+                    
+                    {/* 결승전 */}
+                    <div className="relative">
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-3">👑</div>
+                        <MatchBox title="Grand Final" match={knockoutStages.final?.[0]} isFinal />
+                    </div>
+
+                    {/* 🔥 3, 4위전 (결승전 아래에 살짝 작고 투명하게 배치) */}
+                    {knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
+                        <div className="relative ml-6 opacity-90 scale-95 origin-left mt-2">
+                            <MatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
+                        </div>
+                    )}
+                    
                 </div>
 
             </div>

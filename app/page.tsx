@@ -354,29 +354,40 @@ export default function FootballLeagueApp() {
           const slots = {
               roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
               roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
+              thirdPlace: [createPlaceholder('v-3rd', '3RD_PLACE')], // 🔥 3, 4위전 추가
               final: [createPlaceholder('v-final', 'FINAL')]
           };
 
           let hasActualRoundOf8 = false;
+          const groupSet = new Set<string>();
 
           currentSeason.rounds.forEach((round) => {
               round.matches?.forEach((m) => {
                   const stage = m.stage?.toUpperCase() || "";
-                  if (stage.includes("GROUP")) return;
+                  
+                  if (stage.includes("GROUP")) {
+                      if (m.group) groupSet.add(m.group);
+                      return;
+                  }
 
                   const idMatch = m.id.match(/_(\d+)$/);
                   const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
 
-                  if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+                  // 🔥 3, 4위전 DB 데이터 매핑
+                  if (stage.includes("3RD_PLACE") || stage.includes("34") || stage.includes("THIRD")) {
+                      slots.thirdPlace[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+                  } else if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
                       slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                   } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
                       if (idx < 2) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-                  } else if (stage.includes("ROUND_OF_8")) {
+                  } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
                       if (idx < 4) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                       hasActualRoundOf8 = true;
                   }
               });
           });
+
+          const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3;
 
           const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
               if (!target || !source) return;
@@ -391,16 +402,41 @@ export default function FootballLeagueApp() {
               }
           };
 
-          sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
-          sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
-          sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
-          sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+          // 🔥 패자(Loser)를 동기화하는 로직 추가
+          const syncLoser = (target: any, side: 'home' | 'away', source: Match | null) => {
+              if (!target || !source) return;
+              const winner = getWinnerName(source);
+              if (winner !== 'TBD' && winner !== 'BYE') {
+                  const loser = winner === source.home ? source.away : source.home;
+                  if (loser !== 'TBD' && loser !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                      target[side] = loser;
+                      const meta = getTeamMeta(loser);
+                      target[`${side}Logo`] = meta.logo;
+                      target[`${side}Owner`] = meta.owner;
+                      target[`${side}OwnerUid`] = meta.ownerUid;
+                      target[`${side}Score`] = '';
+                  }
+              }
+          };
+
+          if (needsRoundOf8) {
+              sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+              sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+              sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+              sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+          }
+          
           sync(slots.final[0], 'home', slots.roundOf4[0]);
           sync(slots.final[0], 'away', slots.roundOf4[1]);
 
+          // 🔥 4강의 패자를 3·4위전으로 동기화
+          syncLoser(slots.thirdPlace[0], 'home', slots.roundOf4[0]);
+          syncLoser(slots.thirdPlace[0], 'away', slots.roundOf4[1]);
+
           setKnockoutStages({
               ...slots,
-              roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null
+              roundOf8: needsRoundOf8 ? slots.roundOf8 : null,
+              thirdPlace: slots.thirdPlace // 🔥 3, 4위전 데이터 전달
           });
       }, 10);
 
