@@ -154,63 +154,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
     };
   };
 
-  const BracketMatchBox = ({ match, title, highlight = false }: any) => {
-    if (!match) return null;
-    const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
-    const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
-    let winner = match.aggWinner || 'TBD'; 
-    if (winner === 'TBD' && match.status === 'COMPLETED') {
-        if (hScore !== null && aScore !== null) {
-            if (hScore > aScore) winner = match.home;
-            else if (aScore > hScore) winner = match.away;
-        }
-    } else if (match.home === 'BYE') winner = match.away;
-    else if (match.away === 'BYE') winner = match.home;
-
-    const isHomeWin = winner !== 'TBD' && winner === match.home;
-    const isAwayWin = winner !== 'TBD' && winner === match.away;
-
-    const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, ownerUid: string | undefined, logo: string) => {
-        const isTbd = teamName === 'TBD' || !teamName;
-        const isBye = teamName === 'BYE';
-        const displayLogo = (isTbd || isBye || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
-        const dispOwner = resolveOwnerNickname(owner, ownerUid) || '-';
-
-        return (
-            <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd || isBye ? 'opacity-30' : ''}`}>
-                <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd || isBye ? 'bg-slate-700' : 'bg-white'}`}>
-                        <img src={displayLogo} className={`${isTbd || isBye ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-                    </div>
-                    <div className="flex flex-col justify-center min-w-0">
-                        <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : isTbd || isBye ? 'text-slate-500' : 'text-slate-400'}`}>
-                            {teamName || 'TBD'}
-                        </span>
-                        {!isTbd && !isBye && (
-                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
-                        )}
-                        {isBye && <span className="text-[9px] text-slate-600 font-bold italic">Unassigned</span>}
-                    </div>
-                </div>
-                <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
-                    {isBye ? '0' : (score ?? '-')}
-                </div>
-            </div>
-        );
-    };
-
-    return (
-        <div className="flex flex-col w-[200px] sm:w-[220px]">
-            {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
-            <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800/50'}`}>
-                {renderRow(match.home, hScore, isHomeWin, match.homeOwner, (match as any).homeOwnerUid, match.homeLogo)}
-                <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                {renderRow(match.away, aScore, isAwayWin, match.awayOwner, (match as any).awayOwnerUid, match.awayLogo)}
-            </div>
-        </div>
-    );
-  };
-
   const getRealRankBadge = (rank: number | undefined | null) => {
     if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none shrink-0">R.-</div>;
     let bgClass = rank === 1 ? "bg-yellow-500 text-black border-yellow-600" : rank === 2 ? "bg-slate-300 text-black border-slate-400" : rank === 3 ? "bg-orange-400 text-black border-orange-500" : "bg-slate-800 text-slate-400 border-slate-700";
@@ -350,7 +293,11 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                         <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
                         <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                     </div>
-                    <AdminMatching_TournamentBracketView matches={currentSeason.rounds?.[0]?.matches || []} />
+                    {/* 🔥 [수정] knockoutStages 프롭스 추가 */}
+                    <AdminMatching_TournamentBracketView 
+                        matches={currentSeason.rounds?.[0]?.matches || []} 
+                        knockoutStages={knockoutStages}
+                    />
                 </div>
             </div>
         )}
@@ -377,12 +324,15 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
         {currentSeason?.type === 'CUP' && knockoutStages && (
         <div className="overflow-x-auto pb-4 no-scrollbar">
             <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
-            <div className="flex items-center gap-3 mb-6"><div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3></div>
-            <div className="bracket-tree no-scrollbar">
-                {knockoutStages.roundOf8 && <div className="bracket-column">{knockoutStages.roundOf8.map((m: any, idx: number) => <BracketMatchBox key={`r8-${idx}`} title={`Match ${idx + 1}`} match={m} />)}</div>}
-                <div className="bracket-column">{knockoutStages.roundOf4?.map((m: any, idx: number) => <BracketMatchBox key={`r4-${idx}`} title={`Semi ${idx + 1}`} match={m} />)}</div>
-                <div className="bracket-column"><div className="relative scale-110 ml-4"><div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce">👑</div><BracketMatchBox title="Final" match={knockoutStages.final?.[0]} highlight /></div></div>
-            </div>
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                    <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+                </div>
+                {/* 🔥 [수정] 하드코딩된 BracketMatchBox 대신 강화된 공용 뷰어 사용 (데이터 일관성 확보) */}
+                <AdminMatching_TournamentBracketView 
+                    matches={[]} 
+                    knockoutStages={knockoutStages}
+                />
             </div>
         </div>
         )}

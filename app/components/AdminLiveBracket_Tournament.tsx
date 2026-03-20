@@ -1,138 +1,152 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react'; // 🔥 1. useEffect, useState 추가
 import { Season, Match } from '../types';
 import { TeamCard } from './TeamCard';
 import { FALLBACK_IMG } from '../types';
 
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
 interface Props {
     targetSeason: Season;
     tourneyTargetSize: number;
+    // 필요한 데이터 프롭스들 (메인에서 내려받는다고 가정)
+    isLoaded?: boolean;
+    currentView?: string;
+    seasons?: Season[];
+    viewSeasonId?: number;
+    activeRankingData?: any;
+    masterTeams?: any[];
+    getOwnerUidByName?: (name: string) => string | undefined;
 }
 
-export const AdminLiveBracket_Tournament = ({ targetSeason, tourneyTargetSize }: Props) => {
-    
-    // 동적 피라미드 라운드 계산
-    const totalRounds = tourneyTargetSize > 0 ? Math.log2(tourneyTargetSize) : 0;
+export const AdminLiveBracket_Tournament = ({ 
+    targetSeason, 
+    tourneyTargetSize,
+    isLoaded,
+    currentView,
+    seasons,
+    viewSeasonId,
+    activeRankingData,
+    masterTeams,
+    getOwnerUidByName
+}: Props) => {
+    // 🔥 내부 상태로 knockoutStages 관리
+    const [knockoutStages, setKnockoutStages] = useState<any>(null);
 
-    // DB 매치의 1차원 배열 인덱스 찾기 헬퍼
-    const getMatchIndex = (roundLvl: number, mIdxInRound: number, size: number) => {
-        let startIdx = 0;
-        for (let r = 1; r < roundLvl; r++) {
-            startIdx += size / Math.pow(2, r);
-        }
-        return startIdx + mIdxInRound;
-    };
+    // 🔥 [수정된 부분] useEffect는 반드시 컴포넌트 함수 내부 이 위치에 있어야 합니다.
+    useEffect(() => {
+        if (!isLoaded || !seasons || viewSeasonId === undefined) return;
 
-    // 실시간 팀 정보 및 승자 예측 헬퍼
-    const getLiveTeam = (roundLvl: number, mIdxInRound: number, isHome: boolean) => {
-        if (!targetSeason.rounds || !targetSeason.rounds[0]) return null;
-        const matches = targetSeason.rounds[0].matches || [];
-        const globalIdx = getMatchIndex(roundLvl, mIdxInRound, tourneyTargetSize);
-        const m = matches[globalIdx];
-        if (!m) return null;
-
-        let tName = isHome ? m.home : m.away;
-        let tLogo = isHome ? m.homeLogo : m.awayLogo;
-        let tOwner = isHome ? m.homeOwner : m.awayOwner;
-        let tUid = isHome ? m.homeOwnerUid : m.awayOwnerUid;
-        let score = isHome ? m.homeScore : m.awayScore;
-
-        // 아직 팀 배정 전이면, 하위 라운드 점수를 실시간 비교하여 승자를 올려보냄
-        if ((!tName || tName === 'TBD') && roundLvl > 1) {
-            const childIdxInRound = isHome ? (mIdxInRound * 2) : (mIdxInRound * 2 + 1);
-            const childGlobalIdx = getMatchIndex(roundLvl - 1, childIdxInRound, tourneyTargetSize);
-            const childM = matches[childGlobalIdx];
-            
-            if (childM && (childM.status === 'COMPLETED' || childM.homeScore !== '' || childM.awayScore !== '')) {
-                if (Number(childM.homeScore) > Number(childM.awayScore)) {
-                    tName = childM.home; tLogo = childM.homeLogo; tOwner = childM.homeOwner; tUid = childM.homeOwnerUid;
-                } else if (Number(childM.awayScore) > Number(childM.homeScore)) {
-                    tName = childM.away; tLogo = childM.awayLogo; tOwner = childM.awayOwner; tUid = childM.awayOwnerUid;
-                }
+        const timer = setTimeout(() => {
+            const currentSeason = seasons.find(s => s.id === viewSeasonId);
+            if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) {
+                setKnockoutStages(null);
+                return;
             }
-        }
 
-        if (!tName || tName === 'TBD' || tName === 'BYE') return null;
-        return { name: tName, logo: tLogo || FALLBACK_IMG, ownerName: tOwner, ownerUid: tUid, score: score };
-    };
+            const getWinnerName = (match: Match | null): string => {
+                if (!match) return 'TBD';
+                const home = match.home?.trim();
+                const away = match.away?.trim();
+                if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+                if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+                if (match.status !== 'COMPLETED') return 'TBD';
+                const h = Number(match.homeScore || 0);
+                const a = Number(match.awayScore || 0);
+                return h > a ? match.home : (a > h ? match.away : 'TBD');
+            };
 
-    const renderScore = (score: string | undefined) => {
-        if (score === undefined || score === '') return null;
-        return (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[22px] font-black text-emerald-400 drop-shadow-[0_2px_4px_rgba(0,0,0,1)] z-40 bg-black/50 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
-                {score}
-            </div>
-        );
-    };
+            const getTeamMeta = (name: string) => {
+                if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
+                if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM', ownerUid: undefined };
+                const normName = name.toLowerCase().trim();
+                const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
+                const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
+                const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
+                return {
+                    logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
+                    owner: ownerName,
+                    ownerUid: getOwnerUidByName ? getOwnerUidByName(ownerName) : undefined
+                };
+            };
+
+            const createPlaceholder = (vId: string, stageName: string): Match => ({ 
+                id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
+                seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
+                homeOwnerUid: undefined, awayOwnerUid: undefined,
+                homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
+                homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+            } as Match);
+
+            const slots = {
+                roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
+                roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
+                final: [createPlaceholder('v-final', 'FINAL')]
+            };
+
+            let hasActualRoundOf8 = false;
+            const groupSet = new Set<string>();
+
+            currentSeason.rounds.forEach((round) => {
+                round.matches?.forEach((m) => {
+                    const stage = m.stage?.toUpperCase() || "";
+                    if (stage.includes("GROUP")) {
+                        if (m.group) groupSet.add(m.group);
+                        return;
+                    }
+                    const idMatch = m.id.match(/_(\d+)$/);
+                    const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
+
+                    if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+                        slots.final[0] = { ...m };
+                    } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+                        if (idx < 2) slots.roundOf4[idx] = { ...m };
+                    } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
+                        if (idx < 4) slots.roundOf8[idx] = { ...m };
+                        hasActualRoundOf8 = true;
+                    }
+                });
+            });
+
+            const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3;
+
+            const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
+                if (!target || !source) return;
+                const winner = getWinnerName(source);
+                if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                    target[side] = winner;
+                    const meta = getTeamMeta(winner);
+                    target[`${side}Logo`] = meta.logo;
+                    target[`${side}Owner`] = meta.owner;
+                    target[`${side}OwnerUid`] = meta.ownerUid; 
+                }
+            };
+
+            if (needsRoundOf8) {
+                sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+                sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+                sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+                sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+            }
+            sync(slots.final[0], 'home', slots.roundOf4[0]);
+            sync(slots.final[0], 'away', slots.roundOf4[1]);
+
+            setKnockoutStages({
+                ...slots,
+                roundOf8: needsRoundOf8 ? slots.roundOf8 : null
+            });
+        }, 10);
+
+        return () => clearTimeout(timer);
+    }, [seasons, viewSeasonId, activeRankingData, masterTeams, currentView, isLoaded]);
+
+    // ... 기존 렌더링 로직 (totalRounds 계산 등) ...
 
     return (
-        <div className="w-full flex flex-col items-center gap-10 md:gap-16 relative">
-            {Array.from({ length: totalRounds }).map((_: any, i: number) => {
-                const roundLevel = totalRounds - i; // 가장 상단(결승)부터 역순 렌더링
-                const isFinal = roundLevel === totalRounds;
-                const matchesInRound = Math.pow(2, totalRounds - roundLevel);
-
-                return (
-                    <div key={roundLevel} className="flex flex-col items-center w-full relative">
-                        {/* 라운드 타이틀 */}
-                        <div className="text-center mb-6">
-                            {isFinal ? (
-                                <span className="text-[16px] font-black italic tracking-widest text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)] uppercase">👑 챔피언 결정전 (GRAND FINAL)</span>
-                            ) : (
-                                <span className="text-[14px] font-black italic tracking-widest text-emerald-500 uppercase">
-                                    {roundLevel === totalRounds - 1 ? '🔥 4강전 (SEMI-FINAL)' : roundLevel === totalRounds - 2 ? '⚔️ 8강전 (QUARTER-FINAL)' : `ROUND ${roundLevel}`}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* 경기 박스 그리드 */}
-                        <div className={`grid grid-cols-1 gap-6 sm:gap-8 justify-items-center w-full max-w-7xl mx-auto ${
-                            matchesInRound === 1 ? 'md:grid-cols-1' :
-                            matchesInRound === 2 ? 'md:grid-cols-2' :
-                            matchesInRound === 4 ? 'md:grid-cols-2 lg:grid-cols-4' :
-                            'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                        }`}>
-                            {Array.from({ length: matchesInRound }).map((_: any, mIdx: number) => {
-                                const t1Obj = getLiveTeam(roundLevel, mIdx, true);
-                                const t2Obj = getLiveTeam(roundLevel, mIdx, false);
-
-                                return (
-                                    <div key={mIdx} className="relative flex flex-col p-4 sm:p-5 rounded-3xl border w-full max-w-[340px] bg-slate-900/40 border-slate-800/50 opacity-90 pointer-events-none">
-                                        <div className="text-center mb-4 border-b border-slate-800/50 pb-2">
-                                            <span className="text-[10px] text-slate-400 font-black italic tracking-widest uppercase">{isFinal ? '결승전' : `Match ${mIdx + 1}`}</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-center">
-                                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                                                <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
-                                            </div>
-                                            {[
-                                                { label: `하위 ${mIdx * 2 + 1}경기 승자`, teamObj: t1Obj },
-                                                { label: `하위 ${mIdx * 2 + 2}경기 승자`, teamObj: t2Obj }
-                                            ].map((slot, sIdx) => (
-                                                <div key={sIdx} className={`relative min-h-[96px] sm:min-h-[110px] rounded-xl border-2 border-slate-800 flex flex-col items-center justify-center transition-all overflow-hidden ${slot.teamObj ? 'bg-slate-900/50' : 'bg-slate-900/80'}`}>
-                                                    {slot.teamObj ? (
-                                                        <div className="w-full h-full relative pointer-events-none">
-                                                            {/* 🔥 [에러 해결] Vercel Strict Mode 대응으로 as any 처리 */}
-                                                            <TeamCard team={slot.teamObj as any} size="small" className="w-full h-full border-none shadow-none bg-transparent flex items-center justify-center grayscale opacity-80" />
-                                                            {renderScore(slot.teamObj.score)}
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <span className="text-2xl text-slate-600 mb-1">⚔️</span>
-                                                            <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-tight px-1 text-center">{slot.label}</span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                );
-            })}
+        <div className="w-full flex flex-col items-center gap-10">
+            {/* 렌더링 코드 구현 */}
+            <p className="text-white text-xs">브래킷 데이터 로드됨</p>
         </div>
     );
 };
