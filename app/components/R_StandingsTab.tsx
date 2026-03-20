@@ -293,7 +293,7 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                         <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
                         <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                     </div>
-                    {/* 🔥 [수정] knockoutStages 프롭스 추가 */}
+                    {/* 🔥 knockoutStages 프롭스 추가하여 8강 대응 */}
                     <AdminMatching_TournamentBracketView 
                         matches={currentSeason.rounds?.[0]?.matches || []} 
                         knockoutStages={knockoutStages}
@@ -320,15 +320,15 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             </div>
         )}
 
-        {/* 3. 컵 모드 대진표 및 조별 순위표 */}
+        {/* 3. 컵 모드 대진표 및 조별 순위표 (강화) */}
         {currentSeason?.type === 'CUP' && knockoutStages && (
         <div className="overflow-x-auto pb-4 no-scrollbar">
-            <div className={`${knockoutStages.roundOf8 ? 'min-w-[700px]' : 'min-w-[500px]'} px-4`}>
+            <div className={`${knockoutStages.roundOf8 ? 'min-w-[750px]' : 'min-w-[500px]'} px-4`}>
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                     <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                 </div>
-                {/* 🔥 [수정] 하드코딩된 BracketMatchBox 대신 강화된 공용 뷰어 사용 (데이터 일관성 확보) */}
+                {/* 🔥 하드코딩된 대진표 로직을 공용 뷰어로 교체하여 데이터 정합성 보장 */}
                 <AdminMatching_TournamentBracketView 
                     matches={[]} 
                     knockoutStages={knockoutStages}
@@ -343,7 +343,7 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             <div className="flex w-full gap-2 overflow-x-auto no-scrollbar pb-1">{sortedGroupKeys.map((gName) => <button key={gName} onClick={() => setSelectedGroupTab(gName)} className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-black italic border transition-all ${selectedGroupTab === gName ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>GROUP {gName}</button>)}</div>
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="py-4 pl-4 pr-1 w-10 text-center">R.</th><th className="py-4 pl-1 pr-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
+                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="py-4 pl-4 pr-1 w-10 text-center">R..</th><th className="py-4 pl-1 pr-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
                 <tbody>{groupStandings?.[selectedGroupTab]?.map((t: any) => (
                     <tr key={t.id} className="border-b border-slate-800/50"><td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td><td className="py-4 pl-1 pr-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
                 ))}</tbody></table></div></div>
@@ -394,20 +394,14 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                                             <div className="text-slate-500 text-[11px] italic text-center py-4">완료된 경기가 없습니다.</div>
                                         ) : (
                                             <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pb-2">
-                                                
-                                                {/* 🔥 [디벨롭] 게임명(라운드명)을 별도의 헤더로 분리하여 레이아웃 숨통 틔우기 */}
                                                 {teamMatches.map((m, idx) => (
                                                     <div key={idx} className="flex flex-col bg-[#0f141e] border border-slate-800/80 rounded-xl overflow-hidden shadow-sm hover:border-slate-700 transition-colors relative">
-                                                        
-                                                        {/* 상단 헤더: 라운드명 & 승패 뱃지 */}
                                                         <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800/50 flex items-center justify-between">
                                                             <div className="flex items-center gap-1.5">
                                                                 <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{m.roundName?.replace('리그', '')}</span>
                                                             </div>
                                                             <span className={`text-[9px] font-black px-1.5 py-[1px] rounded border ${m.resultColor}`}>{m.result}</span>
                                                         </div>
-
-                                                        {/* 하단 바디: 상대팀 정보, 스코어, 득점자 */}
                                                         <div className="p-3 flex flex-col gap-2 relative pr-10">
                                                             <div className="flex items-center justify-between w-full">
                                                                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -416,14 +410,12 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                                                                     <span className="text-[12px] sm:text-[13px] font-black text-white uppercase truncate">{m.opponent.name}</span>
                                                                     <span className="text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
                                                                 </div>
-
                                                                 <div className="flex items-center gap-1.5 shrink-0 ml-2 bg-slate-900/50 px-2 py-0.5 rounded-lg border border-slate-800">
                                                                     <span className="text-[14px] sm:text-[16px] font-black text-emerald-400">{m.myScore}</span>
                                                                     <span className="text-[11px] text-slate-600">:</span>
                                                                     <span className="text-[14px] sm:text-[16px] font-black text-slate-400">{m.opScore}</span>
                                                                 </div>
                                                             </div>
-
                                                             {(m.scorersStr || m.assistsStr || m.opScorersStr || m.opAssistsStr) && (
                                                                 <div className="flex flex-col gap-1.5 mt-1 border-t border-slate-800/50 pt-2">
                                                                     {(m.scorersStr || m.assistsStr) && (
@@ -436,7 +428,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                                                                             </span>
                                                                         </div>
                                                                     )}
-                                                                    
                                                                     {(m.opScorersStr || m.opAssistsStr) && (
                                                                         <div className="flex items-start gap-1.5 w-full">
                                                                             <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0 mt-0.5">[{m.opponent.name}]</span>
@@ -449,8 +440,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                                                                     )}
                                                                 </div>
                                                             )}
-
-                                                            {/* 유튜브 하이라이트 */}
                                                             {m.youtubeUrl && (
                                                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
                                                                     <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">

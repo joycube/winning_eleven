@@ -37,20 +37,41 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         };
 
         if (seasonType === 'TOURNAMENT' || seasonType === 'CUP') {
-            const orderedStages = ['ROUND_OF_32', 'ROUND_OF_16', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL'];
+            // 🔥 [디벨롭] ROUND_OF_8(8강)을 명시적으로 추가하여 QUARTER_FINAL과 혼용되더라도 인식 가능케 함
+            const orderedStages = ['ROUND_OF_32', 'ROUND_OF_16', 'ROUND_OF_8', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL'];
+            
             for (let i = 0; i < orderedStages.length - 1; i++) {
-                const currStageMatches = resolved.filter((m:any) => m.stage === orderedStages[i]).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
-                const nextStageMatches = resolved.filter((m:any) => m.stage === orderedStages[i+1]).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
+                // 현재 스테이지와 다음 스테이지 정의 (QUARTER_FINAL과 ROUND_OF_8은 사실상 같은 단계로 취급될 수 있도록 보정)
+                const currentStage = orderedStages[i];
+                const nextStage = orderedStages[i+1];
+
+                const currStageMatches = resolved.filter((m:any) => 
+                    m.stage === currentStage || (currentStage === 'ROUND_OF_8' && m.stage === 'QUARTER_FINAL')
+                ).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
+                
+                const nextStageMatches = resolved.filter((m:any) => 
+                    m.stage === nextStage || (nextStage === 'QUARTER_FINAL' && m.stage === 'ROUND_OF_8')
+                ).sort((a:any,b:any)=>String(a.id||'').localeCompare(String(b.id||'')));
                 
                 if (currStageMatches.length > 0 && nextStageMatches.length > 0) {
                     nextStageMatches.forEach((nextM: any, idx: number) => {
                         if (nextM.home === 'TBD' || nextM.home === 'BYE') {
                             const m1 = currStageMatches[idx * 2];
-                            if (m1) { nextM.home = getWinner(m1); nextM.homeLogo = (getWinner(m1) === m1.home ? m1.homeLogo : m1.awayLogo) || FALLBACK_IMG; }
+                            if (m1) { 
+                                const winner = getWinner(m1);
+                                nextM.home = winner; 
+                                nextM.homeLogo = (winner === m1.home ? m1.homeLogo : m1.awayLogo) || FALLBACK_IMG; 
+                                nextM.homeOwner = (winner === m1.home ? m1.homeOwner : m1.awayOwner) || '-';
+                            }
                         }
                         if (nextM.away === 'TBD' || nextM.away === 'BYE') {
                             const m2 = currStageMatches[idx * 2 + 1];
-                            if (m2) { nextM.away = getWinner(m2); nextM.awayLogo = (getWinner(m2) === m2.home ? m2.homeLogo : m2.awayLogo) || FALLBACK_IMG; }
+                            if (m2) { 
+                                const winner = getWinner(m2);
+                                nextM.away = winner; 
+                                nextM.awayLogo = (winner === m2.home ? m2.homeLogo : m2.awayLogo) || FALLBACK_IMG; 
+                                nextM.awayOwner = (winner === m2.home ? m2.homeOwner : m2.awayOwner) || '-';
+                            }
                         }
                     });
                 }
@@ -132,8 +153,8 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
           const stageUpper = String(m.stage || '').toUpperCase();
           const roundNameUpper = String((m as any).roundName || '').toUpperCase();
           
-          // 🔥 [디벨롭] 플레이오프 매치 판별 기준 정교화 (순위표 제외용)
-          const isPlayoffMatch = ['FINAL', 'SEMI', 'QUARTER', '34', 'KNOCKOUT'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
+          // 🔥 [디벨롭] 8강(ROUND_OF_8)을 포함하도록 플레이오프 판별 키워드 확장
+          const isPlayoffMatch = ['FINAL', 'SEMI', 'QUARTER', 'ROUND_OF', '34', 'KNOCKOUT'].some(k => stageUpper.includes(k) || roundNameUpper.includes(k));
 
           if(m.status === 'COMPLETED' || m.status === 'BYE') {
             // 토너먼트 모드이거나, 플레이오프 매치가 아닌 경우(정규 리그)에만 순위표 집계
