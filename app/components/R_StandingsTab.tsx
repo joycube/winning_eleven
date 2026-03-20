@@ -295,7 +295,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                     </div>
                     {/* 🔥 knockoutStages 프롭스 추가하여 8강 대응 */}
                     <AdminMatching_TournamentBracketView 
-                        matches={currentSeason.rounds?.[0]?.matches || []} 
                         knockoutStages={knockoutStages}
                     />
                 </div>
@@ -330,7 +329,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                 </div>
                 {/* 🔥 하드코딩된 대진표 로직을 공용 뷰어로 교체하여 데이터 정합성 보장 */}
                 <AdminMatching_TournamentBracketView 
-                    matches={[]} 
                     knockoutStages={knockoutStages}
                 />
             </div>
