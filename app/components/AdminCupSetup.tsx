@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc, collection, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match, CupEntry } from '../types';
-import { getSortedTeamsLogic } from '../utils/helpers';
+import { getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers'; // 🔥 getTierBadgeColor 임포트 추가
 import { QuickDraftModal } from './QuickDraftModal';
 import { TeamCard } from './TeamCard';
 import { AdminCupStep2 } from './AdminCupStep2';
@@ -256,14 +256,29 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     }, 60);
   };
 
+  // 🔥 [수정됨] masterId 대신 name 기준으로 중복 필터링하여 버그 수정
   const handleSignTeam = (master: MasterTeam | null) => {
     const target = master || randomResult;
     if (!target || !selectedOwnerId) return !selectedOwnerId ? alert("오너 선택 필수") : null;
     const owner = owners.find(o => String(o.id) === String(selectedOwnerId) || o.uid === selectedOwnerId);
+    
     const allAssignedTeams = [...unassignedPool, ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null)];
-    if(allAssignedTeams.some(p => p.masterId === target.id)) return alert("이미 선발된 팀입니다.");
-    setUnassignedPool(prev => [...prev, { id: `entry_${Date.now()}`, masterId: target.id, name: target.name, logo: target.logo, ownerName: owner!.nickname, ownerUid: owner!.uid || owner!.docId || '', region: target.region, tier: target.tier, realRankScore: target.realRankScore, realFormScore: target.realFormScore }]);
-    setRandomResult(null); setIsFlipping(false);
+    if(allAssignedTeams.some(p => p.name === target.name)) return alert("이미 선발된 팀입니다.");
+    
+    setUnassignedPool(prev => [...prev, { 
+        id: `entry_${Date.now()}`, 
+        masterId: target.id, 
+        name: target.name, 
+        logo: target.logo, 
+        ownerName: owner!.nickname, 
+        ownerUid: owner!.uid || owner!.docId || '', 
+        region: target.region, 
+        tier: target.tier, 
+        realRankScore: target.realRankScore, 
+        realFormScore: target.realFormScore 
+    }]);
+    setRandomResult(null); 
+    setIsFlipping(false);
   };
 
   const handleDraftApply = (newTeams: Team[]) => {
@@ -301,7 +316,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     else { if(tournamentWaitingPool.length===0) return alert("진출 팀 없음"); setTargetSlot({group:'TOURNAMENT', idx, isTournament:true}); }
   };
 
-  // 🔥 [가장 핵심 수술 포인트] ID 중복 발급을 원천 차단하는 완벽한 사다리 생성기
   const handleCreateTournamentSchedule = async () => {
     try {
       let tb = [...tournamentBracket]; 
@@ -313,7 +327,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       const matches: any[] = []; 
       
       if (tSize === 8) {
-          // 8강 생성 (ko_8_x 고유 ID 발급)
           for(let i=0; i<8; i+=2) {
               matches.push({ 
                   id:`ko_8_${i/2}`, seasonId:targetSeason.id, stage:'ROUND_OF_8', matchLabel:`8강 ${i/2+1}경기`, 
@@ -323,7 +336,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
                   nextMatchId: `ko_4_${Math.floor(i/4)}`, nextMatchSide:(i/2)%2===0?'HOME':'AWAY' 
               });
           }
-          // 4강 TBD 생성 (ko_4_x 고유 ID 발급)
           for(let j=0; j<2; j++) { 
               matches.push({
                   id:`ko_4_${j}`, seasonId:targetSeason.id, stage:'ROUND_OF_4', matchLabel:`4강 ${j+1}경기`, 
@@ -333,7 +345,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
               }); 
           }
       } else {
-          // 4팀 세팅일 경우 4강 바로 생성 (ko_4_x 고유 ID 발급)
           for(let i=0; i<4; i+=2) {
               matches.push({ 
                   id:`ko_4_${i/2}`, seasonId:targetSeason.id, stage:'ROUND_OF_4', matchLabel:`4강 ${i/2+1}경기`, 
@@ -345,7 +356,6 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
           }
       }
       
-      // 3·4위전 및 결승전
       matches.push({id:`ko_3rd_0`, seasonId:targetSeason.id, stage:'3RD_PLACE', matchLabel:`3·4위전`, home:'TBD', homeOwnerUid:'', away:'TBD', awayOwnerUid:'', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', awayOwner:'TBD', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:null});
       matches.push({id:`ko_final_0`, seasonId:targetSeason.id, stage:'FINAL', matchLabel:`결승전`, home:'TBD', homeOwnerUid:'', away:'TBD', awayOwnerUid:'', homeLogo:FALLBACK_IMG, awayLogo:FALLBACK_IMG, homeOwner:'TBD', awayOwner:'TBD', homeScore:'', awayScore:'', status:'UPCOMING', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], nextMatchId:null});
       
@@ -405,58 +415,79 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     <div className="space-y-8 animate-in fade-in relative pb-20">
       {(isRolling || isFlipping) && <div className="fixed inset-0 bg-black/90 z-50 backdrop-blur-sm" />}
 
-      <div className={`bg-slate-900 p-5 rounded-3xl border border-slate-800 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
-        <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
-          <h3 className="text-white font-black italic uppercase tracking-tighter">Step 1. Team & Owner Matching</h3>
-          <div className="text-xs text-slate-400"> WaitingPool: <span className="text-emerald-400 font-bold text-lg">{unassignedPool.length}</span> Teams</div>
-        </div>
-
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-4">
-          <div className="text-center md:text-left"><p className="text-sm font-bold text-white">⚡ 빠른 팀 배정이 필요하신가요?</p><p className="text-xs text-slate-400">오너별로 팀을 일괄 배정하거나 드래프트를 진행합니다.</p></div>
-          <button onClick={() => setIsDraftOpen(true)} disabled={isRolling} className="h-10 px-6 bg-indigo-600 hover:bg-indigo-500 text-white font-black italic rounded-lg shadow-lg text-xs transition-all">⚡ Quick Draft</button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="text-[10px] text-slate-500 font-bold mb-1 block">SELECT OWNER</label>
-            <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="w-full bg-slate-950 p-3 rounded-xl border border-slate-700 text-white font-bold text-sm">
-              <option value="">👤 Select Owner</option>
-              {owners.map(o => <option key={o.id} value={o.uid || o.docId || String(o.id)}>{o.nickname}</option>)}
-            </select>
+      {/* 🔥 [수정됨] 레퍼런스 코드와 완벽히 동일한 Step 1 UI 이식 */}
+      <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
+          <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <h3 className="text-white font-bold text-sm">Step 1. 팀 & 오너 매칭</h3>
+              <div className="text-xs text-slate-400"> 대기실: <span className="text-emerald-400 font-bold">{unassignedPool.length}</span> 팀</div>
           </div>
-          <div>
-            <label className="text-[10px] text-slate-500 font-bold mb-1 block">RANDOM MATCH</label>
-            <button onClick={handleRandom} disabled={isRolling || !selectedOwnerId} className={`w-full h-[46px] rounded-xl font-black italic text-white shadow-lg flex items-center justify-center gap-2 transition-all ${isRolling ? 'bg-slate-800 cursor-wait' : !selectedOwnerId ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500'}`}>
-              {isRolling ? '🎰 ROLLING...' : '🎲 RANDOM DRAW'}
-            </button>
-          </div>
-        </div>
 
-        {randomResult && (
-          <div className="flex justify-center py-6">
-            <div className={`p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 bg-slate-900 ${randomResult.tier==='S'?'border-yellow-500 shadow-yellow-500/50':'border-emerald-500'}`}>
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center p-2"><img src={randomResult.logo} className="w-full h-full object-contain" alt="" /></div>
-              <div className="text-center"><h2 className="text-xl font-black italic text-white uppercase">{randomResult.name}</h2></div>
-              <button onClick={() => handleSignTeam(null)} className="w-full bg-emerald-600 text-white font-bold py-2 rounded-xl">SIGN ✅</button>
-            </div>
+          <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-3 mb-2">
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
+                  <div className="text-white font-black italic flex items-center gap-2 text-sm">
+                      <span className="text-yellow-400">⚡</span> 퀵 팀매칭 (Quick Match)
+                      <span className="text-[9px] bg-yellow-500 text-black px-1.5 rounded font-black tracking-tighter">HOT</span>
+                  </div>
+                  <p className="text-sm text-white mt-1 font-bold">✨ 지금 자동으로 팀을 추천 받으세요 ✨</p>
+              </div>
+              <button onClick={() => setIsDraftOpen(true)} disabled={isRolling || isGroupLocked} className={`h-10 px-6 bg-indigo-600 text-white font-black italic rounded-lg shadow-lg text-xs tracking-tighter transition-all flex items-center justify-center gap-2 ${isGroupLocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-500 hover:scale-105 active:scale-95'}`}><span>⚡</span> 퀵 매칭 시작</button>
           </div>
-        )}
 
-        {!randomResult && (
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-            <div className="flex flex-wrap gap-2 mb-3">
-              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-black text-white text-xs p-2 rounded border border-slate-700"><option value="ALL">All Categories</option><option value="CLUB">Club</option></select>
-              <input value={searchTeam} onChange={e => setSearchTeam(e.target.value)} placeholder="Search Team..." className="bg-black text-white text-xs p-2 rounded border border-slate-700 flex-1" />
-            </div>
-            <div className="max-h-[400px] overflow-y-auto custom-scrollbar p-1">
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-                  {availableTeams.map(t => (
-                    <TeamCard key={t.id} team={t} onClick={() => handleSignTeam(t)} className="cursor-pointer" size="mini" />
-                  ))}
-                </div>
-            </div>
+          <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-slate-500 font-bold">1. Select Owner (Manual)</label>
+              <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm font-bold">
+                  <option value="">👤 Select Owner</option>
+                  {owners.map(o => <option key={o.id} value={o.uid || o.docId || String(o.id)}>{o.nickname}</option>)}
+              </select>
           </div>
-        )}
+
+          <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
+              <div className="flex justify-between items-center">
+                  <label className="text-[10px] text-slate-500 font-bold">2. Search Options (Manual)</label>
+                  <button onClick={handleRandom} disabled={isRolling || isGroupLocked} className={`h-10 px-6 rounded-lg text-xs font-black italic tracking-tighter text-white shadow-lg border border-purple-500 flex items-center justify-center gap-2 transition-all ${isRolling || isGroupLocked ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95 hover:shadow-purple-500/50'}`}>{isRolling ? <span className="animate-spin text-lg">🎰</span> : <span className="text-lg">🎲</span>} {isRolling ? 'OPENING...' : '랜덤 매칭 시작'}</button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
+                  <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="">All Leagues</option>{allSortedLeagues.map((l:any) => <option key={l.id} value={l.name}>{l.name}</option>)}</select>
+                  <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold">
+                      <option value="ALL">All Tiers</option>
+                      <option value="S">S Tier</option><option value="A">A Tier</option><option value="B">B Tier</option><option value="C">C Tier</option><option value="D">D Tier</option>
+                  </select>
+                  <input type="text" value={searchTeam} onChange={e => setSearchTeam(e.target.value)} disabled={isRolling} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs font-bold" />
+              </div>
+          </div>
+
+          <div className="space-y-2">
+              <div className="flex justify-between items-center"><label className="text-[10px] text-slate-500 font-bold">3. Pack Result</label>{!isRolling && (filterLeague || randomResult) && <button onClick={() => { setFilterLeague(''); setRandomResult(null); setIsFlipping(false); }} className="text-[10px] text-slate-400 border border-slate-700 px-2 rounded hover:text-white font-bold">↩ Back to Leagues</button>}</div>
+              {randomResult ? (
+                  <div className="flex justify-center py-8 relative" style={{ perspective: '1000px' }}>
+                      {isFlipping && <div className="blast-circle" />}
+                      <div className={`relative p-6 rounded-[2rem] border-4 flex flex-col items-center gap-4 transition-all duration-500 min-w-[240px] bg-slate-900 ${isFlipping ? 'fc-card-reveal' : ''} ${randomResult.tier === 'S' ? 'border-yellow-500 fc-gold-glow' : 'border-emerald-500'} ${isRolling ? 'blur-md scale-90 grayscale opacity-60' : 'scale-100 opacity-100'}`}>
+                          <div className={`absolute -top-4 text-white text-xs font-black italic tracking-tighter px-4 py-1.5 rounded-full shadow-2xl transition-all ${isRolling ? 'bg-purple-600 animate-pulse' : 'bg-gradient-to-r from-emerald-600 to-teal-600'}`}>{isRolling ? '🎰 SHUFFLING PACK...' : '🏆 PACK OPENED!'}</div>
+                          <div className={`w-32 h-32 bg-white rounded-full flex items-center justify-center p-4 shadow-2xl relative z-10 ${randomResult.tier === 'S' ? 'ring-4 ring-yellow-400/50' : 'ring-4 ring-emerald-400/30'}`}><img src={randomResult.logo} className={`w-full h-full object-contain ${isRolling ? 'animate-bounce' : ''}`} alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div>
+                          <div className="text-center relative z-10"><p className="text-2xl font-black italic tracking-tighter text-white uppercase leading-none">{randomResult.name}</p><div className="flex items-center justify-center gap-2 mt-2"><span className="text-[10px] font-black italic text-slate-400 uppercase tracking-widest">{randomResult.region}</span><span className={`text-xs px-3 py-0.5 rounded-full font-black italic shadow-lg ${getTierBadgeColor(randomResult.tier)}`}>{randomResult.tier} TIER</span></div></div>
+                          {!isRolling && (
+                              <button onClick={() => handleSignTeam(randomResult)} className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-95">
+                                  SIGN ✅
+                              </button>
+                          )}
+                      </div>
+                  </div>
+              ) : (
+                  !filterLeague && !searchTeam ? (
+                      <div className="space-y-6 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
+                          {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (<div><p className="text-[10px] text-emerald-500 font-black italic mb-2 ml-1 border-l-4 border-emerald-500 pl-2 uppercase tracking-tighter">Club Leagues</p><div className="grid grid-cols-3 gap-3">{allSortedLeagues.filter((l:any)=>l.category==='CLUB').map((l:any) => { const count = masterTeams.filter(t => t.region === l.name).length; return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-emerald-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>); })}</div></div>)}
+                          {(filterCategory === 'ALL' || filterCategory === 'NATIONAL') && (<div><p className="text-[10px] text-blue-500 font-black italic mb-2 ml-1 border-l-4 border-blue-500 pl-2 uppercase tracking-tighter">National Teams</p><div className="grid grid-cols-3 gap-3">{allSortedLeagues.filter((l:any)=>l.category==='NATIONAL').map((l:any) => { const count = masterTeams.filter(t => t.region === l.name).length; return (<div key={l.id} onClick={() => setFilterLeague(l.name)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-2 group transition-all hover:bg-slate-800 shadow-xl"><div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-2 shadow-inner"><img src={l.logo} className="w-full h-full object-contain" alt="" /></div><div className="text-center w-full"><p className="text-[10px] text-white font-black italic group-hover:text-blue-400 truncate w-full tracking-tighter uppercase">{l.name}</p><p className="text-[9px] text-slate-500 font-bold">{count} Teams</p></div></div>); })}</div></div>)}
+                      </div>
+                  ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
+                          {availableTeams.map((t:any) => (
+                              <TeamCard key={t.id} team={t} onClick={() => handleSignTeam(t)} className="cursor-pointer hover:border-emerald-500 hover:ring-2 hover:ring-emerald-500 transition-all" size="mini" />
+                          ))}
+                      </div>
+                  )
+              )}
+          </div>
       </div>
 
       <AdminCupStep2
@@ -505,6 +536,10 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
           </div>
         </div>
       )}
+
+      {/* 🔥 [수정됨] 누락되었던 퀵 드래프트 모달 렌더링 추가 */}
+      <QuickDraftModal isOpen={isDraftOpen} onClose={() => setIsDraftOpen(false)} owners={owners} masterTeams={masterTeams} onConfirm={handleDraftApply} />
+
     </div>
   );
 };

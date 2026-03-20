@@ -187,14 +187,19 @@ export const CupSchedule = ({
         final: [createPlaceholder('v-final', 'FINAL')]
     };
 
-    // 🔥 [수술 포인트] 참가 팀 수에 기반한 멍청한 추측 로직을 싹 날려버리고, DB만 봅니다!
     let hasActualRoundOf8 = false;
+    const groupSet = new Set<string>();
 
     currentSeason.rounds.forEach((round) => {
         if (!round.matches) return;
         round.matches.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
-            if (stage.includes("GROUP")) return;
+            
+            if (stage.includes("GROUP")) {
+                if (m.group) groupSet.add(m.group);
+                return;
+            }
+
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
             
@@ -206,11 +211,12 @@ export const CupSchedule = ({
                 if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
             } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
                 if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-                // 🔥 진짜 8강 매치 데이터가 있을 때만 8강을 그립니다!
                 hasActualRoundOf8 = true; 
             }
         });
     });
+
+    const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3;
 
     const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
@@ -241,24 +247,20 @@ export const CupSchedule = ({
         }
     };
 
-    // 8강 승자 -> 4강 세팅 (8강이 존재할 때만 실행)
-    if (hasActualRoundOf8) {
+    if (needsRoundOf8) {
         syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
         syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
         syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
         syncWinner(slots.roundOf4[1], 'away', slots.roundOf8[3]);
     }
     
-    // 4강 승자 -> 결승 세팅
     syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
     syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
 
-    // 4강 패자 -> 3·4위전 세팅
     syncLoser(slots.thirdPlace[0], 'home', slots.roundOf4[0]);
     syncLoser(slots.thirdPlace[0], 'away', slots.roundOf4[1]);
 
-    // 🔥 8강이 없으면 slots.roundOf8에 null을 던져서 렌더링을 완전히 막습니다!
-    return { ...slots, roundOf8: hasActualRoundOf8 ? slots.roundOf8 : null };
+    return { ...slots, roundOf8: needsRoundOf8 ? slots.roundOf8 : null };
   }, [currentSeason, viewSeasonId, activeRankingData, masterTeams, owners]);
 
   const displayStages = currentSeason?.type === 'LEAGUE_PLAYOFF' ? knockoutStages : internalKnockoutStages;
