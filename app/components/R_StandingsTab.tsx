@@ -32,7 +32,9 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
 
     if (!currentSeason?.rounds) return activeRankingData?.teams || [];
 
-    const playoffKeywords = ['ROUND', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트'];
+    // 🔥 [버그 픽스] 'ROUND' 키워드를 'ROUND_OF'로 변경하여 정규 리그(Round 1 등)가 누락되는 현상 해결!
+    // useLeagueStats.ts의 기준과 동일하게 맞춤
+    const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
 
     currentSeason.rounds.forEach((r: any) => {
         const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
@@ -44,6 +46,7 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
             const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
+            // 리그+PO 모드에서 플레이오프 매치면 정규 스탠딩에 합산하지 않고 튕겨냄
             if ((currentSeason.type === 'CUP' || currentSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) {
                 return; 
             }

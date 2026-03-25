@@ -40,8 +40,8 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
       const distMap: any = {};
       const playerStats: any = {}; 
 
-      // 토너먼트/PO 성격의 라운드인지 판별하기 위한 키워드
-      const playoffKeywords = ['ROUND', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트'];
+      // 🔥 [버그 픽스] 'ROUND' 키워드를 제거하고 'ROUND_OF' 및 상세 키워드로 변경하여 정규리그 오인 방지!
+      const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
 
       if (currentSeason?.rounds) {
           currentSeason.rounds.forEach((r: any) => {
