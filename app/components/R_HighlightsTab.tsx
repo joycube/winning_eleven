@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, orderBy, doc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, doc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { HighlightPost, FALLBACK_IMG, Owner } from '../types';
 import { Heart, MessageSquare, Eye, X, Send, ThumbsUp, Search } from 'lucide-react';
@@ -27,7 +27,7 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-// 🔥 UID 기반 프로필 3중 매칭
+// 🔥 UID 기반 프로필 3중 매칭 (TS Any 픽스 적용)
 const getBestProfileImage = (userObj: any, ownersList: any[], savedPhoto: string, authorName: string) => {
     const targetName = authorName || userObj?.mappedOwnerId;
     if (userObj && targetName === userObj.mappedOwnerId && !isBadImage(userObj.photo)) return String(userObj.photo);
@@ -79,7 +79,7 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: HighlightPost, size?: 
     );
 };
 
-// 🔥 컴팩트 사이즈 스탯 카드 (동적 문구 추가)
+// 컴팩트 사이즈 스탯 카드
 const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
     const list = Array.isArray(rankingData) ? rankingData : (rankingData?.rankings || rankingData?.teams || []);
     const stat = list.find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName));
@@ -121,7 +121,6 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
                     <span className="text-[10px] font-black text-white mt-0.5 leading-tight">
                         <span className={Number(winRate) >= 50 ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span>
                     </span>
-                    {/* 🔥 0% 서버 부하의 동적 안내 문구 추가 */}
                     <span className="text-[6.5px] text-slate-500 font-bold mt-1 tracking-tighter leading-tight text-right whitespace-nowrap">
                         *이번 시즌 {teamName} 기준
                     </span>
@@ -250,8 +249,10 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         
         setIsSending(true);
         try {
-            const authorName = authUser.mappedOwnerId || authUser.nickname || '익명 구단주';
-            const authorPhoto = getBestProfileImage(authUser, owners, authUser.photoURL || authUser.photo, authorName);
+            // 🔥 [타입스크립트 FM 픽스] ANY 캐스팅 및 displayName 활용
+            const matchedOwner = owners?.find((o: any) => o.uid === authUser?.uid || String(o.id) === String(authUser?.uid));
+            const authorName = matchedOwner?.nickname || authUser?.displayName || (authUser as any)?.nickname || '익명 구단주';
+            const authorPhoto = getBestProfileImage(authUser, owners, authUser?.photoURL || (authUser as any)?.photo, authorName);
             
             let updatedComments = [...(activeVideo.comments || [])];
             updatedComments.push({ 
