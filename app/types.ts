@@ -194,3 +194,25 @@ export interface Notice {
   dislikedBy?: string[];
   comments?: NoticeComment[];
 }
+
+// ==========================================
+// 🔥 [신규 추가] 하이라이트 미디어 전용 데이터 타입
+// ==========================================
+export interface HighlightPost {
+  id: string;             // 매치 ID와 동일하게 맞춰서 1:1 매핑
+  matchId: string;        
+  seasonId: number;
+  seasonName: string;
+  youtubeUrl: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeLogo: string;
+  awayLogo: string;
+  homeScore: number | string;
+  awayScore: number | string;
+  matchLabel: string;     // 예: "ROUND_OF_8 / 1경기"
+  createdAt: number;      // 정렬을 위한 타임스탬프
+  views: number;          // 조회수
+  likes: string[];        // 좋아요 누른 유저 UID 배열
+  commentCount: number;   // 댓글 갯수
+}

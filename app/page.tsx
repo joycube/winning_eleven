@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'; // 🔥 getDocs, where 추가
 import { Season, Match, Notice } from './types';
 
 // 🔥 [성능 최적화] Next.js Dynamic Import 불러오기
@@ -529,6 +529,32 @@ export default function FootballLeagueApp() {
           }
 
           await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
+
+          // 🔥 [신규 추가] 하이라이트 자동 등록 
+          if (yt && yt.trim() !== '') {
+              const highlightRef = doc(collection(db, "highlights"), matchId);
+              await setDoc(highlightRef, {
+                  id: matchId,
+                  matchId: matchId,
+                  seasonId: s.id,
+                  seasonName: s.name,
+                  youtubeUrl: yt,
+                  homeTeam: editingMatch.home,
+                  awayTeam: editingMatch.away,
+                  homeLogo: editingMatch.homeLogo,
+                  awayLogo: editingMatch.awayLogo,
+                  homeScore: hScore,
+                  awayScore: aScore,
+                  matchLabel: editingMatch.matchLabel || editingMatch.stage,
+                  createdAt: Date.now(),
+              }, { merge: true }); 
+              
+              const snap = await getDocs(query(collection(db, "highlights"), where("id", "==", matchId)));
+              if (snap.empty) {
+                  await updateDoc(highlightRef, { views: 0, likes: [], commentCount: 0 });
+              }
+          }
+
           setEditingMatch(null);
           return; 
       }
@@ -640,6 +666,32 @@ export default function FootballLeagueApp() {
       }
 
       await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
+
+      // 🔥 [신규 추가] 하이라이트 자동 등록 
+      if (yt && yt.trim() !== '') {
+          const highlightRef = doc(collection(db, "highlights"), matchId);
+          await setDoc(highlightRef, {
+              id: matchId,
+              matchId: matchId,
+              seasonId: s.id,
+              seasonName: s.name,
+              youtubeUrl: yt,
+              homeTeam: editingMatch.home,
+              awayTeam: editingMatch.away,
+              homeLogo: editingMatch.homeLogo,
+              awayLogo: editingMatch.awayLogo,
+              homeScore: hScore,
+              awayScore: aScore,
+              matchLabel: editingMatch.matchLabel || editingMatch.stage,
+              createdAt: Date.now(), 
+          }, { merge: true }); 
+          
+          const snap = await getDocs(query(collection(db, "highlights"), where("id", "==", matchId)));
+          if (snap.empty) {
+              await updateDoc(highlightRef, { views: 0, likes: [], commentCount: 0 });
+          }
+      }
+
       setEditingMatch(null);
   };
 

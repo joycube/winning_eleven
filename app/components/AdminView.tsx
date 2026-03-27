@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs } from 'firebase/firestore';
+import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore'; // 🔥 getDoc 추가
 import { Season, Owner, League, MasterTeam, Banner } from '../types';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
 import { AdminBannerManager } from './AdminBannerManager';
@@ -13,7 +13,7 @@ import { AdminCupSetup } from './AdminCupSetup';
 import { AdminRealWorldManager } from './AdminRealWorldManager';
 import { AdminNoticeManager } from './AdminNoticeManager';
 
-import { PlusCircle, UserCheck, Megaphone, Flag, Shield, Crown, Image as ImageIcon, Globe, ArrowLeft, Trophy, Settings, Trash2, DatabaseBackup } from 'lucide-react';
+import { PlusCircle, UserCheck, Megaphone, Flag, Shield, Crown, Image as ImageIcon, Globe, ArrowLeft, Trophy, Settings, Trash2, DatabaseBackup, PlaySquare } from 'lucide-react';
 
 // @ts-ignore
 import { AdminUserTracker } from './AdminUserTracker';
@@ -68,6 +68,63 @@ export const AdminView = ({
         if (!confirm("해당 시즌의 스케줄만 삭제하시겠습니까?")) return;
         await updateDoc(doc(db, "seasons", String(seasonId)), { rounds: [] });
         alert("스케줄 삭제 완료");
+    };
+
+    // ==========================================
+    // 🔥 [버그 픽스] 과거 하이라이트 일괄 동기화 마법 버튼 (안전성 강화버전)
+    // ==========================================
+    const handleSyncPastHighlights = async () => {
+        if (!confirm("과거 시즌의 모든 유튜브 영상을 하이라이트 전용 게시판으로 일괄 동기화하시겠습니까?\n(기존 데이터는 보존되며, 없는 데이터만 추가됩니다.)")) return;
+        
+        try {
+            let count = 0;
+            const seasonsSnap = await getDocs(collection(db, "seasons"));
+            
+            // 🔥 Batch 대신 에러 추적이 쉬운 개별 setDoc + for...of 비동기 루프 사용
+            for (const seasonDoc of seasonsSnap.docs) {
+                const seasonData = seasonDoc.data();
+                const rounds = seasonData.rounds || [];
+                
+                for (const r of rounds) {
+                    const matches = r.matches || [];
+                    for (const m of matches) {
+                        // 💡 m.id가 확실히 존재하고 유튜브 링크가 있을 때만 실행 (에러 방어)
+                        if (m.id && m.youtubeUrl && m.youtubeUrl.trim() !== '') {
+                            const highlightRef = doc(db, "highlights", m.id);
+                            
+                            // 💡 기존 데이터가 있는지 확인 (없으면 초기값 세팅을 위해)
+                            const docSnap = await getDoc(highlightRef);
+
+                            await setDoc(highlightRef, {
+                                id: m.id,
+                                matchId: m.id,
+                                seasonId: seasonData.id,
+                                seasonName: seasonData.name,
+                                youtubeUrl: m.youtubeUrl,
+                                homeTeam: m.home || 'TBD',
+                                awayTeam: m.away || 'TBD',
+                                homeLogo: m.homeLogo || '',
+                                awayLogo: m.awayLogo || '',
+                                homeScore: m.homeScore || 0,
+                                awayScore: m.awayScore || 0,
+                                matchLabel: m.matchLabel || m.stage || '',
+                                createdAt: seasonData.id, // 과거 영상은 해당 시즌 생성 시점으로 처리
+                                // 🔥 문서가 없었을 때만 조회수, 좋아요, 댓글 0으로 셋팅
+                                ...(docSnap.exists() ? {} : { views: 0, likes: [], commentCount: 0 })
+                            }, { merge: true }); 
+                            
+                            count++;
+                        }
+                    }
+                }
+            }
+            
+            alert(`🎉 총 ${count}개의 과거 하이라이트 영상이 성공적으로 동기화되었습니다!`);
+        } catch (error: any) {
+            console.error("🚨 하이라이트 동기화 오류:", error);
+            // 🔥 무슨 에러인지 화면에 직접 띄워줍니다 (권한 문제인지, 데이터 문제인지 파악용)
+            alert(`동기화 중 오류가 발생했습니다.\n상세 에러: ${error.message}`); 
+        }
     };
 
     const handleCloseSeason = async (season: Season) => {
@@ -295,6 +352,19 @@ export const AdminView = ({
     return (
         <div className="bg-[#0B1120] p-3 sm:p-6 rounded-3xl border border-slate-800 shadow-2xl animate-in fade-in">
             
+            {/* 🔥 상단 메뉴에 DB 동기화용 미니 버튼 추가 */}
+            <div className="flex justify-between items-center mb-4 px-2">
+                <h2 className="text-xl font-black italic text-emerald-400 tracking-tighter">ADMIN DASHBOARD</h2>
+                {activeTopTab === 'SYSTEM' && (
+                    <button 
+                        onClick={handleSyncPastHighlights}
+                        className="bg-indigo-900/50 hover:bg-indigo-600 border border-indigo-700/50 text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                        <PlaySquare size={14} /> 하이라이트 동기화
+                    </button>
+                )}
+            </div>
+
             <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 mb-6 sm:mb-8 shadow-inner">
                 <button
                     onClick={() => setAdminTab('SYSTEM_MENU')}
