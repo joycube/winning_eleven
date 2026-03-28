@@ -110,7 +110,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     };
   };
 
-  // 🔥 [디벨롭 1] 실명 전환(Resolve TBD) 로직 적용 (useLeagueStats와 동일하게)
   const processedRounds = useMemo(() => {
       if (!currentSeason?.rounds) return [];
       const roundsCopy = JSON.parse(JSON.stringify(currentSeason.rounds));
@@ -229,7 +228,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       return getTeamExtendedInfo(winnerName);
   }, [grandFinalMatch, activeRankingData, masterTeams]);
 
-  // 🔥 [디벨롭 2] 1위, 2위, 3위를 완벽하게 추적하여 R_OwnersTab에 넘겨줄 Props 생성!
   const poTournamentResult = useMemo(() => {
       if (!currentSeason || !isHybridSeason) return undefined;
       const allMatches = processedRounds.flatMap((r: any) => r.matches || []);
@@ -271,7 +269,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
           thirdPlace = tRes.w; 
       }
 
-      // 최종 우승자는 grandChampionInfo로 한 번 더 검증 (확실한 보장)
       if (grandChampionInfo?.name) champion = grandChampionInfo.name;
 
       return { champion, runnerUp, thirdPlace };
@@ -336,7 +333,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             owners={owners}
             sortedTeams={sortedTeams}
             grandChampionInfo={grandChampionInfo}
-            // 🔥 [수술 핵심 3] 추적된 1/2/3위 팀 결과를 드디어 전달!
             poTournamentResult={poTournamentResult} 
             prizeRule={prizeRule}
             footerText={footerText}
@@ -347,6 +343,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         <R_HighlightsTab 
             currentSeason={currentSeason}
             activeRankingData={activeRankingData}
+            owners={owners} // 🔥 [FM 정석 픽스] 자식이 필수로 요구하는 owners 부품을 부모가 드디어 넘겨줌!
         />
       )}
     </div>
