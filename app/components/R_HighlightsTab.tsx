@@ -12,11 +12,9 @@ import StickerSelector from './StickerSelector';
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-// 🔥 [FM 정석 픽스] 기존 HighlightPost 타입을 안전하게 확장하여 comments 속성을 공식 추가
+// 🔥 [FM 정석 픽스] 충돌 유발 속성(views, likes) 제거. 순수하게 comments 배열만 확장
 interface ExtendedHighlight extends HighlightPost {
     comments?: any[];
-    likes?: string[];
-    views?: number;
 }
 
 const getYoutubeId = (url: string) => {
@@ -189,7 +187,7 @@ interface RHighlightsTabProps {
 
 export default function R_HighlightsTab({ currentSeason, activeRankingData, owners }: RHighlightsTabProps) {
     const { authUser } = useAuth();
-    // 🔥 [FM 정석 픽스] 확장된 타입을 상태에 선언하여 타입스크립트가 구조를 100% 인지하게 함
+    // 🔥 ExtendedHighlight 타입 사용
     const [highlights, setHighlights] = useState<ExtendedHighlight[]>([]);
     const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
     const [searchQuery, setSearchQuery] = useState('');
@@ -207,7 +205,6 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
     useEffect(() => {
         const q = query(collection(db, 'highlights'), orderBy('createdAt', 'desc'));
         return onSnapshot(q, (snap) => {
-            // DB에서 가져온 데이터를 안전하게 ExtendedHighlight 타입으로 매핑
             setHighlights(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtendedHighlight)));
         });
     }, []);
@@ -240,7 +237,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
             );
         }
 
-        if (sortBy === 'LATEST') result.sort((a, b) => b.createdAt - a.createdAt);
+        if (sortBy === 'LATEST') result.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         else if (sortBy === 'POPULAR') result.sort((a, b) => (b.views || 0) - (a.views || 0));
 
         return result;
@@ -258,7 +255,6 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
             const authorName = matchedOwner?.nickname || authUser.displayName || '익명 구단주';
             const authorPhoto = getBestProfileImage(authUser, owners, authUser.photoURL || '', authorName);
             
-            // 🔥 타입 에러 완전 해결: activeVideo는 이제 ExtendedHighlight 타입으로 인식되므로 comments 접근 가능
             let updatedComments = [...(activeVideo.comments || [])];
             
             updatedComments.push({ 
@@ -274,7 +270,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                 isEdited: false 
             });
 
-            await updateDoc(doc(db, 'highlights', activeVideo.id), { comments: updatedComments });
+            await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
             isReply ? setReplyText('') : setCommentText('');
             if (isReply) setReplyingTo(null);
         } catch(e) {
@@ -287,7 +283,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         try {
             let updatedComments = [...(activeVideo.comments || [])];
             updatedComments = updatedComments.map((c:any) => c.id === editingCommentId ? { ...c, text: editCommentText.trim(), isEdited: true } : c);
-            await updateDoc(doc(db, 'highlights', activeVideo.id), { comments: updatedComments });
+            await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
             setEditCommentText(''); setEditingCommentId(null);
         } catch (e) {}
     };
@@ -296,7 +292,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
         if (!activeVideo) return;
         let updatedComments = [...(activeVideo.comments || [])].filter((c: any) => c.id !== commentId && c.parentId !== commentId);
-        await updateDoc(doc(db, 'highlights', activeVideo.id), { comments: updatedComments });
+        await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
     };
 
     const handleCommentReaction = async (commentId: string) => {
@@ -304,7 +300,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         try {
             let updatedComments = [...(activeVideo.comments || [])];
             updatedComments = updatedComments.map((c:any) => c.id === commentId ? { ...c, likes: c.likes?.includes(authUser.uid) ? c.likes.filter((id: string) => id !== authUser.uid) : [...(c.likes||[]), authUser.uid] } : c);
-            await updateDoc(doc(db, 'highlights', activeVideo.id), { comments: updatedComments });
+            await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
         } catch (e) {}
     };
 
@@ -312,7 +308,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         e.stopPropagation();
         if (!authUser) return alert("로그인이 필요한 기능입니다.");
         const isLiked = post.likes?.includes(authUser.uid);
-        await updateDoc(doc(db, 'highlights', post.id), { likes: isLiked ? arrayRemove(authUser.uid) : arrayUnion(authUser.uid) });
+        await updateDoc(doc(db, 'highlights', post.id!), { likes: isLiked ? arrayRemove(authUser.uid) : arrayUnion(authUser.uid) });
     };
 
     return (
@@ -357,7 +353,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
                     {filteredAndSortedHighlights.map((post) => (
-                        <div key={post.id} onClick={() => setPlayingVideoId(post.id)} className="group flex flex-col gap-3 cursor-pointer">
+                        <div key={post.id} onClick={() => setPlayingVideoId(post.id!)} className="group flex flex-col gap-3 cursor-pointer">
                             <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-800/50 shadow-md">
                                 <img src={getYouTubeThumbnail(post.youtubeUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                                 <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black text-slate-200 uppercase">{post.matchLabel || 'HIGHLIGHT'}</div>
@@ -439,7 +435,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                             </div>
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 sm:p-4">
-                                {!(activeVideo.comments) || activeVideo.comments.length === 0 ? (
+                                {(!activeVideo.comments || activeVideo.comments.length === 0) ? (
                                     <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3 italic">
                                         <MessageSquare size={32} opacity={0.3} />
                                         <span className="text-xs font-bold">첫 댓글을 남겨보세요!</span>
