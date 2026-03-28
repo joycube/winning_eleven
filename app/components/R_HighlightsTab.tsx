@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, orderBy, doc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { HighlightPost, FALLBACK_IMG, Owner } from '../types';
 import { Heart, MessageSquare, Eye, X, Send, ThumbsUp, Search } from 'lucide-react';
@@ -27,13 +27,12 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-// 🔥 UID 기반 프로필 3중 매칭 (TS Any 픽스 적용)
-const getBestProfileImage = (userObj: any, ownersList: any[], savedPhoto: string, authorName: string) => {
-    const targetName = authorName || userObj?.mappedOwnerId;
-    if (userObj && targetName === userObj.mappedOwnerId && !isBadImage(userObj.photo)) return String(userObj.photo);
+// 🔥 UID 기반 프로필 3중 매칭 (FM 정석 타이핑 적용)
+const getBestProfileImage = (userObj: any, ownersList: Owner[], savedPhoto: string, authorName: string) => {
+    const targetName = authorName || userObj?.displayName;
     if (ownersList && ownersList.length > 0) {
         const matchedOwner = ownersList.find(o => 
-            (userObj?.uid && (o.uid === userObj.uid || String(o.id) === String(userObj.uid) || o.docId === userObj.uid)) ||
+            (userObj?.uid && (o.uid === userObj.uid || String(o.id) === String(userObj.uid))) ||
             normalizeName(o.nickname) === normalizeName(targetName)
         );
         if (matchedOwner && !isBadImage(matchedOwner.photo)) return String(matchedOwner.photo);
@@ -87,8 +86,8 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
     let ownerName = stat?.ownerName || '알 수 없음';
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
 
-    const matchedOwner = owners?.find((o:any) => 
-        (stat?.ownerId && (o.uid === stat.ownerId || String(o.id) === String(stat.ownerId) || o.docId === stat.ownerId)) || 
+    const matchedOwner = owners?.find((o: Owner) => 
+        (stat?.ownerId && (o.uid === stat.ownerId || String(o.id) === String(stat.ownerId))) || 
         normalizeName(o.nickname) === normalizeName(ownerName)
     );
 
@@ -139,7 +138,7 @@ const renderCommentContent = (text: string) => {
     return <p className="text-[12px] sm:text-[13px] text-slate-200 leading-relaxed break-words">{text}</p>;
 };
 
-const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners }: { comment: any, onReply: (name: string, id: string) => void, onLike: (id: string) => void, isReply?: boolean, authUser: any, owners: any[] }) => {
+const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners }: { comment: any, onReply: (name: string, id: string) => void, onLike: (id: string) => void, isReply?: boolean, authUser: any, owners: Owner[] }) => {
     const isAuthor = authUser?.uid === comment.authorId || authUser?.uid === comment.authorUid;
     const profileImg = getBestProfileImage(authUser, owners, comment.authorPhoto, comment.authorName);
     const isLiked = comment.likes?.includes(authUser?.uid);
@@ -249,10 +248,10 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         
         setIsSending(true);
         try {
-            // 🔥 [타입스크립트 FM 픽스] ANY 캐스팅 및 displayName 활용
-            const matchedOwner = owners?.find((o: any) => o.uid === authUser?.uid || String(o.id) === String(authUser?.uid));
-            const authorName = matchedOwner?.nickname || authUser?.displayName || (authUser as any)?.nickname || '익명 구단주';
-            const authorPhoto = getBestProfileImage(authUser, owners, authUser?.photoURL || (authUser as any)?.photo, authorName);
+            // 🔥 [정석 FM] any 꼼수 제거, 표준 타입과 교차 검증만 사용
+            const matchedOwner = owners?.find((o) => o.uid === authUser.uid || String(o.id) === String(authUser.uid));
+            const authorName = matchedOwner?.nickname || authUser.displayName || '익명 구단주';
+            const authorPhoto = getBestProfileImage(authUser, owners, authUser.photoURL || '', authorName);
             
             let updatedComments = [...(activeVideo.comments || [])];
             updatedComments.push({ 
