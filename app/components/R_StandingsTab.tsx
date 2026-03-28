@@ -1,11 +1,10 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo, useEffect } from 'react';
-import { FALLBACK_IMG, Owner, Match } from '../types'; 
+import React, { useState, useMemo } from 'react';
+import { FALLBACK_IMG, Owner } from '../types'; 
 import { ChevronRight, PlayCircle } from 'lucide-react'; 
 
-// 🔥 신규 뷰어 컴포넌트 임포트
 import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
 import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
 
@@ -13,97 +12,17 @@ const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 
 interface R_StandingsTabProps {
   currentSeason: any;
-  activeRankingData: any;
+  computedTeamsData: any[]; // 🔥 부모로부터 실시간 계산된 통합 데이터 받음
+  sortedTeams: any[];       // 🔥 부모로부터 정렬된 최종 순위표 받음
   masterTeams: any[];
   owners: Owner[];
   knockoutStages?: any;
+  getTeamExtendedInfo: (teamIdentifier: string) => any;
 }
 
-export default function R_StandingsTab({ currentSeason, activeRankingData, masterTeams, owners, knockoutStages }: R_StandingsTabProps) {
+export default function R_StandingsTab({ currentSeason, computedTeamsData, sortedTeams, masterTeams, owners, knockoutStages, getTeamExtendedInfo }: R_StandingsTabProps) {
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
-
-  const computedTeamsData = useMemo(() => {
-    const teamStats: Record<string, any> = {};
-
-    (activeRankingData?.teams || []).forEach((t: any) => {
-        teamStats[t.name] = { ...t, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 };
-    });
-
-    if (!currentSeason?.rounds) return activeRankingData?.teams || [];
-
-    // 🔥 [버그 픽스] 'ROUND' 키워드를 'ROUND_OF'로 변경하여 정규 리그(Round 1 등)가 누락되는 현상 해결!
-    // useLeagueStats.ts의 기준과 동일하게 맞춤
-    const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
-
-    currentSeason.rounds.forEach((r: any) => {
-        const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
-
-        r.matches?.forEach((m: any) => {
-            if (m.status !== 'COMPLETED') return;
-            if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
-
-            const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
-            const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
-
-            // 리그+PO 모드에서 플레이오프 매치면 정규 스탠딩에 합산하지 않고 튕겨냄
-            if ((currentSeason.type === 'CUP' || currentSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) {
-                return; 
-            }
-
-            const hTeam = m.home;
-            const aTeam = m.away;
-            const hScore = Number(m.homeScore);
-            const aScore = Number(m.awayScore);
-
-            if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: hTeam };
-            if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: aTeam };
-
-            teamStats[hTeam].played += 1;
-            teamStats[aTeam].played += 1;
-            teamStats[hTeam].gf += hScore;
-            teamStats[aTeam].gf += aScore;
-            teamStats[hTeam].ga += aScore;
-            teamStats[aTeam].ga += hScore;
-
-            if (hScore > aScore) {
-                teamStats[hTeam].win += 1;
-                teamStats[hTeam].points += 3;
-                teamStats[aTeam].loss += 1;
-            } else if (hScore < aScore) {
-                teamStats[aTeam].win += 1;
-                teamStats[aTeam].points += 3;
-                teamStats[hTeam].loss += 1;
-            } else {
-                teamStats[hTeam].draw += 1;
-                teamStats[aTeam].draw += 1;
-                teamStats[hTeam].points += 1;
-                teamStats[aTeam].points += 1;
-            }
-
-            teamStats[hTeam].gd = teamStats[hTeam].gf - teamStats[hTeam].ga;
-            teamStats[aTeam].gd = teamStats[aTeam].gf - teamStats[aTeam].ga;
-        });
-    });
-
-    return Object.values(teamStats);
-  }, [currentSeason, activeRankingData?.teams]);
-
-  const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
-    try {
-        if (!ownerName) return '-';
-        const strName = String(ownerName).trim();
-        if (['-', 'CPU', 'SYSTEM', 'TBD', 'BYE', 'GUEST'].includes(strName.toUpperCase())) return strName;
-        
-        const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === strName || o.docId === strName));
-        if (foundByUid) return foundByUid.nickname;
-        
-        const foundByName = owners.find(o => o.nickname === strName || o.legacyName === strName);
-        return foundByName ? foundByName.nickname : strName;
-    } catch (e) {
-        return String(ownerName || '-');
-    }
-  };
 
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
@@ -124,37 +43,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
       ranked.push({ ...t, rank });
     });
     return ranked;
-  };
-
-  const sortedTeams = useMemo(() => getRankedTeams(computedTeamsData), [computedTeamsData]);
-
-  const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
-
-  const getTeamExtendedInfo = (teamIdentifier: string) => {
-    const tbdTeam = { id: 0, name: teamIdentifier || 'TBD', logo: SAFE_TBD_LOGO, ownerName: '-', ownerUid: undefined as string | undefined, region: '', tier: 'C', realRankScore: 0, realFormScore: 0, condition: 'C', real_rank: null };
-    if (!teamIdentifier || teamIdentifier === 'TBD') return tbdTeam;
-    if (teamIdentifier === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
-    
-    const normId = normalize(teamIdentifier);
-    let stats = computedTeamsData.find((t: any) => normalize(t.name) === normId);
-    let master = masterTeams.find((m: any) => m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier);
-    
-    const rawOwnerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
-    const rawOwnerUid = stats?.ownerUid || (master as any)?.ownerUid;
-
-    return { 
-        id: stats?.id || master?.id || 0, 
-        name: stats?.name || master?.name || teamIdentifier, 
-        logo: stats?.logo || master?.logo || SAFE_TBD_LOGO, 
-        ownerName: resolveOwnerNickname(rawOwnerName, rawOwnerUid), 
-        ownerUid: rawOwnerUid, 
-        region: master?.region || '', 
-        tier: master?.tier || 'C', 
-        realRankScore: master?.realRankScore, 
-        realFormScore: master?.realFormScore, 
-        condition: master?.condition || 'C', 
-        real_rank: master?.real_rank 
-    };
   };
 
   const getRealRankBadge = (rank: number | undefined | null) => {
@@ -281,14 +169,13 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
 
   const sortedGroupKeys = useMemo(() => groupStandings ? Object.keys(groupStandings).sort() : [], [groupStandings]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
   return (
     <div className="space-y-12 fade-in">
         
-        {/* 1. 순수 토너먼트 모드일 경우 뷰어 렌더링 */}
         {currentSeason?.type === 'TOURNAMENT' && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -296,7 +183,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                         <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
                         <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                     </div>
-                    {/* 🔥 knockoutStages 프롭스 추가하여 8강 대응 */}
                     <AdminMatching_TournamentBracketView 
                         knockoutStages={knockoutStages}
                     />
@@ -304,7 +190,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
             </div>
         )}
 
-        {/* 2. 리그+PO 모드일 경우 공통 뷰어 렌더링 */}
         {currentSeason?.type === 'LEAGUE_PLAYOFF' && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -316,13 +201,12 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                         currentSeason={currentSeason} 
                         owners={owners} 
                         masterTeams={masterTeams} 
-                        activeRankingData={activeRankingData}
+                        activeRankingData={computedTeamsData} // 🔥 자식 뷰어들도 계산 완료된 데이터 참조
                     />
                 </div>
             </div>
         )}
 
-        {/* 3. 컵 모드 대진표 및 조별 순위표 (강화) */}
         {currentSeason?.type === 'CUP' && knockoutStages && (
         <div className="overflow-x-auto pb-4 no-scrollbar">
             <div className={`${knockoutStages.roundOf8 ? 'min-w-[750px]' : 'min-w-[500px]'} px-4`}>
@@ -330,7 +214,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                     <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                     <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                 </div>
-                {/* 🔥 하드코딩된 대진표 로직을 공용 뷰어로 교체하여 데이터 정합성 보장 */}
                 <AdminMatching_TournamentBracketView 
                     knockoutStages={knockoutStages}
                 />
@@ -350,7 +233,6 @@ export default function R_StandingsTab({ currentSeason, activeRankingData, maste
                 ))}</tbody></table></div></div>
         )}
 
-        {/* 4. 모든 모드(리그, 토너먼트, 리그+PO) 공통 통합 순위표 */}
         <div className="space-y-4">
         <div className="flex items-center gap-3 px-2">
             <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>

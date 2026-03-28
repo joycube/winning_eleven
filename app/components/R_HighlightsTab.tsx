@@ -12,6 +12,7 @@ import StickerSelector from './StickerSelector';
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
+// 🔥 [FM 정석 픽스] 충돌 유발 속성(views, likes) 제거. 순수하게 comments 배열만 확장
 interface ExtendedHighlight extends HighlightPost {
     comments?: any[];
 }
@@ -31,7 +32,6 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-// 만능 오너 추적기
 const findOwnerByUidOrName = (ownersList: any[], uid?: string | null, name?: string | null) => {
     if (!ownersList || ownersList.length === 0) return null;
 
@@ -91,32 +91,14 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: ExtendedHighlight, siz
     );
 };
 
-const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
-    // 🔥 [초강력 평탄화 로직] 단일 리그, 조별 리그 상관없이 모든 팀 데이터를 하나로 합침
-    const flatTeams = useMemo(() => {
-        if (!rankingData) return [];
-        let allTeams: any[] = [];
-        if (Array.isArray(rankingData)) {
-            allTeams = rankingData;
-        } else if (rankingData.teams) {
-            allTeams = rankingData.teams;
-        } else if (rankingData.rankings) {
-            allTeams = rankingData.rankings;
-        } else if (rankingData.groups) {
-            Object.values(rankingData.groups).forEach((groupData: any) => {
-                if (Array.isArray(groupData)) allTeams = [...allTeams, ...groupData];
-                else if (groupData.teams) allTeams = [...allTeams, ...groupData.teams];
-            });
-        }
-        return allTeams;
-    }, [rankingData]);
-
-    const stat = flatTeams.find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName));
+const TeamStatCard = ({ teamName, teamLogo, sortedTeams, owners }: any) => {
+    // 🔥 [초경량 로직] 부모(RankingView)가 건네준 완벽한 SSOT (sortedTeams)에서 즉시 검색!
+    const stat = (sortedTeams || []).find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName)) || { win: 0, draw: 0, loss: 0, lose: 0, ownerName: '-', ownerId: null };
     
-    let ownerName = stat?.ownerName || '알 수 없음';
+    let ownerName = stat.ownerName !== '-' ? stat.ownerName : '알 수 없음';
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
 
-    const matchedOwner = findOwnerByUidOrName(owners, stat?.ownerId, ownerName);
+    const matchedOwner = findOwnerByUidOrName(owners, stat.ownerId, ownerName);
 
     if (matchedOwner) {
         ownerName = matchedOwner.nickname || matchedOwner.mappedOwnerId || matchedOwner.displayName || ownerName;
@@ -124,9 +106,10 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
         else if (!isBadImage(matchedOwner.photoURL)) ownerPhoto = matchedOwner.photoURL;
     }
 
-    const win = Number(stat?.win || 0);
-    const draw = Number(stat?.draw || 0);
-    const lose = Number(stat?.lose || 0);
+    const win = Number(stat.win || 0);
+    const draw = Number(stat.draw || 0);
+    // R_StandingsTab의 로직은 'loss'를 사용하고 있으므로 loss와 lose 모두 체크
+    const lose = Number(stat.loss || stat.lose || 0);
     const total = win + draw + lose;
     const winRate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0';
 
@@ -142,10 +125,10 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
                     <span className="text-[10px] text-slate-300 font-bold truncate leading-tight">{teamName}</span>
                 </div>
             </div>
-            {/* 🔥 0승 0무 0패 조건 삭제 및 폰트 볼륨업, 개별 안내 문구 삭제 */}
-            <div className="flex flex-col items-end shrink-0 pl-2.5 border-l border-slate-700/50 justify-center h-full">
-                <span className="text-[10px] text-slate-300 font-black tracking-tight leading-tight mb-0.5">{win}승 {draw}무 {lose}패</span>
-                <span className="text-[12px] font-black text-white leading-tight">
+            {/* 🔥 개별 문구 삭제 및 폰트 볼륨 대폭 확대, 0/0/0 노출 */}
+            <div className="flex flex-col items-end shrink-0 pl-3 border-l border-slate-700/50 justify-center h-full">
+                <span className="text-[11px] sm:text-xs text-slate-300 font-black tracking-tight leading-tight mb-1">{win}승 {draw}무 {lose}패</span>
+                <span className="text-[14px] sm:text-[15px] font-black text-white leading-tight">
                     <span className={Number(winRate) >= 50 ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span>
                 </span>
             </div>
@@ -212,11 +195,11 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
 
 interface RHighlightsTabProps {
   currentSeason?: any;
-  activeRankingData?: any;
+  sortedTeams?: any[]; // 🔥 RankingView로부터 완벽한 데이터를 넘겨받음
   owners: Owner[];
 }
 
-export default function R_HighlightsTab({ currentSeason, activeRankingData, owners }: RHighlightsTabProps) {
+export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: RHighlightsTabProps) {
     const { authUser } = useAuth();
     const [highlights, setHighlights] = useState<ExtendedHighlight[]>([]);
     const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
@@ -457,10 +440,11 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
 
                                 <div className="flex flex-col gap-2 pt-3 mt-2 border-t border-slate-800/50">
                                     <div className="grid grid-cols-2 gap-2 h-14">
-                                        <TeamStatCard teamName={activeVideo.homeTeam} teamLogo={activeVideo.homeLogo} rankingData={activeRankingData} owners={owners} />
-                                        <TeamStatCard teamName={activeVideo.awayTeam} teamLogo={activeVideo.awayLogo} rankingData={activeRankingData} owners={owners} />
+                                        {/* 🔥 부모가 계산해준 완벽한 SSOT(sortedTeams)를 그대로 사용 */}
+                                        <TeamStatCard teamName={activeVideo.homeTeam} teamLogo={activeVideo.homeLogo} sortedTeams={sortedTeams} owners={owners} />
+                                        <TeamStatCard teamName={activeVideo.awayTeam} teamLogo={activeVideo.awayLogo} sortedTeams={sortedTeams} owners={owners} />
                                     </div>
-                                    {/* 🔥 공통 안내 문구 영역 */}
+                                    {/* 🔥 공통 안내 문구 우측 하단 배치 */}
                                     <div className="text-[9px] text-slate-500 font-black tracking-tighter text-right">
                                         *이번 시즌 해당 팀 승률 입니다.
                                     </div>

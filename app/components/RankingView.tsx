@@ -52,6 +52,87 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
   const prizeRule = currentSeason?.prizes || { champion: 0, first: 0, second: 0, third: 0, scorer: 0, assist: 0, poScorer: 0, poAssist: 0 };
   const isHybridSeason = currentSeason?.type === 'CUP' || currentSeason?.type === 'LEAGUE_PLAYOFF' || currentSeason?.type === 'TOURNAMENT';
 
+  const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
+
+  // 🔥 [핵심 수술 1] R_StandingsTab에 있던 "실시간 매치 기반 계산 엔진"을 부모(RankingView)로 이식!
+  // 이제 activeRankingData의 과거 스냅샷에 의존하지 않고, 무조건 100% 정확한 최신 스탯을 만듭니다.
+  const computedTeamsData = useMemo(() => {
+    const teamStats: Record<string, any> = {};
+
+    // 1차: activeRankingData에 있는 기본 팀 목록 세팅
+    let baseTeams: any[] = [];
+    if (Array.isArray(activeRankingData)) baseTeams = activeRankingData;
+    else if (activeRankingData?.teams) baseTeams = activeRankingData.teams;
+    else if (activeRankingData?.rankings) baseTeams = activeRankingData.rankings;
+    else if (activeRankingData?.groups) {
+        Object.values(activeRankingData.groups).forEach((groupData: any) => {
+            if (Array.isArray(groupData)) baseTeams = [...baseTeams, ...groupData];
+            else if (groupData.teams) baseTeams = [...baseTeams, ...groupData.teams];
+        });
+    }
+
+    baseTeams.forEach((t: any) => {
+        const normName = normalize(t.teamName || t.team || t.name);
+        teamStats[normName] = { ...t, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, name: t.teamName || t.team || t.name };
+    });
+
+    if (!currentSeason?.rounds) return Object.values(teamStats);
+
+    const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
+
+    currentSeason.rounds.forEach((r: any) => {
+        const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
+
+        r.matches?.forEach((m: any) => {
+            if (m.status !== 'COMPLETED') return;
+            if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
+
+            const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
+            const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
+
+            // 리그+PO, CUP 모드에서 플레이오프 매치면 정규 스탠딩에 합산하지 않음
+            if ((currentSeason.type === 'CUP' || currentSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) {
+                return; 
+            }
+
+            const hTeamNorm = normalize(m.home);
+            const aTeamNorm = normalize(m.away);
+            const hScore = Number(m.homeScore);
+            const aScore = Number(m.awayScore);
+
+            if (!teamStats[hTeamNorm]) teamStats[hTeamNorm] = { name: m.home, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: m.home };
+            if (!teamStats[aTeamNorm]) teamStats[aTeamNorm] = { name: m.away, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0, id: m.away };
+
+            teamStats[hTeamNorm].played += 1;
+            teamStats[aTeamNorm].played += 1;
+            teamStats[hTeamNorm].gf += hScore;
+            teamStats[aTeamNorm].gf += aScore;
+            teamStats[hTeamNorm].ga += aScore;
+            teamStats[aTeamNorm].ga += hScore;
+
+            if (hScore > aScore) {
+                teamStats[hTeamNorm].win += 1;
+                teamStats[hTeamNorm].points += 3;
+                teamStats[aTeamNorm].loss += 1;
+            } else if (hScore < aScore) {
+                teamStats[aTeamNorm].win += 1;
+                teamStats[aTeamNorm].points += 3;
+                teamStats[hTeamNorm].loss += 1;
+            } else {
+                teamStats[hTeamNorm].draw += 1;
+                teamStats[aTeamNorm].draw += 1;
+                teamStats[hTeamNorm].points += 1;
+                teamStats[aTeamNorm].points += 1;
+            }
+
+            teamStats[hTeamNorm].gd = teamStats[hTeamNorm].gf - teamStats[hTeamNorm].ga;
+            teamStats[aTeamNorm].gd = teamStats[aTeamNorm].gf - teamStats[aTeamNorm].ga;
+        });
+    });
+
+    return Object.values(teamStats);
+  }, [currentSeason, activeRankingData]);
+
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
@@ -71,9 +152,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return ranked;
   };
 
-  const sortedTeams = useMemo(() => getRankedTeams(activeRankingData?.teams || []), [activeRankingData?.teams]);
-
-  const normalize = (str: string) => str ? str.toString().trim().toLowerCase().replace(/\s+/g, '') : "";
+  // 🔥 [핵심 수술 2] 부모가 직접 100% 완벽한 단일 진실 공급원(SSOT)인 sortedTeams를 생성
+  const sortedTeams = useMemo(() => getRankedTeams(computedTeamsData), [computedTeamsData]);
 
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
     try {
@@ -93,7 +173,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     if (teamIdentifier === 'BYE') return { ...tbdTeam, name: 'BYE', ownerName: 'SYSTEM' };
     
     const normId = normalize(teamIdentifier);
-    let stats = activeRankingData?.teams?.find((t: any) => normalize(t.name) === normId);
+    let stats = computedTeamsData.find((t: any) => normalize(t.name) === normId);
     let master = masterTeams.find((m: any) => m.name === teamIdentifier || normalize(m.name) === normId || normalize(m.teamName) === normId || m.id === teamIdentifier);
     
     const rawOwnerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
@@ -226,7 +306,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       if (!winnerName || winnerName === 'TBD') return null;
       return getTeamExtendedInfo(winnerName);
-  }, [grandFinalMatch, activeRankingData, masterTeams]);
+  }, [grandFinalMatch, computedTeamsData, masterTeams]);
 
   const poTournamentResult = useMemo(() => {
       if (!currentSeason || !isHybridSeason) return undefined;
@@ -307,13 +387,16 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         </div>
       </div>
 
+      {/* 🔥 모든 자식에게 100% 동일한 computedTeamsData와 sortedTeams를 전달합니다 */}
       {rankingTab === 'STANDINGS' && (
         <R_StandingsTab 
             currentSeason={currentSeason}
-            activeRankingData={activeRankingData}
+            computedTeamsData={computedTeamsData} 
+            sortedTeams={sortedTeams} 
             masterTeams={masterTeams}
             owners={owners}
             knockoutStages={knockoutStages}
+            getTeamExtendedInfo={getTeamExtendedInfo}
         />
       )}
 
@@ -342,8 +425,8 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
       {rankingTab === 'HIGHLIGHTS' && (
         <R_HighlightsTab 
             currentSeason={currentSeason}
-            activeRankingData={activeRankingData}
-            owners={owners} // 🔥 [FM 정석 픽스] 자식이 필수로 요구하는 owners 부품을 부모가 드디어 넘겨줌!
+            sortedTeams={sortedTeams} 
+            owners={owners}
         />
       )}
     </div>
