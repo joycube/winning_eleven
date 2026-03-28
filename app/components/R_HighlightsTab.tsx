@@ -12,6 +12,13 @@ import StickerSelector from './StickerSelector';
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
+// 🔥 [FM 정석 픽스] 기존 HighlightPost 타입을 안전하게 확장하여 comments 속성을 공식 추가
+interface ExtendedHighlight extends HighlightPost {
+    comments?: any[];
+    likes?: string[];
+    views?: number;
+}
+
 const getYoutubeId = (url: string) => {
     if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -27,7 +34,6 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-// 🔥 UID 기반 프로필 3중 매칭 (FM 정석 타이핑 적용)
 const getBestProfileImage = (userObj: any, ownersList: Owner[], savedPhoto: string, authorName: string) => {
     const targetName = authorName || userObj?.displayName;
     if (ownersList && ownersList.length > 0) {
@@ -49,8 +55,7 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-// 엠블럼 오버랩 렌더링 컴포넌트
-const MatchResultEmblem = ({ post, size = 'sm' }: { post: HighlightPost, size?: 'sm' | 'lg' }) => {
+const MatchResultEmblem = ({ post, size = 'sm' }: { post: ExtendedHighlight, size?: 'sm' | 'lg' }) => {
     const hs = Number(post.homeScore || 0);
     const as = Number(post.awayScore || 0);
     const isDraw = hs === as;
@@ -78,7 +83,6 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: HighlightPost, size?: 
     );
 };
 
-// 컴팩트 사이즈 스탯 카드
 const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
     const list = Array.isArray(rankingData) ? rankingData : (rankingData?.rankings || rankingData?.teams || []);
     const stat = list.find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName));
@@ -185,7 +189,8 @@ interface RHighlightsTabProps {
 
 export default function R_HighlightsTab({ currentSeason, activeRankingData, owners }: RHighlightsTabProps) {
     const { authUser } = useAuth();
-    const [highlights, setHighlights] = useState<HighlightPost[]>([]);
+    // 🔥 [FM 정석 픽스] 확장된 타입을 상태에 선언하여 타입스크립트가 구조를 100% 인지하게 함
+    const [highlights, setHighlights] = useState<ExtendedHighlight[]>([]);
     const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
     const [searchQuery, setSearchQuery] = useState('');
     const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
@@ -202,7 +207,8 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
     useEffect(() => {
         const q = query(collection(db, 'highlights'), orderBy('createdAt', 'desc'));
         return onSnapshot(q, (snap) => {
-            setHighlights(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+            // DB에서 가져온 데이터를 안전하게 ExtendedHighlight 타입으로 매핑
+            setHighlights(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtendedHighlight)));
         });
     }, []);
 
@@ -248,12 +254,13 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         
         setIsSending(true);
         try {
-            // 🔥 [정석 FM] any 꼼수 제거, 표준 타입과 교차 검증만 사용
             const matchedOwner = owners?.find((o) => o.uid === authUser.uid || String(o.id) === String(authUser.uid));
             const authorName = matchedOwner?.nickname || authUser.displayName || '익명 구단주';
             const authorPhoto = getBestProfileImage(authUser, owners, authUser.photoURL || '', authorName);
             
+            // 🔥 타입 에러 완전 해결: activeVideo는 이제 ExtendedHighlight 타입으로 인식되므로 comments 접근 가능
             let updatedComments = [...(activeVideo.comments || [])];
+            
             updatedComments.push({ 
                 id: `cmt_${Date.now()}`, 
                 authorId: authUser.uid, 
@@ -301,7 +308,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         } catch (e) {}
     };
 
-    const handleTogglePostLike = async (e: React.MouseEvent, post: any) => {
+    const handleTogglePostLike = async (e: React.MouseEvent, post: ExtendedHighlight) => {
         e.stopPropagation();
         if (!authUser) return alert("로그인이 필요한 기능입니다.");
         const isLiked = post.likes?.includes(authUser.uid);
@@ -372,7 +379,7 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                                         <span className="text-slate-700">•</span>
                                         <span>좋아요 {post.likes?.length || 0}개</span>
                                         <span className="text-slate-700">•</span>
-                                        <span>댓글 {(post as any).comments?.length || 0}개</span>
+                                        <span>댓글 {post.comments?.length || 0}개</span>
                                     </div>
                                 </div>
                             </div>
@@ -425,7 +432,8 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                         <div className="w-full md:w-[420px] bg-[#0f141e] border-l border-slate-800 flex flex-col h-[400px] md:h-auto shrink-0 flex-1">
                             <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-black text-white flex items-center gap-2 uppercase italic tracking-tighter">
-                                    <MessageSquare size={14} className="text-emerald-400" /> COMMENTS <span className="text-emerald-500">{(activeVideo.comments || []).length}</span>
+                                    <MessageSquare size={14} className="text-emerald-400" /> COMMENTS 
+                                    <span className="text-emerald-500">{(activeVideo.comments || []).length}</span>
                                 </h3>
                                 <button onClick={() => { setPlayingVideoId(null); viewedPostRef.current = null; }} className="md:hidden text-slate-500 hover:text-white"><X size={20}/></button>
                             </div>
