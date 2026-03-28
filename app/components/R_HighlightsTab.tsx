@@ -12,7 +12,6 @@ import StickerSelector from './StickerSelector';
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
-// 🔥 [FM 정석 픽스] 충돌 유발 속성(views, likes) 제거. 순수하게 comments 배열만 확장
 interface ExtendedHighlight extends HighlightPost {
     comments?: any[];
 }
@@ -32,16 +31,27 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-const getBestProfileImage = (userObj: any, ownersList: Owner[], savedPhoto: string, authorName: string) => {
-    const targetName = authorName || userObj?.displayName;
-    if (ownersList && ownersList.length > 0) {
-        const matchedOwner = ownersList.find(o => 
-            (userObj?.uid && (o.uid === userObj.uid || String(o.id) === String(userObj.uid))) ||
-            normalizeName(o.nickname) === normalizeName(targetName)
-        );
-        if (matchedOwner && !isBadImage(matchedOwner.photo)) return String(matchedOwner.photo);
+// 🔥 [만능 오너 추적기] nickname, legacyName, mappedOwnerId 모두 검사
+const findOwnerByUidOrName = (ownersList: any[], uid?: string | null, name?: string | null) => {
+    if (!ownersList || ownersList.length === 0) return null;
+
+    if (uid) {
+        const byUid = ownersList.find((o: any) => o.uid === uid || String(o.id) === String(uid) || o.docId === uid);
+        if (byUid) return byUid;
     }
-    return savedPhoto && !isBadImage(savedPhoto) ? savedPhoto : COMMON_DEFAULT_PROFILE;
+
+    if (name) {
+        const normName = normalizeName(name);
+        const byName = ownersList.find((o: any) => {
+            if (normalizeName(o.nickname) === normName) return true;
+            if (normalizeName(o.mappedOwnerId) === normName) return true;
+            if (normalizeName(o.legacyName) === normName) return true;
+            if (Array.isArray(o.legacyNames) && o.legacyNames.some((ln: string) => normalizeName(ln) === normName)) return true;
+            return false;
+        });
+        if (byName) return byName;
+    }
+    return null;
 };
 
 const formatDate = (ts: any, includeTime = false) => {
@@ -88,14 +98,14 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
     let ownerName = stat?.ownerName || '알 수 없음';
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
 
-    const matchedOwner = owners?.find((o: Owner) => 
-        (stat?.ownerId && (o.uid === stat.ownerId || String(o.id) === String(stat.ownerId))) || 
-        normalizeName(o.nickname) === normalizeName(ownerName)
-    );
+    // 🔥 만능 추적기로 매칭 시도
+    const matchedOwner = findOwnerByUidOrName(owners, stat?.ownerId, ownerName);
 
     if (matchedOwner) {
-        ownerName = matchedOwner.nickname;
+        // 🔥 최신 닉네임으로 완벽하게 덮어쓰기
+        ownerName = matchedOwner.nickname || matchedOwner.mappedOwnerId || matchedOwner.displayName || ownerName;
         if (!isBadImage(matchedOwner.photo)) ownerPhoto = matchedOwner.photo;
+        else if (!isBadImage(matchedOwner.photoURL)) ownerPhoto = matchedOwner.photoURL;
     }
 
     const win = Number(stat?.win || 0);
@@ -142,15 +152,25 @@ const renderCommentContent = (text: string) => {
 
 const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners }: { comment: any, onReply: (name: string, id: string) => void, onLike: (id: string) => void, isReply?: boolean, authUser: any, owners: Owner[] }) => {
     const isAuthor = authUser?.uid === comment.authorId || authUser?.uid === comment.authorUid;
-    const profileImg = getBestProfileImage(authUser, owners, comment.authorPhoto, comment.authorName);
     const isLiked = comment.likes?.includes(authUser?.uid);
+
+    // 🔥 댓글 작성자 이름과 사진도 만능 추적기로 소급 적용 (과거 닉네임으로 쓴 댓글도 현재 닉네임과 사진으로 노출)
+    const matchedOwner = findOwnerByUidOrName(owners, comment.authorUid || comment.authorId, comment.authorName);
+    const displayAuthorName = matchedOwner?.nickname || matchedOwner?.mappedOwnerId || matchedOwner?.displayName || comment.authorName;
+    let profileImg = comment.authorPhoto;
+
+    if (matchedOwner) {
+        if (!isBadImage(matchedOwner.photo)) profileImg = matchedOwner.photo;
+        else if (!isBadImage(matchedOwner.photoURL)) profileImg = matchedOwner.photoURL;
+    }
+    if (isBadImage(profileImg)) profileImg = COMMON_DEFAULT_PROFILE;
 
     return (
         <div className={`flex gap-2 sm:gap-3 py-3 sm:py-4 ${!isReply ? 'border-b border-slate-800/50' : 'ml-10 sm:ml-12 mt-2 border-l-2 border-slate-800 pl-3 sm:pl-4'}`}>
-            <img src={profileImg} className={`${isReply ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'} rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700`} alt="" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
+            <img src={profileImg} className={`${isReply ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'} rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700`} alt="" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
             <div className="flex flex-col flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs sm:text-[13px] font-black text-emerald-400 italic">{comment.authorName}</span>
+                    <span className="text-xs sm:text-[13px] font-black text-emerald-400 italic">{displayAuthorName}</span>
                     <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold">{comment.displayTime || formatDate(comment.createdAt, true)}</span>
                 </div>
                 
@@ -162,7 +182,7 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
                         <span className="text-[10px] sm:text-[11px] font-bold">좋아요 {comment.likes?.length || 0}</span>
                     </button>
                     {!isReply && (
-                        <button onClick={() => onReply(comment.authorName, comment.id)} className="flex items-center gap-1.5 text-slate-500 hover:text-emerald-400 transition-colors">
+                        <button onClick={() => onReply(displayAuthorName, comment.id)} className="flex items-center gap-1.5 text-slate-500 hover:text-emerald-400 transition-colors">
                             <MessageSquare size={12} />
                             <span className="text-[10px] sm:text-[11px] font-bold">답글</span>
                         </button>
@@ -187,7 +207,6 @@ interface RHighlightsTabProps {
 
 export default function R_HighlightsTab({ currentSeason, activeRankingData, owners }: RHighlightsTabProps) {
     const { authUser } = useAuth();
-    // 🔥 ExtendedHighlight 타입 사용
     const [highlights, setHighlights] = useState<ExtendedHighlight[]>([]);
     const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
     const [searchQuery, setSearchQuery] = useState('');
@@ -251,9 +270,16 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
         
         setIsSending(true);
         try {
-            const matchedOwner = owners?.find((o) => o.uid === authUser.uid || String(o.id) === String(authUser.uid));
+            const matchedOwner = findOwnerByUidOrName(owners, authUser.uid, authUser.displayName);
             const authorName = matchedOwner?.nickname || authUser.displayName || '익명 구단주';
-            const authorPhoto = getBestProfileImage(authUser, owners, authUser.photoURL || '', authorName);
+            
+            let authorPhoto = COMMON_DEFAULT_PROFILE;
+            if (matchedOwner) {
+                if (!isBadImage(matchedOwner.photo)) authorPhoto = matchedOwner.photo;
+                else if (!isBadImage(matchedOwner.photoURL)) authorPhoto = matchedOwner.photoURL;
+            } else if (!isBadImage(authUser.photoURL)) {
+                authorPhoto = authUser.photoURL;
+            }
             
             let updatedComments = [...(activeVideo.comments || [])];
             
@@ -446,94 +472,17 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                                         const isLiked = comment.likes?.includes(authUser?.uid);
                                         const isSticker = comment.text?.startsWith('[STICKER]');
                                         const isCommentAuthor = authUser?.uid === comment.authorUid || authUser?.uid === comment.authorId;
-                                        const profileImg = getBestProfileImage(authUser, owners, comment.authorPhoto, comment.authorName);
 
                                         return (
                                             <div key={comment.id} className="border-b border-slate-800/60 py-3 sm:py-4 last:border-0">
-                                                <div className="flex gap-2.5 sm:gap-3.5">
-                                                    <img src={profileImg} alt="profile" className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-baseline gap-2 mb-1">
-                                                            <span className="font-bold text-emerald-400 text-xs sm:text-sm whitespace-nowrap">{comment.authorName}</span>
-                                                            <span className="text-slate-500 text-[9px] sm:text-[10px]">{formatDate(comment.createdAt, true)}{comment.isEdited && ' (수정됨)'}</span>
-                                                        </div>
-                                                        
-                                                        {editingCommentId === comment.id ? (
-                                                            <div className="mt-2 mb-3 flex flex-col gap-2">
-                                                                <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded-xl text-xs sm:text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
-                                                                <div className="flex justify-end gap-2">
-                                                                    <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-[10px] sm:text-xs font-bold hover:text-white transition-colors">취소</button>
-                                                                    <button onClick={handleSaveEdit} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] sm:text-xs font-bold transition-colors">저장</button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            renderCommentContent(comment.text)
-                                                        )}
-
-                                                        <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-[12px] text-slate-400 font-bold mt-1.5">
-                                                            <button onClick={() => handleCommentReaction(comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}>
-                                                                <ThumbsUp size={12} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {comment.likes?.length || 0}
-                                                            </button>
-                                                            <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: comment.authorName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
-                                                                <MessageSquare size={12}/> 답글
-                                                            </button>
-                                                            {isCommentAuthor && !editingCommentId && (
-                                                                <div className="ml-auto flex items-center gap-3 text-[10px] sm:text-[11px]">
-                                                                    {!isSticker && <button onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }} className="hover:text-blue-400 transition-colors">수정</button>}
-                                                                    <button onClick={() => handleDeleteComment(comment.id)} className="hover:text-red-400 transition-colors">삭제</button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                {/* 🔥 댓글 내용 매핑 로직 */}
+                                                <CommentItem comment={comment} authUser={authUser} owners={owners} onReply={(name, id) => setReplyingTo({ parentId: id, targetId: id, authorName: name })} onLike={(id) => handleCommentReaction(id)} />
 
                                                 {replies.length > 0 && (
                                                     <div className="mt-3 space-y-3 pl-8 sm:pl-10 border-l-2 border-slate-800/50 ml-3">
-                                                        {replies.map((reply: any) => {
-                                                            const isRLiked = reply.likes?.includes(authUser?.uid);
-                                                            const isRSticker = reply.text?.startsWith('[STICKER]');
-                                                            const isReplyAuthor = authUser?.uid === reply.authorUid || authUser?.uid === reply.authorId;
-                                                            const rProfileImg = getBestProfileImage(authUser, owners, reply.authorPhoto, reply.authorName);
-
-                                                            return (
-                                                                <div key={reply.id} className="flex gap-2 sm:gap-3">
-                                                                    <img src={rProfileImg} alt="profile" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <div className="flex items-baseline gap-2 mb-1">
-                                                                            <span className="font-bold text-slate-300 text-[11px] sm:text-xs whitespace-nowrap">{reply.authorName}</span>
-                                                                            <span className="text-slate-500 text-[8px] sm:text-[9px]">{formatDate(reply.createdAt, true)}{reply.isEdited && ' (수정됨)'}</span>
-                                                                        </div>
-
-                                                                        {editingCommentId === reply.id ? (
-                                                                            <div className="mt-2 mb-3 flex flex-col gap-2">
-                                                                                <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded-xl text-[11px] sm:text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
-                                                                                <div className="flex justify-end gap-2">
-                                                                                    <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-[10px] font-bold hover:text-white transition-colors">취소</button>
-                                                                                    <button onClick={handleSaveEdit} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold transition-colors">저장</button>
-                                                                                </div>
-                                                                            </div>
-                                                                        ) : (
-                                                                            renderCommentContent(reply.text)
-                                                                        )}
-
-                                                                        <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-[11px] text-slate-400 font-bold mt-1.5">
-                                                                            <button onClick={() => handleCommentReaction(reply.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isRLiked ? 'text-emerald-400' : ''}`}>
-                                                                                <ThumbsUp size={11} className={isRLiked ? 'fill-emerald-400' : ''}/> 좋아요 {reply.likes?.length || 0}
-                                                                            </button>
-                                                                            <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: reply.id, authorName: reply.authorName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
-                                                                                <MessageSquare size={11}/> 답글
-                                                                            </button>
-                                                                            {isReplyAuthor && !editingCommentId && (
-                                                                                <div className="ml-auto flex items-center gap-3 text-[9px] sm:text-[10px]">
-                                                                                    {!isRSticker && <button onClick={() => { setEditingCommentId(reply.id); setEditCommentText(reply.text); }} className="hover:text-blue-400 transition-colors">수정</button>}
-                                                                                    <button onClick={() => handleDeleteComment(reply.id)} className="hover:text-red-400 transition-colors">삭제</button>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                                        {replies.map((reply: any) => (
+                                                            <CommentItem key={reply.id} comment={reply} isReply authUser={authUser} owners={owners} onReply={(name, id) => setReplyingTo({ parentId: comment.id, targetId: id, authorName: name })} onLike={(id) => handleCommentReaction(id)} />
+                                                        ))}
                                                     </div>
                                                 )}
                                             </div>
