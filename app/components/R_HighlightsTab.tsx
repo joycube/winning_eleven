@@ -31,7 +31,7 @@ const getYouTubeThumbnail = (url: string) => {
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
-// 🔥 [만능 오너 추적기] nickname, legacyName, mappedOwnerId 모두 검사
+// 만능 오너 추적기
 const findOwnerByUidOrName = (ownersList: any[], uid?: string | null, name?: string | null) => {
     if (!ownersList || ownersList.length === 0) return null;
 
@@ -92,17 +92,33 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: ExtendedHighlight, siz
 };
 
 const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
-    const list = Array.isArray(rankingData) ? rankingData : (rankingData?.rankings || rankingData?.teams || []);
-    const stat = list.find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName));
+    // 🔥 [초강력 평탄화 로직] 단일 리그, 조별 리그 상관없이 모든 팀 데이터를 하나로 합침
+    const flatTeams = useMemo(() => {
+        if (!rankingData) return [];
+        let allTeams: any[] = [];
+        if (Array.isArray(rankingData)) {
+            allTeams = rankingData;
+        } else if (rankingData.teams) {
+            allTeams = rankingData.teams;
+        } else if (rankingData.rankings) {
+            allTeams = rankingData.rankings;
+        } else if (rankingData.groups) {
+            Object.values(rankingData.groups).forEach((groupData: any) => {
+                if (Array.isArray(groupData)) allTeams = [...allTeams, ...groupData];
+                else if (groupData.teams) allTeams = [...allTeams, ...groupData.teams];
+            });
+        }
+        return allTeams;
+    }, [rankingData]);
+
+    const stat = flatTeams.find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName));
     
     let ownerName = stat?.ownerName || '알 수 없음';
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
 
-    // 🔥 만능 추적기로 매칭 시도
     const matchedOwner = findOwnerByUidOrName(owners, stat?.ownerId, ownerName);
 
     if (matchedOwner) {
-        // 🔥 최신 닉네임으로 완벽하게 덮어쓰기
         ownerName = matchedOwner.nickname || matchedOwner.mappedOwnerId || matchedOwner.displayName || ownerName;
         if (!isBadImage(matchedOwner.photo)) ownerPhoto = matchedOwner.photo;
         else if (!isBadImage(matchedOwner.photoURL)) ownerPhoto = matchedOwner.photoURL;
@@ -115,28 +131,24 @@ const TeamStatCard = ({ teamName, teamLogo, rankingData, owners }: any) => {
     const winRate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0';
 
     return (
-        <div className="flex items-center gap-1.5 bg-slate-900/80 p-2 rounded-lg border border-slate-800 w-full shadow-inner">
-            <img src={ownerPhoto} className="w-7 h-7 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
-            <div className="flex flex-col min-w-0 flex-1">
-                <span className="text-[10px] font-black text-emerald-400 truncate leading-tight">{ownerName}</span>
-                <div className="flex items-center gap-1 mt-0.5">
-                    <div className="w-3 h-3 rounded-full bg-white flex items-center justify-center p-[1px] shadow-sm shrink-0">
+        <div className="flex items-center gap-1.5 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 w-full shadow-inner h-full">
+            <img src={ownerPhoto} className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
+            <div className="flex flex-col min-w-0 flex-1 justify-center">
+                <span className="text-[11px] font-black text-emerald-400 truncate leading-tight mb-0.5">{ownerName}</span>
+                <div className="flex items-center gap-1">
+                    <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center p-[1.5px] shadow-sm shrink-0">
                         <img src={teamLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt=""/>
                     </div>
-                    <span className="text-[9px] text-slate-300 font-bold truncate leading-tight">{teamName}</span>
+                    <span className="text-[10px] text-slate-300 font-bold truncate leading-tight">{teamName}</span>
                 </div>
             </div>
-            {total > 0 && (
-                <div className="flex flex-col items-end shrink-0 pl-1.5 border-l border-slate-700/50">
-                    <span className="text-[8px] text-slate-300 font-bold tracking-tight leading-tight">{win}승 {draw}무 {lose}패</span>
-                    <span className="text-[10px] font-black text-white mt-0.5 leading-tight">
-                        <span className={Number(winRate) >= 50 ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span>
-                    </span>
-                    <span className="text-[6.5px] text-slate-500 font-bold mt-1 tracking-tighter leading-tight text-right whitespace-nowrap">
-                        *이번 시즌 {teamName} 기준
-                    </span>
-                </div>
-            )}
+            {/* 🔥 0승 0무 0패 조건 삭제 및 폰트 볼륨업, 개별 안내 문구 삭제 */}
+            <div className="flex flex-col items-end shrink-0 pl-2.5 border-l border-slate-700/50 justify-center h-full">
+                <span className="text-[10px] text-slate-300 font-black tracking-tight leading-tight mb-0.5">{win}승 {draw}무 {lose}패</span>
+                <span className="text-[12px] font-black text-white leading-tight">
+                    <span className={Number(winRate) >= 50 ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span>
+                </span>
+            </div>
         </div>
     );
 };
@@ -154,7 +166,6 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
     const isAuthor = authUser?.uid === comment.authorId || authUser?.uid === comment.authorUid;
     const isLiked = comment.likes?.includes(authUser?.uid);
 
-    // 🔥 댓글 작성자 이름과 사진도 만능 추적기로 소급 적용 (과거 닉네임으로 쓴 댓글도 현재 닉네임과 사진으로 노출)
     const matchedOwner = findOwnerByUidOrName(owners, comment.authorUid || comment.authorId, comment.authorName);
     const displayAuthorName = matchedOwner?.nickname || matchedOwner?.mappedOwnerId || matchedOwner?.displayName || comment.authorName;
     let profileImg = comment.authorPhoto;
@@ -444,9 +455,15 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 pt-3 mt-2 border-t border-slate-800/50">
-                                    <TeamStatCard teamName={activeVideo.homeTeam} teamLogo={activeVideo.homeLogo} rankingData={activeRankingData} owners={owners} />
-                                    <TeamStatCard teamName={activeVideo.awayTeam} teamLogo={activeVideo.awayLogo} rankingData={activeRankingData} owners={owners} />
+                                <div className="flex flex-col gap-2 pt-3 mt-2 border-t border-slate-800/50">
+                                    <div className="grid grid-cols-2 gap-2 h-14">
+                                        <TeamStatCard teamName={activeVideo.homeTeam} teamLogo={activeVideo.homeLogo} rankingData={activeRankingData} owners={owners} />
+                                        <TeamStatCard teamName={activeVideo.awayTeam} teamLogo={activeVideo.awayLogo} rankingData={activeRankingData} owners={owners} />
+                                    </div>
+                                    {/* 🔥 공통 안내 문구 영역 */}
+                                    <div className="text-[9px] text-slate-500 font-black tracking-tighter text-right">
+                                        *이번 시즌 해당 팀 승률 입니다.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -475,7 +492,6 @@ export default function R_HighlightsTab({ currentSeason, activeRankingData, owne
 
                                         return (
                                             <div key={comment.id} className="border-b border-slate-800/60 py-3 sm:py-4 last:border-0">
-                                                {/* 🔥 댓글 내용 매핑 로직 */}
                                                 <CommentItem comment={comment} authUser={authUser} owners={owners} onReply={(name, id) => setReplyingTo({ parentId: id, targetId: id, authorName: name })} onLike={(id) => handleCommentReaction(id)} />
 
                                                 {replies.length > 0 && (
