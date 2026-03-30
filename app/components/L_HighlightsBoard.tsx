@@ -206,9 +206,9 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    const availableSeasons = useMemo<string[]>(() => {
-        const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
-        return ['ALL', ...Array.from(new Set<string>(seasonNames))];
+    const availableSeasons = useMemo(() => {
+        const seasonNames = (highlights || []).map((h: any) => h.seasonName).filter(Boolean);
+        return ['ALL', ...Array.from(new Set(seasonNames))];
     }, [highlights]);
 
     const filteredHighlights = useMemo(() => {
@@ -423,7 +423,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         <div className="space-y-6 animate-in fade-in duration-300">
             {currentActiveVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
 
-            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg mt-2">
+            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                     <div className="flex items-start gap-3">
                         <div className="w-2.5 h-12 bg-emerald-500 rounded-full mt-1 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
@@ -441,7 +441,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                             onChange={(e) => setSelectedSeason(e.target.value)}
                             className="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
                         >
-                            {availableSeasons.map((s: string) => (
+                            {availableSeasons.map(s => (
                                 <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
                             ))}
                         </select>
@@ -489,45 +489,49 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                     등록된 하이라이트 영상이 없거나 검색 결과가 없습니다.
                 </div>
             ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filteredHighlights.map((post) => {
                         const videoUrl = getValidVideoUrl(post);
                         const isLiked = post.likedBy?.includes(authUser?.uid);
                         const likesCount = Array.isArray(post.likes) ? post.likes.length : (typeof post.likes === 'number' ? post.likes : (post.likedBy?.length || 0));
 
                         return (
-                            <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-1.5 cursor-pointer bg-slate-900/40 p-1.5 sm:p-2 rounded-xl border border-slate-800/80 hover:border-emerald-500/50 transition-all">
-                                <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-950 shadow-md">
+                            <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-3 cursor-pointer bg-slate-900/40 p-2.5 rounded-2xl border border-slate-800/80 hover:border-emerald-500/50 transition-all">
+                                <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 shadow-md">
                                     <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                                     <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                                        <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100 drop-shadow-lg" />
+                                        <PlayCircle className="w-12 h-12 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100 drop-shadow-lg" />
                                     </div>
-                                    <div className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-black text-emerald-400 uppercase tracking-tighter border border-white/10 shadow-sm">
+                                    <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black text-emerald-400 uppercase tracking-tighter border border-white/10 shadow-sm">
                                         {post.matchLabel || 'HIGHLIGHT'}
                                     </div>
-                                    <div className="absolute bottom-1.5 right-1.5 bg-black/80 backdrop-blur-md px-1.5 py-1 rounded flex items-center gap-1 border border-white/10 shadow-lg">
-                                        <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-3 h-3 sm:w-3.5 sm:h-3.5 object-contain" alt="" />
-                                        <span className="text-[10px] sm:text-[11px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
-                                        <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-3 h-3 sm:w-3.5 sm:h-3.5 object-contain" alt="" />
+                                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1.5 rounded-md flex items-center gap-1.5 border border-white/10 shadow-lg">
+                                        <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
+                                        <span className="text-[13px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
+                                        <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
                                     </div>
                                 </div>
-                                <div className="flex flex-col px-1 pb-1">
-                                    <div className="flex items-start gap-1.5 min-w-0">
-                                        <MatchResultEmblem post={post} size="sm" />
-                                        <h3 className="text-[11px] sm:text-[12px] font-black text-white line-clamp-2 uppercase leading-tight group-hover:text-emerald-400 transition-colors mt-0.5 flex-1 min-w-0">
-                                            <span className="text-slate-500 mr-1 text-[9px] sm:text-[10px] font-bold tracking-tight">[{post.seasonName}]</span>
-                                            {post.homeTeam} VS {post.awayTeam} <span className={`${Number(post.homeScore) === Number(post.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({post.homeScore}:{post.awayScore})</span>
+                                <div className="flex flex-col px-1.5 pb-1">
+                                    <div className="flex items-start gap-3 min-w-0">
+                                        <div className="flex -space-x-2 shrink-0 mt-0.5">
+                                            <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-7 h-7 rounded-full bg-white border-2 border-slate-900 object-contain p-0.5 shadow-sm" alt="" />
+                                            <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-900 object-contain p-0.5 shadow-sm z-0 opacity-90" alt="" />
+                                        </div>
+                                        <h3 className="text-[14px] font-black text-white line-clamp-2 leading-tight group-hover:text-emerald-300 transition-colors flex-1 min-w-0">
+                                            <span className="text-slate-500 mr-1.5 text-xs font-bold tracking-tight">[{post.seasonName}]</span>
+                                            {post.title || `${post.homeTeam} VS ${post.awayTeam}`}
                                         </h3>
                                     </div>
                                     
-                                    <div className="flex items-center justify-between w-full text-[9px] sm:text-[10px] text-slate-500 mt-1.5 font-bold italic">
+                                    {/* 🔥 조회수/좋아요/댓글 풀스팬(전체 너비 1줄 사용) 강제 할당 */}
+                                    <div className="flex items-center justify-between w-full text-[11px] text-slate-400 mt-3 pt-2.5 font-bold italic px-1">
                                         <span>조회수 {post.views || 0}회</span>
-                                        <div className="flex items-center gap-2 text-slate-400">
-                                            <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-emerald-400' : 'hover:text-emerald-400'}`}>
-                                                <Heart size={10} className={isLiked ? 'fill-emerald-400' : ''}/> {likesCount}
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-rose-400' : 'hover:text-white'}`}>
+                                                <Heart size={11} className={isLiked ? 'fill-rose-400' : ''}/> {likesCount}
                                             </button>
                                             <span className="text-slate-700">•</span>
-                                            <span className="flex items-center gap-1">댓글 {(post.comments || []).length}개</span>
+                                            <span>댓글 {(post.comments || []).length}개</span>
                                         </div>
                                     </div>
                                 </div>
