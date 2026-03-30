@@ -206,8 +206,8 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    // 🔥 빌드 에러 해결: string 배열 타입 강제 명시
-    const availableSeasons: string[] = useMemo(() => {
+    // 🔥 제네릭 타입을 명시적으로 선언하여 Vercel 빌드 에러 해결
+    const availableSeasons = useMemo<string[]>(() => {
         const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
         return ['ALL', ...Array.from(new Set(seasonNames))];
     }, [highlights]);
@@ -442,7 +442,6 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                             onChange={(e) => setSelectedSeason(e.target.value)}
                             className="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
                         >
-                            {/* 🔥 빌드 에러 해결: option에 string 타입 전달 */}
                             {availableSeasons.map((s: string) => (
                                 <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
                             ))}
