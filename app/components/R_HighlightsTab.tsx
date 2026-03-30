@@ -1,25 +1,27 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, PlayCircle, X, Heart, Eye, MessageSquare, Send, ThumbsUp } from 'lucide-react';
-import { doc, updateDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { collection, query, orderBy, doc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FALLBACK_IMG, Owner } from '../types';
+import { HighlightPost, FALLBACK_IMG, Owner } from '../types';
+import { Heart, MessageSquare, Eye, X, Send, ThumbsUp, Search } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import StickerSelector from './StickerSelector';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
+interface ExtendedHighlight extends HighlightPost {
+    comments?: any[];
+}
+
 const getYoutubeId = (url: string) => {
     if (!url) return null;
     const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
     const match = url.match(regExp);
-    return match ? match[1] : null;
+    return (match && match[2].length === 11) ? match[2] : null;
 };
-
-const getValidVideoUrl = (post: any) => post?.url || post?.videoUrl || post?.youtubeUrl || '';
 
 const getYouTubeThumbnail = (url: string) => {
     const id = getYoutubeId(url);
@@ -27,14 +29,17 @@ const getYouTubeThumbnail = (url: string) => {
 };
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
+const cleanSeasonName = (name: string) => (name || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
 const findOwnerByUidOrName = (ownersList: any[], uid?: string | null, name?: string | null) => {
     if (!ownersList || ownersList.length === 0) return null;
+
     if (uid) {
-        const byUid = ownersList.find((o: any) => o.uid === uid || String(o.id) === String(uid) || o.docId === uid);
+        const byUid = ownersList.find((o: any) => String(o.uid) === String(uid) || String(o.id) === String(uid) || String(o.docId) === String(uid));
         if (byUid) return byUid;
     }
+
     if (name) {
         const normName = normalizeName(name);
         const byName = ownersList.find((o: any) => {
@@ -58,7 +63,7 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-const MatchResultEmblem = ({ post, size = 'sm' }: { post: any, size?: 'sm' | 'lg' }) => {
+const MatchResultEmblem = ({ post, size = 'sm' }: { post: ExtendedHighlight, size?: 'sm' | 'lg' }) => {
     const hs = Number(post.homeScore || 0);
     const as = Number(post.awayScore || 0);
     const isDraw = hs === as;
@@ -86,10 +91,8 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: any, size?: 'sm' | 'lg
     );
 };
 
-const TeamStatCard = ({ teamName, teamLogo, historicalTeamsData, owners }: any) => {
-    // 🔥 SSOT 엔진에서 넘어온 데이터로 해당 팀 검색
-    const targetTeamName = normalizeName(teamName);
-    const stat = (historicalTeamsData || []).find((item: any) => normalizeName(item.teamName || item.team || item.name) === targetTeamName) || { win: 0, draw: 0, loss: 0, lose: 0, ownerName: '-', ownerId: null };
+const TeamStatCard = ({ teamName, teamLogo, sortedTeams, owners }: any) => {
+    const stat = (sortedTeams || []).find((item: any) => normalizeName(item.teamName || item.team || item.name) === normalizeName(teamName)) || { win: 0, draw: 0, loss: 0, lose: 0, ownerName: '-', ownerId: null };
     
     let ownerName = stat.ownerName !== '-' ? stat.ownerName : '알 수 없음';
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
@@ -139,7 +142,7 @@ const renderCommentContent = (text: string) => {
     return <p className="text-[12px] sm:text-[13px] text-slate-200 leading-relaxed break-words">{text}</p>;
 };
 
-const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners, setEditingCommentId, setEditCommentText, handleDeleteComment }: any) => {
+const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners }: { comment: any, onReply: (name: string, id: string) => void, onLike: (id: string) => void, isReply?: boolean, authUser: any, owners: Owner[] }) => {
     const isAuthor = authUser?.uid === comment.authorId || authUser?.uid === comment.authorUid;
     const isLiked = comment.likes?.includes(authUser?.uid);
 
@@ -152,7 +155,6 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
         else if (!isBadImage(matchedOwner.photoURL)) profileImg = matchedOwner.photoURL;
     }
     if (isBadImage(profileImg)) profileImg = COMMON_DEFAULT_PROFILE;
-    const isSticker = comment.text?.startsWith('[STICKER]');
 
     return (
         <div className={`flex gap-2 sm:gap-3 py-3 sm:py-4 ${!isReply ? 'border-b border-slate-800/50' : 'ml-10 sm:ml-12 mt-2 border-l-2 border-slate-800 pl-3 sm:pl-4'}`}>
@@ -160,7 +162,7 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
             <div className="flex flex-col flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs sm:text-[13px] font-black text-emerald-400 italic">{displayAuthorName}</span>
-                    <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold">{comment.displayTime || formatDate(comment.createdAt, true)} {comment.isEdited && '(수정됨)'}</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold">{comment.displayTime || formatDate(comment.createdAt, true)}</span>
                 </div>
                 
                 {renderCommentContent(comment.text)}
@@ -178,8 +180,8 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
                     )}
                     {isAuthor && (
                         <div className="flex gap-3 ml-auto">
-                            {!isSticker && <button onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }} className="text-[10px] sm:text-[11px] text-slate-600 hover:text-blue-400 font-bold">수정</button>}
-                            <button onClick={() => handleDeleteComment(comment.id)} className="text-[10px] sm:text-[11px] text-slate-600 hover:text-red-400 font-bold">삭제</button>
+                            <button className="text-[10px] sm:text-[11px] text-slate-600 hover:text-white font-bold">수정</button>
+                            <button className="text-[10px] sm:text-[11px] text-slate-600 hover:text-red-400 font-bold">삭제</button>
                         </div>
                     )}
                 </div>
@@ -188,13 +190,20 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
     );
 };
 
-export default function L_HighlightsBoard({ highlights, owners, seasons, setViewMode }: any) {
+interface RHighlightsTabProps {
+  currentSeason?: any;
+  sortedTeams?: any[]; 
+  owners: Owner[];
+}
+
+export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: RHighlightsTabProps) {
     const { authUser } = useAuth();
+    const [highlights, setHighlights] = useState<ExtendedHighlight[]>([]);
+    const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSeason, setSelectedSeason] = useState<string>('ALL');
-    const [sortBy, setSortBy] = useState<'LATEST' | 'POPULAR'>('LATEST');
-    
-    const [activeVideo, setActiveVideo] = useState<any>(null);
+    const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+
     const [commentText, setCommentText] = useState('');
     const [replyText, setReplyText] = useState('');
     const [editCommentText, setEditCommentText] = useState('');
@@ -204,13 +213,40 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    const availableSeasons = useMemo(() => {
-        const seasonNames = (highlights || []).map((h: any) => h.seasonName).filter(Boolean);
-        return ['ALL', ...Array.from(new Set(seasonNames))];
+    useEffect(() => {
+        const q = query(collection(db, 'highlights'), orderBy('createdAt', 'desc'));
+        return onSnapshot(q, (snap) => {
+            setHighlights(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtendedHighlight)));
+        });
+    }, []);
+
+    const activeVideo = highlights.find(h => h.id === playingVideoId);
+
+    useEffect(() => {
+        if (activeVideo && activeVideo.id && viewedPostRef.current !== activeVideo.id) {
+            viewedPostRef.current = activeVideo.id;
+            const incrementViewCount = async () => {
+                try { await updateDoc(doc(db, 'highlights', activeVideo.id!), { views: increment(1) }); } 
+                catch (error) { console.error(error); }
+            };
+            incrementViewCount();
+        }
+    }, [activeVideo]); // 🔥 activeVideo 전체를 의존성 배열에 담아 Warning 해결
+
+    const currentSeasonMatchName = useMemo(() => {
+        return cleanSeasonName(currentSeason?.seasonName || currentSeason?.name || '');
+    }, [currentSeason]);
+
+    // 🔥 빌드 에러의 원흉이었던 부분: <string[]> 명시
+    const availableSeasons = useMemo<string[]>(() => {
+        const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
+        return ['ALL', ...Array.from(new Set<string>(seasonNames))];
     }, [highlights]);
 
-    const filteredHighlights = useMemo(() => {
-        let result = [...(highlights || [])];
+    const filteredAndSortedHighlights = useMemo(() => {
+        if (!currentSeasonMatchName) return [];
+
+        let result = highlights.filter(h => cleanSeasonName(h.seasonName || '') === currentSeasonMatchName);
 
         if (selectedSeason !== 'ALL') {
             result = result.filter(h => h.seasonName === selectedSeason);
@@ -229,104 +265,11 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         else if (sortBy === 'POPULAR') result.sort((a, b) => (b.views || 0) - (a.views || 0));
 
         return result;
-    }, [highlights, selectedSeason, searchQuery, sortBy]);
-
-    useEffect(() => {
-        if (activeVideo && activeVideo.id && viewedPostRef.current !== activeVideo.id) {
-            viewedPostRef.current = activeVideo.id;
-            const incrementViewCount = async () => {
-                try { await updateDoc(doc(db, 'highlights', activeVideo.id), { views: increment(1) }); } 
-                catch (error) { console.error(error); }
-            };
-            incrementViewCount();
-        }
-    }, [activeVideo?.id]);
-
-    const currentActiveVideo = highlights?.find((h:any) => h.id === activeVideo?.id) || activeVideo;
-
-    // 🔥 [핵심 픽스] 이모지 제거 및 정확한 시즌 매칭 후 스탯을 재조립하는 완벽한 엔진
-    const historicalTeamsData = useMemo(() => {
-        if (!currentActiveVideo || !seasons) return [];
-
-        const targetSeason = seasons.find((s: any) => {
-            // ID 매칭 시도
-            if (currentActiveVideo.seasonId && String(s.id) === String(currentActiveVideo.seasonId)) return true;
-            // 이모지 걷어내고 순수 텍스트 매칭
-            const cleanSeasonName = (s.name || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
-            const cleanVideoSeasonName = (currentActiveVideo.seasonName || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
-            return cleanSeasonName === cleanVideoSeasonName;
-        });
-
-        if (!targetSeason) return []; // 시즌 데이터를 못 찾으면 빈 배열
-
-        const teamStats: Record<string, any> = {};
-
-        // 1차: 기본 참가팀 세팅 (오너 ID 및 프로필 맵핑을 위해)
-        let baseTeams: any[] = [];
-        if (Array.isArray(targetSeason.teams)) baseTeams = targetSeason.teams;
-        else if (targetSeason.rankings) baseTeams = targetSeason.rankings;
-        else if (targetSeason.groups) {
-            Object.values(targetSeason.groups).forEach((groupData: any) => {
-                if (Array.isArray(groupData)) baseTeams = [...baseTeams, ...groupData];
-                else if (groupData.teams) baseTeams = [...baseTeams, ...groupData.teams];
-            });
-        }
-
-        baseTeams.forEach((t: any) => {
-            const normName = normalizeName(t.teamName || t.team || t.name);
-            teamStats[normName] = { 
-                ...t, 
-                win: 0, draw: 0, loss: 0, 
-                name: t.teamName || t.team || t.name,
-                ownerName: t.ownerName || '-',
-                ownerId: t.ownerId || t.ownerUid || null
-            };
-        });
-
-        // 2차: 매치 기록을 순회하며 실제 승무패 합산
-        if (!targetSeason.rounds) return Object.values(teamStats);
-
-        const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
-
-        targetSeason.rounds.forEach((r: any) => {
-            const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
-
-            r.matches?.forEach((m: any) => {
-                if (m.status !== 'COMPLETED' || m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
-
-                const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
-                const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
-
-                // 컵이나 플레이오프 경기 기록은 제외 (정규 시즌 폼 기준)
-                if ((targetSeason.type === 'CUP' || targetSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) return; 
-
-                const hTeamNorm = normalizeName(m.home);
-                const aTeamNorm = normalizeName(m.away);
-                const hScore = Number(m.homeScore);
-                const aScore = Number(m.awayScore);
-
-                if (!teamStats[hTeamNorm]) teamStats[hTeamNorm] = { name: m.home, win: 0, draw: 0, loss: 0, ownerName: m.homeOwner || '-', ownerId: m.homeOwnerUid || null };
-                if (!teamStats[aTeamNorm]) teamStats[aTeamNorm] = { name: m.away, win: 0, draw: 0, loss: 0, ownerName: m.awayOwner || '-', ownerId: m.awayOwnerUid || null };
-
-                if (hScore > aScore) {
-                    teamStats[hTeamNorm].win += 1;
-                    teamStats[aTeamNorm].loss += 1;
-                } else if (hScore < aScore) {
-                    teamStats[aTeamNorm].win += 1;
-                    teamStats[hTeamNorm].loss += 1;
-                } else {
-                    teamStats[hTeamNorm].draw += 1;
-                    teamStats[aTeamNorm].draw += 1;
-                }
-            });
-        });
-
-        return Object.values(teamStats);
-    }, [currentActiveVideo, seasons]);
+    }, [highlights, currentSeasonMatchName, selectedSeason, sortBy, searchQuery]);
 
     const submitComment = async (isReply: boolean, stickerUrl?: string) => {
         if (!authUser) return alert("로그인 후 이용해주세요.");
-        if (isSending || !currentActiveVideo) return; 
+        if (isSending || !activeVideo) return; 
         const textToSubmit = stickerUrl ? `[STICKER]${stickerUrl}` : (isReply ? replyText.trim() : commentText.trim());
         if (!textToSubmit) return alert("내용을 입력해주세요.");
         
@@ -334,6 +277,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         try {
             const matchedOwner = findOwnerByUidOrName(owners, authUser.uid, authUser.displayName);
             const authorName = matchedOwner?.nickname || authUser.displayName || '익명 구단주';
+            
             let authorPhoto = COMMON_DEFAULT_PROFILE;
             if (matchedOwner) {
                 if (!isBadImage(matchedOwner.photo)) authorPhoto = matchedOwner.photo;
@@ -342,147 +286,105 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                 authorPhoto = authUser.photoURL;
             }
             
-            let updatedComments = [...(currentActiveVideo.comments || [])];
+            let updatedComments = [...(activeVideo.comments || [])];
+            
             updatedComments.push({ 
-                id: `cmt_${Date.now()}`, authorId: authUser.uid, authorUid: authUser.uid, 
-                authorName, authorPhoto, text: textToSubmit, createdAt: Date.now(), 
-                parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false 
+                id: `cmt_${Date.now()}`, 
+                authorId: authUser.uid, 
+                authorUid: authUser.uid, 
+                authorName: authorName, 
+                authorPhoto: authorPhoto, 
+                text: textToSubmit, 
+                createdAt: Date.now(), 
+                parentId: isReply ? replyingTo!.parentId : null, 
+                likes: [], 
+                isEdited: false 
             });
 
-            await updateDoc(doc(db, 'highlights', currentActiveVideo.id), { comments: updatedComments });
+            await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
             isReply ? setReplyText('') : setCommentText('');
             if (isReply) setReplyingTo(null);
-        } catch(e) { alert("댓글 작성 중 오류가 발생했습니다."); } finally { setIsSending(false); }
+        } catch(e) {
+            alert("댓글 작성 중 오류가 발생했습니다.");
+        } finally { setIsSending(false); }
     };
 
-    const handleSaveEdit = async () => {
-        if (!authUser || !editCommentText.trim() || !editingCommentId || !currentActiveVideo) return;
+    const handleCommentReaction = async (commentId: string) => {
+        if (!authUser || !activeVideo) return;
         try {
-            let updatedComments = [...(currentActiveVideo.comments || [])];
-            updatedComments = updatedComments.map((c:any) => c.id === editingCommentId ? { ...c, text: editCommentText.trim(), isEdited: true } : c);
-            await updateDoc(doc(db, 'highlights', currentActiveVideo.id), { comments: updatedComments });
-            setEditCommentText(''); setEditingCommentId(null);
-        } catch (e) { alert("수정 중 오류가 발생했습니다."); }
+            let updatedComments = [...(activeVideo.comments || [])];
+            updatedComments = updatedComments.map((c:any) => c.id === commentId ? { ...c, likes: c.likes?.includes(authUser.uid) ? c.likes.filter((id: string) => id !== authUser.uid) : [...(c.likes||[]), authUser.uid] } : c);
+            await updateDoc(doc(db, 'highlights', activeVideo.id!), { comments: updatedComments });
+        } catch (e) {}
     };
 
-    const handleDeleteComment = async (commentId: string) => {
-        if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
-        if (!currentActiveVideo) return;
-        
-        try {
-            const updatedComments = (currentActiveVideo.comments || []).filter(
-                (c: any) => c.id !== commentId && c.parentId !== commentId
-            );
-            await updateDoc(doc(db, 'highlights', currentActiveVideo.id), { comments: updatedComments });
-        } catch (e) {
-            console.error(e);
-            alert("댓글 삭제 중 오류가 발생했습니다.");
-        }
-    };
-
-    const handleLikeComment = async (commentId: string) => {
-        if (!authUser) return alert("로그인 후 이용해주세요.");
-        if (!currentActiveVideo) return;
-        
-        try {
-            const comments = [...(currentActiveVideo.comments || [])];
-            const targetIndex = comments.findIndex(c => c.id === commentId);
-            if (targetIndex === -1) return;
-
-            const target = comments[targetIndex];
-            const likes = target.likes || [];
-            
-            if (likes.includes(authUser.uid)) {
-                target.likes = likes.filter((uid: string) => uid !== authUser.uid);
-            } else {
-                target.likes = [...likes, authUser.uid];
-            }
-
-            await updateDoc(doc(db, 'highlights', currentActiveVideo.id), { comments });
-        } catch (e) {
-            console.error("댓글 좋아요 중 오류:", e);
-        }
-    };
-
-    const handleLikeVideo = async (e: React.MouseEvent, videoId: string, currentLikes: string[]) => {
+    const handleTogglePostLike = async (e: React.MouseEvent, post: ExtendedHighlight) => {
         e.stopPropagation();
-        if (!authUser) return alert("로그인 후 이용 가능합니다.");
-        
-        try {
-            const docRef = doc(db, 'highlights', videoId);
-            if (currentLikes.includes(authUser.uid)) {
-                await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
-            } else {
-                await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
-            }
-        } catch (error) {
-            console.error("비디오 좋아요 중 오류:", error);
-        }
+        if (!authUser) return alert("로그인이 필요한 기능입니다.");
+        const isLiked = post.likes?.includes(authUser.uid);
+        await updateDoc(doc(db, 'highlights', post.id!), { likes: isLiked ? arrayRemove(authUser.uid) : arrayUnion(authUser.uid) });
     };
+
+    const hasHighlightsInSeason = highlights.some(h => cleanSeasonName(h.seasonName || '') === currentSeasonMatchName);
 
     return (
-        <div className="space-y-6">
-            {currentActiveVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {activeVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
 
-            {/* Header & Filter Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800 shadow-lg">
-                <div className="flex flex-wrap items-center gap-2">
-                    <select 
-                        value={selectedSeason} 
-                        onChange={(e) => setSelectedSeason(e.target.value)}
-                        className="bg-slate-800 text-white text-sm font-bold py-2 px-3 rounded-lg border border-slate-700 outline-none"
-                    >
-                        {availableSeasons.map(s => (
-                            <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
-                        ))}
-                    </select>
-                    
-                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-                        <button 
-                            onClick={() => setSortBy('LATEST')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+            {hasHighlightsInSeason && (
+                <div className="bg-[#0f172a] rounded-xl border border-slate-800 p-3 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <select 
+                            value={selectedSeason} 
+                            onChange={(e) => setSelectedSeason(e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
                         >
-                            최신순
-                        </button>
-                        <button 
-                            onClick={() => setSortBy('POPULAR')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${sortBy === 'POPULAR' ? 'bg-slate-700 text-red-400 shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            인기순
-                        </button>
+                            {/* 🔥 (s: string) 강제 캐스팅으로 unknown 에러 원천 차단 */}
+                            {availableSeasons.map((s: string) => (
+                                <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
+                            ))}
+                        </select>
+
+                        <div className="relative w-full md:w-64">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search size={14} className="text-slate-500" />
+                            </div>
+                            <input 
+                                type="text" 
+                                placeholder="팀명, 라운드 검색..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 text-white text-xs font-bold rounded-lg pl-9 pr-8 py-2 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center bg-slate-950 rounded-lg p-1 border border-slate-800 shrink-0 w-full md:w-auto justify-end">
+                        <button onClick={() => setSortBy('LATEST')} className={`px-4 py-1.5 rounded-md text-xs font-black transition-all ${sortBy === 'LATEST' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>최신순</button>
+                        <button onClick={() => setSortBy('POPULAR')} className={`px-4 py-1.5 rounded-md text-xs font-black transition-all ${sortBy === 'POPULAR' ? 'bg-slate-800 text-red-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>인기순</button>
                     </div>
                 </div>
+            )}
 
-                <div className="relative w-full sm:w-64">
-                    <input 
-                        type="text" 
-                        placeholder="팀명, 매치 검색..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-slate-950 text-white text-sm py-2 pl-9 pr-4 rounded-lg border border-slate-700 outline-none focus:border-emerald-500"
-                    />
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    {searchQuery && (
-                        <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
-                            <X size={14} />
-                        </button>
-                    )}
+            {!hasHighlightsInSeason ? (
+                <div className="py-20 text-center text-slate-500 font-bold italic bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
+                    아직 등록 된 하이라이트가 없습니다.
                 </div>
-            </div>
-
-            {/* 🔥 [PC기준 3열 고정] 그리드 리스트 (R_HighlightsTab의 매끄러운 카드 디자인 적용) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
-                {filteredHighlights.map((post) => {
-                    const videoUrl = getValidVideoUrl(post);
-                    const isLiked = post.likedBy?.includes(authUser?.uid);
-
-                    return (
-                        <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-3 cursor-pointer">
+            ) : filteredAndSortedHighlights.length === 0 ? (
+                <div className="py-20 text-center text-slate-500 font-bold italic bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
+                    검색 결과와 일치하는 영상이 없습니다. 🥲
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+                    {filteredAndSortedHighlights.map((post) => (
+                        <div key={post.id} onClick={() => setPlayingVideoId(post.id!)} className="group flex flex-col gap-3 cursor-pointer">
                             <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-800/50 shadow-md">
-                                <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                                <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                                    <PlayCircle className="w-12 h-12 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100" />
-                                </div>
+                                <img src={getYouTubeThumbnail(post.youtubeUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                                 <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black text-slate-200 uppercase">{post.matchLabel || 'HIGHLIGHT'}</div>
                                 <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md flex items-center gap-2 border border-slate-700/50 shadow-lg">
                                     <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-3.5 h-3.5 object-contain" alt="" />
@@ -500,138 +402,90 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1.5 font-bold italic">
                                         <span>조회수 {post.views || 0}회</span>
                                         <span className="text-slate-700">•</span>
-                                        <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-rose-400' : 'hover:text-white'}`}>
-                                            <Heart size={10} className={isLiked ? 'fill-rose-400' : ''}/> {post.likes || 0}
-                                        </button>
+                                        <span>좋아요 {post.likes?.length || 0}개</span>
                                         <span className="text-slate-700">•</span>
-                                        <span>댓글 {(post.comments || []).length}개</span>
+                                        <span>댓글 {post.comments?.length || 0}개</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    );
-                })}
-                {filteredHighlights.length === 0 && (
-                    <div className="col-span-full py-20 text-center text-slate-500 font-bold bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
-                        등록된 하이라이트 영상이 없습니다.
-                    </div>
-                )}
-            </div>
+                    ))}
+                </div>
+            )}
 
-            {/* 🎬 분할형 뷰 모달 (R_HighlightsTab 완벽 이식) */}
-            {currentActiveVideo && (
+            {/* 🎬 뷰 모달 */}
+            {activeVideo && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
-                    <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setActiveVideo(null); viewedPostRef.current = null; }}></div>
+                    <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setPlayingVideoId(null); viewedPostRef.current = null; }}></div>
                     <div className="relative w-full max-w-6xl bg-[#0b0e14] sm:rounded-2xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col md:flex-row h-full sm:h-[85vh]">
                         
-                        {/* 왼쪽 비디오 영역 */}
                         <div className="flex-1 flex flex-col bg-black md:bg-transparent h-full md:overflow-y-auto custom-scrollbar">
                             <div className="aspect-video w-full bg-black shrink-0 relative">
-                                {getYoutubeId(getValidVideoUrl(currentActiveVideo)) ? (
-                                    <iframe 
-                                        className="w-full h-full" 
-                                        src={`https://www.youtube.com/embed/${getYoutubeId(getValidVideoUrl(currentActiveVideo))}?autoplay=1`} 
-                                        frameBorder="0" 
-                                        allowFullScreen
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    ></iframe>
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-slate-500">유효하지 않은 영상 링크입니다.</div>
-                                )}
+                                <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(activeVideo.youtubeUrl)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
                             </div>
                             
                             <div className="p-3 sm:p-5 space-y-3 shrink-0 bg-[#0b0e14]">
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-blue-400 text-[10px] font-black italic tracking-widest uppercase">{currentActiveVideo.seasonName}</span>
+                                    <span className="text-blue-400 text-[10px] font-black italic tracking-widest uppercase">{activeVideo.seasonName}</span>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <MatchResultEmblem post={currentActiveVideo} size="lg" />
+                                        <MatchResultEmblem post={activeVideo} size="lg" />
                                         <h2 className="text-base sm:text-xl font-black text-white leading-tight uppercase italic tracking-tighter">
-                                            {currentActiveVideo.homeTeam} VS {currentActiveVideo.awayTeam} <span className={`${Number(currentActiveVideo.homeScore) === Number(currentActiveVideo.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({currentActiveVideo.homeScore}:{currentActiveVideo.awayScore})</span>
+                                            {activeVideo.homeTeam} VS {activeVideo.awayTeam} <span className={`${Number(activeVideo.homeScore) === Number(activeVideo.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({activeVideo.homeScore}:{activeVideo.awayScore})</span>
                                         </h2>
                                     </div>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <button onClick={(e) => handleLikeVideo(e, currentActiveVideo.id, currentActiveVideo.likedBy || [])} className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black transition-all ${currentActiveVideo.likedBy?.includes(authUser?.uid) ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
-                                            <Heart size={12} fill={currentActiveVideo.likedBy?.includes(authUser?.uid) ? "currentColor" : "none"} />
-                                            {currentActiveVideo.likes || 0}
+                                        <button onClick={(e) => handleTogglePostLike(e, activeVideo)} className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black transition-all ${activeVideo.likes?.includes(authUser?.uid!) ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
+                                            <Heart size={12} fill={activeVideo.likes?.includes(authUser?.uid!) ? "currentColor" : "none"} />
+                                            {activeVideo.likes?.length || 0}
                                         </button>
                                         <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2 py-1 rounded text-[10px] font-black text-slate-400 shadow-inner">
-                                            <Eye size={12}/> {currentActiveVideo.views || 0}
+                                            <Eye size={12}/> {activeVideo.views || 0}
                                         </div>
                                         <div className="text-[9px] text-slate-500 font-bold ml-auto uppercase">
-                                            {currentActiveVideo.matchLabel}
+                                            {activeVideo.matchLabel}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* 🔥 완벽하게 재건된 스탯 카드 영역 */}
                                 <div className="flex flex-col gap-2 pt-3 mt-2 border-t border-slate-800/50">
                                     <div className="grid grid-cols-2 gap-2 h-14">
-                                        <TeamStatCard teamName={currentActiveVideo.homeTeam} teamLogo={currentActiveVideo.homeLogo} historicalTeamsData={historicalTeamsData} owners={owners} />
-                                        <TeamStatCard teamName={currentActiveVideo.awayTeam} teamLogo={currentActiveVideo.awayLogo} historicalTeamsData={historicalTeamsData} owners={owners} />
+                                        <TeamStatCard teamName={activeVideo.homeTeam} teamLogo={activeVideo.homeLogo} sortedTeams={sortedTeams} owners={owners} />
+                                        <TeamStatCard teamName={activeVideo.awayTeam} teamLogo={activeVideo.awayLogo} sortedTeams={sortedTeams} owners={owners} />
                                     </div>
                                     <div className="text-[9px] text-slate-500 font-black tracking-tighter text-right">
-                                        *해당 영상 시즌의 전적 기준
+                                        *이번 시즌 해당 팀 승률 입니다.
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 오른쪽 댓글 영역 (md:w-[420px] 고정) */}
                         <div className="w-full md:w-[420px] bg-[#0f141e] border-l border-slate-800 flex flex-col h-[400px] md:h-auto shrink-0 flex-1">
                             <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-black text-white flex items-center gap-2 uppercase italic tracking-tighter">
                                     <MessageSquare size={14} className="text-emerald-400" /> COMMENTS 
-                                    <span className="text-emerald-500">{(currentActiveVideo.comments || []).length}</span>
+                                    <span className="text-emerald-500">{(activeVideo.comments || []).length}</span>
                                 </h3>
-                                <button onClick={() => { setActiveVideo(null); viewedPostRef.current = null; }} className="md:hidden text-slate-500 hover:text-white"><X size={20}/></button>
+                                <button onClick={() => { setPlayingVideoId(null); viewedPostRef.current = null; }} className="md:hidden text-slate-500 hover:text-white"><X size={20}/></button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 sm:p-4">
-                                {(!currentActiveVideo.comments || currentActiveVideo.comments.length === 0) ? (
+                                {(!activeVideo.comments || activeVideo.comments.length === 0) ? (
                                     <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3 italic">
                                         <MessageSquare size={32} opacity={0.3} />
                                         <span className="text-xs font-bold">첫 댓글을 남겨보세요!</span>
                                     </div>
                                 ) : (
-                                    (currentActiveVideo.comments || []).filter((c:any) => !c.parentId).map((comment: any) => {
-                                        const replies = (currentActiveVideo.comments||[]).filter((c: any) => c.parentId === comment.id);
+                                    (activeVideo.comments || []).filter((c:any) => !c.parentId).map((comment: any) => {
+                                        const replies = (activeVideo.comments||[]).filter((c: any) => c.parentId === comment.id);
 
                                         return (
                                             <div key={comment.id} className="border-b border-slate-800/60 py-3 sm:py-4 last:border-0">
-                                                {editingCommentId === comment.id ? (
-                                                    <div className="flex gap-2 items-center mb-2 bg-slate-800/50 p-2 rounded-lg">
-                                                        <input type="text" value={editCommentText} onChange={e => setEditCommentText(e.target.value)} className="flex-1 bg-slate-950 text-white text-sm px-3 py-2 rounded border border-slate-700 outline-none" autoFocus />
-                                                        <button onClick={handleSaveEdit} className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded">저장</button>
-                                                        <button onClick={() => setEditingCommentId(null)} className="px-3 py-2 bg-slate-700 text-white text-xs font-bold rounded">취소</button>
-                                                    </div>
-                                                ) : (
-                                                    <CommentItem 
-                                                        comment={comment} authUser={authUser} owners={owners} 
-                                                        onReply={(name:string, id:string) => setReplyingTo({ parentId: id, targetId: id, authorName: name })} 
-                                                        onLike={handleLikeComment}
-                                                        setEditingCommentId={setEditingCommentId} setEditCommentText={setEditCommentText} handleDeleteComment={handleDeleteComment}
-                                                    />
-                                                )}
+                                                <CommentItem comment={comment} authUser={authUser} owners={owners} onReply={(name, id) => setReplyingTo({ parentId: id, targetId: id, authorName: name })} onLike={(id) => handleCommentReaction(id)} />
 
                                                 {replies.length > 0 && (
                                                     <div className="mt-3 space-y-3 pl-8 sm:pl-10 border-l-2 border-slate-800/50 ml-3">
                                                         {replies.map((reply: any) => (
-                                                            <div key={reply.id}>
-                                                                {editingCommentId === reply.id ? (
-                                                                    <div className="flex gap-2 items-center mb-2 bg-slate-800/50 p-2 rounded-lg">
-                                                                        <input type="text" value={editCommentText} onChange={e => setEditCommentText(e.target.value)} className="flex-1 bg-slate-950 text-white text-sm px-3 py-2 rounded border border-slate-700 outline-none" autoFocus />
-                                                                        <button onClick={handleSaveEdit} className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded">저장</button>
-                                                                        <button onClick={() => setEditingCommentId(null)} className="px-3 py-2 bg-slate-700 text-white text-xs font-bold rounded">취소</button>
-                                                                    </div>
-                                                                ) : (
-                                                                    <CommentItem 
-                                                                        comment={reply} isReply authUser={authUser} owners={owners} 
-                                                                        onReply={(name:string, id:string) => setReplyingTo({ parentId: comment.id, targetId: id, authorName: name })} 
-                                                                        onLike={handleLikeComment}
-                                                                        setEditingCommentId={setEditingCommentId} setEditCommentText={setEditCommentText} handleDeleteComment={handleDeleteComment}
-                                                                    />
-                                                                )}
-                                                            </div>
+                                                            <CommentItem key={reply.id} comment={reply} isReply authUser={authUser} owners={owners} onReply={(name, id) => setReplyingTo({ parentId: comment.id, targetId: id, authorName: name })} onLike={(id) => handleCommentReaction(id)} />
                                                         ))}
                                                     </div>
                                                 )}
@@ -641,16 +495,17 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                 )}
                             </div>
 
-                            <div className="p-3 sm:p-4 bg-slate-900/80 border-t border-slate-800 shrink-0 relative">
+                            <div className="p-3 sm:p-4 bg-slate-900/80 border-t border-slate-800 shrink-0">
                                 {replyingTo && (
                                     <div className="flex justify-between items-center bg-slate-800/50 px-3 py-1.5 rounded-t-lg border-x border-t border-slate-700/50 text-[10px] text-emerald-400 font-black italic">
                                         <span>@{replyingTo.authorName} 님에게 답글 중...</span>
-                                        <button onClick={() => { setReplyingTo(null); setReplyText(''); }} className="text-slate-500 hover:text-white"><X size={12}/></button>
+                                        <button onClick={() => setReplyingTo(null)} className="text-slate-500 hover:text-white"><X size={12}/></button>
                                     </div>
                                 )}
                                 <div className={`flex items-center gap-2 bg-slate-800 p-1.5 sm:p-2 ${replyingTo ? 'rounded-b-lg' : 'rounded-lg'} border border-slate-700 shadow-inner focus-within:border-emerald-500/50 transition-all`}>
                                     <div className="shrink-0 relative z-[100] flex items-center justify-center pl-1">
-                                        <StickerSelector onSelect={(url: string) => submitComment(!!replyingTo, url)} disabled={isSending} position="top" />
+                                        {/* 🔥 disabled, position 등 지원하지 않는 속성을 완벽하게 지웠습니다. */}
+                                        <StickerSelector onSelect={(url: string) => submitComment(!!replyingTo, url)} />
                                     </div>
                                     <input 
                                         ref={commentInputRef}
@@ -659,7 +514,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                         onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) { e.preventDefault(); submitComment(!!replyingTo); } }} 
                                         placeholder={replyingTo ? "답글을 입력하세요..." : "내용을 입력하세요..."} 
                                         disabled={isSending}
-                                        className="bg-transparent border-none outline-none focus:ring-0 text-[11px] sm:text-[13px] text-slate-200 flex-1 font-bold placeholder:text-slate-600 disabled:opacity-50" 
+                                        className="bg-transparent border-none focus:ring-0 text-[11px] sm:text-[13px] text-slate-200 flex-1 font-bold placeholder:text-slate-600 disabled:opacity-50" 
                                     />
                                     <button 
                                         onClick={() => submitComment(!!replyingTo)} 
@@ -672,7 +527,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                 </div>
                             </div>
                         </div>
-                        <button onClick={() => { setActiveVideo(null); viewedPostRef.current = null; }} className="absolute top-4 right-4 hidden md:flex bg-black/50 hover:bg-black text-white p-2 rounded-full border border-white/10 shadow-xl z-20 transition-all"><X size={20}/></button>
+                        <button onClick={() => { setPlayingVideoId(null); viewedPostRef.current = null; }} className="absolute top-4 right-4 hidden md:flex bg-black/50 hover:bg-black text-white p-2 rounded-full border border-white/10 shadow-xl z-20 transition-all"><X size={20}/></button>
                     </div>
                 </div>
             )}
