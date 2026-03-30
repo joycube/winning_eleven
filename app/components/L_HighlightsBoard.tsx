@@ -206,10 +206,10 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    // 🔥 제네릭 타입을 명시적으로 선언하여 Vercel 빌드 에러 해결
-    const availableSeasons = useMemo<string[]>(() => {
+    // 🔥 빌드 에러 해결: Set 생성 시점에 <string> 타입을 강제 부여하여 unknown[] 추론을 막음
+    const availableSeasons: string[] = useMemo(() => {
         const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
-        return ['ALL', ...Array.from(new Set(seasonNames))];
+        return ['ALL', ...Array.from(new Set<string>(seasonNames))];
     }, [highlights]);
 
     const filteredHighlights = useMemo(() => {
