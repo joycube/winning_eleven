@@ -206,8 +206,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    // 🔥 빌드 에러 해결: Set 생성 시점에 <string> 타입을 강제 부여하여 unknown[] 추론을 막음
-    const availableSeasons: string[] = useMemo(() => {
+    const availableSeasons = useMemo<string[]>(() => {
         const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
         return ['ALL', ...Array.from(new Set<string>(seasonNames))];
     }, [highlights]);
