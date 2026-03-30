@@ -11,6 +11,8 @@ import L_LockerRoomDashboard from './L_LockerRoomDashboard';
 import L_CommunityList from './L_CommunityList';
 import L_PostDetail from './L_PostDetail';
 import L_PostEditor from './L_PostEditor';
+// 🔥 신규 하이라이트 전용 게시판 임포트
+import L_HighlightsBoard from './L_HighlightsBoard';
 
 interface UserData {
   uid: string;
@@ -36,7 +38,10 @@ const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\
 
 export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason }: LockerRoomViewProps) {
   const [posts, setPosts] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<'MAIN' | 'LIST' | 'WRITE' | 'EDIT'>('MAIN');
+  // 🔥 하이라이트 데이터를 담을 상태 추가
+  const [highlights, setHighlights] = useState<any[]>([]);
+  // 🔥 viewMode에 'HIGHLIGHTS' 모드 추가
+  const [viewMode, setViewMode] = useState<'MAIN' | 'LIST' | 'WRITE' | 'EDIT' | 'HIGHLIGHTS'>('MAIN');
   const [category, setCategory] = useState('전체');
   
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -70,12 +75,23 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
       });
   }, [user, owners]);
 
+  // 커뮤니티 게시글 구독
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       fetchedPosts.sort((a: any, b: any) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
       setPosts(fetchedPosts);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 🔥 하이라이트 영상 구독 배관 추가
+  useEffect(() => {
+    const q = query(collection(db, 'highlights'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedHighlights = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHighlights(fetchedHighlights);
     });
     return () => unsubscribe();
   }, []);
@@ -95,14 +111,13 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
     return () => window.removeEventListener('popstate', syncState);
   }, [selectedPostId]);
 
-  // 🔥 [수술 포인트] URL에서 postId를 깔끔하게 지워주는 통합 뒤로가기 함수 생성
   const handleCloseToMain = () => {
       setSelectedPostId(null);
       setViewMode('MAIN');
       const params = new URLSearchParams(window.location.search);
-      params.delete('postId'); // 주소창에서 매치톡 기록 삭제!
+      params.delete('postId'); 
       window.history.pushState(null, '', `/?${params.toString()}`);
-      window.scrollTo({ top: 0, behavior: 'smooth' }); // 위로 부드럽게 스크롤
+      window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
   return (
@@ -118,7 +133,23 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
       )}
 
       {viewMode === 'MAIN' && (
-          <L_LockerRoomDashboard user={user} notices={notices} seasons={seasons} masterTeams={masterTeams} owners={owners} historyData={historyData} activeSeason={activeSeason} posts={posts} uidDict={uidDict} setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} />
+          <L_LockerRoomDashboard 
+              user={user} notices={notices} seasons={seasons} masterTeams={masterTeams} 
+              owners={owners} historyData={historyData} activeSeason={activeSeason} 
+              posts={posts} 
+              highlights={highlights} // 🔥 대시보드에 하이라이트 데이터 꽂아줌
+              uidDict={uidDict} setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} 
+          />
+      )}
+
+      {/* 🔥 신규: 하이라이트 전용 게시판 렌더링 */}
+      {viewMode === 'HIGHLIGHTS' && (
+          <L_HighlightsBoard 
+              highlights={highlights} 
+              owners={owners} 
+              seasons={seasons} // 🔥 스탯 계산 엔진에 필요한 시즌 데이터 전달
+              setViewMode={setViewMode} 
+          />
       )}
 
       {viewMode === 'LIST' && (
@@ -127,7 +158,7 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
               selectedPostId.startsWith('match_') ? (
                   <MatchTalkBoard user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} activeRankingData={activeRankingData} selectedMatchId={selectedPostId} 
                       onSelectMatch={(id) => { setSelectedPostId(id); const params = new URLSearchParams(window.location.search); params.set('view', 'LOCKERROOM'); params.set('postId', id); window.history.pushState(null, '', `?${params.toString()}`); }} 
-                      onClose={handleCloseToMain} /* 🔥 수정된 닫기 함수 연결 */
+                      onClose={handleCloseToMain} 
                   />
               ) : (
                   <L_PostDetail user={user} owners={owners} notices={notices} posts={posts} selectedPostId={selectedPostId} isMaster={isMaster} setViewMode={setViewMode} setSelectedPostId={setSelectedPostId} setEditingPostId={setEditingPostId} />
@@ -136,7 +167,7 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
               category === '매치톡' ? (
                   <MatchTalkBoard user={user} seasons={seasons} masterTeams={masterTeams} owners={owners} activeRankingData={activeRankingData} selectedMatchId={null} 
                       onSelectMatch={(id) => { setSelectedPostId(id); const params = new URLSearchParams(window.location.search); params.set('view', 'LOCKERROOM'); params.set('postId', id); window.history.pushState(null, '', `?${params.toString()}`); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
-                      onClose={handleCloseToMain} /* 🔥 수정된 닫기 함수 연결 */
+                      onClose={handleCloseToMain} 
                   />
               ) : (
                   <L_CommunityList user={user} notices={notices} posts={posts} category={category} setCategory={setCategory} setViewMode={setViewMode} setSelectedPostId={setSelectedPostId} />

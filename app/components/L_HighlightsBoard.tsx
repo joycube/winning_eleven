@@ -27,6 +27,7 @@ const getYouTubeThumbnail = (url: string) => {
 };
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
+const cleanSeasonName = (name: string) => (name || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
 const isBadImage = (url?: string | null): boolean => !url || url.trim() === '' || url.includes('line-scdn.net') || url === FALLBACK_IMG;
 
 const findOwnerByUidOrName = (ownersList: any[], uid?: string | null, name?: string | null) => {
@@ -86,15 +87,18 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: any, size?: 'sm' | 'lg
     );
 };
 
-const TeamStatCard = ({ teamName, teamLogo, historicalTeamsData, owners }: any) => {
-    // 🔥 SSOT 엔진에서 넘어온 데이터로 해당 팀 검색
+const TeamStatCard = ({ teamName, teamLogo, historicalTeamsData, owners, fallbackOwnerName, fallbackOwnerUid }: any) => {
     const targetTeamName = normalizeName(teamName);
-    const stat = (historicalTeamsData || []).find((item: any) => normalizeName(item.teamName || item.team || item.name) === targetTeamName) || { win: 0, draw: 0, loss: 0, lose: 0, ownerName: '-', ownerId: null };
     
-    let ownerName = stat.ownerName !== '-' ? stat.ownerName : '알 수 없음';
+    const stat = (historicalTeamsData || []).find((item: any) => {
+        const itemName = normalizeName(item.teamName || item.team || item.name);
+        return itemName === targetTeamName || itemName.includes(targetTeamName) || targetTeamName.includes(itemName);
+    }) || { win: 0, draw: 0, loss: 0, lose: 0, ownerName: fallbackOwnerName || '-', ownerId: fallbackOwnerUid || null };
+    
+    let ownerName = stat.ownerName !== '-' ? stat.ownerName : (fallbackOwnerName || '알 수 없음');
     let ownerPhoto = COMMON_DEFAULT_PROFILE;
 
-    const matchedOwner = findOwnerByUidOrName(owners, stat.ownerId, ownerName);
+    const matchedOwner = findOwnerByUidOrName(owners, stat.ownerId || fallbackOwnerUid, ownerName);
 
     if (matchedOwner) {
         ownerName = matchedOwner.nickname || matchedOwner.mappedOwnerId || matchedOwner.displayName || ownerName;
@@ -109,21 +113,19 @@ const TeamStatCard = ({ teamName, teamLogo, historicalTeamsData, owners }: any) 
     const winRate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0';
 
     return (
-        <div className="flex items-center gap-1.5 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 w-full shadow-inner h-full">
-            <img src={ownerPhoto} className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
+        <div className="flex items-center gap-2 bg-slate-900/80 p-3 rounded-lg border border-slate-800 w-full shadow-inner h-full">
+            <img src={ownerPhoto} className="w-10 h-10 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
             <div className="flex flex-col min-w-0 flex-1 justify-center">
-                <span className="text-[11px] font-black text-emerald-400 truncate leading-tight mb-0.5">{ownerName}</span>
-                <div className="flex items-center gap-1">
-                    <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center p-[1.5px] shadow-sm shrink-0">
-                        <img src={teamLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt=""/>
-                    </div>
-                    <span className="text-[10px] text-slate-300 font-bold truncate leading-tight">{teamName}</span>
+                <span className="text-xs font-black text-emerald-400 truncate leading-tight mb-1">{ownerName}</span>
+                <div className="flex items-center gap-1.5">
+                    <img src={teamLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain shrink-0" alt=""/>
+                    <span className="text-[11px] text-slate-300 font-bold truncate leading-tight">{teamName}</span>
                 </div>
             </div>
-            <div className="flex flex-col items-end shrink-0 pl-3 border-l border-slate-700/50 justify-center h-full">
-                <span className="text-[11px] sm:text-xs text-slate-300 font-black tracking-tight leading-tight mb-1">{win}승 {draw}무 {lose}패</span>
-                <span className="text-[14px] sm:text-[15px] font-black text-white leading-tight">
-                    <span className={Number(winRate) >= 50 ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span>
+            <div className="flex flex-col items-end shrink-0 pl-4 border-l border-slate-700/50 justify-center h-full">
+                <span className="text-xs text-slate-300 font-black tracking-tight leading-tight mb-1">{win}승 {draw}무 {lose}패</span>
+                <span className="text-base font-black text-white leading-tight">
+                    <span className={Number(winRate) >= 50 ? 'text-rose-400' : 'text-slate-400'}>{winRate}%</span>
                 </span>
             </div>
         </div>
@@ -221,7 +223,8 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
             result = result.filter(h => 
                 (h.homeTeam && h.homeTeam.toLowerCase().includes(q)) ||
                 (h.awayTeam && h.awayTeam.toLowerCase().includes(q)) ||
-                (h.matchLabel && h.matchLabel.toLowerCase().includes(q))
+                (h.matchLabel && h.matchLabel.toLowerCase().includes(q)) ||
+                (h.title && h.title.toLowerCase().includes(q))
             );
         }
 
@@ -244,25 +247,21 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
 
     const currentActiveVideo = highlights?.find((h:any) => h.id === activeVideo?.id) || activeVideo;
 
-    // 🔥 [핵심 픽스] 이모지 제거 및 정확한 시즌 매칭 후 스탯을 재조립하는 완벽한 엔진
     const historicalTeamsData = useMemo(() => {
-        if (!currentActiveVideo || !seasons) return [];
+        if (!currentActiveVideo || !seasons || seasons.length === 0) return [];
 
         const targetSeason = seasons.find((s: any) => {
-            // ID 매칭 시도
             if (currentActiveVideo.seasonId && String(s.id) === String(currentActiveVideo.seasonId)) return true;
-            // 이모지 걷어내고 순수 텍스트 매칭
-            const cleanSeasonName = (s.name || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
-            const cleanVideoSeasonName = (currentActiveVideo.seasonName || '').replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '').trim();
-            return cleanSeasonName === cleanVideoSeasonName;
+            const cleanSeason = cleanSeasonName(s.name || '');
+            const cleanVideoSeason = cleanSeasonName(currentActiveVideo.seasonName || '');
+            return cleanSeason === cleanVideoSeason;
         });
 
-        if (!targetSeason) return []; // 시즌 데이터를 못 찾으면 빈 배열
+        if (!targetSeason) return [];
 
         const teamStats: Record<string, any> = {};
-
-        // 1차: 기본 참가팀 세팅 (오너 ID 및 프로필 맵핑을 위해)
         let baseTeams: any[] = [];
+        
         if (Array.isArray(targetSeason.teams)) baseTeams = targetSeason.teams;
         else if (targetSeason.rankings) baseTeams = targetSeason.rankings;
         else if (targetSeason.groups) {
@@ -283,7 +282,6 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
             };
         });
 
-        // 2차: 매치 기록을 순회하며 실제 승무패 합산
         if (!targetSeason.rounds) return Object.values(teamStats);
 
         const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
@@ -297,7 +295,6 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                 const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
                 const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
-                // 컵이나 플레이오프 경기 기록은 제외 (정규 시즌 폼 기준)
                 if ((targetSeason.type === 'CUP' || targetSeason.type === 'LEAGUE_PLAYOFF') && isPlayoffMatch) return; 
 
                 const hTeamNorm = normalizeName(m.home);
@@ -404,13 +401,15 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         }
     };
 
-    const handleLikeVideo = async (e: React.MouseEvent, videoId: string, currentLikes: string[]) => {
+    const handleLikeVideo = async (e: React.MouseEvent, videoId: string, currentLikes: any) => {
         e.stopPropagation();
         if (!authUser) return alert("로그인 후 이용 가능합니다.");
         
         try {
             const docRef = doc(db, 'highlights', videoId);
-            if (currentLikes.includes(authUser.uid)) {
+            const likesArray = Array.isArray(currentLikes) ? currentLikes : (Array.isArray(currentActiveVideo?.likedBy) ? currentActiveVideo.likedBy : []);
+            
+            if (likesArray.includes(authUser.uid)) {
                 await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
             } else {
                 await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
@@ -421,110 +420,132 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in duration-300">
             {currentActiveVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
 
-            {/* Header & Filter Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800 shadow-lg">
-                <div className="flex flex-wrap items-center gap-2">
-                    <select 
-                        value={selectedSeason} 
-                        onChange={(e) => setSelectedSeason(e.target.value)}
-                        className="bg-slate-800 text-white text-sm font-bold py-2 px-3 rounded-lg border border-slate-700 outline-none"
-                    >
-                        {availableSeasons.map(s => (
-                            <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
-                        ))}
-                    </select>
-                    
-                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-                        <button 
-                            onClick={() => setSortBy('LATEST')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="w-2.5 h-12 bg-emerald-500 rounded-full mt-1 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                        <div className="flex flex-col">
+                            <h1 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter uppercase leading-none">
+                                MATCH <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">HIGHLIGHTS</span>
+                            </h1>
+                            <p className="text-xs sm:text-sm text-slate-400 font-bold mt-1.5 ml-0.5">eFootball 명경기 하이라이트 게시판</p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                        <select 
+                            value={selectedSeason} 
+                            onChange={(e) => setSelectedSeason(e.target.value)}
+                            className="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
                         >
-                            최신순
-                        </button>
-                        <button 
-                            onClick={() => setSortBy('POPULAR')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${sortBy === 'POPULAR' ? 'bg-slate-700 text-red-400 shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            인기순
-                        </button>
+                            {availableSeasons.map(s => (
+                                <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
+                            ))}
+                        </select>
+
+                        <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 shadow-inner">
+                            <button 
+                                onClick={() => setSortBy('LATEST')}
+                                className={`px-4 py-2 rounded-md text-[11px] font-black transition-all ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                최신순
+                            </button>
+                            <button 
+                                onClick={() => setSortBy('POPULAR')}
+                                className={`px-4 py-2 rounded-md text-[11px] font-black transition-all ${sortBy === 'POPULAR' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                인기순
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div className="relative w-full sm:w-64">
-                    <input 
-                        type="text" 
-                        placeholder="팀명, 매치 검색..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-slate-950 text-white text-sm py-2 pl-9 pr-4 rounded-lg border border-slate-700 outline-none focus:border-emerald-500"
-                    />
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    {searchQuery && (
-                        <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
-                            <X size={14} />
-                        </button>
-                    )}
+                <div className="mt-5 pt-5 border-t border-slate-800/50">
+                    <div className="relative w-full max-w-md">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search size={15} className="text-slate-500" />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="팀명, 매치 라운드 검색..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg pl-9 pr-8 py-2.5 focus:border-emerald-500 transition-all outline-none placeholder:text-slate-600 shadow-inner"
+                        />
+                        {searchQuery && (
+                            <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
+                                <X size={15} />
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            {/* 🔥 [PC기준 3열 고정] 그리드 리스트 (R_HighlightsTab의 매끄러운 카드 디자인 적용) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
-                {filteredHighlights.map((post) => {
-                    const videoUrl = getValidVideoUrl(post);
-                    const isLiked = post.likedBy?.includes(authUser?.uid);
+            {filteredHighlights.length === 0 ? (
+                <div className="py-20 text-center text-slate-500 font-bold italic bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
+                    등록된 하이라이트 영상이 없거나 검색 결과가 없습니다.
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {filteredHighlights.map((post) => {
+                        const videoUrl = getValidVideoUrl(post);
+                        const isLiked = post.likedBy?.includes(authUser?.uid);
+                        const likesCount = Array.isArray(post.likes) ? post.likes.length : (typeof post.likes === 'number' ? post.likes : (post.likedBy?.length || 0));
 
-                    return (
-                        <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-3 cursor-pointer">
-                            <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-800/50 shadow-md">
-                                <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                                <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                                    <PlayCircle className="w-12 h-12 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100" />
+                        return (
+                            <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-3 cursor-pointer bg-slate-900/40 p-2.5 rounded-2xl border border-slate-800/80 hover:border-emerald-500/50 transition-all">
+                                <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 shadow-md">
+                                    <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                                        <PlayCircle className="w-12 h-12 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100 drop-shadow-lg" />
+                                    </div>
+                                    <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black text-emerald-400 uppercase tracking-tighter border border-white/10 shadow-sm">
+                                        {post.matchLabel || 'HIGHLIGHT'}
+                                    </div>
+                                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1.5 rounded-md flex items-center gap-1.5 border border-white/10 shadow-lg">
+                                        <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
+                                        <span className="text-[13px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
+                                        <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
+                                    </div>
                                 </div>
-                                <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black text-slate-200 uppercase">{post.matchLabel || 'HIGHLIGHT'}</div>
-                                <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md flex items-center gap-2 border border-slate-700/50 shadow-lg">
-                                    <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-3.5 h-3.5 object-contain" alt="" />
-                                    <span className="text-[13px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
-                                    <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-3.5 h-3.5 object-contain" alt="" />
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3 px-1">
-                                <MatchResultEmblem post={post} size="sm" />
-                                <div className="flex flex-col min-w-0">
-                                    <h3 className="text-[14px] font-black text-white line-clamp-2 uppercase leading-tight group-hover:text-blue-400 transition-colors">
-                                        <span className="text-slate-500 mr-1.5">[{post.seasonName}]</span>
-                                        {post.homeTeam} VS {post.awayTeam} <span className={`${Number(post.homeScore) === Number(post.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({post.homeScore}:{post.awayScore})</span>
-                                    </h3>
-                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1.5 font-bold italic">
+                                <div className="flex flex-col px-1.5 pb-1">
+                                    <div className="flex items-start gap-3 min-w-0">
+                                        <div className="flex -space-x-2 shrink-0 mt-0.5">
+                                            <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-7 h-7 rounded-full bg-white border-2 border-slate-900 object-contain p-0.5 shadow-sm" alt="" />
+                                            <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-900 object-contain p-0.5 shadow-sm z-0 opacity-90" alt="" />
+                                        </div>
+                                        <h3 className="text-[14px] font-black text-white line-clamp-2 leading-tight group-hover:text-emerald-300 transition-colors flex-1 min-w-0">
+                                            <span className="text-slate-500 mr-1.5 text-xs font-bold tracking-tight">[{post.seasonName}]</span>
+                                            {post.title || `${post.homeTeam} VS ${post.awayTeam}`}
+                                        </h3>
+                                    </div>
+                                    
+                                    {/* 🔥 조회수/좋아요/댓글 풀스팬(전체 너비 1줄 사용) 강제 할당 */}
+                                    <div className="flex items-center justify-between w-full text-[11px] text-slate-400 mt-3 pt-2.5 font-bold italic px-1">
                                         <span>조회수 {post.views || 0}회</span>
-                                        <span className="text-slate-700">•</span>
-                                        <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-rose-400' : 'hover:text-white'}`}>
-                                            <Heart size={10} className={isLiked ? 'fill-rose-400' : ''}/> {post.likes || 0}
-                                        </button>
-                                        <span className="text-slate-700">•</span>
-                                        <span>댓글 {(post.comments || []).length}개</span>
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-rose-400' : 'hover:text-white'}`}>
+                                                <Heart size={11} className={isLiked ? 'fill-rose-400' : ''}/> {likesCount}
+                                            </button>
+                                            <span className="text-slate-700">•</span>
+                                            <span>댓글 {(post.comments || []).length}개</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    );
-                })}
-                {filteredHighlights.length === 0 && (
-                    <div className="col-span-full py-20 text-center text-slate-500 font-bold bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
-                        등록된 하이라이트 영상이 없습니다.
-                    </div>
-                )}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
 
-            {/* 🎬 분할형 뷰 모달 (R_HighlightsTab 완벽 이식) */}
             {currentActiveVideo && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
                     <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setActiveVideo(null); viewedPostRef.current = null; }}></div>
                     <div className="relative w-full max-w-6xl bg-[#0b0e14] sm:rounded-2xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col md:flex-row h-full sm:h-[85vh]">
                         
-                        {/* 왼쪽 비디오 영역 */}
                         <div className="flex-1 flex flex-col bg-black md:bg-transparent h-full md:overflow-y-auto custom-scrollbar">
                             <div className="aspect-video w-full bg-black shrink-0 relative">
                                 {getYoutubeId(getValidVideoUrl(currentActiveVideo)) ? (
@@ -544,39 +565,50 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                 <div className="flex flex-col gap-1.5">
                                     <span className="text-blue-400 text-[10px] font-black italic tracking-widest uppercase">{currentActiveVideo.seasonName}</span>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <MatchResultEmblem post={currentActiveVideo} size="lg" />
-                                        <h2 className="text-base sm:text-xl font-black text-white leading-tight uppercase italic tracking-tighter">
-                                            {currentActiveVideo.homeTeam} VS {currentActiveVideo.awayTeam} <span className={`${Number(currentActiveVideo.homeScore) === Number(currentActiveVideo.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({currentActiveVideo.homeScore}:{currentActiveVideo.awayScore})</span>
+                                        <div className="bg-emerald-900/30 px-2 py-0.5 rounded text-[10px] font-black text-emerald-400 border border-emerald-800/50">
+                                            {currentActiveVideo.matchLabel || 'HIGHLIGHT'}
+                                        </div>
+                                        <h2 className="text-lg sm:text-2xl font-black text-white leading-tight uppercase tracking-tighter">
+                                            {currentActiveVideo.title || `${currentActiveVideo.homeTeam} VS ${currentActiveVideo.awayTeam}`} <span className={`${Number(currentActiveVideo.homeScore) === Number(currentActiveVideo.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({currentActiveVideo.homeScore}:{currentActiveVideo.awayScore})</span>
                                         </h2>
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <button onClick={(e) => handleLikeVideo(e, currentActiveVideo.id, currentActiveVideo.likedBy || [])} className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black transition-all ${currentActiveVideo.likedBy?.includes(authUser?.uid) ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <button onClick={(e) => handleLikeVideo(e, currentActiveVideo.id, currentActiveVideo.likedBy || [])} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-black transition-all ${currentActiveVideo.likedBy?.includes(authUser?.uid) ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
                                             <Heart size={12} fill={currentActiveVideo.likedBy?.includes(authUser?.uid) ? "currentColor" : "none"} />
-                                            {currentActiveVideo.likes || 0}
+                                            {Array.isArray(currentActiveVideo.likes) ? currentActiveVideo.likes.length : (typeof currentActiveVideo.likes === 'number' ? currentActiveVideo.likes : (currentActiveVideo.likedBy?.length || 0))}
                                         </button>
-                                        <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2 py-1 rounded text-[10px] font-black text-slate-400 shadow-inner">
+                                        <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-md text-[11px] font-black text-slate-400 shadow-inner">
                                             <Eye size={12}/> {currentActiveVideo.views || 0}
-                                        </div>
-                                        <div className="text-[9px] text-slate-500 font-bold ml-auto uppercase">
-                                            {currentActiveVideo.matchLabel}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* 🔥 완벽하게 재건된 스탯 카드 영역 */}
-                                <div className="flex flex-col gap-2 pt-3 mt-2 border-t border-slate-800/50">
-                                    <div className="grid grid-cols-2 gap-2 h-14">
-                                        <TeamStatCard teamName={currentActiveVideo.homeTeam} teamLogo={currentActiveVideo.homeLogo} historicalTeamsData={historicalTeamsData} owners={owners} />
-                                        <TeamStatCard teamName={currentActiveVideo.awayTeam} teamLogo={currentActiveVideo.awayLogo} historicalTeamsData={historicalTeamsData} owners={owners} />
+                                <div className="flex flex-col gap-2 pt-4 mt-3 border-t border-slate-800/50">
+                                    <div className="grid grid-cols-2 gap-3 h-[70px]">
+                                        <TeamStatCard 
+                                            teamName={currentActiveVideo.homeTeam} 
+                                            teamLogo={currentActiveVideo.homeLogo} 
+                                            historicalTeamsData={historicalTeamsData} 
+                                            owners={owners} 
+                                            fallbackOwnerUid={currentActiveVideo.homeOwnerUid || currentActiveVideo.homeOwnerId} 
+                                            fallbackOwnerName={currentActiveVideo.homeOwner}
+                                        />
+                                        <TeamStatCard 
+                                            teamName={currentActiveVideo.awayTeam} 
+                                            teamLogo={currentActiveVideo.awayLogo} 
+                                            historicalTeamsData={historicalTeamsData} 
+                                            owners={owners} 
+                                            fallbackOwnerUid={currentActiveVideo.awayOwnerUid || currentActiveVideo.awayOwnerId}
+                                            fallbackOwnerName={currentActiveVideo.awayOwner}
+                                        />
                                     </div>
-                                    <div className="text-[9px] text-slate-500 font-black tracking-tighter text-right">
-                                        *해당 영상 시즌의 전적 기준
+                                    <div className="text-[10px] text-slate-500 font-bold tracking-tighter text-right mt-1">
+                                        *해당 영상 시즌의 정규 전적 기준
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 오른쪽 댓글 영역 (md:w-[420px] 고정) */}
                         <div className="w-full md:w-[420px] bg-[#0f141e] border-l border-slate-800 flex flex-col h-[400px] md:h-auto shrink-0 flex-1">
                             <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 shrink-0">
                                 <h3 className="text-sm font-black text-white flex items-center gap-2 uppercase italic tracking-tighter">
