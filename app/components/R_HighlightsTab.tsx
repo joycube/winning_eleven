@@ -20,7 +20,8 @@ const getYoutubeId = (url: string) => {
     if (!url) return null;
     const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
+    // 🔥 에러 픽스: match[2]가 아닌 match[1]을 반환하도록 수정
+    return match ? match[1] : null;
 };
 
 const getYouTubeThumbnail = (url: string) => {
@@ -231,13 +232,12 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
             };
             incrementViewCount();
         }
-    }, [activeVideo]); // 🔥 activeVideo 전체를 의존성 배열에 담아 Warning 해결
+    }, [activeVideo]);
 
     const currentSeasonMatchName = useMemo(() => {
         return cleanSeasonName(currentSeason?.seasonName || currentSeason?.name || '');
     }, [currentSeason]);
 
-    // 🔥 빌드 에러의 원흉이었던 부분: <string[]> 명시
     const availableSeasons = useMemo<string[]>(() => {
         const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
         return ['ALL', ...Array.from(new Set<string>(seasonNames))];
@@ -339,7 +339,6 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
                             onChange={(e) => setSelectedSeason(e.target.value)}
                             className="bg-slate-950 border border-slate-800 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
                         >
-                            {/* 🔥 (s: string) 강제 캐스팅으로 unknown 에러 원천 차단 */}
                             {availableSeasons.map((s: string) => (
                                 <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
                             ))}
@@ -504,7 +503,6 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
                                 )}
                                 <div className={`flex items-center gap-2 bg-slate-800 p-1.5 sm:p-2 ${replyingTo ? 'rounded-b-lg' : 'rounded-lg'} border border-slate-700 shadow-inner focus-within:border-emerald-500/50 transition-all`}>
                                     <div className="shrink-0 relative z-[100] flex items-center justify-center pl-1">
-                                        {/* 🔥 disabled, position 등 지원하지 않는 속성을 완벽하게 지웠습니다. */}
                                         <StickerSelector onSelect={(url: string) => submitComment(!!replyingTo, url)} />
                                     </div>
                                     <input 
