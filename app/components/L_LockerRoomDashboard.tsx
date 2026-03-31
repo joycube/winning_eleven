@@ -22,7 +22,12 @@ const getYoutubeId = (url: string) => {
     return match ? match[1] : null;
 };
 
-export default function L_LockerRoomDashboard({ user, notices, seasons, masterTeams, owners, activeSeason, posts, highlights, uidDict, setViewMode, setCategory, setSelectedPostId }: any) {
+// 🚨 픽스 완료: 부모(LockerRoomView)로부터 activeRankingData와 historyData를 받도록 입구를 뚫었습니다.
+export default function L_LockerRoomDashboard({ 
+    user, notices, seasons, masterTeams, owners, activeSeason, 
+    posts, highlights, uidDict, setViewMode, setCategory, setSelectedPostId, 
+    activeRankingData, historyData 
+}: any) {
   const { authUser } = useAuth();
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   
@@ -348,9 +353,9 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               onNavigateToMatch={handleMatchTalkClick}
               activeOrLatestSeason={activeOrLatestSeason}
               
-              // 🔥 아래 두 줄 추가! (스케줄 페이지와 동일하게 예측 계산을 돌리기 위한 데이터 주입)
-              activeRankingData={activeOrLatestSeason?.rankings || []} 
-              historyData={[]} 
+              // 🚨 배관 연결 완료: 드롭다운에서 선택된 시즌의 랭킹을 실시간으로 넘깁니다. 
+              activeRankingData={seasons?.find((s: any) => s.id === selectedSeasonId)?.rankings || activeRankingData || []} 
+              historyData={historyData || []} 
           />
 
           {/* 공통 뷰 모달 */}
