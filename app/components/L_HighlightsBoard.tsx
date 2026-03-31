@@ -433,10 +433,10 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                     <div className="flex items-start gap-3">
                         <div className="w-2.5 h-12 bg-emerald-500 rounded-full mt-1 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
                         <div className="flex flex-col">
-                            <h1 className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter uppercase leading-none">
+                            <h1 className="text-xl sm:text-2xl font-black text-white italic tracking-tighter uppercase leading-none">
                                 MATCH <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">HIGHLIGHTS</span>
                             </h1>
-                            <p className="text-xs sm:text-sm text-slate-400 font-bold mt-1.5 ml-0.5">eFootball 명경기 하이라이트 게시판</p>
+                            <p className="text-[10px] sm:text-sm text-slate-500 font-bold mt-1">eFootball 명경기 하이라이트 게시판</p>
                         </div>
                     </div>
                 </div>

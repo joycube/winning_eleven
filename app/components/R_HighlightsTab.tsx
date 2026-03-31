@@ -362,40 +362,58 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
             {activeVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
 
             {hasHighlightsInSeason && (
-                <div className="bg-[#0f172a] rounded-xl border border-slate-800 p-3 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
-                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                        <select 
-                            value={selectedSeason} 
-                            onChange={(e) => setSelectedSeason(e.target.value)}
-                            className="bg-slate-950 border border-slate-800 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
-                        >
-                            {availableSeasons.map((s: string) => (
-                                <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
-                            ))}
-                        </select>
-
-                        <div className="relative w-full md:w-64">
+                // 🔥 락커룸 L_HighlightsBoard와 동일한 가로 배열, 검색/필터 UI로 완전히 교체
+                <div className="bg-[#0f172a] rounded-xl border border-slate-800 p-3 sm:p-4 shadow-lg flex flex-col xl:flex-row gap-3">
+                    {/* 검색 영역 */}
+                    <div className="flex flex-1 gap-2">
+                        <div className="relative w-full flex-1">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Search size={14} className="text-slate-500" />
+                                <Search size={15} className="text-slate-500" />
                             </div>
                             <input 
                                 type="text" 
                                 placeholder="팀명, 라운드 검색..." 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 text-white text-xs font-bold rounded-lg pl-9 pr-8 py-2 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
+                                className="w-full h-full min-h-[40px] bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg pl-9 pr-8 focus:border-emerald-500 transition-all outline-none placeholder:text-slate-600 shadow-inner"
                             />
                             {searchQuery && (
                                 <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
-                                    <X size={14} />
+                                    <X size={15} />
                                 </button>
                             )}
                         </div>
+                        <button className="h-full min-h-[40px] bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-black px-4 sm:px-6 rounded-lg transition-colors shadow-md whitespace-nowrap">
+                            검색
+                        </button>
                     </div>
 
-                    <div className="flex items-center bg-slate-950 rounded-lg p-1 border border-slate-800 shrink-0 w-full md:w-auto justify-end">
-                        <button onClick={() => setSortBy('LATEST')} className={`px-4 py-1.5 rounded-md text-xs font-black transition-all ${sortBy === 'LATEST' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>최신순</button>
-                        <button onClick={() => setSortBy('POPULAR')} className={`px-4 py-1.5 rounded-md text-xs font-black transition-all ${sortBy === 'POPULAR' ? 'bg-slate-800 text-red-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>인기순</button>
+                    {/* 필터 및 정렬 영역 */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
+                        <select 
+                            value={selectedSeason} 
+                            onChange={(e) => setSelectedSeason(e.target.value)}
+                            className="h-full min-h-[40px] bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg px-3 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
+                        >
+                            {availableSeasons.map((s: string) => (
+                                <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
+                            ))}
+                        </select>
+
+                        <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 shadow-inner h-full min-h-[40px] items-center">
+                            <button 
+                                onClick={() => setSortBy('LATEST')}
+                                className={`px-4 py-1.5 rounded-md text-[12px] font-black transition-all h-full ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                최신순
+                            </button>
+                            <button 
+                                onClick={() => setSortBy('POPULAR')}
+                                className={`px-4 py-1.5 rounded-md text-[12px] font-black transition-all h-full ${sortBy === 'POPULAR' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                인기순
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
