@@ -20,9 +20,11 @@ const getYoutubeId = (url: string) => {
     if (!url) return null;
     const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
     const match = url.match(regExp);
-    // 🔥 에러 픽스: match[2]가 아닌 match[1]을 반환하도록 수정
     return match ? match[1] : null;
 };
+
+// 🔥 누락되었던 헬퍼 함수 추가
+const getValidVideoUrl = (post: any) => post?.url || post?.videoUrl || post?.youtubeUrl || '';
 
 const getYouTubeThumbnail = (url: string) => {
     const id = getYoutubeId(url);
@@ -246,7 +248,35 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
     const filteredAndSortedHighlights = useMemo(() => {
         if (!currentSeasonMatchName) return [];
 
-        let result = highlights.filter(h => cleanSeasonName(h.seasonName || '') === currentSeasonMatchName);
+        const validMatchUrls = new Set<string>();
+        const validMatchTeams = new Set<string>();
+        
+        if (currentSeason?.rounds) {
+            currentSeason.rounds.forEach((r: any) => {
+                r.matches?.forEach((m: any) => {
+                    if (m.youtubeUrl && m.youtubeUrl.trim() !== '') {
+                        validMatchUrls.add(m.youtubeUrl.trim());
+                        validMatchTeams.add(`${normalizeName(m.home)}_${normalizeName(m.away)}`);
+                    }
+                });
+            });
+        }
+
+        let result = highlights.filter(h => {
+            if (cleanSeasonName(h.seasonName || '') !== currentSeasonMatchName) return false;
+
+            const videoUrl = getValidVideoUrl(h)?.trim();
+            if (!videoUrl || !getYoutubeId(videoUrl)) return false;
+
+            const isUrlValid = validMatchUrls.has(videoUrl);
+            const isTeamValid = validMatchTeams.has(`${normalizeName(h.homeTeam)}_${normalizeName(h.awayTeam)}`);
+
+            if (!isUrlValid && !isTeamValid) {
+                return false; 
+            }
+
+            return true;
+        });
 
         if (selectedSeason !== 'ALL') {
             result = result.filter(h => h.seasonName === selectedSeason);
@@ -265,7 +295,7 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
         else if (sortBy === 'POPULAR') result.sort((a, b) => (b.views || 0) - (a.views || 0));
 
         return result;
-    }, [highlights, currentSeasonMatchName, selectedSeason, sortBy, searchQuery]);
+    }, [highlights, currentSeasonMatchName, selectedSeason, sortBy, searchQuery, currentSeason]);
 
     const submitComment = async (isReply: boolean, stickerUrl?: string) => {
         if (!authUser) return alert("로그인 후 이용해주세요.");

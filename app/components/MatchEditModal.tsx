@@ -6,7 +6,6 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Lock, MessageSquare, Edit3, Send, Youtube, Zap, Trash2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-// 🔥 [수술 포인트] 스티커 공용 컴포넌트 임포트
 import StickerSelector from './StickerSelector'; 
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -159,6 +158,18 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
     try {
         await deleteDoc(doc(db, 'match_comments', commentId));
     } catch (e) { console.error(e); }
+  };
+
+  // 🔥 [핵심 픽스] 저장 시 유튜브 링크가 지워졌다면 DB에서도 하이라이트 문서를 물리적으로 삭제
+  const handleSaveClick = async () => {
+      if (inputs.youtube.trim() === '') {
+          try {
+              await deleteDoc(doc(db, 'highlights', match.id));
+          } catch (error) {
+              console.error("하이라이트 고스트 데이터 삭제 실패:", error);
+          }
+      }
+      onSave(match.id, inputs.homeScore, inputs.awayScore, inputs.youtube, records, manualWinner);
   };
 
   const formatTime = (ts: any) => {
@@ -506,8 +517,9 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
 
                       {hasRecordPermission && (
                           <div className="p-2 sm:p-3 bg-[#0B1120] border-t border-slate-800 shrink-0 z-30 pb-safe rounded-b-[24px]">
+                              {/* 🔥 버튼 클릭 시 직접 생성한 handleSaveClick 함수가 실행되도록 수정됨 */}
                               <button 
-                                onClick={() => onSave(match.id, inputs.homeScore, inputs.awayScore, inputs.youtube, records, manualWinner)} 
+                                onClick={handleSaveClick} 
                                 className={`w-full py-2.5 rounded-lg font-black text-[12px] sm:text-[13px] shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 ${isByeMatch ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/30 text-white' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/30 text-white tracking-widest'}`}
                               >
                                 {isByeMatch ? '🚀 부전승 확정 및 다음 라운드 진출' : '저장 완료'}
