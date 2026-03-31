@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock, PlayCircle, X } from 'lucide-react'; 
+import { CalendarDays, MessageSquare, Flame, ChevronRight, Clock, PlayCircle, X, Heart } from 'lucide-react'; 
 import { FALLBACK_IMG } from '../types';
 import { collection, query, where, onSnapshot, doc, updateDoc, increment, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -9,8 +9,17 @@ import { LiveFeed } from './LiveFeed';
 import { MatchTalkCarousel } from './MatchTalkCarousel';
 // 🔥 챔피언 카루셀 임포트
 import { ChampionsCarousel } from './ChampionsCarousel';
+import { useAuth } from '../hooks/useAuth';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
+// 🔥 Vercel 배포 에러(TypeError)를 방지하기 위한 안전한 유튜브 ID 추출 함수 추가
+const getYoutubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+    const match = url.match(regExp);
+    return match ? match[1] : null;
+};
 
 const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     const [latestComment, setLatestComment] = useState<any>(null);
@@ -60,13 +69,13 @@ const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     );
 };
 
-// 🔥 Props에 highlights 추가
 export default function L_LockerRoomDashboard({ user, notices, seasons, masterTeams, owners, activeSeason, posts, highlights, uidDict, setViewMode, setCategory, setSelectedPostId }: any) {
+  const { authUser } = useAuth();
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
   const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
   
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
-  const [activeVideo, setActiveVideo] = useState<any>(null); // 🔥 하이라이트 영상 시청 모달용 상태
+  const [activeVideo, setActiveVideo] = useState<any>(null); 
 
   const isDataLoading = !owners || owners.length === 0 || !posts;
 
@@ -350,7 +359,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   };
 
   return (
-      <div className="animate-in fade-in pb-10 mt-2 text-left overflow-x-hidden relative">
+      // 🔥 최상위 태그에서 overflow-x-hidden 제거! (이로 인해 자식 컴포넌트의 상단 그림자 및 요소가 잘리는 증상 해결)
+      <div className="animate-in fade-in pb-10 mt-2 text-left relative">
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
               .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -371,11 +381,13 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           )}
 
           {/* 역대 챔피언 카루셀 배치 */}
-          <ChampionsCarousel 
-              seasons={seasons}
-              owners={owners}
-              masterTeams={masterTeams}
-          />
+          <div className="pt-2"> {/* 🔥 그림자나 뱃지 등 상단 클리핑을 막기 위해 약간의 여백 추가 */}
+              <ChampionsCarousel 
+                  seasons={seasons}
+                  owners={owners}
+                  masterTeams={masterTeams}
+              />
+          </div>
 
           {/* 2. 라이브 피드 전광판 */}
           <LiveFeed 
@@ -455,8 +467,8 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
                               <div className="flex flex-col divide-y divide-slate-800/50">
                                   {(communityTab === 'HOT' ? hotPosts : posts.slice(0, 5)).map((post:any, idx:number) => {
-                                      const ytMatch = post.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
-                                      const ytId = post.youtubeId || (ytMatch ? ytMatch[1] : null);
+                                      // 🔥 안전한 헬퍼 함수로 변경
+                                      const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
                                       const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
                                       const commentCount = post.comments?.length || 0;
                                       const displayNum = communityTab === 'HOT' ? idx + 1 : posts.length - idx;
@@ -494,7 +506,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           </div>
 
-          {/* 🔥 신규 추가: 하이라이트 유튜브 스타일 갤러리 */}
+          {/* 🔥 하이라이트 썸네일 축소 및 밀도 높이기 적용 */}
           <div className="mb-8">
               <div className="flex items-center justify-between px-2 mb-4">
                   <div className="flex items-center gap-2">
@@ -503,7 +515,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                           🎬 E-Football <span className="text-red-500">Highlights</span>
                       </h3>
                   </div>
-                  {/* 더보기 버튼: 누르면 신규 하이라이트 전용 게시판으로 이동 */}
                   <button 
                       onClick={() => setViewMode('HIGHLIGHTS')} 
                       className="text-[11px] font-bold text-slate-400 hover:text-white transition-colors flex items-center"
@@ -512,47 +523,55 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </button>
               </div>
 
-              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 px-2 snap-x">
+              {/* gap-4 -> gap-3으로 축소하여 촘촘하게 배치 */}
+              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4 px-2 snap-x pt-2">
                   {highlights && highlights.length > 0 ? (
-                      highlights.slice(0, 6).map((video: any) => {
-                          const ytMatch = video.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
-                          const ytId = video.youtubeId || (ytMatch ? ytMatch[1] : null);
+                      highlights.slice(0, 8).map((video: any) => {
+                          const ytId = video.youtubeId || getYoutubeId(video.youtubeUrl);
                           const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : FALLBACK_IMG;
 
                           return (
                               <div 
                                   key={video.id} 
-                                  className="snap-start shrink-0 w-[260px] sm:w-[320px] flex flex-col gap-2.5 cursor-pointer group"
+                                  // 🔥 너비를 w-[160px] sm:w-[200px]로 획기적으로 줄임
+                                  className="snap-start shrink-0 w-[160px] sm:w-[200px] flex flex-col gap-2 cursor-pointer group"
                                   onClick={() => setActiveVideo(video)}
                               >
-                                  <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg">
+                                  <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-900 border border-slate-800 shadow-md">
                                       <img 
                                           src={thumbUrl} 
                                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100" 
                                           alt="thumbnail" 
                                           onError={(e:any) => e.target.src = FALLBACK_IMG}
                                       />
-                                      <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[9px] font-black text-emerald-400 uppercase border border-slate-700/50">
+                                      {/* 라벨 사이즈 작게 조정 */}
+                                      <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-black text-emerald-400 uppercase border border-slate-700/50">
                                           {video.seasonName || 'HIGHLIGHT'}
                                       </div>
                                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/20">
-                                          <PlayCircle size={48} className="text-white/80 drop-shadow-lg" strokeWidth={1.5} />
+                                          <PlayCircle size={32} className="text-white/80 drop-shadow-lg" strokeWidth={1.5} />
                                       </div>
                                   </div>
-                                  <div className="flex gap-2.5 px-1">
-                                      <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 shrink-0 overflow-hidden shadow-sm">
-                                          <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain p-1" alt="" onError={(e:any) => e.target.src = FALLBACK_IMG} />
+
+                                  <div className="flex items-start gap-1.5 px-1">
+                                      {/* 엠블럼 사이즈 축소 */}
+                                      <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 shrink-0 overflow-hidden shadow-sm mt-0.5">
+                                          <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain p-0.5" alt="" onError={(e:any) => e.target.src = FALLBACK_IMG} />
                                       </div>
-                                      <div className="flex flex-col min-w-0 pt-0.5">
-                                          <h4 className="text-[13px] font-black text-slate-100 truncate group-hover:text-emerald-400 transition-colors">
+                                      
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                          {/* 폰트 축소 및 2줄 넘김 방지 처리 */}
+                                          <h4 className="text-[11px] sm:text-[12px] font-black text-slate-100 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
                                               {video.homeTeam} vs {video.awayTeam} <span className="text-emerald-500">({video.homeScore}:{video.awayScore})</span>
                                           </h4>
-                                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mt-1">
-                                              <span>조회수 {video.views || 0}회</span>
-                                              <span className="text-slate-700">•</span>
-                                              <span>좋아요 {video.likes?.length || 0}</span>
-                                              <span className="text-slate-700">•</span>
-                                              <span>{formatDate(video.createdAt)}</span>
+                                          {/* 데이터 한 줄로 촘촘히 표시 */}
+                                          <div className="flex items-center justify-between w-full text-[9px] sm:text-[10px] text-slate-500 font-bold mt-1">
+                                              <span>조회 {video.views || 0}</span>
+                                              <div className="flex items-center gap-1 text-slate-400">
+                                                  <Heart size={9} className={video.likes?.includes(authUser?.uid) ? 'fill-red-400 text-red-400' : ''}/> {video.likes?.length || 0}
+                                                  <span className="text-slate-600">•</span>
+                                                  <span>댓글 {(video.comments || []).length}</span>
+                                              </div>
                                           </div>
                                       </div>
                                   </div>
@@ -568,13 +587,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           </div>
 
           {/* 4. LIVE MATCH TALK 캐러셀 */}
-          <MatchTalkCarousel 
-              seasons={seasons}
-              matchCommentsData={matchCommentsData}
-              owners={owners}
-              masterTeams={masterTeams}
-              onNavigateToMatch={handleMatchTalkClick}
-          />
+          <div className="pt-2"> {/* 🔥 그림자나 뱃지 등 상단 클리핑을 막기 위해 약간의 여백 추가 */}
+              <MatchTalkCarousel 
+                  seasons={seasons}
+                  matchCommentsData={matchCommentsData}
+                  owners={owners}
+                  masterTeams={masterTeams}
+                  onNavigateToMatch={handleMatchTalkClick}
+              />
+          </div>
 
           {/* 5. 경기 정보 (UPCOMING / RECENT) */}
           <div className="mb-8 mt-6">
@@ -619,7 +640,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       </div>
 
                       <div className="flex flex-col bg-[#050b14]">
-                          {/* 🔥 스켈레톤 UI (매치 센터) */}
+                          {/* 스켈레톤 UI (매치 센터) */}
                           {isDataLoading ? (
                               <div className="flex flex-col divide-y divide-slate-800/80">
                                   {[...Array(4)].map((_, i) => (
@@ -670,7 +691,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               )}
           </div>
 
-          {/* 🔥 영상 클릭 시 뜨는 기본 뷰어 (추후 L_HighlightsBoard와 완벽하게 연동될 모달의 뼈대입니다) */}
+          {/* 🔥 에러 방지: 헬퍼 함수로 안전하게 URL 바인딩 */}
           {activeVideo && (
               <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
                   <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setActiveVideo(null)}></div>
@@ -678,7 +699,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                       <button onClick={() => setActiveVideo(null)} className="absolute top-4 right-4 z-10 bg-black/50 text-white p-2 rounded-full hover:bg-black transition border border-white/10"><X size={20}/></button>
                       <iframe 
                           className="w-full h-full" 
-                          src={`https://www.youtube.com/embed/${activeVideo.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/)?.[1]}?autoplay=1`} 
+                          src={`https://www.youtube.com/embed/${getYoutubeId(activeVideo.youtubeUrl)}?autoplay=1`} 
                           frameBorder="0" 
                           allowFullScreen
                       ></iframe>

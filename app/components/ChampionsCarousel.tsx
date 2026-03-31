@@ -88,7 +88,6 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
 
             // ==========================================
             // CASE 1: 순수 리그 (LEAGUE)
-            // 리그는 DB(history_records)의 순위가 100% 정확하므로 DB를 믿습니다.
             // ==========================================
             if (season.type === 'LEAGUE') {
                 if (!seasonHistory || !seasonHistory.teams || seasonHistory.teams.length === 0) return;
@@ -126,7 +125,6 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
             } 
             // ==========================================
             // CASE 2: 토너먼트, PO, 컵
-            // DB 백엔드 버그(마지막 1경기만 저장됨) 우회를 위해 프론트에서 실제 승무패를 카운트합니다.
             // ==========================================
             else {
                 if (!season.rounds || season.rounds.length === 0) return;
@@ -166,7 +164,6 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                 rawOwnerName = winnerTeamName === finalMatch.home ? finalMatch.homeOwner : finalMatch.awayOwner;
                 rawOwnerUid = winnerTeamName === finalMatch.home ? finalMatch.homeOwnerUid : finalMatch.awayOwnerUid;
 
-                // 🔥 [강력 픽스] DB에 의존하지 않고 해당 우승팀의 실제 경기 기록을 스케줄에서 직접 셉니다 (속도 지연 없음)
                 let w = 0, d = 0, l = 0;
                 season.rounds.forEach((r: any) => {
                     (r.matches || []).forEach((m: any) => {
@@ -231,7 +228,8 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                 </h3>
             </div>
 
-            <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 snap-x snap-mandatory px-1">
+            {/* 🔥 상단 왕관 뱃지와 하단 그림자가 잘리지 않도록 pt-4 pb-6 패딩을 넉넉히 추가 */}
+            <div className="flex overflow-x-auto gap-3 no-scrollbar pt-4 pb-6 snap-x snap-mandatory px-1 -mt-4">
                 {champions.map((champ, idx) => {
                     const isGold = champ.theme === 'GOLD';
 

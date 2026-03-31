@@ -121,7 +121,8 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
   };
 
   return (
-    <div className="max-w-[700px] mx-auto p-0 sm:p-2 space-y-6 pb-20">
+    // 🔥 max-w-[700px] 제한 해제, 랭킹뷰와 동일한 수준의 넓은 캔버스(max-w-screen-xl)로 확장!
+    <div className="max-w-screen-xl w-full mx-auto p-0 sm:p-2 space-y-6 pb-20 px-2 sm:px-4">
       <style jsx>{`
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

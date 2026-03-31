@@ -15,7 +15,7 @@ const getTimestamp = (val: any) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
-// 🔥 [추가] 리얼 랭크 & 폼(컨디션) 렌더러
+// 🔥 리얼 랭크 & 폼(컨디션) 렌더러
 const renderRankCondition = (rank?: number, condition?: string) => {
     const rColors = rank === 1 ? 'text-yellow-500' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-orange-400' : 'text-slate-400';
     const cConfig: any = { 'A': '↑', 'B': '↗', 'C': '→', 'D': '↘', 'E': '⬇' };
@@ -30,7 +30,7 @@ const renderRankCondition = (rank?: number, condition?: string) => {
     );
 };
 
-// 🔥 [추가] 엠블럼 오버레이 뱃지 렌더러
+// 🔥 엠블럼 오버레이 뱃지 렌더러
 const renderTierOverlay = (tier?: string) => {
     const t = (tier || 'C').toUpperCase();
     let colors = t === 'S' ? 'bg-yellow-500 text-black border-yellow-200' : 
@@ -195,7 +195,7 @@ export const MatchTalkCarousel = ({
                 </h3>
             </div>
 
-            <div className="flex overflow-x-auto gap-4 no-scrollbar pb-4 snap-x snap-mandatory px-1">
+            <div className="flex overflow-x-auto gap-4 no-scrollbar pt-4 pb-6 snap-x snap-mandatory px-1 -mt-4">
                 {recentActiveMatches.map((item, idx) => {
                     if (!item) return null;
                     const { match, seasonId, latestComment, totalComments } = item;
@@ -212,7 +212,6 @@ export const MatchTalkCarousel = ({
                             className="min-w-[280px] sm:min-w-[320px] max-w-[320px] shrink-0 snap-center bg-[#0a0f1a] border border-slate-800 hover:border-slate-600 rounded-2xl overflow-hidden cursor-pointer transition-all hover:-translate-y-1 shadow-xl flex flex-col group"
                         >
                             <div className="bg-slate-950/80 px-4 py-2 border-b border-slate-800/50 flex justify-between items-center">
-                                {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 및 line-height 조정 */}
                                 <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase italic pr-1 leading-snug">
                                     🏆 {match.matchLabel || match.stage}
                                 </span>
@@ -225,15 +224,11 @@ export const MatchTalkCarousel = ({
                                         <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
                                             <img src={match.homeLogo} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                         </div>
-                                        {/* 🔥 [팀등급 오버레이 추가] */}
                                         {match.home !== 'TBD' && renderTierOverlay(hMaster?.tier)}
                                     </div>
                                     <div className="flex flex-col items-center min-w-0 w-full text-center">
-                                        {/* 🔥 [리얼 등수 & 폼 추가] */}
                                         {match.home !== 'TBD' && renderRankCondition(hMaster?.real_rank, hMaster?.condition)}
-                                        {/* 🔥 [이탤릭체 잘림 방지] pr-0.5 추가 */}
                                         <span className="text-xs font-black italic text-white truncate leading-tight w-full pr-0.5">{match.home}</span>
-                                        {/* 🔥 [오너명 이탤릭체 잘림 방지] pr-1 추가 */}
                                         <span className="text-[9px] text-slate-500 font-bold italic truncate w-full mt-0.5 pr-1">{match.homeOwner}</span>
                                     </div>
                                 </div>
@@ -242,7 +237,6 @@ export const MatchTalkCarousel = ({
                                 <div className="flex flex-col items-center justify-center px-2">
                                     {isCompleted ? (
                                         <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5 shadow-inner">
-                                            {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 */}
                                             <span className="text-xl font-black italic text-emerald-400 pr-1">{match.homeScore}</span>
                                             <span className="text-slate-600 text-sm">:</span>
                                             <span className="text-xl font-black italic text-emerald-400 pr-1">{match.awayScore}</span>
@@ -268,7 +262,7 @@ export const MatchTalkCarousel = ({
                                 </div>
                             </div>
 
-                            <div className="mt-auto bg-slate-900/60 p-3 sm:p-4 border-t border-slate-800/80 flex items-start gap-3 group-hover:bg-slate-800/40 transition-colors">
+                            <div className="mt-auto bg-slate-900/60 p-3 sm:p-4 border-t border-slate-800/80 flex items-center gap-3 group-hover:bg-slate-800/40 transition-colors">
                                 <img 
                                     src={getOwnerProfile(latestComment.authorUid, latestComment.authorName)} 
                                     onError={(e:any) => { e.target.src = DEFAULT_AVATAR; }}
@@ -276,17 +270,27 @@ export const MatchTalkCarousel = ({
                                     alt="" 
                                 />
                                 <div className="flex flex-col min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2 mb-0.5">
-                                        {/* 🔥 [이탤릭체 잘림 방지] pr-1 추가 */}
-                                        <span className="text-[10px] font-black italic text-blue-400 truncate pr-1">{latestComment.authorName}</span>
-                                        <span className="text-[9px] font-black italic text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-900/50 shrink-0 pr-1">
+                                    <span className="text-[10px] font-black italic text-blue-400 truncate pr-1 leading-none mb-1">{latestComment.authorName}</span>
+                                    
+                                    <div className="flex items-center gap-1.5 w-full min-w-0">
+                                        {latestComment.text?.startsWith('[STICKER]') ? (
+                                            <img 
+                                                src={latestComment.text.replace('[STICKER]', '')} 
+                                                className="h-4 object-contain drop-shadow-md" 
+                                                alt="sticker" 
+                                                onError={(e:any) => { e.target.style.display = 'none'; }}
+                                            />
+                                        ) : (
+                                            <p className="text-xs text-slate-300 font-medium italic truncate flex-1 min-w-0 leading-none">
+                                                {latestComment.text}
+                                            </p>
+                                        )}
+                                        
+                                        {/* 🔥 [해결 완료] ml-auto를 통해 뱃지를 무조건 우측 끝으로 강제 밀어냄 */}
+                                        <span className="ml-auto text-[9px] font-black italic text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-900/50 shrink-0 self-center">
                                             💬 +{totalComments}
                                         </span>
                                     </div>
-                                    {/* 🔥 [이탤릭체 잘림 방지] pr-1, pb-0.5 추가 및 line-height 조정 */}
-                                    <span className="text-xs text-slate-300 font-medium italic line-clamp-2 leading-relaxed pr-1 pb-0.5">
-                                        {latestComment.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : latestComment.text}
-                                    </span>
                                 </div>
                             </div>
                         </div>
