@@ -10,6 +10,8 @@ import { MatchTalkCarousel } from './MatchTalkCarousel';
 // 🔥 챔피언 카루셀 임포트
 import { ChampionsCarousel } from './ChampionsCarousel';
 import { useAuth } from '../hooks/useAuth';
+// 🔥 공통 모달 컴포넌트 임포트
+import HighlightViewerModal from './HighlightViewerModal';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -259,13 +261,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
       );
   };
 
-  const formatDate = (ts: any) => {
-      if (!ts) return '방금 전';
-      let d = typeof ts === 'number' ? new Date(ts) : typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
-      if (isNaN(d.getTime())) return '방금 전';
-      return `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  };
-
   const renderMatchRow = (m: any, isRecent: boolean) => {
       const homeMaster = getTeamMasterInfo(m.home);
       const awayMaster = getTeamMasterInfo(m.away);
@@ -359,7 +354,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
   };
 
   return (
-      // 🔥 최상위 태그에서 overflow-x-hidden 제거! (이로 인해 자식 컴포넌트의 상단 그림자 및 요소가 잘리는 증상 해결)
       <div className="animate-in fade-in pb-10 mt-2 text-left relative">
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -381,7 +375,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           )}
 
           {/* 역대 챔피언 카루셀 배치 */}
-          <div className="pt-2"> {/* 🔥 그림자나 뱃지 등 상단 클리핑을 막기 위해 약간의 여백 추가 */}
+          <div className="pt-2"> 
               <ChampionsCarousel 
                   seasons={seasons}
                   owners={owners}
@@ -467,7 +461,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
 
                               <div className="flex flex-col divide-y divide-slate-800/50">
                                   {(communityTab === 'HOT' ? hotPosts : posts.slice(0, 5)).map((post:any, idx:number) => {
-                                      // 🔥 안전한 헬퍼 함수로 변경
                                       const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
                                       const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
                                       const commentCount = post.comments?.length || 0;
@@ -506,7 +499,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               </div>
           </div>
 
-          {/* 🔥 하이라이트 썸네일 축소 및 밀도 높이기 적용 */}
+          {/* 🔥 하이라이트 유튜브 스타일 갤러리 */}
           <div className="mb-8">
               <div className="flex items-center justify-between px-2 mb-4">
                   <div className="flex items-center gap-2">
@@ -523,7 +516,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                   </button>
               </div>
 
-              {/* gap-4 -> gap-3으로 축소하여 촘촘하게 배치 */}
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4 px-2 snap-x pt-2">
                   {highlights && highlights.length > 0 ? (
                       highlights.slice(0, 8).map((video: any) => {
@@ -533,7 +525,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                           return (
                               <div 
                                   key={video.id} 
-                                  // 🔥 너비를 w-[160px] sm:w-[200px]로 획기적으로 줄임
                                   className="snap-start shrink-0 w-[160px] sm:w-[200px] flex flex-col gap-2 cursor-pointer group"
                                   onClick={() => setActiveVideo(video)}
                               >
@@ -544,7 +535,6 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                           alt="thumbnail" 
                                           onError={(e:any) => e.target.src = FALLBACK_IMG}
                                       />
-                                      {/* 라벨 사이즈 작게 조정 */}
                                       <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-black text-emerald-400 uppercase border border-slate-700/50">
                                           {video.seasonName || 'HIGHLIGHT'}
                                       </div>
@@ -554,17 +544,14 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
                                   </div>
 
                                   <div className="flex items-start gap-1.5 px-1">
-                                      {/* 엠블럼 사이즈 축소 */}
                                       <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 shrink-0 overflow-hidden shadow-sm mt-0.5">
                                           <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain p-0.5" alt="" onError={(e:any) => e.target.src = FALLBACK_IMG} />
                                       </div>
                                       
                                       <div className="flex flex-col min-w-0 flex-1">
-                                          {/* 폰트 축소 및 2줄 넘김 방지 처리 */}
                                           <h4 className="text-[11px] sm:text-[12px] font-black text-slate-100 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
                                               {video.homeTeam} vs {video.awayTeam} <span className="text-emerald-500">({video.homeScore}:{video.awayScore})</span>
                                           </h4>
-                                          {/* 데이터 한 줄로 촘촘히 표시 */}
                                           <div className="flex items-center justify-between w-full text-[9px] sm:text-[10px] text-slate-500 font-bold mt-1">
                                               <span>조회 {video.views || 0}</span>
                                               <div className="flex items-center gap-1 text-slate-400">
@@ -587,7 +574,7 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
           </div>
 
           {/* 4. LIVE MATCH TALK 캐러셀 */}
-          <div className="pt-2"> {/* 🔥 그림자나 뱃지 등 상단 클리핑을 막기 위해 약간의 여백 추가 */}
+          <div className="pt-2"> 
               <MatchTalkCarousel 
                   seasons={seasons}
                   matchCommentsData={matchCommentsData}
@@ -691,20 +678,15 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               )}
           </div>
 
-          {/* 🔥 에러 방지: 헬퍼 함수로 안전하게 URL 바인딩 */}
+          {/* 공통 뷰 모달 */}
           {activeVideo && (
-              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-                  <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setActiveVideo(null)}></div>
-                  <div className="relative w-full max-w-4xl aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800 animate-in zoom-in-95 duration-200">
-                      <button onClick={() => setActiveVideo(null)} className="absolute top-4 right-4 z-10 bg-black/50 text-white p-2 rounded-full hover:bg-black transition border border-white/10"><X size={20}/></button>
-                      <iframe 
-                          className="w-full h-full" 
-                          src={`https://www.youtube.com/embed/${getYoutubeId(activeVideo.youtubeUrl)}?autoplay=1`} 
-                          frameBorder="0" 
-                          allowFullScreen
-                      ></iframe>
-                  </div>
-              </div>
+              <HighlightViewerModal 
+                  activeVideo={activeVideo} 
+                  onClose={() => setActiveVideo(null)} 
+                  authUser={authUser} 
+                  owners={owners} 
+                  seasons={seasons} 
+              />
           )}
       </div>
   );
