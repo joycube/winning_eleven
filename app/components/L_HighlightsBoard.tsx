@@ -70,7 +70,7 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: any, size?: 'sm' | 'lg
 
     if (isDraw) {
         return (
-            <div className="flex items-center shrink-0">
+            <div className="flex items-center shrink-0 mt-0.5">
                 <div className={`${wClass} rounded-full bg-white border border-slate-300 relative z-10 shadow-md flex items-center justify-center`}>
                     <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="home" onError={(e:any)=>e.target.src=SAFE_TBD_LOGO} />
                 </div>
@@ -81,7 +81,7 @@ const MatchResultEmblem = ({ post, size = 'sm' }: { post: any, size?: 'sm' | 'lg
         );
     }
     return (
-        <div className={`${wClass} rounded-full bg-white border border-slate-300 shrink-0 shadow-md flex items-center justify-center`}>
+        <div className={`${wClass} rounded-full bg-white border border-slate-300 shrink-0 shadow-md flex items-center justify-center mt-0.5`}>
             <img src={winnerLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="winner" onError={(e:any)=>e.target.src=SAFE_TBD_LOGO} />
         </div>
     );
@@ -206,7 +206,11 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     const commentInputRef = useRef<HTMLInputElement>(null);
     const viewedPostRef = useRef<string | null>(null);
 
-    // 🔥 Vercel 빌드 에러 완벽 픽스: 제네릭 타입 명시 <string>
+    // 🔥 락커룸 메인 하단에서 넘어올 때 스크롤이 맨 아래에 머무는 현상 방지 (최상단 초기화)
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     const availableSeasons = useMemo<string[]>(() => {
         const seasonNames = (highlights || []).map((h: any) => String(h.seasonName || '')).filter(Boolean);
         return ['ALL', ...Array.from(new Set<string>(seasonNames))];
@@ -402,15 +406,15 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         }
     };
 
-    const handleLikeVideo = async (e: React.MouseEvent, videoId: string, currentLikes: any) => {
+    const handleLikeVideo = async (e: React.MouseEvent, video: any) => {
         e.stopPropagation();
         if (!authUser) return alert("로그인 후 이용 가능합니다.");
         
         try {
-            const docRef = doc(db, 'highlights', videoId);
-            const likesArray = Array.isArray(currentLikes) ? currentLikes : (Array.isArray(currentActiveVideo?.likedBy) ? currentActiveVideo.likedBy : []);
+            const docRef = doc(db, 'highlights', video.id);
+            const isLiked = video.likedBy?.includes(authUser.uid) || video.likes?.includes(authUser.uid);
             
-            if (likesArray.includes(authUser.uid)) {
+            if (isLiked) {
                 await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
             } else {
                 await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
@@ -425,7 +429,7 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
             {currentActiveVideo && <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>}
 
             <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg mt-2">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-start gap-3">
                         <div className="w-2.5 h-12 bg-emerald-500 rounded-full mt-1 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
                         <div className="flex flex-col">
@@ -435,52 +439,59 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                             <p className="text-xs sm:text-sm text-slate-400 font-bold mt-1.5 ml-0.5">eFootball 명경기 하이라이트 게시판</p>
                         </div>
                     </div>
+                </div>
 
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                <div className="mt-4 pt-4 border-t border-slate-800/50 flex flex-col xl:flex-row gap-3">
+                    {/* 검색 영역 */}
+                    <div className="flex flex-1 gap-2">
+                        <div className="relative w-full flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search size={15} className="text-slate-500" />
+                            </div>
+                            <input 
+                                type="text" 
+                                placeholder="팀명, 매치 라운드 검색..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full h-full min-h-[40px] bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg pl-9 pr-8 focus:border-emerald-500 transition-all outline-none placeholder:text-slate-600 shadow-inner"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
+                                    <X size={15} />
+                                </button>
+                            )}
+                        </div>
+                        <button className="h-full min-h-[40px] bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-black px-4 sm:px-6 rounded-lg transition-colors shadow-md whitespace-nowrap">
+                            검색
+                        </button>
+                    </div>
+
+                    {/* 필터 및 정렬 영역 */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
                         <select 
                             value={selectedSeason} 
                             onChange={(e) => setSelectedSeason(e.target.value)}
-                            className="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
+                            className="h-full min-h-[40px] bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg px-3 outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
                         >
                             {availableSeasons.map((s: string) => (
                                 <option key={s} value={s}>{s === 'ALL' ? '전체 시즌' : s}</option>
                             ))}
                         </select>
 
-                        <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 shadow-inner">
+                        <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 shadow-inner h-full min-h-[40px] items-center">
                             <button 
                                 onClick={() => setSortBy('LATEST')}
-                                className={`px-4 py-2 rounded-md text-[11px] font-black transition-all ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                className={`px-4 py-1.5 rounded-md text-[12px] font-black transition-all h-full ${sortBy === 'LATEST' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 최신순
                             </button>
                             <button 
                                 onClick={() => setSortBy('POPULAR')}
-                                className={`px-4 py-2 rounded-md text-[11px] font-black transition-all ${sortBy === 'POPULAR' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                className={`px-4 py-1.5 rounded-md text-[12px] font-black transition-all h-full ${sortBy === 'POPULAR' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 인기순
                             </button>
                         </div>
-                    </div>
-                </div>
-
-                <div className="mt-5 pt-5 border-t border-slate-800/50">
-                    <div className="relative w-full max-w-md">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search size={15} className="text-slate-500" />
-                        </div>
-                        <input 
-                            type="text" 
-                            placeholder="팀명, 매치 라운드 검색..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-700 text-white text-[13px] font-bold rounded-lg pl-9 pr-8 py-2.5 focus:border-emerald-500 transition-all outline-none placeholder:text-slate-600 shadow-inner"
-                        />
-                        {searchQuery && (
-                            <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors">
-                                <X size={15} />
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>
@@ -490,45 +501,53 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                     등록된 하이라이트 영상이 없거나 검색 결과가 없습니다.
                 </div>
             ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
+                // 🔥 랭킹뷰와 완전히 동일한 그리드 레이아웃 구조 적용
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
                     {filteredHighlights.map((post) => {
                         const videoUrl = getValidVideoUrl(post);
-                        const isLiked = post.likedBy?.includes(authUser?.uid);
+                        const isLiked = post.likedBy?.includes(authUser?.uid) || post.likes?.includes(authUser?.uid);
                         const likesCount = Array.isArray(post.likes) ? post.likes.length : (typeof post.likes === 'number' ? post.likes : (post.likedBy?.length || 0));
 
                         return (
-                            <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-1.5 cursor-pointer bg-slate-900/40 p-1.5 sm:p-2 rounded-xl border border-slate-800/80 hover:border-emerald-500/50 transition-all">
-                                <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-950 shadow-md">
-                                    <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                            <div key={post.id} onClick={() => setActiveVideo(post)} className="group flex flex-col gap-3 cursor-pointer bg-slate-900/40 p-2 sm:p-2.5 rounded-2xl border border-slate-800/80 hover:border-emerald-500/50 transition-all">
+                                <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 shadow-md">
+                                    <img src={getYouTubeThumbnail(videoUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100" alt="" />
+                                    
                                     <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                                        <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100 drop-shadow-lg" />
-                                    </div>
-                                    <div className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-black text-emerald-400 uppercase tracking-tighter border border-white/10 shadow-sm">
-                                        {post.matchLabel || 'HIGHLIGHT'}
-                                    </div>
-                                    <div className="absolute bottom-1.5 right-1.5 bg-black/80 backdrop-blur-md px-1.5 py-1 rounded flex items-center gap-1 border border-white/10 shadow-lg">
-                                        <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-3 h-3 sm:w-3.5 sm:h-3.5 object-contain" alt="" />
-                                        <span className="text-[10px] sm:text-[11px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
-                                        <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-3 h-3 sm:w-3.5 sm:h-3.5 object-contain" alt="" />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col px-1 pb-1">
-                                    <div className="flex items-start gap-1.5 min-w-0">
-                                        <MatchResultEmblem post={post} size="sm" />
-                                        <h3 className="text-[11px] sm:text-[12px] font-black text-white line-clamp-2 uppercase leading-tight group-hover:text-emerald-400 transition-colors mt-0.5 flex-1 min-w-0">
-                                            <span className="text-slate-500 mr-1 text-[9px] sm:text-[10px] font-bold tracking-tight">[{post.seasonName}]</span>
-                                            {post.homeTeam} VS {post.awayTeam} <span className={`${Number(post.homeScore) === Number(post.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({post.homeScore}:{post.awayScore})</span>
-                                        </h3>
+                                        <PlayCircle className="w-12 h-12 text-white/80 group-hover:text-emerald-400 group-hover:scale-110 transition-all opacity-0 group-hover:opacity-100 drop-shadow-lg" />
                                     </div>
                                     
-                                    <div className="flex items-center justify-between w-full text-[9px] sm:text-[10px] text-slate-500 mt-1.5 font-bold italic">
-                                        <span>조회수 {post.views || 0}회</span>
-                                        <div className="flex items-center gap-2 text-slate-400">
-                                            <button onClick={(e) => handleLikeVideo(e, post.id, post.likedBy || [])} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-emerald-400' : 'hover:text-emerald-400'}`}>
-                                                <Heart size={10} className={isLiked ? 'fill-emerald-400' : ''}/> {likesCount}
-                                            </button>
-                                            <span className="text-slate-700">•</span>
-                                            <span className="flex items-center gap-1">댓글 {(post.comments || []).length}개</span>
+                                    {/* 상단 뱃지 랭킹뷰 스타일 통일 */}
+                                    <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-black text-emerald-400 uppercase tracking-tighter border border-slate-700/50 shadow-sm">
+                                        {post.matchLabel || 'HIGHLIGHT'}
+                                    </div>
+                                    
+                                    {/* 하단 스코어 랭킹뷰 스타일 통일 */}
+                                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2.5 py-1.5 rounded-md flex items-center gap-1.5 border border-slate-700/50 shadow-lg">
+                                        <img src={post.homeLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
+                                        <span className="text-[13px] font-black text-white tracking-tighter">{post.homeScore}:{post.awayScore}</span>
+                                        <img src={post.awayLogo || SAFE_TBD_LOGO} className="w-4 h-4 object-contain" alt="" />
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-start gap-3 px-1.5 pb-1">
+                                    <MatchResultEmblem post={post} size="sm" />
+                                    <div className="flex flex-col min-w-0 flex-1 pt-1">
+                                        {/* 타이틀 랭킹뷰 스타일 통일 */}
+                                        <h3 className="text-[13px] sm:text-[14px] font-black text-white line-clamp-2 uppercase leading-tight group-hover:text-emerald-400 transition-colors">
+                                            <span className="text-slate-500 mr-1.5 text-[11px] font-bold tracking-tight">[{post.seasonName}]</span>
+                                            {post.homeTeam} VS {post.awayTeam} <span className={`${Number(post.homeScore) === Number(post.awayScore) ? 'text-slate-400' : 'text-emerald-400'} ml-0.5`}>({post.homeScore}:{post.awayScore})</span>
+                                        </h3>
+                                        
+                                        <div className="flex items-center justify-between w-full text-[10px] sm:text-[11px] text-slate-500 mt-2 font-bold italic">
+                                            <span>조회수 {post.views || 0}회</span>
+                                            <div className="flex items-center gap-2 text-slate-400">
+                                                <button onClick={(e) => handleLikeVideo(e, post)} className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-emerald-400' : 'hover:text-white'}`}>
+                                                    <Heart size={11} className={isLiked ? 'fill-emerald-400 text-emerald-400' : ''}/> {likesCount}
+                                                </button>
+                                                <span className="text-slate-700">•</span>
+                                                <span className="flex items-center gap-1">댓글 {(post.comments || []).length}개</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -570,8 +589,8 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                         </h2>
                                     </div>
                                     <div className="flex items-center gap-2 mt-2">
-                                        <button onClick={(e) => handleLikeVideo(e, currentActiveVideo.id, currentActiveVideo.likedBy || [])} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-black transition-all ${currentActiveVideo.likedBy?.includes(authUser?.uid) ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
-                                            <Heart size={12} fill={currentActiveVideo.likedBy?.includes(authUser?.uid) ? "currentColor" : "none"} />
+                                        <button onClick={(e) => handleLikeVideo(e, currentActiveVideo)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-black transition-all ${currentActiveVideo.likedBy?.includes(authUser?.uid) || currentActiveVideo.likes?.includes(authUser?.uid) ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
+                                            <Heart size={12} fill={currentActiveVideo.likedBy?.includes(authUser?.uid) || currentActiveVideo.likes?.includes(authUser?.uid) ? "currentColor" : "none"} />
                                             {Array.isArray(currentActiveVideo.likes) ? currentActiveVideo.likes.length : (typeof currentActiveVideo.likes === 'number' ? currentActiveVideo.likes : (currentActiveVideo.likedBy?.length || 0))}
                                         </button>
                                         <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-md text-[11px] font-black text-slate-400 shadow-inner">
@@ -679,7 +698,6 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
                                 )}
                                 <div className={`flex items-center gap-2 bg-slate-800 p-1.5 sm:p-2 ${replyingTo ? 'rounded-b-lg' : 'rounded-lg'} border border-slate-700 shadow-inner focus-within:border-emerald-500/50 transition-all`}>
                                     <div className="shrink-0 relative z-[100] flex items-center justify-center pl-1">
-                                        {/* 🔥 에러 원인 완전히 제거됨 (disabled, position 속성 삭제) */}
                                         <StickerSelector onSelect={(url: string) => submitComment(!!replyingTo, url)} />
                                     </div>
                                     <input 
