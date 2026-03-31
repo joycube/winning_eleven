@@ -5,6 +5,8 @@ import { CalendarDays, MessageSquare, ChevronRight, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+// 🔥 승률 계산기 임포트
+import { getPrediction } from '../utils/predictor'; 
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -56,7 +58,8 @@ const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
     );
 };
 
-export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoading, selectedSeasonId, setSelectedSeasonId, onNavigateToMatch, activeOrLatestSeason }: any) {
+// 🔥 activeRankingData, historyData 프롭스 추가
+export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoading, selectedSeasonId, setSelectedSeasonId, onNavigateToMatch, activeOrLatestSeason, activeRankingData, historyData }: any) {
     const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
 
     const currentDashboardSeason = useMemo(() => {
@@ -195,8 +198,40 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
     const renderMatchRow = (m: any, isRecent: boolean) => {
         const homeMaster = getTeamMasterInfo(m.home);
         const awayMaster = getTeamMasterInfo(m.away);
-        const hRate = Number(m.homePredictRate) > 0 ? Number(m.homePredictRate) : 50;
-        const aRate = Number(m.awayPredictRate) > 0 ? Number(m.awayPredictRate) : 50;
+        
+        // 🔥 스코어 계산을 위한 로직 시작 (에러 방지 처리 완료)
+        let hRate = 50;
+        let aRate = 50;
+        const isByeOrTbd = !m.home || !m.away || m.home === 'TBD' || m.home === 'BYE' || m.away === 'TBD' || m.away === 'BYE';
+        
+        if (!isByeOrTbd) {
+            const savedHome = Number(m.homePredictRate);
+            const savedAway = Number(m.awayPredictRate);
+            
+            if (!isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0)) {
+                hRate = savedHome;
+                aRate = savedAway;
+            } else {
+                // 🚨 에러 원천 차단: getPrediction 함수가 죽지 않도록 완벽하게 래핑
+                try {
+                    // 데이터가 깨져서 넘어오더라도 강제로 배열로 변환하여 TypeError 방지
+                    const safeRankings = Array.isArray(activeRankingData) ? activeRankingData : (activeRankingData ? Object.values(activeRankingData) : []);
+                    const safeHistory = Array.isArray(historyData) ? historyData : [];
+                    const safeMasterTeams = Array.isArray(masterTeams) ? masterTeams : [];
+
+                    const prediction = getPrediction(m.home, m.away, safeRankings, safeHistory, safeMasterTeams);
+                    
+                    if (prediction) {
+                        hRate = prediction.hRate ?? 50;
+                        aRate = prediction.aRate ?? 50;
+                    }
+                } catch (error) {
+                    console.warn("Prediction fetch error intercepted:", error);
+                    hRate = 50;
+                    aRate = 50;
+                }
+            }
+        }
 
         const renderTierOverlay = (tier?: string) => {
             const t = (tier || 'C').toUpperCase();

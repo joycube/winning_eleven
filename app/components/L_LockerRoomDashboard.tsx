@@ -347,6 +347,10 @@ export default function L_LockerRoomDashboard({ user, notices, seasons, masterTe
               setSelectedSeasonId={setSelectedSeasonId} 
               onNavigateToMatch={handleMatchTalkClick}
               activeOrLatestSeason={activeOrLatestSeason}
+              
+              // 🔥 아래 두 줄 추가! (스케줄 페이지와 동일하게 예측 계산을 돌리기 위한 데이터 주입)
+              activeRankingData={activeOrLatestSeason?.rankings || []} 
+              historyData={[]} 
           />
 
           {/* 공통 뷰 모달 */}
