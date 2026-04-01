@@ -12,8 +12,8 @@ const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 
 interface R_StandingsTabProps {
   currentSeason: any;
-  computedTeamsData: any[]; // 🔥 부모로부터 실시간 계산된 통합 데이터 받음
-  sortedTeams: any[];       // 🔥 부모로부터 정렬된 최종 순위표 받음
+  computedTeamsData: any[]; 
+  sortedTeams: any[];       
   masterTeams: any[];
   owners: Owner[];
   knockoutStages?: any;
@@ -22,7 +22,9 @@ interface R_StandingsTabProps {
 
 export default function R_StandingsTab({ currentSeason, computedTeamsData, sortedTeams, masterTeams, owners, knockoutStages, getTeamExtendedInfo }: R_StandingsTabProps) {
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
-  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+  // 🚨 픽스: 위아래 테이블이 서로 엉뚱하게 열리지 않도록 상태를 완전히 분리했습니다.
+  const [expandedGroupTeam, setExpandedGroupTeam] = useState<string | null>(null);
+  const [expandedTotalTeam, setExpandedTotalTeam] = useState<string | null>(null);
 
   const getRankedTeams = (teams: any[]) => {
     const sorted = [...(teams || [])].sort((a, b) => {
@@ -114,17 +116,17 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
     return teamMatches;
   };
 
-  const renderBroadcastTeamCell = (team: any) => {
+  // 🚨 픽스: isExpanded 상태와 onToggle 이벤트를 외부에서 주입받도록 변경했습니다.
+  const renderBroadcastTeamCell = (team: any, isExpanded: boolean, onToggle: () => void) => {
     const info = getTeamExtendedInfo(team.name);
     const isTbd = team.name === 'TBD';
     const displayLogo = isTbd || info.logo?.includes('uefa.com') || team.logo?.includes('uefa.com') ? SAFE_TBD_LOGO : (info.logo || team.logo);
-    const isExpanded = expandedTeam === team.name;
     
     return (
       <div 
         className="flex items-center gap-3 cursor-pointer group w-full"
         onClick={() => {
-            if (!isTbd) setExpandedTeam(isExpanded ? null : team.name);
+            if (!isTbd) onToggle();
         }}
       >
         <div className="relative w-10 h-10 flex-shrink-0">
@@ -153,6 +155,78 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
       </div>
     );
   };
+
+  // 🚨 픽스: 그룹 테이블에도 전적 리스트를 그려주기 위해, 렌더링 코드를 함수로 빼서 공통화했습니다.
+  const renderExpandedMatchRow = (teamMatches: any[], teamName: string) => (
+    <tr>
+        <td colSpan={7} className="p-0 border-b border-slate-800">
+            <div className="bg-[#0b0e14] py-3 px-3 sm:px-8 shadow-inner border-l-2 border-emerald-500 animate-in slide-in-from-top-2 duration-200">
+                {teamMatches.length === 0 ? (
+                    <div className="text-slate-500 text-[11px] italic text-center py-4">완료된 경기가 없습니다.</div>
+                ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pb-2">
+                        {teamMatches.map((m, idx) => (
+                            <div key={idx} className="flex flex-col bg-[#0f141e] border border-slate-800/80 rounded-xl overflow-hidden shadow-sm hover:border-slate-700 transition-colors relative">
+                                <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{m.roundName?.replace('리그', '')}</span>
+                                    </div>
+                                    <span className={`text-[9px] font-black px-1.5 py-[1px] rounded border ${m.resultColor}`}>{m.result}</span>
+                                </div>
+                                <div className="p-3 flex flex-col gap-2 relative pr-10">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="text-slate-500 text-[10px] font-bold shrink-0">vs</span>
+                                            <img src={m.opponent.logo} className="w-5 h-5 sm:w-6 sm:h-6 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
+                                            <span className="text-[12px] sm:text-[13px] font-black text-white uppercase truncate">{m.opponent.name}</span>
+                                            <span className="text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0 ml-2 bg-slate-900/50 px-2 py-0.5 rounded-lg border border-slate-800">
+                                            <span className="text-[14px] sm:text-[16px] font-black text-emerald-400">{m.myScore}</span>
+                                            <span className="text-[11px] text-slate-600">:</span>
+                                            <span className="text-[14px] sm:text-[16px] font-black text-slate-400">{m.opScore}</span>
+                                        </div>
+                                    </div>
+                                    {(m.scorersStr || m.assistsStr || m.opScorersStr || m.opAssistsStr) && (
+                                        <div className="flex flex-col gap-1.5 mt-1 border-t border-slate-800/50 pt-2">
+                                            {(m.scorersStr || m.assistsStr) && (
+                                                <div className="flex items-start gap-1.5 w-full">
+                                                    <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0 mt-0.5">[{teamName}]</span>
+                                                    <span className="text-[10px] sm:text-[11px] text-slate-200 break-words flex-1 leading-snug">
+                                                        {m.scorersStr && `⚽ ${m.scorersStr}`}
+                                                        {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                        {m.assistsStr && `🅰️ ${m.assistsStr}`}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {(m.opScorersStr || m.opAssistsStr) && (
+                                                <div className="flex items-start gap-1.5 w-full">
+                                                    <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0 mt-0.5">[{m.opponent.name}]</span>
+                                                    <span className="text-[10px] sm:text-[11px] text-slate-400 break-words flex-1 leading-snug">
+                                                        {m.opScorersStr && `⚽ ${m.opScorersStr}`}
+                                                        {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
+                                                        {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {m.youtubeUrl && (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
+                                            <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
+                                                <PlayCircle size={22} strokeWidth={2} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </td>
+    </tr>
+  );
 
   const groupStandings = useMemo(() => {
     if (currentSeason?.type !== 'CUP' || !currentSeason?.groups) return null;
@@ -201,7 +275,7 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
                         currentSeason={currentSeason} 
                         owners={owners} 
                         masterTeams={masterTeams} 
-                        activeRankingData={computedTeamsData} // 🔥 자식 뷰어들도 계산 완료된 데이터 참조
+                        activeRankingData={computedTeamsData}
                     />
                 </div>
             </div>
@@ -228,9 +302,25 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase"><tr><th className="py-4 pl-4 pr-1 w-10 text-center">R..</th><th className="py-4 pl-1 pr-4">Club</th><th className="p-2 text-center">W</th><th className="p-2 text-center">D</th><th className="p-2 text-center">L</th><th className="p-2 text-center">GD</th><th className="p-2 text-center text-emerald-400">Pts</th></tr></thead>
-                <tbody>{groupStandings?.[selectedGroupTab]?.map((t: any) => (
-                    <tr key={t.id} className="border-b border-slate-800/50"><td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td><td className="py-4 pl-1 pr-4">{renderBroadcastTeamCell(t)}</td><td className="p-2 text-center text-white">{t.win}</td><td className="p-2 text-center text-slate-500">{t.draw}</td><td className="p-2 text-center text-slate-500">{t.loss}</td><td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td><td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td></tr>
-                ))}</tbody></table></div></div>
+                {/* 🚨 픽스: 그룹 스탠딩 쪽에도 확장 UI(isExpanded 및 renderExpandedMatchRow)를 정상적으로 연결했습니다. */}
+                <tbody>{groupStandings?.[selectedGroupTab]?.map((t: any) => {
+                    const isExpanded = expandedGroupTeam === t.name;
+                    const teamMatches = isExpanded ? getTeamMatches(t.name) : [];
+                    return (
+                        <React.Fragment key={t.id}>
+                            <tr className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${isExpanded ? 'bg-slate-900/40' : ''}`}>
+                                <td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 4 ? 'text-slate-600' : 'text-slate-600'}`}>{t.rank}</td>
+                                <td className="py-4 pl-1 pr-4">{renderBroadcastTeamCell(t, isExpanded, () => setExpandedGroupTeam(isExpanded ? null : t.name))}</td>
+                                <td className="p-2 text-center text-white">{t.win}</td>
+                                <td className="p-2 text-center text-slate-500">{t.draw}</td>
+                                <td className="p-2 text-center text-slate-500">{t.loss}</td>
+                                <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
+                                <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
+                            </tr>
+                            {isExpanded && renderExpandedMatchRow(teamMatches, t.name)}
+                        </React.Fragment>
+                    );
+                })}</tbody></table></div></div>
         )}
 
         <div className="space-y-4">
@@ -254,91 +344,21 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
                 {sortedTeams.length === 0 ? (
                     <tr><td colSpan={7} className="p-10 text-center text-slate-500 font-bold italic">진행된 경기가 없습니다.</td></tr>
                 ) : sortedTeams.map((t: any) => {
-                    const isExpanded = expandedTeam === t.name;
+                    const isExpanded = expandedTotalTeam === t.name;
                     const teamMatches = isExpanded ? getTeamMatches(t.name) : [];
 
                     return (
                     <React.Fragment key={t.id}>
                         <tr className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${isExpanded ? 'bg-slate-900/40' : ''}`}>
                             <td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td>
-                            <td className="py-4 pl-1 pr-4 w-[40%]">{renderBroadcastTeamCell(t)}</td>
+                            <td className="py-4 pl-1 pr-4 w-[40%]">{renderBroadcastTeamCell(t, isExpanded, () => setExpandedTotalTeam(isExpanded ? null : t.name))}</td>
                             <td className="p-2 text-center text-white">{t.win}</td>
                             <td className="p-2 text-center text-slate-500">{t.draw}</td>
                             <td className="p-2 text-center text-slate-500">{t.loss}</td>
                             <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
                             <td className="p-2 text-center font-black text-emerald-400 text-sm">{t.points}</td>
                         </tr>
-                        
-                        {isExpanded && (
-                            <tr>
-                                <td colSpan={7} className="p-0 border-b border-slate-800">
-                                    <div className="bg-[#0b0e14] py-3 px-3 sm:px-8 shadow-inner border-l-2 border-emerald-500 animate-in slide-in-from-top-2 duration-200">
-                                        {teamMatches.length === 0 ? (
-                                            <div className="text-slate-500 text-[11px] italic text-center py-4">완료된 경기가 없습니다.</div>
-                                        ) : (
-                                            <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pb-2">
-                                                {teamMatches.map((m, idx) => (
-                                                    <div key={idx} className="flex flex-col bg-[#0f141e] border border-slate-800/80 rounded-xl overflow-hidden shadow-sm hover:border-slate-700 transition-colors relative">
-                                                        <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800/50 flex items-center justify-between">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{m.roundName?.replace('리그', '')}</span>
-                                                            </div>
-                                                            <span className={`text-[9px] font-black px-1.5 py-[1px] rounded border ${m.resultColor}`}>{m.result}</span>
-                                                        </div>
-                                                        <div className="p-3 flex flex-col gap-2 relative pr-10">
-                                                            <div className="flex items-center justify-between w-full">
-                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                    <span className="text-slate-500 text-[10px] font-bold shrink-0">vs</span>
-                                                                    <img src={m.opponent.logo} className="w-5 h-5 sm:w-6 sm:h-6 object-contain rounded-full bg-white shrink-0 shadow-sm" alt="" />
-                                                                    <span className="text-[12px] sm:text-[13px] font-black text-white uppercase truncate">{m.opponent.name}</span>
-                                                                    <span className="text-[10px] text-slate-400 font-bold truncate">({m.opponent.ownerName})</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 shrink-0 ml-2 bg-slate-900/50 px-2 py-0.5 rounded-lg border border-slate-800">
-                                                                    <span className="text-[14px] sm:text-[16px] font-black text-emerald-400">{m.myScore}</span>
-                                                                    <span className="text-[11px] text-slate-600">:</span>
-                                                                    <span className="text-[14px] sm:text-[16px] font-black text-slate-400">{m.opScore}</span>
-                                                                </div>
-                                                            </div>
-                                                            {(m.scorersStr || m.assistsStr || m.opScorersStr || m.opAssistsStr) && (
-                                                                <div className="flex flex-col gap-1.5 mt-1 border-t border-slate-800/50 pt-2">
-                                                                    {(m.scorersStr || m.assistsStr) && (
-                                                                        <div className="flex items-start gap-1.5 w-full">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-emerald-950/50 text-emerald-500 border border-emerald-800/50 shrink-0 mt-0.5">[{t.name}]</span>
-                                                                            <span className="text-[10px] sm:text-[11px] text-slate-200 break-words flex-1 leading-snug">
-                                                                                {m.scorersStr && `⚽ ${m.scorersStr}`}
-                                                                                {m.scorersStr && m.assistsStr && <span className="mx-1 text-slate-600">|</span>}
-                                                                                {m.assistsStr && `🅰️ ${m.assistsStr}`}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                    {(m.opScorersStr || m.opAssistsStr) && (
-                                                                        <div className="flex items-start gap-1.5 w-full">
-                                                                            <span className="text-[9px] font-bold px-1.5 py-[1px] rounded bg-slate-800/80 text-slate-400 border border-slate-700 shrink-0 mt-0.5">[{m.opponent.name}]</span>
-                                                                            <span className="text-[10px] sm:text-[11px] text-slate-400 break-words flex-1 leading-snug">
-                                                                                {m.opScorersStr && `⚽ ${m.opScorersStr}`}
-                                                                                {m.opScorersStr && m.opAssistsStr && <span className="mx-1 text-slate-600">|</span>}
-                                                                                {m.opAssistsStr && `🅰️ ${m.opAssistsStr}`}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                            {m.youtubeUrl && (
-                                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center shrink-0">
-                                                                    <button onClick={() => window.open(m.youtubeUrl, '_blank')} className="text-red-500 hover:text-red-400 transition-transform hover:scale-110 p-1" title="하이라이트 보기">
-                                                                        <PlayCircle size={22} strokeWidth={2} />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        )}
+                        {isExpanded && renderExpandedMatchRow(teamMatches, t.name)}
                     </React.Fragment>
                     );
                 })}
