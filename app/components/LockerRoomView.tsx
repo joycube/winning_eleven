@@ -6,12 +6,10 @@ import { db } from '../firebase';
 import { User, Clock } from 'lucide-react';
 import MatchTalkBoard from './MatchTalkBoard';
 
-// 분리된 컴포넌트들 임포트
 import L_LockerRoomDashboard from './L_LockerRoomDashboard';
 import L_CommunityList from './L_CommunityList';
 import L_PostDetail from './L_PostDetail';
 import L_PostEditor from './L_PostEditor';
-// 🔥 신규 하이라이트 전용 게시판 임포트
 import L_HighlightsBoard from './L_HighlightsBoard';
 
 interface UserData {
@@ -32,15 +30,16 @@ interface LockerRoomViewProps {
   activeRankingData?: any; 
   historyData?: any; 
   activeSeason?: any; 
+  viewSeasonId?: number; // 🚨 추가됨
+  setViewSeasonId?: any; // 🚨 추가됨
 }
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 
-export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason }: LockerRoomViewProps) {
+// 🚨 픽스: viewSeasonId, setViewSeasonId 수신
+export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason, viewSeasonId, setViewSeasonId }: LockerRoomViewProps) {
   const [posts, setPosts] = useState<any[]>([]);
-  // 🔥 하이라이트 데이터를 담을 상태 추가
   const [highlights, setHighlights] = useState<any[]>([]);
-  // 🔥 viewMode에 'HIGHLIGHTS' 모드 추가
   const [viewMode, setViewMode] = useState<'MAIN' | 'LIST' | 'WRITE' | 'EDIT' | 'HIGHLIGHTS'>('MAIN');
   const [category, setCategory] = useState('전체');
   
@@ -75,7 +74,6 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
       });
   }, [user, owners]);
 
-  // 커뮤니티 게시글 구독
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -86,7 +84,6 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
     return () => unsubscribe();
   }, []);
 
-  // 🔥 하이라이트 영상 구독 배관 추가
   useEffect(() => {
     const q = query(collection(db, 'highlights'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -121,14 +118,12 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
   };
 
   return (
-    // 🔥 max-w-[700px] 제한 해제, 랭킹뷰와 동일한 수준의 넓은 캔버스(max-w-screen-xl)로 확장!
     <div className="max-w-screen-xl w-full mx-auto p-0 sm:p-2 space-y-6 pb-20 px-2 sm:px-4">
       <style jsx>{`
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
-      {/* 모드에 따른 화면 분기 렌더링 */}
       {(viewMode === 'WRITE' || viewMode === 'EDIT') && (
           <L_PostEditor user={user} owners={owners} viewMode={viewMode} setViewMode={setViewMode} editingPostId={editingPostId} setEditingPostId={setEditingPostId} posts={posts} setSelectedPostId={setSelectedPostId} />
       )}
@@ -137,20 +132,16 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
           <L_LockerRoomDashboard 
               user={user} notices={notices} seasons={seasons} masterTeams={masterTeams} 
               owners={owners} historyData={historyData} activeSeason={activeSeason} 
-              posts={posts} 
-              highlights={highlights} // 🔥 대시보드에 하이라이트 데이터 꽂아줌
-              uidDict={uidDict} setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} 
+              posts={posts} highlights={highlights} uidDict={uidDict} 
+              setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} 
+              activeRankingData={activeRankingData}
+              viewSeasonId={viewSeasonId}       // 🚨 전달
+              setViewSeasonId={setViewSeasonId} // 🚨 전달
           />
       )}
 
-      {/* 🔥 신규: 하이라이트 전용 게시판 렌더링 */}
       {viewMode === 'HIGHLIGHTS' && (
-          <L_HighlightsBoard 
-              highlights={highlights} 
-              owners={owners} 
-              seasons={seasons} // 🔥 스탯 계산 엔진에 필요한 시즌 데이터 전달
-              setViewMode={setViewMode} 
-          />
+          <L_HighlightsBoard highlights={highlights} owners={owners} seasons={seasons} setViewMode={setViewMode} />
       )}
 
       {viewMode === 'LIST' && (

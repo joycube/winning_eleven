@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'; // 🔥 getDocs, where 추가
+import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'; 
 import { Season, Match, Notice } from './types';
 
 // 🔥 [성능 최적화] Next.js Dynamic Import 불러오기
@@ -791,6 +791,7 @@ export default function FootballLeagueApp() {
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
+        {/* 🚨 픽스: 여기서 단일 상태 통제권(viewSeasonId) 배관을 내려보냅니다! */}
         {currentView === 'LOCKERROOM' && (
             <LockerRoomView 
                 user={authUser as any} 
@@ -799,6 +800,9 @@ export default function FootballLeagueApp() {
                 masterTeams={masterTeams} 
                 owners={owners} 
                 activeRankingData={activeRankingData} 
+                historyData={combinedHistoryData} 
+                viewSeasonId={viewSeasonId} 
+                setViewSeasonId={setViewSeasonId} 
             />
         )}
 

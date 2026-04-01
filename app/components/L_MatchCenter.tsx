@@ -5,8 +5,8 @@ import { CalendarDays, MessageSquare, ChevronRight, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-// 🔥 승률 계산기 임포트
-import { getPrediction } from '../utils/predictor'; 
+// 🚨 핵심 픽스: 쓸데없는 getPrediction을 버리고 원본의 진짜 승률 연산 엔진으로 원복했습니다.
+import { calculateMatchSnapshot } from '../utils/predictor'; 
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -53,7 +53,6 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
     const [matchTab, setMatchTab] = useState<'UPCOMING' | 'RECENT'>('UPCOMING');
     const currentDashboardSeason = useMemo(() => seasons?.find((s: any) => s.id === selectedSeasonId) || activeOrLatestSeason, [seasons, selectedSeasonId, activeOrLatestSeason]);
     
-    // 🚨 정밀 이름 매칭
     const getTeamMasterInfo = (teamName: string) => {
         if (!teamName || !masterTeams) return undefined;
         const target = teamName.replace(/\s+/g, '').toLowerCase();
@@ -149,18 +148,29 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
         const awayMaster = getTeamMasterInfo(m.away);
         let hRate = 50, aRate = 50;
         
-        // 🚨 실시간 승률 계산 최종 픽스 (masterTeams 폴백 추가)
         if (!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && m.home !== 'BYE' && m.away !== 'BYE') {
-            try {
-                // activeRankingData가 비어있으면 masterTeams를 대신 넘겨 승률을 계산합니다.
-                const calculationSource = (activeRankingData && activeRankingData.length > 0) ? activeRankingData : masterTeams;
-                const safeHistory = Array.isArray(historyData) ? historyData : [];
-                
-                const prediction = getPrediction(m.home, m.away, calculationSource, safeHistory, masterTeams || []);
-                if (prediction) { hRate = prediction.hRate; aRate = prediction.aRate; }
-            } catch (e) { 
-                console.warn("Prediction Engine Error:", e);
-                hRate = 50; aRate = 50; 
+            // 🚨 1순위: DB에 이미 저장된 승률 예측값이 있으면 바로 반영합니다 (원본 로직 완전 복구)
+            const savedHome = Number(m.homePredictRate);
+            const savedAway = Number(m.awayPredictRate);
+
+            if (!isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0)) {
+                hRate = savedHome;
+                aRate = savedAway;
+            } else {
+                try {
+                    // 🚨 2순위: 실시간 엔진 연산. 
+                    // 쓸데없는 배열 쪼개기를 폐기하고, 원본 엔진(calculateMatchSnapshot)에 객체 통째로 밀어넣습니다.
+                    const safeHistory = historyData || { allTimeStats: [] };
+                    const predictionSnapshot = calculateMatchSnapshot(m.home, m.away, activeRankingData, safeHistory, masterTeams || []);
+                    
+                    if (predictionSnapshot) { 
+                        hRate = predictionSnapshot.homePredictRate || 50; 
+                        aRate = predictionSnapshot.awayPredictRate || 50; 
+                    }
+                } catch (e) { 
+                    console.warn("Prediction Engine Error:", e);
+                    hRate = 50; aRate = 50;
+                }
             }
         }
 
@@ -172,10 +182,9 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
                 <div onClick={() => isRecent && onNavigateToMatch(m)} className={`flex justify-between items-center px-2 pb-5 pt-8 sm:px-6 sm:pb-6 sm:pt-10 ${isRecent ? 'hover:bg-slate-800/40 cursor-pointer' : ''}`}>
                     <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0">
                         <div className="flex flex-col items-end gap-0.5 min-w-0 mt-1">
-                            {/* 🚨 픽스: pr-2 추가 (기울임체 이름 잘림 방지) */}
-                            <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[140px] leading-none mb-0.5 pr-2">{m.home}</span>
+                            {/* 🚨 기울임꼴 짤림 방지 적용 */}
+                            <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[140px] italic pr-2 leading-none mb-0.5">{m.home}</span>
                             {m.home !== 'TBD' && renderRankCondition(homeMaster?.real_rank, homeMaster?.condition)}
-                            {/* 🚨 픽스: pr-2 추가 (기울임체 오너명 잘림 방지) */}
                             <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold italic truncate max-w-[140px] pr-2 mt-0.5">{m.homeOwner || homeMaster?.ownerName || '-'}</span>
                         </div>
                         <div className="relative w-10 h-10 sm:w-12 sm:h-12 shrink-0">
@@ -200,10 +209,9 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
                             </div>
                         </div>
                         <div className="flex flex-col items-start gap-0.5 min-w-0 mt-1">
-                            {/* 🚨 픽스: pr-2 추가 (기울임체 이름 잘림 방지) */}
-                            <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[140px] leading-none mb-0.5 pr-2">{m.away}</span>
+                            {/* 🚨 기울임꼴 짤림 방지 적용 */}
+                            <span className="text-[13px] sm:text-[15px] font-black text-white truncate max-w-[140px] italic pr-2 leading-none mb-0.5">{m.away}</span>
                             {m.away !== 'TBD' && renderRankCondition(awayMaster?.real_rank, awayMaster?.condition)}
-                            {/* 🚨 픽스: pr-2 추가 (기울임체 오너명 잘림 방지) */}
                             <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold italic truncate max-w-[140px] pl-0.5 pr-2 mt-0.5">{m.awayOwner || awayMaster?.ownerName || '-'}</span>
                         </div>
                     </div>
@@ -233,13 +241,16 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
                 {seasons && seasons.length > 0 && (
                     <div className="relative w-full sm:w-auto min-w-[200px]">
                         <select value={selectedSeasonId || ''} onChange={(e) => setSelectedSeasonId(Number(e.target.value))} className="w-full appearance-none bg-slate-950 border border-slate-700 text-white text-xs font-bold py-2 pl-3 pr-8 rounded-lg outline-none focus:border-blue-500 shadow-sm cursor-pointer">
-                            {/* 🚨 픽스: 드롭다운 이모티콘 복원 로직 추가 */}
+                            {/* 🚨 이모티콘 복구 적용 */}
                             {seasons.map((s:any) => {
                                 let icon = '🏳️'; if (s.type === 'CUP') icon = '🏆'; if (s.type === 'TOURNAMENT') icon = '⚔️'; if (s.type === 'LEAGUE_PLAYOFF') icon = '⭐';
                                 const pureName = s.name.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '');
                                 return <option key={s.id} value={s.id}>{icon} {pureName}</option>;
                             })}
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
                     </div>
                 )}
             </div>
