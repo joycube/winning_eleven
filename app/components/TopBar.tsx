@@ -1,7 +1,8 @@
 "use client";
 import React from 'react';
-import { Trophy, Settings, LogIn, LogOut } from 'lucide-react';
+import { Trophy, Settings, LogIn, LogOut, BellRing } from 'lucide-react'; 
 import { useAuth } from '../hooks/useAuth';
+import { usePushNotification } from '../hooks/usePushNotification'; 
 
 interface TopBarProps {
   setCurrentView?: (view: any) => void;
@@ -9,22 +10,29 @@ interface TopBarProps {
 
 export const TopBar = ({ setCurrentView }: TopBarProps) => {
     const { authUser, loginWithGoogle, logout } = useAuth();
+    const { requestPermissionAndSaveToken } = usePushNotification(); 
 
     return (
         <div className="bg-[#050b14]/95 backdrop-blur-md border-b border-slate-800/50 py-3 px-3 sm:px-6 flex justify-between items-center sticky top-0 z-50 shadow-lg">
             
-            {/* 왼쪽: 로고 & 긴 타이틀 (여백 및 폰트 크기 업그레이드) */}
             <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-4" onClick={() => setCurrentView && setCurrentView('LOCKERROOM')}>
                 <Trophy className="text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px]" />
-                {/* 🔥 폰트 크기를 키우고, 이탤릭체 텍스트 끝부분이 깎이지 않도록 pr-2 (우측 여백) 추가 */}
                 <h1 className="text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2">
                     eFOOTBALL   Live   EVOLUTION™
                 </h1>
             </div>
 
-            {/* 오른쪽: 로그인/로그아웃 및 관리자 메뉴 (우측 고정) */}
             <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
-                {/* 🔥 마스터 관리자에게만 보이는 비밀 톱니바퀴 */}
+                
+                {/* 🚨 로그인 여부와 상관없이 항상 노출되는 알림 켜기 버튼 */}
+                <button 
+                    onClick={() => requestPermissionAndSaveToken(authUser?.uid)}
+                    className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition-colors shrink-0 shadow-sm"
+                    title="실시간 알림 켜기"
+                >
+                    <BellRing size={14} className="sm:w-[16px] sm:h-[16px]" />
+                </button>
+
                 {authUser?.role === 'ADMIN' && setCurrentView && (
                     <button 
                         onClick={() => setCurrentView('ADMIN')} 
@@ -35,7 +43,6 @@ export const TopBar = ({ setCurrentView }: TopBarProps) => {
                     </button>
                 )}
 
-                {/* 로그인/로그아웃 섹션 */}
                 {authUser ? (
                     <div className="flex items-center gap-2 sm:gap-3">
                         <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900 border border-slate-700 pl-1 pr-2.5 sm:pr-3 py-1 rounded-full shadow-inner">

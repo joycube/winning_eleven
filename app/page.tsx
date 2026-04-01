@@ -23,6 +23,9 @@ import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
 
+// 🚨 픽스: 푸시 알림 훅 임포트
+import { usePushNotification } from './hooks/usePushNotification';
+
 // 🔥 [새로 추가된 마법의 이진 트리 엔진] 
 import { processTournamentAdvancement } from './utils/scheduler';
 
@@ -40,6 +43,9 @@ const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 export default function FootballLeagueApp() {
   const { seasons, owners, masterTeams, leagues, banners, historyRecords, isLoaded } = useLeagueData();
   const { authUser, isLoading: isAuthLoading } = useAuth();
+  
+  // 🚨 픽스: 알림 팝업 함수 가져오기
+  const { requestPermissionAndSaveToken } = usePushNotification();
   
   const [currentView, setCurrentView] = useState<'LOCKERROOM' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'OWNERROOM' | 'ADMIN'>('LOCKERROOM');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
@@ -62,6 +68,18 @@ export default function FootballLeagueApp() {
       const found = owners.find(o => o.nickname === search || o.legacyName === search || o.docId === search || o.uid === search);
       return found?.uid || found?.docId || undefined;
   };
+
+  // 🚨 픽스: 방문 시 (로그인 여부 무관) 2초 후 팝업 띄우는 로직 추가
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        const timer = setTimeout(() => {
+          requestPermissionAndSaveToken(authUser?.uid || null);
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [authUser]);
 
   useEffect(() => {
       if (!isLoaded || !owners || !seasons) return;
@@ -791,7 +809,6 @@ export default function FootballLeagueApp() {
       
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
-        {/* 🚨 픽스: 여기서 단일 상태 통제권(viewSeasonId) 배관을 내려보냅니다! */}
         {currentView === 'LOCKERROOM' && (
             <LockerRoomView 
                 user={authUser as any} 
