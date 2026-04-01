@@ -31,8 +31,8 @@ export const sendAutoPush = async (title: string, body: string, specificToken?: 
       });
     }
 
-    // 중복된 토큰 제거
-    targetTokens = [...new Set(targetTokens)];
+    // 중복된 토큰 제거 (Vercel 에러 해결을 위해 Array.from으로 수정)
+    targetTokens = Array.from(new Set(targetTokens));
 
     // 보낼 대상이 없으면 종료
     if (targetTokens.length === 0) return;
