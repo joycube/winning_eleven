@@ -28,7 +28,8 @@ export default function L_LockerRoomDashboard({
     activeRankingData, historyData, viewSeasonId, setViewSeasonId 
 }: any) {
   const { authUser } = useAuth();
-  const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('HOT');
+  // 🚨 픽스: 기본 선택 탭을 'HOT'에서 'FREE'(최신글)로 변경했습니다.
+  const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('FREE');
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null); 
 
@@ -48,7 +49,20 @@ export default function L_LockerRoomDashboard({
       return () => unsubscribe();
   }, []);
 
-  const hotPosts = [...(posts || [])].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2))).slice(0, 5);
+  // 🚨 픽스: 썸네일 탭 동기화를 위해 전체 HOT 배열을 저장합니다.
+  const allHotPosts = useMemo(() => {
+      return [...(posts || [])].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2)));
+  }, [posts]);
+
+  const hotPosts = allHotPosts.slice(0, 5);
+
+  // 🚨 픽스: 상단 썸네일용 데이터를 추출합니다. (유튜브 링크 포함 & 탭 상태 반영)
+  const thumbPosts = useMemo(() => {
+      const sourcePosts = communityTab === 'HOT' ? allHotPosts : (posts || []);
+      return sourcePosts
+          .filter((p: any) => !!p.imageUrl || !!p.youtubeId || !!getYoutubeId(p.youtubeUrl))
+          .slice(0, 5);
+  }, [communityTab, allHotPosts, posts]);
 
   const handlePostClick = async (post: any) => {
       if (post && post.id) {
@@ -130,16 +144,26 @@ export default function L_LockerRoomDashboard({
                          <div className="flex flex-col gap-4 items-center justify-center py-10 opacity-50"><span className="text-xs font-bold text-slate-500">데이터 로딩 중...</span></div>
                       ) : (
                           <>
-                              {posts && posts.filter((p:any) => !!p.imageUrl).length > 0 && (
+                              {/* 🚨 픽스: 썸네일 노출 로직이 이제 HOT/최신글 탭을 따라가고, 유튜브 썸네일도 정상적으로 추출합니다. */}
+                              {thumbPosts.length > 0 && (
                                   <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
-                                      {posts.filter((p:any) => !!p.imageUrl).slice(0, 5).map((post:any, i:number) => (
-                                          <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
-                                              <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors">
-                                                  <img src={post.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="thumbnail" />
+                                      {thumbPosts.map((post:any, i:number) => {
+                                          const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
+                                          const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
+
+                                          return (
+                                              <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
+                                                  <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors flex items-center justify-center">
+                                                      {thumbSrc ? (
+                                                          <img src={thumbSrc} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="thumbnail" />
+                                                      ) : (
+                                                          <PlayCircle size={24} className="text-slate-600"/>
+                                                      )}
+                                                  </div>
+                                                  <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
                                               </div>
-                                              <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
-                                          </div>
-                                      ))}
+                                          );
+                                      })}
                                   </div>
                               )}
                               <div className="flex flex-col divide-y divide-slate-800/50">
