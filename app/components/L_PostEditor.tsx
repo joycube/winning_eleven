@@ -5,6 +5,9 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/fi
 import { Image as ImageIcon, Youtube } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 
+// 🚨 픽스: 푸시 알림 자동 발송 유틸 임포트
+import { sendAutoPush } from '../utils/pushUtil';
+
 export default function L_PostEditor({ user, owners, viewMode, setViewMode, editingPostId, setEditingPostId, posts, setSelectedPostId }: any) {
     const [postForm, setPostForm] = useState({ title: '', content: '', cat: '자유', imageUrl: '', youtubeUrl: '' });
 
@@ -26,16 +29,31 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
 
         try {
             if (viewMode === 'WRITE') {
+                const authorName = user.mappedOwnerId || '미배정 오너';
+                
                 const docRef = await addDoc(collection(db, 'posts'), {
                     title: postForm.title, content: postForm.content, cat: postForm.cat,
                     imageUrl: postForm.imageUrl ? postForm.imageUrl.trim() : '', 
                     youtubeId: getValidYoutubeId(postForm.youtubeUrl), 
-                    authorId: user.uid, authorUid: user.uid, authorName: user.mappedOwnerId || '미배정 오너', 
+                    authorId: user.uid, authorUid: user.uid, authorName: authorName, 
                     authorPhoto: user.photo || user.photoURL || FALLBACK_IMG, 
                     createdAt: serverTimestamp(), isPinned: false, isEdited: false, views: 0, likes: [], dislikes: [], comments: []
                 });
+
+                // 🚨 [신규 추가] 새 글 등록 시 자동 푸시 발송 (수정 시에는 안 보냄)
+                try {
+                    const pushTitle = `📝 [${postForm.cat}] 새로운 게시글`;
+                    const pushBody = `${authorName}님: ${postForm.title}`;
+                    
+                    // await 없이 비동기로 넘겨서 팝업창(alert)이 뜨는 속도에 지장을 주지 않게 합니다.
+                    sendAutoPush(pushTitle, pushBody); 
+                } catch (error) {
+                    console.error("푸시 발송 에러:", error);
+                }
+
                 alert("✅ 게시글이 등록되었습니다!");
                 setViewMode('LIST'); setSelectedPostId(docRef.id);
+                
             } else if (viewMode === 'EDIT' && editingPostId) {
                 await updateDoc(doc(db, 'posts', editingPostId), {
                     title: postForm.title, content: postForm.content, cat: postForm.cat,

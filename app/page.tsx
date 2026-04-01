@@ -23,8 +23,9 @@ import { useLeagueStats } from './hooks/useLeagueStats';
 import { calculateMatchSnapshot } from './utils/predictor';
 import { useAuth } from './hooks/useAuth';
 
-// 🚨 픽스: 푸시 알림 훅 임포트
+// 🚨 픽스: 푸시 알림 훅 & 자동 발송 유틸 임포트
 import { usePushNotification } from './hooks/usePushNotification';
+import { sendAutoPush } from './utils/pushUtil';
 
 // 🔥 [새로 추가된 마법의 이진 트리 엔진] 
 import { processTournamentAdvancement } from './utils/scheduler';
@@ -573,6 +574,15 @@ export default function FootballLeagueApp() {
               }
           }
 
+          // 🚨 푸시 알림 자동 발송
+          try {
+              const pushTitle = "🏆 경기 결과 확정";
+              const pushBody = `[${editingMatch.home}] ${hScore} : ${aScore} [${editingMatch.away}] - 결과를 확인하세요!`;
+              sendAutoPush(pushTitle, pushBody); // await 안 씀
+          } catch (error) {
+              console.error("푸시 발송 에러:", error);
+          }
+
           setEditingMatch(null);
           return; 
       }
@@ -708,6 +718,15 @@ export default function FootballLeagueApp() {
           if (snap.empty) {
               await updateDoc(highlightRef, { views: 0, likes: [], commentCount: 0 });
           }
+      }
+
+      // 🚨 푸시 알림 자동 발송
+      try {
+          const pushTitle = "🏆 경기 결과 확정";
+          const pushBody = `[${editingMatch.home}] ${hScore} : ${aScore} [${editingMatch.away}] - 결과를 확인하세요!`;
+          sendAutoPush(pushTitle, pushBody); // await 안 씀
+      } catch (error) {
+          console.error("푸시 발송 에러:", error);
       }
 
       setEditingMatch(null);
