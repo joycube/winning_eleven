@@ -2,6 +2,19 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Edit3, Image as ImageIcon } from 'lucide-react';
 
+const isNewPost = (createdAt: any) => {
+    if (!createdAt) return false;
+    let postTime = 0;
+    if (createdAt.seconds) postTime = createdAt.seconds * 1000;
+    else if (typeof createdAt === 'number') postTime = createdAt;
+    else if (createdAt instanceof Date) postTime = createdAt.getTime();
+    else if (typeof createdAt === 'string') postTime = new Date(createdAt).getTime();
+    
+    if (!postTime) return false;
+    const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
+    return (Date.now() - postTime) < twoDaysInMs;
+};
+
 export default function L_CommunityList({ user, notices, posts, category, setCategory, setViewMode, setSelectedPostId }: any) {
     const [visibleCount, setVisibleCount] = useState(10);
 
@@ -46,7 +59,8 @@ export default function L_CommunityList({ user, notices, posts, category, setCat
                         <div key={notice.id} onClick={() => handlePostClick(notice)} className="flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group">
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <span className="bg-slate-800 border border-slate-700 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded shrink-0 shadow-inner">공지</span>
-                                <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors">{notice.title}</span>
+                                {/* 🚨 픽스: 이탤릭체 잘림 방지를 위해 pr-1.5 추가 */}
+                                <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors pr-1.5">{notice.title}</span>
                             </div>
                         </div>
                     ))}
@@ -73,7 +87,9 @@ export default function L_CommunityList({ user, notices, posts, category, setCat
                                         <div className="flex flex-col min-w-0 flex-1 gap-1">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className="bg-slate-800/80 border border-slate-700/80 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded shrink-0">{post.cat}</span>
-                                                <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors">{post.title}</span>
+                                                {/* 🚨 픽스: 이탤릭체 잘림 방지를 위해 pr-1.5 추가 */}
+                                                <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors pr-1.5">{post.title}</span>
+                                                {isNewPost(post.createdAt) && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-[3px] shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.4)]">N</span>}
                                             </div>
                                             <div className="flex items-center gap-2 text-[10px] font-medium text-slate-500 ml-[36px] sm:ml-[40px]">
                                                 <span>{post.authorName}</span>

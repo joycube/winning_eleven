@@ -12,7 +12,6 @@ import { useAuth } from '../hooks/useAuth';
 import HighlightViewerModal from './HighlightViewerModal';
 import L_MatchCenter from './L_MatchCenter';
 
-// 🚨 픽스: Vercel 빌드 에러의 원인인 누락된 상수를 복구했습니다.
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 const getYoutubeId = (url: string) => {
@@ -22,13 +21,25 @@ const getYoutubeId = (url: string) => {
     return match ? match[1] : null;
 };
 
+const isNewPost = (createdAt: any) => {
+    if (!createdAt) return false;
+    let postTime = 0;
+    if (createdAt.seconds) postTime = createdAt.seconds * 1000;
+    else if (typeof createdAt === 'number') postTime = createdAt;
+    else if (createdAt instanceof Date) postTime = createdAt.getTime();
+    else if (typeof createdAt === 'string') postTime = new Date(createdAt).getTime();
+    
+    if (!postTime) return false;
+    const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
+    return (Date.now() - postTime) < twoDaysInMs;
+};
+
 export default function L_LockerRoomDashboard({ 
     user, notices, seasons, masterTeams, owners, activeSeason, 
     posts, highlights, uidDict, setViewMode, setCategory, setSelectedPostId, 
     activeRankingData, historyData, viewSeasonId, setViewSeasonId 
 }: any) {
   const { authUser } = useAuth();
-  // 🚨 픽스: 기본 선택 탭을 'HOT'에서 'FREE'(최신글)로 변경했습니다.
   const [communityTab, setCommunityTab] = useState<'HOT' | 'FREE'>('FREE');
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null); 
@@ -49,14 +60,12 @@ export default function L_LockerRoomDashboard({
       return () => unsubscribe();
   }, []);
 
-  // 🚨 픽스: 썸네일 탭 동기화를 위해 전체 HOT 배열을 저장합니다.
   const allHotPosts = useMemo(() => {
       return [...(posts || [])].sort((a: any, b: any) => (b.views || 0) + ((b.comments?.length || 0) * 2) - ((a.views || 0) + ((a.comments?.length || 0) * 2)));
   }, [posts]);
 
   const hotPosts = allHotPosts.slice(0, 5);
 
-  // 🚨 픽스: 상단 썸네일용 데이터를 추출합니다. (유튜브 링크 포함 & 탭 상태 반영)
   const thumbPosts = useMemo(() => {
       const sourcePosts = communityTab === 'HOT' ? allHotPosts : (posts || []);
       return sourcePosts
@@ -112,7 +121,8 @@ export default function L_LockerRoomDashboard({
                       <div key={notice.id} onClick={() => handlePostClick(notice)} className="flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                               <span className="bg-slate-800/80 border border-slate-700/80 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded shrink-0 shadow-inner">공지</span>
-                              <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors pr-1">{notice.title}</span>
+                              {/* 🚨 픽스: 이탤릭체 잘림 방지를 위해 pr-1.5 추가 */}
+                              <span className="text-slate-100 font-bold text-[13px] sm:text-[14px] truncate group-hover:text-emerald-400 transition-colors pr-1.5">{notice.title}</span>
                           </div>
                       </div>
                   ))}
@@ -144,7 +154,6 @@ export default function L_LockerRoomDashboard({
                          <div className="flex flex-col gap-4 items-center justify-center py-10 opacity-50"><span className="text-xs font-bold text-slate-500">데이터 로딩 중...</span></div>
                       ) : (
                           <>
-                              {/* 🚨 픽스: 썸네일 노출 로직이 이제 HOT/최신글 탭을 따라가고, 유튜브 썸네일도 정상적으로 추출합니다. */}
                               {thumbPosts.length > 0 && (
                                   <div className="flex overflow-x-auto gap-3 no-scrollbar pb-4 border-b border-slate-800/60 mb-2">
                                       {thumbPosts.map((post:any, i:number) => {
@@ -160,7 +169,11 @@ export default function L_LockerRoomDashboard({
                                                           <PlayCircle size={24} className="text-slate-600"/>
                                                       )}
                                                   </div>
-                                                  <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1">{post.title}</span>
+                                                  <div className="flex items-center w-full">
+                                                      {/* 🚨 픽스: 이탤릭체 잘림 방지를 위해 pr-1.5 추가 */}
+                                                      <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1.5">{post.title}</span>
+                                                      {isNewPost(post.createdAt) && <span className="ml-0.5 bg-red-500 text-white text-[8px] font-black px-1 rounded-sm shadow-[0_0_5px_rgba(239,68,68,0.5)] shrink-0">N</span>}
+                                                  </div>
                                               </div>
                                           );
                                       })}
@@ -179,7 +192,9 @@ export default function L_LockerRoomDashboard({
                                                   <div className="flex flex-col min-w-0 flex-1 gap-1">
                                                       <div className="flex items-center gap-2 min-w-0">
                                                           <span className="bg-slate-800 border border-slate-700/80 text-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">{post.cat}</span>
-                                                          <span className="text-slate-200 font-medium text-[14px] truncate pr-1">{post.title}</span>
+                                                          {/* 🚨 픽스: 이탤릭체 잘림 방지를 위해 pr-1.5 추가 */}
+                                                          <span className="text-slate-200 font-medium text-[14px] truncate pr-1.5">{post.title}</span>
+                                                          {isNewPost(post.createdAt) && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-[3px] shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.4)]">N</span>}
                                                       </div>
                                                       <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 ml-[44px]">
                                                           <span>{post.authorName}</span><span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span><span>조회 {post.views || 0}</span>
