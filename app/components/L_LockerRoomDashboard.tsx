@@ -12,6 +12,9 @@ import { useAuth } from '../hooks/useAuth';
 import HighlightViewerModal from './HighlightViewerModal';
 import L_MatchCenter from './L_MatchCenter';
 
+// 🚨 픽스: Vercel 빌드 에러의 원인인 누락된 상수를 복구했습니다.
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
 const getYoutubeId = (url: string) => {
     if (!url) return null;
     const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
@@ -19,7 +22,6 @@ const getYoutubeId = (url: string) => {
     return match ? match[1] : null;
 };
 
-// 🚨 픽스: viewSeasonId, setViewSeasonId 수신 (독자 상태 폐기)
 export default function L_LockerRoomDashboard({ 
     user, notices, seasons, masterTeams, owners, activeSeason, 
     posts, highlights, uidDict, setViewMode, setCategory, setSelectedPostId, 
@@ -37,8 +39,6 @@ export default function L_LockerRoomDashboard({
       const active = seasons.find((s: any) => s.status === 'ACTIVE');
       return active || [...seasons].sort((a: any, b: any) => b.id - a.id)[0];
   }, [seasons]);
-
-  // 🚨 픽스: 내부 useState였던 selectedSeasonId 완전 삭제!
 
   useEffect(() => {
       const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(100));
@@ -224,16 +224,14 @@ export default function L_LockerRoomDashboard({
 
           <div className="carousel-pad-fix"><MatchTalkCarousel seasons={seasons} matchCommentsData={matchCommentsData} owners={owners} masterTeams={masterTeams} onNavigateToMatch={handleMatchTalkClick}/></div>
 
-          {/* 🔥 5. 분리된 MATCH CENTER 통제권 이양 */}
           <L_MatchCenter 
               seasons={seasons} masterTeams={masterTeams} owners={owners} 
               isDataLoading={isDataLoading} onNavigateToMatch={handleMatchTalkClick}
               activeOrLatestSeason={activeOrLatestSeason}
-              // 🚨 픽스: 부모가 계산 완료한 activeRankingData를 그대로 넘깁니다.
               activeRankingData={activeRankingData} 
               historyData={historyData} 
-              viewSeasonId={viewSeasonId}       // 🚨 전달
-              setViewSeasonId={setViewSeasonId} // 🚨 전달
+              viewSeasonId={viewSeasonId} 
+              setViewSeasonId={setViewSeasonId} 
           />
 
           {activeVideo && <HighlightViewerModal activeVideo={activeVideo} onClose={() => setActiveVideo(null)} authUser={authUser} owners={owners} seasons={seasons} />}
