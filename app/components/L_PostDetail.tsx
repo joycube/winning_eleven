@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
-import { ArrowLeft, MessageSquare, ThumbsUp, Send } from 'lucide-react';
+import { ArrowLeft, MessageSquare, ThumbsUp, Send, BarChart2, Users, CheckCircle2 } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import StickerSelector from './StickerSelector';
 
@@ -61,6 +61,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     const [replyingTo, setReplyingTo] = useState<{ parentId: string, targetId: string, authorName: string } | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [isSending, setIsSending] = useState(false); 
+    const [showVoters, setShowVoters] = useState(false); // 관리자/기명투표 열람용 토글
     const commentInputRef = useRef<HTMLInputElement>(null);
 
     const viewedPostRef = useRef<string | null>(null);
@@ -75,9 +76,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                 try {
                     const postRef = doc(db, isNotice ? 'notices' : 'posts', activePost.id);
                     await updateDoc(postRef, { views: increment(1) });
-                } catch (error) {
-                    console.error("조회수 증가 실패:", error);
-                }
+                } catch (error) {}
             };
             incrementViewCount();
         }
@@ -102,54 +101,56 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const authorData = getNoticeAuthorData();
 
-    const handleCloseView = () => {
-        setSelectedPostId(null);
-        setViewMode('LIST');
-        const params = new URLSearchParams(window.location.search);
-        params.delete('postId');
-        window.history.pushState(null, '', `?${params.toString()}`);
-    };
+    // 🚨 투표 관련 로직
+    const poll = activePost.poll;
+    const myVoteId = user && poll?.votes ? poll.votes[user.uid] : null;
+    const totalVotes = poll?.votes ? Object.keys(poll.votes).length : 0;
+    const canViewVoters = poll && (!poll.isAnonymous || isMaster); // 기명이거나 관리자면 투표자 열람 가능
 
-    const handleDeletePost = async () => {
-        if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?")) return;
+    const handleVote = async (optionId: string) => {
+        if (!user) return alert("🚨 로그인 후 투표 가능합니다.");
         try {
-            await deleteDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id));
-            alert("🗑️ 삭제되었습니다."); 
-            handleCloseView(); 
-        } catch (e: any) { alert("삭제 실패: " + e.message); }
+            const updatedVotes = { ...poll.votes, [user.uid]: optionId };
+            await updateDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id), { 'poll.votes': updatedVotes });
+        } catch (e) { alert("투표 처리 중 에러 발생!"); }
     };
 
+    const handleCancelVote = async () => {
+        if (!window.confirm("투표를 취소하시겠습니까?")) return;
+        try {
+            const updatedVotes = { ...poll.votes };
+            delete updatedVotes[user.uid];
+            await updateDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id), { 'poll.votes': updatedVotes });
+        } catch (e) {}
+    };
+
+    const getOwnerNameByUid = (uid: string) => {
+        const o = owners?.find((o:any) => o.uid === uid || String(o.id) === uid);
+        return o ? o.nickname : '알 수 없는 유저';
+    };
+
+    // ... 기존 닫기, 삭제, 반응 로직 유지 ...
+    const handleCloseView = () => { setSelectedPostId(null); setViewMode('LIST'); const params = new URLSearchParams(window.location.search); params.delete('postId'); window.history.pushState(null, '', `?${params.toString()}`); };
+    const handleDeletePost = async () => { if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?")) return; try { await deleteDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id)); alert("🗑️ 삭제되었습니다."); handleCloseView(); } catch (e: any) { alert("삭제 실패: " + e.message); } };
     const handleReaction = async (type: 'LIKE' | 'DISLIKE') => {
         if (!user) return alert("🚨 로그인이 필요합니다.");
         try {
             const postRef = doc(db, isNotice ? 'notices' : 'posts', activePost.id);
-            let likes = (isNotice ? activePost.likedBy : activePost.likes) || [];
-            let dislikes = (isNotice ? activePost.dislikedBy : activePost.dislikes) || [];
-
-            if (type === 'LIKE') {
-                if (likes.includes(user.uid)) likes = likes.filter((uid: string) => uid !== user.uid);
-                else { likes.push(user.uid); dislikes = dislikes.filter((uid: string) => uid !== user.uid); }
-            } else {
-                if (dislikes.includes(user.uid)) dislikes = dislikes.filter((uid: string) => uid !== user.uid);
-                else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); }
-            }
-            if (isNotice) await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() });
-            else await updateDoc(postRef, { likes, dislikes });
+            let likes = (isNotice ? activePost.likedBy : activePost.likes) || []; let dislikes = (isNotice ? activePost.dislikedBy : activePost.dislikes) || [];
+            if (type === 'LIKE') { if (likes.includes(user.uid)) likes = likes.filter((uid: string) => uid !== user.uid); else { likes.push(user.uid); dislikes = dislikes.filter((uid: string) => uid !== user.uid); } } 
+            else { if (dislikes.includes(user.uid)) dislikes = dislikes.filter((uid: string) => uid !== user.uid); else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); } }
+            if (isNotice) await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() }); else await updateDoc(postRef, { likes, dislikes });
         } catch (e) {}
     };
-
     const submitComment = async (isReply: boolean, stickerUrl?: string) => {
-        if (!user) return;
-        if (isSending) return; 
+        if (!user || isSending) return; 
         const textToSubmit = stickerUrl ? `[STICKER]${stickerUrl}` : (isReply ? replyText.trim() : commentText.trim());
         if (!textToSubmit) return alert("내용을 입력해주세요.");
-        
         setIsSending(true);
         try {
             const matchedOwner = owners?.find((o: any) => o.uid === user?.uid || String(o.id) === String(user?.uid));
             const authorName = matchedOwner?.nickname || user?.mappedOwnerId || user?.displayName || '익명 구단주';
             const authorPhoto = getBestProfileImage(user, owners, user?.photoURL || '', authorName);
-
             if (isNotice) {
                 let updatedComments = [...(activePost.comments || activePost.replies || [])];
                 const newComment = { id: `reply_${Date.now()}`, ownerId: user.uid, ownerUid: user.uid, ownerName: authorName, ownerPhoto: authorPhoto, text: textToSubmit, createdAt: new Date().toISOString(), likedBy: [], isEdited: false };
@@ -161,11 +162,9 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                 updatedComments.push({ id: `cmt_${Date.now()}`, authorId: user.uid, authorUid: user.uid, authorName: authorName, authorPhoto: authorPhoto, text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false });
                 await updateDoc(doc(db, 'posts', activePost.id), { comments: updatedComments });
             }
-            isReply ? setReplyText('') : setCommentText('');
-            if (isReply) setReplyingTo(null);
+            isReply ? setReplyText('') : setCommentText(''); if (isReply) setReplyingTo(null);
         } finally { setIsSending(false); }
     };
-
     const handleSaveEdit = async () => {
         if (!user || !editCommentText.trim() || !editingCommentId) return;
         try {
@@ -173,8 +172,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                 let updatedComments = [...(activePost.comments || activePost.replies || [])];
                 updatedComments = updatedComments.map((c:any) => {
                     if (c.id === editingCommentId) return { ...c, text: editCommentText.trim(), isEdited: true };
-                    if (c.replies) c.replies = c.replies.map((r:any) => r.id === editingCommentId ? { ...r, text: editCommentText.trim(), isEdited: true } : r);
-                    return c;
+                    if (c.replies) c.replies = c.replies.map((r:any) => r.id === editingCommentId ? { ...r, text: editCommentText.trim(), isEdited: true } : r); return c;
                 });
                 await updateDoc(doc(db, 'notices', activePost.id), { comments: updatedComments, updatedAt: new Date().toISOString() });
             } else {
@@ -185,7 +183,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
             setEditCommentText(''); setEditingCommentId(null);
         } catch (e) {}
     };
-
     const handleCommentReaction = async (commentId: string, parentId?: string) => {
         if (!user) return;
         try {
@@ -202,7 +199,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
             }
         } catch (e) {}
     };
-
     const handleDeleteComment = async (commentId: string, parentId?: string) => {
         if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
         if (isNotice) {
@@ -274,7 +270,83 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                         )}
                         <div className="text-slate-300 text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">{activePost.content}</div>
                     </div>
+
+                    {/* 🚨 투표 (Poll) 렌더링 영역 */}
+                    {poll && (
+                        <div className="mt-8 bg-slate-900/60 rounded-2xl border border-slate-700 p-5 shadow-inner">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-[14px] font-black text-white flex items-center gap-2">
+                                    <BarChart2 className="text-blue-400" size={18} /> 투표 진행 중
+                                </h3>
+                                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-bold border border-slate-700">
+                                    {poll.isAnonymous ? '👻 무기명' : '👁️ 기명(공개)'} • {totalVotes}명 참여
+                                </span>
+                            </div>
+
+                            <div className="space-y-3">
+                                {poll.options.map((opt: any) => {
+                                    const count = Object.values(poll.votes || {}).filter(v => v === opt.id).length;
+                                    const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                    const isMyChoice = myVoteId === opt.id;
+
+                                    return (
+                                        <div key={opt.id} className="relative group">
+                                            {/* 이미 투표를 한 경우 (결과 막대그래프 노출) */}
+                                            {myVoteId ? (
+                                                <div className={`relative h-11 w-full rounded-xl border overflow-hidden flex items-center px-4 z-10 transition-colors ${isMyChoice ? 'border-blue-500 bg-blue-900/20' : 'border-slate-700 bg-slate-800'}`}>
+                                                    <div className={`absolute top-0 left-0 h-full transition-all duration-500 z-0 ${isMyChoice ? 'bg-blue-600/30' : 'bg-slate-700/50'}`} style={{ width: `${percent}%` }}></div>
+                                                    <div className="relative z-10 flex justify-between w-full text-[12px] font-bold">
+                                                        <span className={`flex items-center gap-2 ${isMyChoice ? 'text-blue-400' : 'text-slate-300'}`}>
+                                                            {isMyChoice && <CheckCircle2 size={14} className="text-blue-400" />} {opt.text}
+                                                        </span>
+                                                        <span className={isMyChoice ? 'text-blue-400' : 'text-slate-400'}>{percent}% ({count}명)</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                /* 투표를 아직 안 한 경우 (선택 버튼 노출) */
+                                                <button onClick={() => handleVote(opt.id)} className="w-full h-11 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 rounded-xl text-left px-4 text-[12px] font-bold text-slate-300 hover:text-white transition-all">
+                                                    {opt.text}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* 하단 투표 컨트롤 & 열람 영역 */}
+                            <div className="mt-4 pt-3 border-t border-slate-800/50 flex justify-between items-center">
+                                {myVoteId ? (
+                                    <button onClick={handleCancelVote} className="text-[11px] text-slate-400 hover:text-red-400 font-bold underline underline-offset-2 transition-colors">투표 다시하기 (취소)</button>
+                                ) : (
+                                    <span className="text-[11px] text-slate-500 font-bold">한 항목만 선택할 수 있습니다.</span>
+                                )}
+
+                                {canViewVoters && totalVotes > 0 && (
+                                    <button onClick={() => setShowVoters(!showVoters)} className="text-[11px] font-bold bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors flex items-center gap-1">
+                                        <Users size={12} /> {showVoters ? '참여자 숨기기' : '참여자 보기'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* 투표자 열람 영역 (관리자 또는 기명투표 시) */}
+                            {showVoters && canViewVoters && (
+                                <div className="mt-4 p-3 bg-slate-950/50 rounded-xl border border-slate-800 space-y-3">
+                                    {poll.options.map((opt: any) => {
+                                        const voters = Object.entries(poll.votes || {}).filter(([_, vId]) => vId === opt.id).map(([uid, _]) => getOwnerNameByUid(uid));
+                                        if (voters.length === 0) return null;
+                                        return (
+                                            <div key={opt.id} className="text-[11px]">
+                                                <span className="font-black text-slate-400 mb-1 block">[{opt.text}] 선택자</span>
+                                                <span className="text-emerald-400 font-medium break-keep">{voters.join(', ')}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
+
                 <div className="bg-slate-900/50 p-4 sm:p-5 flex justify-center gap-3 border-b border-slate-800">
                     <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.likes || activePost.likedBy)?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👍 좋아요 {(activePost.likes || activePost.likedBy)?.length || 0}</button>
                     <button onClick={() => handleReaction('DISLIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.dislikes || activePost.dislikedBy)?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👎 싫어요 {(activePost.dislikes || activePost.dislikedBy)?.length || 0}</button>
@@ -323,7 +395,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 isSticker ? (
                                                     <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-2.5" alt="sticker" />
                                                 ) : (
-                                                    /* 🚨 픽스: 댓글 내용에 break-all break-words 추가 */
                                                     <p className="text-[14px] text-slate-200 mb-2.5 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{comment.text}</p>
                                                 )
                                             )}
@@ -376,7 +447,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                                 isRSticker ? (
                                                                     <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
                                                                 ) : (
-                                                                    /* 🚨 픽스: 대댓글 내용에 break-all break-words 추가 */
                                                                     <p className="text-[13px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{reply.text}</p>
                                                                 )
                                                             )}
