@@ -44,12 +44,12 @@ const renderTextWithLinks = (text: string) => {
         if (part.match(urlRegex)) {
             if (part.match(imageRegex) || part.includes('_next/image')) {
                 return (
-                    // 🚨 픽스: 본문 변환 이미지의 라운딩(rounded-xl), 보더(border), 그림자(shadow-md) 삭제
+                    // 🚨 픽스: max-w-full을 사용하여 화면 너비를 넘지 않게 하되, 원본 크기대로 좌측 정렬되게 함
                     <img 
                         key={i} 
                         src={part} 
                         alt="첨부이미지" 
-                        className="w-full h-auto my-4 block object-contain max-h-[600px]" 
+                        className="max-w-full h-auto my-4 block object-contain max-h-[600px]" 
                         loading="lazy" 
                         onError={(e: any) => { e.target.style.display = 'none'; }} 
                     />
@@ -68,7 +68,6 @@ const renderTextWithLinks = (text: string) => {
 const LiteYouTubeEmbed = ({ videoId }: { videoId: string }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     return (
-        // 🚨 픽스: 유튜브 플레이어의 라운딩(rounded-xl), 테두리(border) 삭제
         <div className="relative aspect-video w-full overflow-hidden bg-black cursor-pointer group" onClick={() => setIsPlaying(true)}>
             {!isPlaying ? (
                 <>
@@ -303,15 +302,14 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                         return <LiteYouTubeEmbed videoId={ytId} />;
                     })()}
                     
-                    {/* 🚨 픽스: 대표 이미지(imageUrl)의 라운딩(rounded-xl), 테두리(border), 그림자 제거 */}
+                    {/* 🚨 픽스: 대표 이미지(imageUrl) 좌측 정렬 적용 */}
                     {activePost.imageUrl && (
-                        <div className="w-full flex justify-center">
-                            <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[600px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />
+                        <div className="w-full flex justify-start mb-6">
+                            <img src={activePost.imageUrl} alt="첨부이미지" className="max-w-full h-auto object-contain max-h-[600px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />
                         </div>
                     )}
                     
-                    {/* 본문 텍스트 내 자동 변환 영역 */}
-                    <div className="px-2 text-slate-300 text-[15px] sm:text-[16px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">
+                    <div className="px-2 text-slate-300 text-[15px] sm:text-[16px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic text-left">
                         {renderTextWithLinks(activePost.content)}
                     </div>
                 </div>
@@ -446,7 +444,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 isSticker ? (
                                                     <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-3" alt="sticker" />
                                                 ) : (
-                                                    <div className="text-[14px] sm:text-[15px] text-slate-200 mb-3 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">
+                                                    <div className="text-[14px] sm:text-[15px] text-slate-200 mb-3 font-medium whitespace-pre-wrap break-all break-words leading-relaxed text-left">
                                                         {renderTextWithLinks(comment.text)}
                                                     </div>
                                                 )
@@ -500,7 +498,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                                 isRSticker ? (
                                                                     <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
                                                                 ) : (
-                                                                    <div className="text-[13px] sm:text-[14px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">
+                                                                    <div className="text-[13px] sm:text-[14px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed text-left">
                                                                         {renderTextWithLinks(reply.text)}
                                                                     </div>
                                                                 )

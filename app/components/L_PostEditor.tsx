@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { Image as ImageIcon, Youtube, BarChart2, Plus, Trash2, ArrowLeft, Edit3 } from 'lucide-react';
+import { Image as ImageIcon, Youtube, BarChart2, Plus, Trash2, ArrowLeft, Edit3, Link as LinkIcon } from 'lucide-react'; // 🚨 LinkIcon 추가
 import { FALLBACK_IMG } from '../types';
 import { sendAutoPush } from '../utils/pushUtil';
 
@@ -13,6 +13,9 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
     const [isPollEnabled, setIsPollEnabled] = useState(false);
     const [pollOptions, setPollOptions] = useState([{ id: '1', text: '' }, { id: '2', text: '' }]);
     const [isAnonymous, setIsAnonymous] = useState(true);
+
+    // 🚨 툴바 에디터용 Ref 추가
+    const editorRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         if (viewMode === 'EDIT' && editingPostId) {
@@ -38,6 +41,36 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
 
     const handlePollOptionChange = (id: string, text: string) => {
         setPollOptions(pollOptions.map(o => o.id === id ? { ...o, text } : o));
+    };
+
+    // 🚨 가벼운 디자인 툴바 기능: 커서 위치에 URL 텍스트 삽입
+    const insertTemplate = (template: string) => {
+        if (!editorRef.current) return;
+        const start = editorRef.current.selectionStart;
+        const end = editorRef.current.selectionEnd;
+        const text = postForm.content;
+        const newValue = text.substring(0, start) + template + text.substring(end);
+        setPostForm({ ...postForm, content: newValue });
+        
+        setTimeout(() => {
+            editorRef.current?.focus();
+            editorRef.current?.setSelectionRange(start + template.length, start + template.length);
+        }, 0);
+    };
+
+    const handleInsertImage = () => {
+        const url = window.prompt("📷 본문에 삽입할 이미지 주소(URL)를 입력하세요.\n(예: https://.../photo.jpg)");
+        if (url) insertTemplate(`\n${url}\n`);
+    };
+
+    const handleInsertYoutube = () => {
+        const url = window.prompt("🎬 본문에 삽입할 유튜브 주소를 입력하세요.\n(예: https://youtube.com/...)");
+        if (url) insertTemplate(`\n${url}\n`);
+    };
+
+    const handleInsertLink = () => {
+        const url = window.prompt("🔗 본문에 삽입할 웹사이트 주소를 입력하세요.\n(예: https://...)");
+        if (url) insertTemplate(`\n${url}\n`);
     };
 
     const handleWritePost = async () => {
@@ -122,7 +155,6 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
                   <input placeholder="제목을 입력하세요 (최대 50자)" className="flex-1 bg-slate-900 text-white px-4 py-3 rounded-xl border border-slate-700 text-[14px] font-bold outline-none focus:border-emerald-500 placeholder:font-normal shadow-inner" value={postForm.title} onChange={e => setPostForm({...postForm, title: e.target.value})} />
                 </div>
                 
-                {/* 🚨 안내 문구 수정: 대표 썸네일/커버 영상임을 강조 */}
                 <div className="flex flex-col sm:flex-row gap-3 w-full">
                    <div className="flex-1 flex items-center bg-slate-900 px-4 rounded-xl border border-slate-700 focus-within:border-emerald-500 shadow-inner">
                        <ImageIcon size={16} className="text-slate-500 mr-2 shrink-0" />
@@ -134,8 +166,30 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
                    </div>
                 </div>
 
-                {/* 🚨 안내 문구 수정: 본문에 링크를 넣어도 렌더링 된다는 점 안내 */}
-                <textarea placeholder="자유롭게 소통해 보세요! (이미지 URL이나 웹 주소를 본문에 붙여넣으면 자동으로 사진과 링크로 변환됩니다 ✨)" className="w-full h-72 sm:h-80 bg-slate-900 text-slate-200 p-5 rounded-2xl border border-slate-700 text-[14px] outline-none focus:border-emerald-500 resize-none shadow-inner leading-relaxed placeholder:text-slate-500 placeholder:leading-relaxed" value={postForm.content} onChange={e => setPostForm({...postForm, content: e.target.value})}></textarea>
+                {/* 🚨 가벼운 디자인 툴바 및 에디터 영역 */}
+                <div className="bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden shadow-inner focus-within:border-emerald-500 transition-colors flex flex-col">
+                    {/* 상단 툴바 */}
+                    <div className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-2 border-b border-slate-700">
+                        <button type="button" onClick={handleInsertImage} className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-slate-700 rounded-lg text-[12px] font-bold text-slate-300 hover:text-white transition-colors" title="본문에 이미지 삽입">
+                            <ImageIcon size={14} className="text-emerald-400" /> 사진 첨부
+                        </button>
+                        <button type="button" onClick={handleInsertYoutube} className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-slate-700 rounded-lg text-[12px] font-bold text-slate-300 hover:text-white transition-colors" title="본문에 유튜브 링크 삽입">
+                            <Youtube size={14} className="text-red-400" /> 영상 링크
+                        </button>
+                        <div className="w-px h-4 bg-slate-700 mx-1"></div>
+                        <button type="button" onClick={handleInsertLink} className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-slate-700 rounded-lg text-[12px] font-bold text-slate-300 hover:text-white transition-colors" title="본문에 일반 웹 링크 삽입">
+                            <LinkIcon size={14} className="text-blue-400" /> 주소 링크
+                        </button>
+                    </div>
+                    {/* 텍스트 에어리어 */}
+                    <textarea 
+                        ref={editorRef}
+                        placeholder="자유롭게 소통해 보세요!&#10;상단의 툴바 버튼을 이용해 본문 중간에 사진이나 영상 주소를 쉽게 추가할 수 있습니다 ✨" 
+                        className="w-full h-72 sm:h-80 bg-transparent text-slate-200 p-5 text-[14px] outline-none resize-none leading-relaxed placeholder:text-slate-500 placeholder:leading-relaxed" 
+                        value={postForm.content} 
+                        onChange={e => setPostForm({...postForm, content: e.target.value})}
+                    />
+                </div>
 
                 {/* 투표 작성 UI 영역 */}
                 <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-4 w-full shadow-md">
