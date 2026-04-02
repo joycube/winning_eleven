@@ -1,7 +1,7 @@
 "use client";
 
 import { getMessaging, getToken } from "firebase/messaging";
-import { doc, updateDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore"; // 🚨 updateDoc 제거
 import { db } from '../firebase'; 
 
 export const usePushNotification = () => {
@@ -30,10 +30,11 @@ export const usePushNotification = () => {
 
         if (token) {
           if (userUid) {
-            await updateDoc(doc(db, "users", userUid), { 
+            // 🚨 픽스: updateDoc 대신 setDoc + merge: true 사용
+            await setDoc(doc(db, "users", userUid), { 
               fcmToken: token,
               pushEnabled: true
-            });
+            }, { merge: true });
           } else {
             await setDoc(doc(db, "guest_tokens", token), {
               fcmToken: token,
