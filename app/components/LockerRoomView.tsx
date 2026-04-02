@@ -30,13 +30,12 @@ interface LockerRoomViewProps {
   activeRankingData?: any; 
   historyData?: any; 
   activeSeason?: any; 
-  viewSeasonId?: number; // 🚨 추가됨
-  setViewSeasonId?: any; // 🚨 추가됨
+  viewSeasonId?: number; 
+  setViewSeasonId?: any; 
 }
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 
-// 🚨 픽스: viewSeasonId, setViewSeasonId 수신
 export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason, viewSeasonId, setViewSeasonId }: LockerRoomViewProps) {
   const [posts, setPosts] = useState<any[]>([]);
   const [highlights, setHighlights] = useState<any[]>([]);
@@ -118,7 +117,8 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
   };
 
   return (
-    <div className="max-w-screen-xl w-full mx-auto p-0 sm:p-2 space-y-6 pb-20 px-2 sm:px-4">
+    // 🚨 픽스: space-y-6, pb-20 등 여백을 만드는 모든 옵션을 제거하여 0으로 만듦
+    <div className="max-w-screen-xl w-full mx-auto p-0 sm:p-2 px-2 sm:px-4 pb-0 mb-0">
       <style jsx>{`
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -135,8 +135,8 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
               posts={posts} highlights={highlights} uidDict={uidDict} 
               setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} 
               activeRankingData={activeRankingData}
-              viewSeasonId={viewSeasonId}       // 🚨 전달
-              setViewSeasonId={setViewSeasonId} // 🚨 전달
+              viewSeasonId={viewSeasonId} 
+              setViewSeasonId={setViewSeasonId} 
           />
       )}
 

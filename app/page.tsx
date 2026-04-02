@@ -70,7 +70,6 @@ export default function FootballLeagueApp() {
       return found?.uid || found?.docId || undefined;
   };
 
-  // 🚨 픽스: 방문 시 (로그인 여부 무관) 2초 후 팝업 띄우는 로직 추가
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') {
@@ -766,7 +765,8 @@ export default function FootballLeagueApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
+    // 🚨 픽스: 가장 외곽 컨테이너의 하단 여백 축소 (pb-20 -> pb-2)
+    <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-2">
       
       <InAppBrowserGuard />
 
@@ -826,7 +826,8 @@ export default function FootballLeagueApp() {
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} /></div>
       <NavTabs currentView={currentView} setCurrentView={handleViewChange} hasNewNotice={hasNewNotice} />
       
-      <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
+      {/* 🚨 픽스: 내부 컨테이너의 하단 여백 요소(space-y-8 등) 제거 */}
+      <main className="max-w-6xl mx-auto px-4 md:px-8 pb-4">
         
         {currentView === 'LOCKERROOM' && (
             <LockerRoomView 

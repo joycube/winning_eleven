@@ -104,7 +104,8 @@ export default function L_LockerRoomDashboard({
   };
 
   return (
-      <div className="animate-in fade-in pb-10 mt-2 text-left relative">
+      // 🚨 픽스: 최외곽 컨테이너의 하단 여백 제거 (pb-10 -> pb-0)
+      <div className="animate-in fade-in pb-0 mt-2 text-left relative">
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
               .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -297,7 +298,7 @@ export default function L_LockerRoomDashboard({
                     </div>
                 </div>
 
-                <div className="mb-10 mt-8 w-full">
+                <div className="mb-4 mt-8 w-full">
                     <div className="flex items-center justify-between mb-5 w-full">
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-6 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]"></div>
@@ -341,7 +342,11 @@ export default function L_LockerRoomDashboard({
                     </div>
                 </div>
 
-                <div className="carousel-pad-fix w-full"><MatchTalkCarousel seasons={seasons} matchCommentsData={matchCommentsData} owners={owners} masterTeams={masterTeams} onNavigateToMatch={handleMatchTalkClick}/></div>
+                {/* 🚨 픽스: MatchTalkCarousel 컨테이너의 하단 여백 완벽 제거 (mb-0, pb-0) */}
+                <div className="carousel-pad-fix w-full mb-0 pb-0">
+                    <MatchTalkCarousel seasons={seasons} matchCommentsData={matchCommentsData} owners={owners} masterTeams={masterTeams} onNavigateToMatch={handleMatchTalkClick}/>
+                </div>
+                
                 <L_MatchCenter 
                     seasons={seasons} masterTeams={masterTeams} owners={owners} 
                     isDataLoading={isDataLoading} onNavigateToMatch={handleMatchTalkClick}
