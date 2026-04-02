@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Flame, ChevronRight, PlayCircle, Heart, BarChart2 } from 'lucide-react'; 
+import { Flame, ChevronRight, PlayCircle, Heart, BarChart2, MessageSquare } from 'lucide-react'; 
 import { FALLBACK_IMG } from '../types';
 import { collection, query, onSnapshot, doc, updateDoc, increment, orderBy, limit, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -104,7 +104,6 @@ export default function L_LockerRoomDashboard({
   };
 
   return (
-      // 🚨 픽스: 최외곽 컨테이너의 하단 여백 제거 (pb-10 -> pb-0)
       <div className="animate-in fade-in pb-0 mt-2 text-left relative">
           <style jsx>{`
               .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -308,30 +307,72 @@ export default function L_LockerRoomDashboard({
                             더보기 <ChevronRight size={14} />
                         </button>
                     </div>
-                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-5 snap-x w-full">
+                    <div className="flex gap-5 overflow-x-auto no-scrollbar pb-5 snap-x w-full">
                         {highlights && highlights.length > 0 ? (
                             highlights.slice(0, 8).map((video: any) => {
                                 const ytId = video.youtubeId || getYoutubeId(video.youtubeUrl);
-                                const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : FALLBACK_IMG;
+                                const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : FALLBACK_IMG;
+                                
+                                const hs = Number(video.homeScore || 0);
+                                const as = Number(video.awayScore || 0);
+                                const isDraw = hs === as;
+                                const isHomeWin = hs > as;
+
                                 return (
-                                    <div key={video.id} className="snap-start shrink-0 w-[200px] sm:w-[240px] flex flex-col gap-2.5 cursor-pointer group" onClick={() => setActiveVideo(video)}>
-                                        <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-lg w-full">
-                                            <img src={thumbUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100" alt="thumbnail" onError={(e:any) => e.target.src = FALLBACK_IMG} />
-                                            <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-black text-emerald-400 uppercase border border-slate-700/50">{video.seasonName || 'HIGHLIGHT'}</div>
-                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/20"><PlayCircle size={36} className="text-white/90 drop-shadow-xl" strokeWidth={1.5} /></div>
-                                        </div>
-                                        <div className="flex items-start gap-2 px-1 w-full">
-                                            <div className="w-7 h-7 rounded-full bg-slate-900 border border-slate-700 shrink-0 overflow-hidden shadow-sm mt-0.5">
-                                                <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain p-1" alt="" onError={(e:any) => e.target.src = FALLBACK_IMG} />
+                                    <div key={video.id} className="snap-start shrink-0 w-[220px] sm:w-[260px] flex flex-col gap-3 cursor-pointer group bg-transparent" onClick={() => setActiveVideo(video)}>
+                                        {/* 1. 썸네일 영역 */}
+                                        <div className="relative aspect-video rounded-xl overflow-hidden bg-black shadow-md border border-slate-800/60">
+                                            <img src={thumbUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-95 group-hover:opacity-100" alt="thumbnail" onError={(e:any) => e.target.src = FALLBACK_IMG} />
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/20">
+                                                <PlayCircle size={40} className="text-white drop-shadow-2xl" />
                                             </div>
-                                            <div className="flex flex-col min-w-0 flex-1">
-                                                <h4 className="text-[12px] sm:text-[13px] font-bold text-slate-200 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">{video.homeTeam} vs {video.awayTeam} <span className="text-emerald-500">({video.homeScore}:{video.awayScore})</span></h4>
-                                                <div className="flex items-center justify-between w-full text-[10px] text-slate-500 font-bold mt-1.5">
-                                                    <span>조회 {video.views || 0}</span>
-                                                    <div className="flex items-center gap-1 text-slate-400">
-                                                        <button onClick={(e) => handleLikeVideo(e, video)} className={`flex items-center gap-1 transition-colors hover:text-white`}><Heart size={10} className={video.likes?.includes(authUser?.uid) ? 'fill-red-400 text-red-400' : ''}/> {video.likes?.length || 0}</button>
-                                                        <span className="text-slate-600">•</span><span>댓글 {(video.comments || []).length}</span>
+                                            <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-black text-emerald-400 uppercase border border-white/10 tracking-widest">
+                                                {video.matchLabel || 'HIGHLIGHT'}
+                                            </div>
+                                            {/* 스코어 보드 내 엠블럼 노출 */}
+                                            <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[11px] font-black text-white flex items-center gap-1.5 shadow-md border border-white/10">
+                                                <div className="w-3.5 h-3.5 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                                                    <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
+                                                </div>
+                                                <span>{video.homeScore}:{video.awayScore}</span>
+                                                <div className="w-3.5 h-3.5 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                                                    <img src={video.awayLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* 2. 하단 정보 영역 */}
+                                        <div className="flex items-start gap-3 px-1 w-full">
+                                            <div className="relative shrink-0 w-10 h-10 mt-0.5 flex items-center justify-center">
+                                                {isDraw ? (
+                                                    <>
+                                                        <div className="absolute left-0 top-0 w-7 h-7 rounded-full bg-white p-0.5 shadow-md z-10 border border-slate-200">
+                                                            <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
+                                                        </div>
+                                                        <div className="absolute right-0 bottom-0 w-7 h-7 rounded-full bg-white p-0.5 shadow-md z-0 border border-slate-200">
+                                                            <img src={video.awayLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="w-9 h-9 rounded-full bg-white p-1 shadow-md border border-slate-200 flex items-center justify-center overflow-hidden">
+                                                        <img src={(isHomeWin ? video.homeLogo : video.awayLogo) || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
                                                     </div>
+                                                )}
+                                            </div>
+                                            
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                                <h4 className="text-[13px] sm:text-[14px] font-bold text-slate-100 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
+                                                    <span className="text-emerald-500 mr-1.5 font-black">[{video.seasonName || 'LIVE'}]</span>
+                                                    {video.homeTeam} vs {video.awayTeam}
+                                                </h4>
+                                                <div className="flex items-center text-[11px] text-slate-500 font-bold mt-1.5 gap-2 italic">
+                                                    <span>조회 {video.views || 0}</span>
+                                                    <span className="text-slate-700 not-italic">•</span>
+                                                    <button onClick={(e) => handleLikeVideo(e, video)} className={`flex items-center gap-1 transition-colors hover:text-white ${video.likes?.includes(authUser?.uid) ? 'text-emerald-400' : ''}`}>
+                                                        <Heart size={11} className={video.likes?.includes(authUser?.uid) ? 'fill-emerald-400 text-emerald-400' : ''} /> {video.likes?.length || 0}
+                                                    </button>
+                                                    <span className="text-slate-700 not-italic">•</span>
+                                                    <span className="flex items-center gap-1"><MessageSquare size={11} /> {(video.comments || []).length}개</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -342,7 +383,6 @@ export default function L_LockerRoomDashboard({
                     </div>
                 </div>
 
-                {/* 🚨 픽스: MatchTalkCarousel 컨테이너의 하단 여백 완벽 제거 (mb-0, pb-0) */}
                 <div className="carousel-pad-fix w-full mb-0 pb-0">
                     <MatchTalkCarousel seasons={seasons} matchCommentsData={matchCommentsData} owners={owners} masterTeams={masterTeams} onNavigateToMatch={handleMatchTalkClick}/>
                 </div>

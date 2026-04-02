@@ -1,14 +1,125 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Heart, MessageSquare, PlayCircle } from 'lucide-react'; 
 import { useAuth } from '../hooks/useAuth';
 import { doc, updateDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
+import { FALLBACK_IMG } from '../types';
 
-// 🔥 새로 만든 공통 부품 임포트
-import HighlightCard from './HighlightCard';
 import HighlightViewerModal from './HighlightViewerModal';
+
+const HighlightCard = ({ post, authUser, onClick, onLike }: any) => {
+    if (!post) return null;
+
+    const getYoutubeId = (url: string) => {
+        if (!url) return null;
+        const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+        const match = url.match(regExp);
+        return match ? match[1] : null;
+    };
+
+    const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
+    const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : FALLBACK_IMG;
+    const isLiked = post.likedBy?.includes(authUser?.uid) || post.likes?.includes(authUser?.uid);
+
+    // 🚨 승무패 판별 로직
+    const hScore = Number(post.homeScore || 0);
+    const aScore = Number(post.awayScore || 0);
+    const isHomeWin = hScore > aScore;
+    const isAwayWin = aScore > hScore;
+    const isDraw = hScore === aScore;
+
+    return (
+        <div className="flex flex-col gap-3 cursor-pointer group w-full bg-transparent" onClick={onClick}>
+            
+            {/* 1. 썸네일 영역 */}
+            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-slate-900 shadow-md">
+                <img
+                    src={thumbUrl}
+                    alt="thumbnail"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
+                    onError={(e: any) => e.target.src = FALLBACK_IMG}
+                />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                    <PlayCircle size={40} className="text-white drop-shadow-2xl" />
+                </div>
+                
+                {post.matchLabel && (
+                    <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black text-emerald-400 border border-white/10 uppercase tracking-widest">
+                        {post.matchLabel}
+                    </div>
+                )}
+                
+                {/* 🚨 [픽스] 스코어 앞에 팀 엠블럼 노출 */}
+                {(post.homeScore !== undefined) && (
+                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[11px] font-black text-white flex items-center gap-2 shadow-md border border-white/10">
+                        <div className="flex items-center gap-1">
+                            <img src={post.homeLogo || FALLBACK_IMG} className="w-3 h-3 object-contain" alt="" />
+                            <span>{post.homeScore}</span>
+                        </div>
+                        <span className="text-white/40">:</span>
+                        <div className="flex items-center gap-1">
+                            <span>{post.awayScore}</span>
+                            <img src={post.awayLogo || FALLBACK_IMG} className="w-3 h-3 object-contain" alt="" />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 2. 하단 정보 영역 */}
+            <div className="flex items-start gap-3 px-1 w-full">
+                
+                {/* 🚨 [픽스] 승무패에 따른 엠블럼 노출 공식 적용 */}
+                <div className="relative shrink-0 w-10 h-10 mt-0.5 flex items-center justify-center">
+                    {isDraw ? (
+                        // 무승부: 홈(위) / 어웨이(아래) 듀얼 노출
+                        <>
+                            <div className="absolute left-0 top-0 w-7 h-7 rounded-full bg-white p-0.5 shadow-md z-10 border border-slate-800">
+                                <img src={post.homeLogo || FALLBACK_IMG} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                            </div>
+                            <div className="absolute right-0 bottom-0 w-7 h-7 rounded-full bg-white p-0.5 shadow-md z-0 border border-slate-800">
+                                <img src={post.awayLogo || FALLBACK_IMG} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                            </div>
+                        </>
+                    ) : (
+                        // 승리팀 존재: 승리팀 단독 노출 (하얀 원형 안 균형 배치)
+                        <div className="w-9 h-9 rounded-full bg-white p-1 shadow-md border border-slate-800 flex items-center justify-center overflow-hidden">
+                            <img 
+                                src={(isHomeWin ? post.homeLogo : post.awayLogo) || FALLBACK_IMG} 
+                                className="w-full h-full object-contain" 
+                                alt="winner" 
+                                onError={(e:any)=>e.target.src=FALLBACK_IMG} 
+                            />
+                        </div>
+                    )}
+                </div>
+                
+                <div className="flex flex-col min-w-0 flex-1">
+                    <h3 className="text-[14px] sm:text-[15px] font-bold text-slate-100 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors break-all">
+                        <span className="text-emerald-500 mr-1.5">[{post.seasonName || 'LIVE'}]</span>
+                        {post.title || `${post.homeTeam} VS ${post.awayTeam}`}
+                    </h3>
+                    
+                    <div className="flex items-center text-[11px] text-slate-500 font-bold mt-1.5 gap-2">
+                        <span>조회 {post.views || 0}회</span>
+                        <span className="w-0.5 h-0.5 bg-slate-700 rounded-full"></span>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onLike(post); }}
+                            className={`flex items-center gap-1 hover:text-white transition-colors ${isLiked ? 'text-emerald-400' : ''}`}
+                        >
+                            <Heart size={12} className={isLiked ? 'fill-emerald-400 text-emerald-400' : ''} /> {post.likes?.length || 0}
+                        </button>
+                        <span className="w-0.5 h-0.5 bg-slate-700 rounded-full"></span>
+                        <span className="flex items-center gap-1">
+                            <MessageSquare size={12} /> {(post.comments || []).length}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function L_HighlightsBoard({ highlights, owners, seasons, setViewMode }: any) {
     const { authUser } = useAuth();
@@ -43,7 +154,6 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         return result;
     }, [highlights, selectedSeason, searchQuery, sortBy]);
 
-    // 🔥 최신 상태의 Video 객체를 넘기기 위해 id로 검색
     const currentActiveVideo = useMemo(() => {
         return highlights?.find((h:any) => h.id === activeVideoId) || null;
     }, [highlights, activeVideoId]);
@@ -59,8 +169,8 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg mt-2">
+        <div className="space-y-6 animate-in fade-in duration-300 w-full mb-10">
+            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-6 shadow-lg mt-2 mx-2 sm:mx-0">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-start gap-3">
                         <div className="w-2.5 h-12 bg-emerald-500 rounded-full mt-1 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
@@ -102,11 +212,11 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
             </div>
 
             {filteredHighlights.length === 0 ? (
-                <div className="py-20 text-center text-slate-500 font-bold italic bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
+                <div className="py-20 mx-2 sm:mx-0 text-center text-slate-500 font-bold italic bg-slate-900/50 rounded-2xl border border-slate-800 border-dashed shadow-inner">
                     등록된 하이라이트 영상이 없거나 검색 결과가 없습니다.
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 sm:gap-x-5 gap-y-10 pt-4 px-2 sm:px-0 w-full">
                     {filteredHighlights.map((post) => (
                         <HighlightCard 
                             key={post.id} 
