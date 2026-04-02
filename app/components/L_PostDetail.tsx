@@ -323,7 +323,8 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 isSticker ? (
                                                     <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-2.5" alt="sticker" />
                                                 ) : (
-                                                    <p className="text-[14px] text-slate-200 mb-2.5 font-medium whitespace-pre-wrap leading-relaxed">{comment.text}</p>
+                                                    /* 🚨 픽스: 댓글 내용에 break-all break-words 추가 */
+                                                    <p className="text-[14px] text-slate-200 mb-2.5 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{comment.text}</p>
                                                 )
                                             )}
 
@@ -375,7 +376,8 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                                 isRSticker ? (
                                                                     <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
                                                                 ) : (
-                                                                    <p className="text-[13px] text-slate-300 mb-2 font-medium whitespace-pre-wrap leading-relaxed">{reply.text}</p>
+                                                                    /* 🚨 픽스: 대댓글 내용에 break-all break-words 추가 */
+                                                                    <p className="text-[13px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{reply.text}</p>
                                                                 )
                                                             )}
 
