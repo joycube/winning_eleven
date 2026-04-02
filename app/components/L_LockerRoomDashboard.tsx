@@ -44,8 +44,8 @@ export default function L_LockerRoomDashboard({
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null); 
 
-  // 🚨 데이터 로딩 상태 정의
-  const isDataLoading = !owners || owners.length === 0 || !posts;
+  // 🚨 픽스: 승률 계산에 필요한 통계 데이터(activeRankingData, historyData)가 도착할 때까지 스켈레톤을 유지하도록 조건을 보강함
+  const isDataLoading = !owners || owners.length === 0 || !posts || !activeRankingData || !historyData;
 
   const activeOrLatestSeason = useMemo(() => {
       if (!seasons || seasons.length === 0) return null;
@@ -117,9 +117,7 @@ export default function L_LockerRoomDashboard({
           `}</style>
 
           {isDataLoading ? (
-            /* 🚨 [오더 반영] 실제 서비스 레이아웃 뼈대를 그대로 유지한 가벼운 스켈레톤 */
             <div className="animate-pulse space-y-8">
-                {/* 1. 공지사항 스켈레톤 */}
                 <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
                     {[1, 2, 3].map((n) => (
                         <div key={n} className="flex items-center p-4 gap-3">
@@ -128,15 +126,11 @@ export default function L_LockerRoomDashboard({
                         </div>
                     ))}
                 </div>
-
-                {/* 2. 명예의 전당 캐러셀 스켈레톤 */}
                 <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
                     {[1, 2].map((n) => (
                         <div key={n} className="min-w-[300px] h-36 bg-slate-900 rounded-3xl border border-slate-800 shrink-0" />
                     ))}
                 </div>
-
-                {/* 3. 라이브 피드 스켈레톤 (image_4.png 스타일) */}
                 <div className="bg-[#0f172a] rounded-3xl border border-slate-800 p-6 space-y-4 shadow-2xl">
                     <div className="flex items-center gap-3">
                         <div className="w-6 h-6 bg-slate-800 rounded" />
@@ -148,8 +142,6 @@ export default function L_LockerRoomDashboard({
                         <div className="h-4 bg-slate-800 rounded w-2/5" />
                     </div>
                 </div>
-
-                {/* 4. 커뮤니티 스켈레톤 */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between px-1">
                         <div className="w-48 h-6 bg-slate-800 rounded" />
@@ -185,8 +177,6 @@ export default function L_LockerRoomDashboard({
                         </div>
                     </div>
                 </div>
-
-                {/* 5. 하이라이트 스켈레톤 */}
                 <div className="space-y-4">
                     <div className="w-48 h-6 bg-slate-800 rounded px-2" />
                     <div className="flex gap-4 overflow-x-auto no-scrollbar">
@@ -200,7 +190,6 @@ export default function L_LockerRoomDashboard({
                 </div>
             </div>
           ) : (
-            /* 실제 데이터 렌더링부 */
             <>
                 {notices && notices.length > 0 && (
                     <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50 mb-6">
@@ -214,11 +203,8 @@ export default function L_LockerRoomDashboard({
                         ))}
                     </div>
                 )}
-
                 <div className="carousel-pad-fix"><ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams}/></div>
-
                 <LiveFeed posts={posts || []} owners={owners} seasons={seasons} selectedSeasonId={viewSeasonId} onNavigateToPost={handlePostClick} onNavigateToMatch={handleMatchTalkClick} />
-
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-4 px-1">
                         <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2"><Flame size={16} className="text-orange-500" /> LEAGUE COMMUNITY</h3>
@@ -229,7 +215,6 @@ export default function L_LockerRoomDashboard({
                             window.history.pushState(null, '', `/?${params.toString()}`); window.scrollTo({ top: 0, behavior: 'smooth' }); 
                         }} className="text-[10px] text-slate-500 font-bold uppercase tracking-wider cursor-pointer hover:text-white transition-colors">더보기 &gt;</span>
                     </div>
-                    
                     <div className="bg-[#050b14] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
                         <div className="flex border-b border-slate-800 h-[45px] bg-slate-950/50">
                             <button onClick={() => setCommunityTab('HOT')} className={`flex-1 h-full flex justify-center items-center text-[11px] font-black tracking-widest transition-all ${communityTab === 'HOT' ? 'bg-slate-900 text-orange-400 border-b-2 border-orange-400' : 'text-slate-500 hover:text-slate-300'}`}>🔥 HOT</button>
@@ -241,7 +226,6 @@ export default function L_LockerRoomDashboard({
                                     {thumbPosts.map((post:any, i:number) => {
                                         const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
                                         const thumbSrc = post.imageUrl || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null);
-
                                         return (
                                             <div key={i} onClick={() => handlePostClick(post)} className="min-w-[130px] w-[130px] shrink-0 flex flex-col gap-2 cursor-pointer group">
                                                 <div className="w-full h-[100px] bg-slate-800 rounded-xl overflow-hidden relative border border-slate-700/50 group-hover:border-slate-500 transition-colors flex items-center justify-center">
@@ -294,7 +278,6 @@ export default function L_LockerRoomDashboard({
                         </div>
                     </div>
                 </div>
-
                 <div className="mb-8">
                     <div className="flex items-center justify-between px-2 mb-4">
                         <div className="flex items-center gap-2">
@@ -338,9 +321,7 @@ export default function L_LockerRoomDashboard({
                         ) : (<div className="w-full text-center py-10 text-slate-500 text-xs italic font-bold">등록된 하이라이트 영상이 없습니다.</div>)}
                     </div>
                 </div>
-
                 <div className="carousel-pad-fix"><MatchTalkCarousel seasons={seasons} matchCommentsData={matchCommentsData} owners={owners} masterTeams={masterTeams} onNavigateToMatch={handleMatchTalkClick}/></div>
-
                 <L_MatchCenter 
                     seasons={seasons} masterTeams={masterTeams} owners={owners} 
                     isDataLoading={isDataLoading} onNavigateToMatch={handleMatchTalkClick}
@@ -350,7 +331,6 @@ export default function L_LockerRoomDashboard({
                     viewSeasonId={viewSeasonId} 
                     setViewSeasonId={setViewSeasonId} 
                 />
-
                 {activeVideo && <HighlightViewerModal activeVideo={activeVideo} onClose={() => setActiveVideo(null)} authUser={authUser} owners={owners} seasons={seasons} />}
             </>
           )}
