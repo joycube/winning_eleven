@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore'; // 🔥 getDoc 추가
+import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore'; 
 import { Season, Owner, League, MasterTeam, Banner } from '../types';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
 import { AdminBannerManager } from './AdminBannerManager';
@@ -68,63 +68,6 @@ export const AdminView = ({
         if (!confirm("해당 시즌의 스케줄만 삭제하시겠습니까?")) return;
         await updateDoc(doc(db, "seasons", String(seasonId)), { rounds: [] });
         alert("스케줄 삭제 완료");
-    };
-
-    // ==========================================
-    // 🔥 [버그 픽스] 과거 하이라이트 일괄 동기화 마법 버튼 (안전성 강화버전)
-    // ==========================================
-    const handleSyncPastHighlights = async () => {
-        if (!confirm("과거 시즌의 모든 유튜브 영상을 하이라이트 전용 게시판으로 일괄 동기화하시겠습니까?\n(기존 데이터는 보존되며, 없는 데이터만 추가됩니다.)")) return;
-        
-        try {
-            let count = 0;
-            const seasonsSnap = await getDocs(collection(db, "seasons"));
-            
-            // 🔥 Batch 대신 에러 추적이 쉬운 개별 setDoc + for...of 비동기 루프 사용
-            for (const seasonDoc of seasonsSnap.docs) {
-                const seasonData = seasonDoc.data();
-                const rounds = seasonData.rounds || [];
-                
-                for (const r of rounds) {
-                    const matches = r.matches || [];
-                    for (const m of matches) {
-                        // 💡 m.id가 확실히 존재하고 유튜브 링크가 있을 때만 실행 (에러 방어)
-                        if (m.id && m.youtubeUrl && m.youtubeUrl.trim() !== '') {
-                            const highlightRef = doc(db, "highlights", m.id);
-                            
-                            // 💡 기존 데이터가 있는지 확인 (없으면 초기값 세팅을 위해)
-                            const docSnap = await getDoc(highlightRef);
-
-                            await setDoc(highlightRef, {
-                                id: m.id,
-                                matchId: m.id,
-                                seasonId: seasonData.id,
-                                seasonName: seasonData.name,
-                                youtubeUrl: m.youtubeUrl,
-                                homeTeam: m.home || 'TBD',
-                                awayTeam: m.away || 'TBD',
-                                homeLogo: m.homeLogo || '',
-                                awayLogo: m.awayLogo || '',
-                                homeScore: m.homeScore || 0,
-                                awayScore: m.awayScore || 0,
-                                matchLabel: m.matchLabel || m.stage || '',
-                                createdAt: seasonData.id, // 과거 영상은 해당 시즌 생성 시점으로 처리
-                                // 🔥 문서가 없었을 때만 조회수, 좋아요, 댓글 0으로 셋팅
-                                ...(docSnap.exists() ? {} : { views: 0, likes: [], commentCount: 0 })
-                            }, { merge: true }); 
-                            
-                            count++;
-                        }
-                    }
-                }
-            }
-            
-            alert(`🎉 총 ${count}개의 과거 하이라이트 영상이 성공적으로 동기화되었습니다!`);
-        } catch (error: any) {
-            console.error("🚨 하이라이트 동기화 오류:", error);
-            // 🔥 무슨 에러인지 화면에 직접 띄워줍니다 (권한 문제인지, 데이터 문제인지 파악용)
-            alert(`동기화 중 오류가 발생했습니다.\n상세 에러: ${error.message}`); 
-        }
     };
 
     const handleCloseSeason = async (season: Season) => {
@@ -331,10 +274,11 @@ export const AdminView = ({
     const isSeasonView = typeof adminTab === 'number' || adminTab === 'SEASON_MENU';
     const activeTopTab = isSeasonView ? 'SEASON' : 'SYSTEM';
 
+    // 🚨 픽스: 라운딩(rounded-3xl -> rounded-xl) 및 패딩 축소로 모던한 버튼형태로 개편
     const SystemCard = ({ title, subtitle, icon, color, onClick }: any) => (
         <div 
             onClick={onClick} 
-            className={`relative overflow-hidden rounded-3xl p-6 cursor-pointer transition-all hover:scale-105 hover:shadow-2xl hover:shadow-emerald-900/20 group border border-slate-700/50 bg-gradient-to-br ${color} h-[130px] sm:h-[150px] flex flex-col justify-between`}
+            className={`relative overflow-hidden rounded-xl p-5 cursor-pointer transition-all hover:scale-105 hover:shadow-xl hover:shadow-emerald-900/20 group border border-slate-700/50 bg-gradient-to-br ${color} h-[110px] sm:h-[130px] flex flex-col justify-between`}
         >
             <div className="absolute -right-4 -bottom-4 opacity-20 transform group-hover:scale-125 transition-transform duration-500">
                 {icon}
@@ -343,158 +287,159 @@ export const AdminView = ({
                 {icon}
             </div>
             <div className="relative z-10">
-                <h3 className="text-white font-black text-[16px] sm:text-lg drop-shadow-md leading-tight">{title}</h3>
-                {subtitle && <p className="text-white/70 text-[10px] sm:text-[11px] font-bold mt-1 tracking-widest uppercase">{subtitle}</p>}
+                <h3 className="text-white font-black text-[15px] sm:text-[17px] drop-shadow-md leading-tight">{title}</h3>
+                {subtitle && <p className="text-white/70 text-[9px] sm:text-[10px] font-bold mt-1 tracking-widest uppercase">{subtitle}</p>}
             </div>
         </div>
     );
 
     return (
-        <div className="bg-[#0B1120] p-3 sm:p-6 rounded-3xl border border-slate-800 shadow-2xl animate-in fade-in">
+        // 🚨 픽스: 외부 라운딩 박스 제거 및 풀블리드(오픈형) 레이아웃 적용
+        <div className="w-full animate-in fade-in flex flex-col pb-10">
             
-            {/* 🔥 상단 메뉴에 DB 동기화용 미니 버튼 추가 */}
-            <div className="flex justify-between items-center mb-4 px-2">
-                <h2 className="text-xl font-black italic text-emerald-400 tracking-tighter">ADMIN DASHBOARD</h2>
-                {activeTopTab === 'SYSTEM' && (
-                    <button 
-                        onClick={handleSyncPastHighlights}
-                        className="bg-indigo-900/50 hover:bg-indigo-600 border border-indigo-700/50 text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-                    >
-                        <PlaySquare size={14} /> 하이라이트 동기화
-                    </button>
-                )}
+            {/* 타이틀 */}
+            <div className="flex justify-between items-center mb-6 px-2 w-full">
+                <h2 className="text-[18px] sm:text-[22px] font-black italic text-emerald-400 tracking-widest uppercase">ADMIN DASHBOARD</h2>
             </div>
 
-            <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 mb-6 sm:mb-8 shadow-inner">
-                <button
+            {/* 🚨 픽스: 탭 메뉴를 캡슐 박스 형태에서 시원한 언더라인(플랫) 형태로 교체 */}
+            <div className="flex gap-4 border-b border-slate-800/60 mb-6 sm:mb-8 w-full px-2">
+                <button 
                     onClick={() => setAdminTab('SYSTEM_MENU')}
-                    className={`flex-1 py-3 sm:py-4 text-[13px] sm:text-[15px] font-black rounded-xl transition-all flex items-center justify-center gap-2 ${activeTopTab === 'SYSTEM' ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}
+                    className={`pb-3 pr-2 text-[14px] sm:text-[15px] font-black tracking-widest transition-all relative flex items-center gap-2 ${activeTopTab === 'SYSTEM' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                     <Settings size={18} /> 시스템 관리
+                    {activeTopTab === 'SYSTEM' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400" />}
                 </button>
-                <button
+                <button 
                     onClick={() => setAdminTab('SEASON_MENU')}
-                    className={`flex-1 py-3 sm:py-4 text-[13px] sm:text-[15px] font-black rounded-xl transition-all flex items-center justify-center gap-2 ${activeTopTab === 'SEASON' ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}
+                    className={`pb-3 px-2 text-[14px] sm:text-[15px] font-black tracking-widest transition-all relative flex items-center gap-2 ${activeTopTab === 'SEASON' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                     <Trophy size={18} /> 시즌 관리
+                    {activeTopTab === 'SEASON' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-blue-400" />}
                 </button>
             </div>
 
-            {activeTopTab === 'SYSTEM' && (
-                <>
-                    {(adminTab === 'SYSTEM_MENU' || adminTab === 'NEW') ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 animate-in slide-in-from-bottom-4">
-                            <SystemCard title="시즌 생성" subtitle="Create Season" icon={<PlusCircle size={36}/>} color="from-emerald-500 to-teal-800" onClick={() => setAdminTab('CREATE_SEASON')} />
-                            <SystemCard title="가입 승인" subtitle="User Approval" icon={<UserCheck size={36}/>} color="from-blue-500 to-indigo-800" onClick={() => setAdminTab('USERS')} />
-                            <SystemCard title="공지 관리" subtitle="Notice Board" icon={<Megaphone size={36}/>} color="from-purple-500 to-fuchsia-800" onClick={() => setAdminTab('NOTICE')} />
-                            <SystemCard title="리그 관리" subtitle="League Setup" icon={<Flag size={36}/>} color="from-cyan-500 to-blue-800" onClick={() => setAdminTab('LEAGUES')} />
-                            <SystemCard title="팀 DB 관리" subtitle="Team Setup" icon={<Shield size={36}/>} color="from-red-500 to-rose-800" onClick={() => setAdminTab('TEAMS')} />
-                            <SystemCard title="오너 명부" subtitle="Owner Roster" icon={<Crown size={36}/>} color="from-orange-500 to-amber-800" onClick={() => setAdminTab('OWNER')} />
-                            <SystemCard title="배너 관리" subtitle="Main Banners" icon={<ImageIcon size={36}/>} color="from-pink-500 to-rose-700" onClick={() => setAdminTab('BANNER')} />
-                            <SystemCard title="실축 데이터" subtitle="Real-World Data" icon={<Globe size={36}/>} color="from-yellow-500 to-orange-700" onClick={() => setAdminTab('REAL')} />
-                        </div>
-                    ) : (
-                        <div className="space-y-4 animate-in slide-in-from-right-4">
-                            <div className="mb-4 pb-4 border-b border-slate-800">
-                                <button onClick={() => setAdminTab('SYSTEM_MENU')} className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold w-max transition-colors shadow-inner">
-                                    <ArrowLeft size={16} /> <span>시스템 메뉴로 돌아가기</span>
-                                </button>
+            {/* 콘텐츠 영역 */}
+            <div className="w-full">
+                {activeTopTab === 'SYSTEM' && (
+                    <>
+                        {(adminTab === 'SYSTEM_MENU' || adminTab === 'NEW') ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 animate-in slide-in-from-bottom-4 px-1">
+                                <SystemCard title="시즌 생성" subtitle="Create Season" icon={<PlusCircle size={32}/>} color="from-emerald-500 to-teal-800" onClick={() => setAdminTab('CREATE_SEASON')} />
+                                <SystemCard title="가입 승인" subtitle="User Approval" icon={<UserCheck size={32}/>} color="from-blue-500 to-indigo-800" onClick={() => setAdminTab('USERS')} />
+                                <SystemCard title="공지 관리" subtitle="Notice Board" icon={<Megaphone size={32}/>} color="from-purple-500 to-fuchsia-800" onClick={() => setAdminTab('NOTICE')} />
+                                <SystemCard title="리그 관리" subtitle="League Setup" icon={<Flag size={32}/>} color="from-cyan-500 to-blue-800" onClick={() => setAdminTab('LEAGUES')} />
+                                <SystemCard title="팀 DB 관리" subtitle="Team Setup" icon={<Shield size={32}/>} color="from-red-500 to-rose-800" onClick={() => setAdminTab('TEAMS')} />
+                                <SystemCard title="오너 명부" subtitle="Owner Roster" icon={<Crown size={32}/>} color="from-orange-500 to-amber-800" onClick={() => setAdminTab('OWNER')} />
+                                <SystemCard title="배너 관리" subtitle="Main Banners" icon={<ImageIcon size={32}/>} color="from-pink-500 to-rose-700" onClick={() => setAdminTab('BANNER')} />
+                                <SystemCard title="실축 데이터" subtitle="Real-World Data" icon={<Globe size={32}/>} color="from-yellow-500 to-orange-700" onClick={() => setAdminTab('REAL')} />
                             </div>
-                            
-                            {adminTab === 'CREATE_SEASON' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
-                            {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
-                            {adminTab === 'NOTICE' && <AdminNoticeManager />}
-                            {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
-                            
-                            {/* 🔥 [핵심 수술 포인트] 여기에 owners={owners} 를 추가했습니다!!! */}
-                            {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} owners={owners} />}
-                            
-                            {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
-                            {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
-                            {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
-                        </div>
-                    )}
-                </>
-            )}
-
-            {activeTopTab === 'SEASON' && (
-                <>
-                    {adminTab === 'SEASON_MENU' ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-in slide-in-from-bottom-4">
-                            {seasons.slice().sort((a, b) => b.id - a.id).map(s => {
-                                const isCompleted = s.status === 'COMPLETED';
-                                return (
-                                    <div 
-                                        key={s.id} 
-                                        onClick={() => setAdminTab(s.id)} 
-                                        className={`p-5 sm:p-6 rounded-3xl cursor-pointer transition-all hover:-translate-y-1.5 shadow-xl group border ${isCompleted ? 'bg-slate-900 border-slate-800 hover:border-slate-600' : 'bg-slate-800/80 border-blue-900/50 hover:border-blue-500/50 hover:bg-slate-800'}`}
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <span className="text-3xl bg-slate-950 p-3 rounded-2xl border border-slate-800 shadow-inner group-hover:scale-110 transition-transform">
-                                                {s.type === 'CUP' ? '🏆' : s.type === 'TOURNAMENT' ? '⚔️' : s.type === 'LEAGUE_PLAYOFF' ? '⭐' : '🏳️'}
-                                            </span>
-                                            <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-sm ${isCompleted ? 'bg-slate-950 text-slate-500 border border-slate-800' : 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/30'}`}>
-                                                {isCompleted ? '마감됨' : '진행중'}
-                                            </span>
-                                        </div>
-                                        <h3 className={`font-black text-lg sm:text-xl leading-tight mb-2 transition-colors line-clamp-2 ${isCompleted ? 'text-slate-400 group-hover:text-slate-200' : 'text-white group-hover:text-blue-400'}`}>
-                                            {s.name}
-                                        </h3>
-                                        <div className="flex items-center gap-3 mt-4 text-[11px] font-bold text-slate-500">
-                                            <span className="bg-slate-950 px-2.5 py-1 rounded-md border border-slate-800">
-                                                {s.type}
-                                            </span>
-                                            <span>• 참가 {s.teams?.length || 0}팀</span>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                            {seasons.length === 0 && (
-                                <div className="col-span-full py-16 text-center text-slate-500 font-bold bg-slate-900 rounded-3xl border border-slate-800 border-dashed">
-                                    생성된 시즌이 없습니다.<br/>시스템 관리에서 새로운 시즌을 생성해보세요!
+                        ) : (
+                            <div className="space-y-4 animate-in slide-in-from-right-4 w-full">
+                                {/* 🚨 픽스: 뒤로 가기 버튼 영역을 답답하지 않게 트임 처리 */}
+                                <div className="mb-4 pb-4 border-b border-slate-800/60 px-2 w-full">
+                                    <button onClick={() => setAdminTab('SYSTEM_MENU')} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
+                                        <ArrowLeft size={14} /> <span>시스템 메뉴로 돌아가기</span>
+                                    </button>
                                 </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="space-y-6 animate-in slide-in-from-right-4">
-                            {(() => {
-                                const targetSeason = seasons.find(s => s.id === adminTab);
-                                if (!targetSeason) return <div className="text-center text-red-400 py-10">시즌 정보를 찾을 수 없습니다.</div>;
-                                return (
-                                    <>
-                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 border-b border-slate-800 pb-5 bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-inner">
-                                            <button onClick={() => setAdminTab('SEASON_MENU')} className="flex items-center gap-2 text-slate-400 hover:text-blue-400 bg-[#0B1120] border border-slate-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold w-max transition-colors shrink-0">
-                                                <ArrowLeft size={16} /> <span>시즌 목록으로</span>
-                                            </button>
-                                            <div className="flex flex-col items-center flex-1 justify-center min-w-0">
-                                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Manage Season</span>
-                                                <h2 className="text-lg md:text-xl font-black text-blue-400 truncate w-full text-center px-4">
-                                                    {targetSeason.name} 
-                                                    {targetSeason.status === 'COMPLETED' && <span className="text-[10px] text-yellow-500 ml-2 border border-yellow-500/50 bg-yellow-950/30 px-2.5 py-1 rounded-md uppercase tracking-widest align-middle">Closed</span>}
-                                                </h2>
+                                
+                                {adminTab === 'CREATE_SEASON' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
+                                {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
+                                {adminTab === 'NOTICE' && <AdminNoticeManager />}
+                                {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
+                                
+                                {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} owners={owners} />}
+                                
+                                {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
+                                {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
+                                {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {activeTopTab === 'SEASON' && (
+                    <>
+                        {adminTab === 'SEASON_MENU' ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in slide-in-from-bottom-4 px-1">
+                                {seasons.slice().sort((a, b) => b.id - a.id).map(s => {
+                                    const isCompleted = s.status === 'COMPLETED';
+                                    return (
+                                        // 🚨 픽스: 시즌 카드의 라운딩 축소 (3xl -> xl) 및 보더/배경 스타일 톤다운
+                                        <div 
+                                            key={s.id} 
+                                            onClick={() => setAdminTab(s.id)} 
+                                            className={`p-5 rounded-xl cursor-pointer transition-all hover:-translate-y-1 shadow-md group border ${isCompleted ? 'bg-slate-900/50 border-slate-800 hover:border-slate-600' : 'bg-slate-900 border-slate-800 hover:border-blue-500/50 hover:bg-slate-800'}`}
+                                        >
+                                            <div className="flex justify-between items-start mb-4">
+                                                <span className="text-2xl sm:text-3xl bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/80 shadow-inner group-hover:scale-110 transition-transform">
+                                                    {s.type === 'CUP' ? '🏆' : s.type === 'TOURNAMENT' ? '⚔️' : s.type === 'LEAGUE_PLAYOFF' ? '⭐' : '🏳️'}
+                                                </span>
+                                                <span className={`text-[10px] font-black px-2.5 py-1 rounded-md uppercase tracking-widest shadow-sm ${isCompleted ? 'bg-slate-900 text-slate-500 border border-slate-800' : 'bg-emerald-950/30 text-emerald-400 border border-emerald-500/20'}`}>
+                                                    {isCompleted ? '마감됨' : '진행중'}
+                                                </span>
                                             </div>
-                                            <div className="flex items-center justify-end gap-2 shrink-0">
-                                                <button onClick={() => handleCloseSeason(targetSeason)} className={`${targetSeason.status === 'COMPLETED' ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-[0_0_15px_rgba(202,138,4,0.3)]'} px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5`}>
-                                                    {targetSeason.status === 'COMPLETED' ? <><DatabaseBackup size={14}/> 스냅샷 재생성</> : <>💰 마감/정산/박제</>}
-                                                </button>
-                                                <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-950/50 hover:bg-red-600 border border-red-900/50 hover:border-red-500 px-4 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-white transition-all flex items-center gap-1.5">
-                                                    <Trash2 size={14} /> 파기
-                                                </button>
+                                            <h3 className={`font-black text-[16px] sm:text-[18px] leading-tight mb-2 transition-colors line-clamp-2 ${isCompleted ? 'text-slate-400 group-hover:text-slate-200' : 'text-white group-hover:text-blue-400'}`}>
+                                                {s.name}
+                                            </h3>
+                                            <div className="flex items-center gap-3 mt-3 text-[11px] font-bold text-slate-500">
+                                                <span className="bg-slate-950/80 px-2 py-1 rounded border border-slate-800/50">
+                                                    {s.type}
+                                                </span>
+                                                <span>• 참가 {s.teams?.length || 0}팀</span>
                                             </div>
                                         </div>
-                                        
-                                        {targetSeason.type === 'CUP' ? (
-                                            <AdminCupSetup targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} />
-                                        ) : (
-                                            <AdminTeamMatching targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)} />
-                                        )}
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    )}
-                </>
-            )}
+                                    )
+                                })}
+                                {seasons.length === 0 && (
+                                    <div className="col-span-full py-16 text-center text-slate-500 font-bold bg-slate-900 rounded-2xl border border-slate-800 border-dashed">
+                                        생성된 시즌이 없습니다.<br/>시스템 관리에서 새로운 시즌을 생성해보세요!
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-6 animate-in slide-in-from-right-4 w-full">
+                                {(() => {
+                                    const targetSeason = seasons.find(s => s.id === adminTab);
+                                    if (!targetSeason) return <div className="text-center text-red-400 py-10">시즌 정보를 찾을 수 없습니다.</div>;
+                                    return (
+                                        <>
+                                            {/* 🚨 픽스: 관리자 세부 화면 상단 헤더 박스 해체 (오픈형) */}
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-800/60 pb-5 w-full px-2">
+                                                <button onClick={() => setAdminTab('SEASON_MENU')} className="flex items-center gap-1.5 text-slate-400 hover:text-blue-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max shrink-0">
+                                                    <ArrowLeft size={14} /> <span>시즌 목록으로 돌아가기</span>
+                                                </button>
+                                                <div className="flex flex-col items-center flex-1 justify-center min-w-0">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Manage Season</span>
+                                                    <h2 className="text-[16px] md:text-[18px] font-black text-blue-400 truncate w-full text-center">
+                                                        {targetSeason.name} 
+                                                        {targetSeason.status === 'COMPLETED' && <span className="text-[10px] text-yellow-500 ml-2 border border-yellow-500/50 bg-yellow-950/30 px-2 py-0.5 rounded uppercase tracking-widest align-middle">Closed</span>}
+                                                    </h2>
+                                                </div>
+                                                <div className="flex items-center justify-end gap-2 shrink-0">
+                                                    <button onClick={() => handleCloseSeason(targetSeason)} className={`${targetSeason.status === 'COMPLETED' ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-[0_0_15px_rgba(202,138,4,0.3)]'} px-3 py-2 rounded-lg text-[11px] sm:text-xs font-black transition-all flex items-center gap-1.5`}>
+                                                        {targetSeason.status === 'COMPLETED' ? <><DatabaseBackup size={14}/> 스냅샷 재생성</> : <>💰 마감/정산/박제</>}
+                                                    </button>
+                                                    <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-slate-900 hover:bg-red-900/50 border border-slate-700 hover:border-red-500 px-3 py-2 rounded-lg text-[11px] sm:text-xs font-bold text-red-400 hover:text-white transition-all flex items-center gap-1.5">
+                                                        <Trash2 size={14} /> 파기
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            {targetSeason.type === 'CUP' ? (
+                                                <AdminCupSetup targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} />
+                                            ) : (
+                                                <AdminTeamMatching targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} onDeleteSchedule={() => handleDeleteSchedule(targetSeason.id)} />
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </div>
     );
 };
