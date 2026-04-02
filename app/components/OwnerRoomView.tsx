@@ -164,7 +164,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     });
 
     const recentWins = recentForm.filter(f => f === 'W').length;
-    let cardBorder = "border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)]";
+    let cardBorder = "border border-slate-700/50 shadow-[0_0_30px_rgba(16,185,129,0.1)]";
     let bgOverlay = "bg-gradient-to-tr from-emerald-900/30 via-transparent to-transparent";
     let watermarkStyle = "opacity-[0.15] drop-shadow-[0_0_15px_rgba(16,185,129,0.4)]";
     let badgeGlow = "from-emerald-400 to-emerald-600 shadow-[0_0_15px_rgba(52,211,153,0.6)]";
@@ -405,9 +405,11 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in pb-10 mt-4 relative text-left">
+        // 🚨 픽스: 풀블리드(오픈형) 레이아웃 적용, 외부 컨테이너 여백/패딩 최소화
+        <div className="w-full animate-in fade-in pb-10 mt-2 relative text-left">
             
-            <div className={`border border-slate-700/50 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden group transition-colors duration-1000 bg-[#020617] ${cardBorder}`}>
+            {/* 상단 프로필 메인 카드 (플랫하게 다듬음) */}
+            <div className={`rounded-2xl p-5 sm:p-8 shadow-xl relative overflow-hidden group transition-colors duration-1000 bg-[#020617] ${cardBorder} mb-6`}>
                 
                 {displayTeam && (
                     <div className={`absolute top-1/2 right-4 sm:right-10 -translate-y-1/2 pointer-events-none transition-opacity duration-700 z-0 ${watermarkStyle}`}>
@@ -493,31 +495,33 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
+            {/* 통계 요약 카드 (플랫하게 다듬음) */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col justify-center shadow-md relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Trophy size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><Trophy size={12} className="text-yellow-500" /> 통산 승점</span>
                     <span className="text-2xl sm:text-3xl font-black text-white italic relative z-10">{points} <span className="text-xs sm:text-sm text-slate-500 not-italic font-medium">pts</span></span>
                 </div>
-                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col justify-center shadow-md relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Activity size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><Activity size={12} className="text-blue-400" /> 통산 전적</span>
                     <span className="text-lg sm:text-2xl font-black text-slate-200 italic tracking-tight relative z-10"><span className="text-emerald-400">{wins}W</span> - {draws}D - <span className="text-red-400">{losses}L</span></span>
                 </div>
-                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col justify-center shadow-md relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><TrendingUp size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><TrendingUp size={12} className="text-emerald-400" /> 통산 승률</span>
                     <span className="text-2xl sm:text-3xl font-black text-white italic relative z-10">{winRate} <span className="text-xs sm:text-sm text-slate-500 not-italic font-medium">%</span></span>
                 </div>
-                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-center shadow-lg relative overflow-hidden text-left">
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col justify-center shadow-md relative overflow-hidden text-left">
                     <div className="absolute -right-4 -bottom-4 opacity-5"><Coins size={80} /></div>
                     <span className="flex items-center gap-1.5 text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-2 relative z-10"><Coins size={12} className="text-yellow-400" /> 누적 상금</span>
                     <span className="text-lg sm:text-2xl font-black text-white italic relative z-10">₩ {prizeMoney.toLocaleString()}</span>
                 </div>
             </div>
 
-            <div className="pt-2">
-                <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+            {/* 상성 분석기 (플랫하게 다듬음) */}
+            <div className="pt-2 mb-8">
+                <div className="flex items-center justify-between mb-4 border-b border-slate-800/80 pb-3">
                     <div className="flex items-center gap-2">
                         <Swords size={18} className="text-emerald-400" />
                         <h3 className="text-[13px] sm:text-[15px] font-black text-white italic tracking-widest uppercase">상성 분석기</h3>
@@ -528,19 +532,19 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {[
                         { title: 'FAVORITE', sub: '나의 맛집', data: mostWins, icon: <Flame size={14}/>, color: 'text-emerald-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 승률 ${((d.w/d.total)*100).toFixed(0)}%` },
                         { title: 'NEMESIS', sub: '나의 천적', data: mostLosses, icon: <Skull size={14}/>, color: 'text-red-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | 패배율 ${((d.l/d.total)*100).toFixed(0)}%` },
                         { title: 'RIVALRY', sub: '영원의 라이벌', data: rival, icon: <Crosshair size={14}/>, color: 'text-purple-400', label: (d:any) => `전적 ${d.w}승 ${d.d}무 ${d.l}패 | ${d.total}번의 혈투` }
                     ].map((card, i) => (
-                        <div key={i} className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-center text-left transition-all duration-300 hover:border-slate-600 shadow-sm hover:shadow-xl">
+                        <div key={i} className="bg-slate-900/60 border border-slate-800/80 p-4 rounded-xl relative overflow-hidden flex flex-col justify-center text-left transition-all duration-300 hover:border-slate-600 shadow-sm hover:shadow-lg">
                             <div className="absolute -right-2 -bottom-2 opacity-5 scale-150">{card.icon}</div>
-                            <h3 className={`text-[11px] font-black ${card.color} uppercase tracking-widest mb-4 flex items-center gap-1.5`}>{card.icon} {card.title} <span className="text-slate-500 ml-1 text-[9px]">{card.sub}</span></h3>
+                            <h3 className={`text-[11px] font-black ${card.color} uppercase tracking-widest mb-3 flex items-center gap-1.5`}>{card.icon} {card.title} <span className="text-slate-500 ml-1 text-[9px]">{card.sub}</span></h3>
                             {card.data ? (
-                                <div className="flex items-center gap-4 relative z-10">
+                                <div className="flex items-center gap-3 relative z-10">
                                     <div className="relative shrink-0">
-                                        <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center overflow-hidden ${h2hFilter === 'OWNER' ? 'border border-slate-700 bg-slate-900' : 'bg-white p-1 shadow-md'}`}>
                                             <img src={card.data.logo || FALLBACK_IMG} className={`w-full h-full ${h2hFilter === 'OWNER' ? 'object-cover' : 'object-contain'}`} alt="logo" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                         </div>
                                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border shadow-sm flex items-center justify-center 
@@ -552,8 +556,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                             {h2hFilter === 'OWNER' ? React.cloneElement(card.icon as React.ReactElement, { size: 10, strokeWidth: 3 }) : <span className="px-0.5 text-[8px] font-black">{card.data.tier}</span>}
                                         </div>
                                     </div>
-                                    <div className="flex flex-col min-w-0 pr-10 overflow-visible">
-                                        <span className="text-base font-black text-white italic leading-tight whitespace-nowrap">{card.data.name}</span>
+                                    <div className="flex flex-col min-w-0 pr-6 overflow-visible">
+                                        <span className="text-[14px] font-black text-white italic leading-tight whitespace-nowrap">{card.data.name}</span>
                                         <span className="text-[10px] font-bold text-slate-400 mt-1 whitespace-nowrap">{card.label(card.data)}</span>
                                     </div>
                                 </div>
@@ -563,20 +567,21 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+            {/* 🚨 픽스: My Best Teams / Players 리스트 영역 (오픈형 플랫 스타일 적용) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
                 
                 {/* --- 4-1. MY BEST TEAMS --- */}
-                <div className="bg-[#050b14] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-full">
-                    <div className="flex border-b border-slate-800 bg-slate-900/50 h-[48px]">
-                        <div className="flex-1 flex items-center justify-center gap-2 text-xs font-black tracking-widest text-white leading-none uppercase">
+                <div className="w-full flex flex-col h-full">
+                    <div className="flex border-b border-slate-800/80 pb-3 mb-2">
+                        <div className="flex items-center gap-2 text-[13px] sm:text-[14px] font-black tracking-widest text-slate-200 leading-none uppercase">
                             <div className="w-1.5 h-3 bg-blue-500 rounded-full"></div> MY BEST TEAMS
                         </div>
                     </div>
                     
-                    <div className="p-4 flex-1 flex flex-col">
+                    <div className="flex-1 flex flex-col pt-1">
                         {topTeams.length > 0 ? (
-                            <div className="flex flex-col gap-2">
-                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
+                            <div className="flex flex-col gap-2 w-full">
+                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-2 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
                                     <div className="w-8 text-center">#</div>
                                     <div className="flex-1 ml-4">CLUB</div>
                                     <div className="flex w-[120px] justify-between text-center pl-2 pr-4">
@@ -589,25 +594,24 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     const isExpanded = expandedTeam === team.name;
                                     return (
                                         <React.Fragment key={idx}>
-                                            <div onClick={() => setExpandedTeam(isExpanded ? null : team.name)} className={`flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all text-left cursor-pointer h-[64px] ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}>
-                                                <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
+                                            <div onClick={() => setExpandedTeam(isExpanded ? null : team.name)} className={`flex items-center bg-slate-900/40 border-b border-slate-800/50 p-3 hover:bg-slate-800/60 transition-all text-left cursor-pointer h-[64px] ${isExpanded ? 'border-b-0 bg-slate-800/40' : ''}`}>
+                                                <div className={`w-8 text-center text-[13px] font-black italic ${idx < 3 ? 'text-yellow-400' : 'text-slate-600'}`}>
                                                     {idx + 1}
                                                 </div>
-                                                <div className="flex-1 flex items-center gap-4 ml-4 min-w-0 pr-2 overflow-visible">
+                                                <div className="flex-1 flex items-center gap-3 ml-4 min-w-0 pr-2 overflow-visible">
                                                     <div className="relative shrink-0">
-                                                        <div className="w-10 h-10 bg-white rounded-full p-1 flex items-center justify-center shadow-md">
+                                                        <div className="w-9 h-9 bg-white rounded-full p-1 flex items-center justify-center shadow-sm">
                                                             <img src={team.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                         </div>
-                                                        <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
+                                                        <div className={`absolute -bottom-1 -right-1 px-1 py-0.5 text-[7px] font-black rounded border ${getTierBadgeColor(team.tier)}`}>
                                                             {team.tier}
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col min-w-0">
-                                                        {/* 🔥 [수술 포인트] gap-3으로 화살표 간격 벌리고, pr-1.5로 이탤릭체 잘림 방지 */}
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate pr-1.5">{team.name}</span>
-                                                            <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} bg-emerald-500 text-white`}>
-                                                                <ChevronRight size={12} strokeWidth={4} />
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[13px] font-black text-white italic leading-tight whitespace-nowrap truncate pr-1">{team.name}</span>
+                                                            <div className={`flex items-center justify-center w-[14px] h-[14px] rounded-full shrink-0 transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} bg-slate-700 text-slate-300`}>
+                                                                <ChevronRight size={10} strokeWidth={4} />
                                                             </div>
                                                         </div>
                                                         <span className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-wider">WIN RATE {team.winRate}%</span>
@@ -617,25 +621,25 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                                     <span className="w-6 text-slate-400">{team.w}W</span>
                                                     <span className="w-6 text-slate-400">{team.d}D</span>
                                                     <span className="w-6 text-slate-400">{team.l}L</span>
-                                                    <span className="w-8 text-emerald-400 font-black text-xs">{team.pts}P</span>
+                                                    <span className="w-8 text-emerald-400 font-black text-[11px]">{team.pts}P</span>
                                                 </div>
                                             </div>
                                             {isExpanded && (
-                                                <div className="bg-[#0b0e14] py-3 px-4 shadow-inner border-x border-b border-slate-800/60 rounded-b-2xl mb-2 animate-in slide-in-from-top-2 duration-200">
-                                                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2 block border-b border-slate-800 pb-1.5">LAST 5 MATCHES WITH {team.name}</span>
+                                                <div className="bg-[#080b12] py-3 px-4 border-b border-slate-800/80 mb-2 animate-in slide-in-from-top-2 duration-200">
+                                                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2 block border-b border-slate-800/60 pb-1.5">LAST 5 MATCHES WITH {team.name}</span>
                                                     <div className="space-y-1.5">
                                                         {getTeamRecentMatches(team.name).map((rm, rIdx) => (
-                                                            <div key={rIdx} className="flex items-center gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 hover:bg-slate-800 transition-colors">
-                                                                <span className={`w-5 h-5 flex items-center justify-center text-[9px] font-black rounded border ${rm.color}`}>{rm.res}</span>
-                                                                <span className="text-slate-500 text-[10px] font-bold mx-1">vs</span>
+                                                            <div key={rIdx} className="flex items-center gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800/50 hover:bg-slate-800/80 transition-colors w-full">
+                                                                <span className={`w-5 h-5 flex items-center justify-center text-[9px] font-black rounded border ${rm.color} shrink-0`}>{rm.res}</span>
+                                                                <span className="text-slate-500 text-[9px] font-bold mx-1 shrink-0">vs</span>
                                                                 <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center p-0.5 shrink-0 shadow-sm">
                                                                     <img src={rm.opLogo} className="w-full h-full object-contain" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                                 </div>
-                                                                <span className="text-[11px] font-black text-white uppercase truncate max-w-[90px]">{rm.opTeam}</span>
+                                                                <span className="text-[11px] font-black text-slate-200 uppercase truncate max-w-[90px]">{rm.opTeam}</span>
                                                                 <span className="text-[9px] text-slate-500 font-bold truncate pr-1">({rm.opOwner})</span>
-                                                                <div className="ml-auto flex items-center gap-1.5 font-black text-xs">
+                                                                <div className="ml-auto flex items-center gap-1.5 font-black text-[11px] shrink-0">
                                                                     <span className={rm.res === 'W' ? 'text-emerald-400' : 'text-slate-400'}>{rm.myScore}</span>
-                                                                    <span className="text-slate-600 text-[10px]">:</span>
+                                                                    <span className="text-slate-600 text-[9px]">:</span>
                                                                     <span className={rm.res === 'L' ? 'text-red-400' : 'text-slate-500'}>{rm.opScore}</span>
                                                                 </div>
                                                             </div>
@@ -655,16 +659,23 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
 
                 {/* --- 4-2. MY BEST PLAYERS --- */}
-                <div className="bg-[#0B1120] border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-full">
-                    <div className="flex border-b border-slate-800 h-[48px]">
-                        <button onClick={() => { setPlayerTab('GOAL'); setExpandedPlayer(null); }} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'GOAL' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>⚽ TOP SCORERS</button>
-                        <button onClick={() => { setPlayerTab('ASSIST'); setExpandedPlayer(null); }} className={`flex-1 h-full flex justify-center items-center gap-1.5 text-xs font-black tracking-widest transition-all leading-none ${playerTab === 'ASSIST' ? 'bg-slate-900 text-red-400 border-b-2 border-red-400' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border-b-2 border-transparent'}`}>🅰️ TOP ASSISTS</button>
+                <div className="w-full flex flex-col h-full">
+                    {/* 🚨 픽스: 플랫(언더라인) 탭으로 디자인 변경 */}
+                    <div className="flex gap-4 border-b border-slate-800/80 pb-2 mb-2 w-full">
+                        <button onClick={() => { setPlayerTab('GOAL'); setExpandedPlayer(null); }} className={`pb-2 pr-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                            ⚽ TOP SCORERS
+                            {playerTab === 'GOAL' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-yellow-400" />}
+                        </button>
+                        <button onClick={() => { setPlayerTab('ASSIST'); setExpandedPlayer(null); }} className={`pb-2 px-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'ASSIST' ? 'text-red-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                            🅰️ TOP ASSISTS
+                            {playerTab === 'ASSIST' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-red-400" />}
+                        </button>
                     </div>
 
-                    <div className="p-4 flex-1 flex flex-col">
+                    <div className="flex-1 flex flex-col pt-1 w-full">
                         {((playerTab === 'GOAL' && topScorers.length > 0) || (playerTab === 'ASSIST' && topAssists.length > 0)) ? (
-                            <div className="flex flex-col gap-2 text-left">
-                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-3 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
+                            <div className="flex flex-col gap-2 text-left w-full">
+                                <div className="flex items-center text-[10px] font-bold text-slate-500 uppercase px-2 pb-1 mb-1 border-b border-slate-800/50 h-[24px]">
                                     <div className="w-8 text-center">#</div>
                                     <div className="w-[35%] text-left ml-4">PLAYER</div>
                                     <div className="flex-1 text-left ml-2">TEAM</div>
@@ -676,45 +687,44 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                                     const pTabStr = playerTab;
                                     return (
                                         <React.Fragment key={idx}>
-                                            <div onClick={() => setExpandedPlayer(isExpanded ? null : p.name)} className={`flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3.5 hover:bg-slate-800/60 transition-all cursor-pointer h-[64px] ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}>
-                                                <div className={`w-8 text-center text-sm font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
+                                            <div onClick={() => setExpandedPlayer(isExpanded ? null : p.name)} className={`flex items-center bg-slate-900/40 border-b border-slate-800/50 p-3 hover:bg-slate-800/60 transition-all cursor-pointer h-[64px] ${isExpanded ? 'border-b-0 bg-slate-800/40' : ''}`}>
+                                                <div className={`w-8 text-center text-[13px] font-black italic ${idx < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{idx + 1}</div>
                                                 
-                                                {/* 🔥 [수술 포인트] gap-3으로 화살표 간격 벌리고, pr-1.5로 이탤릭체 잘림 방지 */}
-                                                <div className="w-[35%] ml-4 pr-2 min-w-0 overflow-hidden flex items-center gap-3">
-                                                    <span className="text-sm font-black text-white italic leading-tight whitespace-nowrap truncate pr-1.5">{p.name}</span>
-                                                    <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-full shrink-0 shadow-sm transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${playerTab === 'GOAL' ? 'bg-yellow-400 text-slate-900' : 'bg-red-500 text-white'}`}>
-                                                        <ChevronRight size={12} strokeWidth={4} />
+                                                <div className="w-[35%] ml-4 pr-2 min-w-0 overflow-hidden flex items-center gap-2">
+                                                    <span className="text-[13px] font-black text-slate-200 italic leading-tight whitespace-nowrap truncate pr-1">{p.name}</span>
+                                                    <div className={`flex items-center justify-center w-[14px] h-[14px] rounded-full shrink-0 transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${playerTab === 'GOAL' ? 'bg-yellow-400/20 text-yellow-500' : 'bg-red-500/20 text-red-400'}`}>
+                                                        <ChevronRight size={10} strokeWidth={4} />
                                                     </div>
                                                 </div>
                                                 
                                                 <div className="flex-1 flex items-center justify-start gap-2 min-w-0 pr-2 overflow-visible ml-2">
-                                                    <div className="w-8 h-8 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-md">
+                                                    <div className="w-7 h-7 bg-white rounded-full p-1 flex shrink-0 items-center justify-center shadow-sm">
                                                         <img src={p.logo} alt="logo" className="w-full h-full object-contain" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                                     </div>
-                                                    <span className="text-[11px] font-bold text-slate-400 italic whitespace-nowrap">{p.team}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400 italic whitespace-nowrap truncate">{p.team}</span>
                                                 </div>
-                                                <div className={`w-12 text-right pr-2 font-black text-lg italic ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                <div className={`w-12 text-right pr-2 font-black text-[15px] italic ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
                                                     {p.count}
                                                 </div>
                                             </div>
                                             {isExpanded && (
-                                                <div className="bg-[#0b0e14] py-3 px-4 shadow-inner border-x border-b border-slate-800/60 rounded-b-2xl mb-2 animate-in slide-in-from-top-2 duration-200">
-                                                    <span className={`text-[9px] font-black uppercase tracking-widest mb-2 block border-b border-slate-800 pb-1.5 ${pTabStr === 'GOAL' ? 'text-yellow-500' : 'text-red-500'}`}>{pTabStr === 'GOAL' ? 'GOAL DISTRIBUTION (TOP 5)' : 'ASSIST DISTRIBUTION (TOP 5)'}</span>
-                                                    <div className="flex flex-col gap-2 pb-1">
+                                                <div className="bg-[#080b12] py-3 px-4 border-b border-slate-800/80 mb-2 animate-in slide-in-from-top-2 duration-200 w-full">
+                                                    <span className={`text-[9px] font-black uppercase tracking-widest mb-2 block border-b border-slate-800/60 pb-1.5 ${pTabStr === 'GOAL' ? 'text-yellow-500' : 'text-red-500'}`}>{pTabStr === 'GOAL' ? 'GOAL DISTRIBUTION (TOP 5)' : 'ASSIST DISTRIBUTION (TOP 5)'}</span>
+                                                    <div className="flex flex-col gap-2 pb-1 w-full">
                                                         {(() => {
                                                             const dist = playerDistributionMap[p.name]?.[pTabStr] || {};
                                                             const opponents = Object.keys(dist).sort((a, b) => dist[b].count - dist[a].count).slice(0, 5);
                                                             if (opponents.length === 0) return <div className="text-[10px] text-slate-500 italic py-1">상세 기록을 찾을 수 없습니다.</div>;
                                                             return opponents.map(op => (
-                                                                <div key={op} className="flex items-center bg-slate-900/80 border border-slate-800 rounded-lg p-2 w-full shrink-0 hover:border-slate-700 transition-colors">
-                                                                    <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm mr-3">
+                                                                <div key={op} className="flex items-center bg-slate-900/60 border border-slate-800/60 rounded-lg p-2 w-full shrink-0 hover:border-slate-700/80 transition-colors">
+                                                                    <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center p-1 shrink-0 shadow-sm mr-3">
                                                                         <img src={dist[op].logo} className="w-full h-full object-contain" alt="" />
                                                                     </div>
                                                                     <div className="flex flex-col flex-1 min-w-0 pr-2">
-                                                                        <span className="text-[12px] font-black text-white uppercase truncate leading-tight">{op}</span>
-                                                                        <span className="text-[10px] text-slate-500 font-bold italic truncate mt-0.5">{dist[op].owner}</span>
+                                                                        <span className="text-[11px] font-black text-slate-300 uppercase truncate leading-tight">{op}</span>
+                                                                        <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dist[op].owner}</span>
                                                                     </div>
-                                                                    <div className={`text-[14px] font-black pr-2 shrink-0 ${pTabStr === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                                    <div className={`text-[13px] font-black pr-2 shrink-0 ${pTabStr === 'GOAL' ? 'text-yellow-400' : 'text-red-400'}`}>
                                                                         {dist[op].count}
                                                                     </div>
                                                                 </div>
@@ -734,7 +744,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 </div>
             </div>
             
-            <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-5 text-center shadow-inner mt-4">
+            <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-5 text-center shadow-inner mt-6 mb-4 w-full">
                 <p className="text-emerald-400 text-xs sm:text-sm font-bold leading-relaxed break-keep">
                     ✨ 구단주실 세팅이 완료되었습니다!<br/>
                     <span className="text-slate-400 text-[10px] sm:text-[11px] font-medium mt-1 block">위 기록은 공식 리그 매치 결과를 바탕으로 실시간 자동 계산됩니다.</span>
