@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Flame, ChevronRight, PlayCircle, Heart } from 'lucide-react'; 
+import { Flame, ChevronRight, PlayCircle, Heart, BarChart2 } from 'lucide-react'; // 🚨 BarChart2 아이콘 추가
 import { FALLBACK_IMG } from '../types';
 import { collection, query, onSnapshot, doc, updateDoc, increment, orderBy, limit, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -44,7 +44,6 @@ export default function L_LockerRoomDashboard({
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null); 
 
-  // 🚨 픽스: 승률 계산에 필요한 통계 데이터(activeRankingData, historyData)가 도착할 때까지 스켈레톤을 유지하도록 조건을 보강함
   const isDataLoading = !owners || owners.length === 0 || !posts || !activeRankingData || !historyData;
 
   const activeOrLatestSeason = useMemo(() => {
@@ -238,6 +237,8 @@ export default function L_LockerRoomDashboard({
                                                 <div className="flex items-center w-full">
                                                     <span className="text-[11px] font-bold text-slate-300 truncate leading-tight group-hover:text-white transition-colors pr-1.5">{post.title}</span>
                                                     {isNewPost(post.createdAt) && <span className="ml-0.5 bg-red-500 text-white text-[8px] font-black px-1 rounded-sm shadow-[0_0_5px_rgba(239,68,68,0.5)] shrink-0">N</span>}
+                                                    {/* 🚨 픽스: 투표 아이콘 렌더링 (썸네일 리스트) */}
+                                                    {post.poll && <BarChart2 size={12} className="text-blue-400 ml-1 shrink-0" />}
                                                 </div>
                                             </div>
                                         );
@@ -259,6 +260,8 @@ export default function L_LockerRoomDashboard({
                                                         <span className="bg-slate-800 border border-slate-700/80 text-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">{post.cat}</span>
                                                         <span className="text-slate-200 font-medium text-[14px] truncate pr-1.5">{post.title}</span>
                                                         {isNewPost(post.createdAt) && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-[3px] shrink-0 shadow-[0_0_5px_rgba(239,68,68,0.4)]">N</span>}
+                                                        {/* 🚨 픽스: 투표 아이콘 렌더링 (일반 리스트) */}
+                                                        {post.poll && <BarChart2 size={14} className="text-blue-400 shrink-0" />}
                                                     </div>
                                                     <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 ml-[44px]">
                                                         <span>{post.authorName}</span><span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span><span>조회 {post.views || 0}</span>
