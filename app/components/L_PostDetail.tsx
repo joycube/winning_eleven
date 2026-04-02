@@ -61,7 +61,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     const [replyingTo, setReplyingTo] = useState<{ parentId: string, targetId: string, authorName: string } | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [isSending, setIsSending] = useState(false); 
-    const [showVoters, setShowVoters] = useState(false); // 관리자/기명투표 열람용 토글
+    const [showVoters, setShowVoters] = useState(false); 
     const commentInputRef = useRef<HTMLInputElement>(null);
 
     const viewedPostRef = useRef<string | null>(null);
@@ -101,11 +101,16 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const authorData = getNoticeAuthorData();
 
-    // 🚨 투표 관련 로직
+    // 🚨 투표 관련 로직 강화 (유효 투표수 필터링 및 무기명 처리)
     const poll = activePost.poll;
     const myVoteId = user && poll?.votes ? poll.votes[user.uid] : null;
-    const totalVotes = poll?.votes ? Object.keys(poll.votes).length : 0;
-    const canViewVoters = poll && (!poll.isAnonymous || isMaster); // 기명이거나 관리자면 투표자 열람 가능
+    
+    // 존재하는 옵션에 투표한 내역만 유효표로 산정 (항목 삭제 대비)
+    const validOptionIds = poll?.options?.map((o: any) => o.id) || [];
+    const validVotes = Object.entries(poll?.votes || {}).filter(([_, vId]) => validOptionIds.includes(vId as string));
+    const totalVotes = validVotes.length; 
+    
+    const canViewVoters = poll && (!poll.isAnonymous || isMaster); 
 
     const handleVote = async (optionId: string) => {
         if (!user) return alert("🚨 로그인 후 투표 가능합니다.");
@@ -126,10 +131,9 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const getOwnerNameByUid = (uid: string) => {
         const o = owners?.find((o:any) => o.uid === uid || String(o.id) === uid);
-        return o ? o.nickname : '알 수 없는 유저';
+        return o ? o.nickname : `미등록 유저 (${uid.substring(0, 4)})`;
     };
 
-    // ... 기존 닫기, 삭제, 반응 로직 유지 ...
     const handleCloseView = () => { setSelectedPostId(null); setViewMode('LIST'); const params = new URLSearchParams(window.location.search); params.delete('postId'); window.history.pushState(null, '', `?${params.toString()}`); };
     const handleDeletePost = async () => { if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?")) return; try { await deleteDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id)); alert("🗑️ 삭제되었습니다."); handleCloseView(); } catch (e: any) { alert("삭제 실패: " + e.message); } };
     const handleReaction = async (type: 'LIKE' | 'DISLIKE') => {
@@ -212,152 +216,173 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
         }
     };
 
+    // 🚨 오픈형 레이아웃으로 변경 (bg-box 및 라운드 제거, 좌우 꽉 차게)
     return (
-        <div className="animate-in slide-in-from-bottom-4 space-y-4">
-            <div className="mb-2 flex items-center justify-between">
+        <div className="animate-in slide-in-from-bottom-4 w-full flex flex-col pb-10">
+            {/* 상단 뒤로가기 헤더 */}
+            <div className="mb-4 flex items-center justify-between px-2">
                 <button onClick={handleCloseView} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                     <ArrowLeft size={14} /> <span>목록으로 뒤로 가기</span>
                 </button>
             </div>
 
-            <div className="bg-[#0f172a] rounded-3xl border border-slate-800 shadow-2xl">
-                <div className="p-5 sm:p-7 border-b border-slate-800 rounded-t-3xl">
-                    <div className="flex justify-between items-start mb-3">
-                        <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1">
+            {/* 게시글 본문 헤더 (오픈형) */}
+            <div className="w-full">
+                <div className="px-2 py-5 border-b border-slate-800/60 w-full">
+                    <div className="flex justify-between items-start mb-4">
+                        <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1 shadow-sm">
                             {activePost.cat || '전체공지'}
                         </span>
                         
                         {isPostAuthor && (
                             <div className="flex gap-2 text-[10px] font-bold">
                                 {!isNotice && (
-                                    <button onClick={() => { setEditingPostId(activePost.id); setViewMode('EDIT'); }} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-blue-400 transition-all shadow-sm">
-                                        ✏️ 수정
+                                    <button onClick={() => { setEditingPostId(activePost.id); setViewMode('EDIT'); }} className="text-slate-400 hover:text-blue-400 transition-colors">
+                                        수정
                                     </button>
                                 )}
-                                <button onClick={handleDeletePost} className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1.5 rounded-lg hover:text-red-400 transition-all shadow-sm">
-                                    🗑️ 삭제
+                                <span className="text-slate-700">|</span>
+                                <button onClick={handleDeletePost} className="text-slate-400 hover:text-red-400 transition-colors">
+                                    삭제
                                 </button>
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col mb-3 pr-6 overflow-visible">
-                        <h2 className="text-[18px] sm:text-[20px] font-bold text-white leading-tight break-keep">{activePost.title}</h2>
+                    
+                    <div className="flex flex-col mb-5 overflow-visible">
+                        <h2 className="text-[20px] sm:text-[24px] font-bold text-white leading-tight break-keep">{activePost.title}</h2>
                     </div>
-                    <div className="flex items-center justify-between mt-4">
-                        <div className="flex items-center gap-2.5">
-                            <img src={authorData.photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-8 h-8 rounded-full object-cover border border-slate-700 bg-slate-800" />
+                    
+                    <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-3">
+                            <img src={authorData.photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-9 h-9 rounded-full object-cover border border-slate-700 bg-slate-800 shadow-sm" />
                             <div className="flex flex-col">
-                                <span className="text-[12px] sm:text-[13px] font-bold text-emerald-400 leading-tight">{authorData.name}</span>
-                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                <span className="text-[13px] font-bold text-emerald-400 leading-tight">{authorData.name}</span>
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
                                     <span>{formatDate(activePost.createdAt, true)}</span>
-                                    <span>• 조회 {activePost.views || 0}</span>
+                                    <span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span>
+                                    <span>조회 {activePost.views || 0}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="h-px w-full bg-slate-800/60 my-5"></div>
-                    <div className="space-y-5 mb-6">
-                        {(() => {
-                            const ytMatch = activePost.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
-                            const ytId = activePost.youtubeId || (ytMatch ? ytMatch[1] : null);
-                            if (!ytId) return null;
-                            return <LiteYouTubeEmbed videoId={ytId} />;
-                        })()}
-                        {activePost.imageUrl && (
-                            <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black/20 flex justify-center">
-                                <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[500px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />
-                            </div>
-                        )}
-                        <div className="text-slate-300 text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">{activePost.content}</div>
+                </div>
+
+                {/* 본문 콘텐츠 (오픈형) */}
+                <div className="px-2 py-8 space-y-6 w-full">
+                    {(() => {
+                        const ytMatch = activePost.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
+                        const ytId = activePost.youtubeId || (ytMatch ? ytMatch[1] : null);
+                        if (!ytId) return null;
+                        return <LiteYouTubeEmbed videoId={ytId} />;
+                    })()}
+                    {activePost.imageUrl && (
+                        <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg flex justify-center bg-black/10">
+                            <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[600px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />
+                        </div>
+                    )}
+                    <div className="text-slate-300 text-[15px] sm:text-[16px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">
+                        {activePost.content}
                     </div>
+                </div>
 
-                    {/* 🚨 투표 (Poll) 렌더링 영역 */}
-                    {poll && (
-                        <div className="mt-8 bg-slate-900/60 rounded-2xl border border-slate-700 p-5 shadow-inner">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-[14px] font-black text-white flex items-center gap-2">
-                                    <BarChart2 className="text-blue-400" size={18} /> 투표 진행 중
-                                </h3>
-                                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-bold border border-slate-700">
-                                    {poll.isAnonymous ? '👻 무기명' : '👁️ 기명(공개)'} • {totalVotes}명 참여
-                                </span>
-                            </div>
+                {/* 투표 (Poll) 렌더링 영역 */}
+                {poll && (
+                    <div className="mt-4 mb-8 mx-2 bg-slate-900/40 rounded-2xl border border-slate-800/60 p-5">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-[14px] font-black text-white flex items-center gap-2">
+                                <BarChart2 className="text-blue-400" size={18} /> 투표 진행 중
+                            </h3>
+                            <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded-md font-bold border border-slate-700 shadow-sm">
+                                {poll.isAnonymous ? '👻 무기명' : '👁️ 기명(공개)'} • 총 {totalVotes}명 참여
+                            </span>
+                        </div>
 
-                            <div className="space-y-3">
-                                {poll.options.map((opt: any) => {
-                                    const count = Object.values(poll.votes || {}).filter(v => v === opt.id).length;
-                                    const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                    const isMyChoice = myVoteId === opt.id;
+                        <div className="space-y-3">
+                            {poll.options.map((opt: any) => {
+                                const count = validVotes.filter(([_, vId]) => vId === opt.id).length;
+                                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                const isMyChoice = myVoteId === opt.id;
 
-                                    return (
-                                        <div key={opt.id} className="relative group">
-                                            {/* 이미 투표를 한 경우 (결과 막대그래프 노출) */}
-                                            {myVoteId ? (
-                                                <div className={`relative h-11 w-full rounded-xl border overflow-hidden flex items-center px-4 z-10 transition-colors ${isMyChoice ? 'border-blue-500 bg-blue-900/20' : 'border-slate-700 bg-slate-800'}`}>
-                                                    <div className={`absolute top-0 left-0 h-full transition-all duration-500 z-0 ${isMyChoice ? 'bg-blue-600/30' : 'bg-slate-700/50'}`} style={{ width: `${percent}%` }}></div>
-                                                    <div className="relative z-10 flex justify-between w-full text-[12px] font-bold">
-                                                        <span className={`flex items-center gap-2 ${isMyChoice ? 'text-blue-400' : 'text-slate-300'}`}>
-                                                            {isMyChoice && <CheckCircle2 size={14} className="text-blue-400" />} {opt.text}
-                                                        </span>
-                                                        <span className={isMyChoice ? 'text-blue-400' : 'text-slate-400'}>{percent}% ({count}명)</span>
-                                                    </div>
+                                return (
+                                    <div key={opt.id} className="relative group">
+                                        {myVoteId ? (
+                                            <div className={`relative h-12 w-full rounded-xl border overflow-hidden flex items-center px-4 z-10 transition-colors ${isMyChoice ? 'border-blue-500 bg-blue-900/20' : 'border-slate-700/80 bg-slate-800/80'}`}>
+                                                <div className={`absolute top-0 left-0 h-full transition-all duration-500 z-0 ${isMyChoice ? 'bg-blue-600/30' : 'bg-slate-700/40'}`} style={{ width: `${percent}%` }}></div>
+                                                <div className="relative z-10 flex justify-between w-full text-[13px] font-bold">
+                                                    <span className={`flex items-center gap-2 ${isMyChoice ? 'text-blue-400' : 'text-slate-300'}`}>
+                                                        {isMyChoice && <CheckCircle2 size={16} className="text-blue-400" />} {opt.text}
+                                                    </span>
+                                                    <span className={isMyChoice ? 'text-blue-400' : 'text-slate-400'}>{percent}% ({count}명)</span>
                                                 </div>
-                                            ) : (
-                                                /* 투표를 아직 안 한 경우 (선택 버튼 노출) */
-                                                <button onClick={() => handleVote(opt.id)} className="w-full h-11 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 rounded-xl text-left px-4 text-[12px] font-bold text-slate-300 hover:text-white transition-all">
-                                                    {opt.text}
-                                                </button>
-                                            )}
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => handleVote(opt.id)} className="w-full h-12 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 rounded-xl text-left px-4 text-[13px] font-bold text-slate-300 hover:text-white transition-all shadow-sm">
+                                                {opt.text}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-5 pt-4 border-t border-slate-800/60 flex justify-between items-center">
+                            {myVoteId ? (
+                                <button onClick={handleCancelVote} className="text-[11px] text-slate-400 hover:text-red-400 font-bold underline underline-offset-4 transition-colors">투표 다시하기 (취소)</button>
+                            ) : (
+                                <span className="text-[11px] text-slate-500 font-bold">한 항목만 선택할 수 있습니다.</span>
+                            )}
+
+                            {canViewVoters && totalVotes > 0 && (
+                                <button onClick={() => setShowVoters(!showVoters)} className="text-[11px] font-bold bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <Users size={14} /> {showVoters ? '참여자 숨기기' : '참여자 보기'}
+                                </button>
+                            )}
+                        </div>
+
+                        {showVoters && canViewVoters && (
+                            <div className="mt-4 p-4 bg-slate-900/40 rounded-xl border border-slate-800/60 space-y-4">
+                                {/* 🚨 픽스: 관리자용 무기명 열람 경고 표시 */}
+                                {poll.isAnonymous && isMaster && (
+                                    <div className="text-[10px] text-red-400 font-bold mb-2 flex items-center gap-1 bg-red-900/20 px-2 py-1.5 rounded border border-red-500/30">
+                                        🚨 본 투표는 무기명이지만, 관리자 권한으로 열람 중입니다.
+                                    </div>
+                                )}
+                                {poll.options.map((opt: any) => {
+                                    const voters = validVotes.filter(([_, vId]) => vId === opt.id).map(([uid, _]) => getOwnerNameByUid(uid));
+                                    if (voters.length === 0) return null;
+                                    return (
+                                        <div key={opt.id} className="text-[12px] leading-relaxed">
+                                            <span className="font-black text-slate-400 mb-1 block">[{opt.text}] 선택자 <span className="text-blue-400 ml-1">({voters.length}명)</span></span>
+                                            <span className="text-emerald-400 font-medium break-keep">{voters.join(', ')}</span>
                                         </div>
                                     );
                                 })}
                             </div>
+                        )}
+                    </div>
+                )}
 
-                            {/* 하단 투표 컨트롤 & 열람 영역 */}
-                            <div className="mt-4 pt-3 border-t border-slate-800/50 flex justify-between items-center">
-                                {myVoteId ? (
-                                    <button onClick={handleCancelVote} className="text-[11px] text-slate-400 hover:text-red-400 font-bold underline underline-offset-2 transition-colors">투표 다시하기 (취소)</button>
-                                ) : (
-                                    <span className="text-[11px] text-slate-500 font-bold">한 항목만 선택할 수 있습니다.</span>
-                                )}
-
-                                {canViewVoters && totalVotes > 0 && (
-                                    <button onClick={() => setShowVoters(!showVoters)} className="text-[11px] font-bold bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors flex items-center gap-1">
-                                        <Users size={12} /> {showVoters ? '참여자 숨기기' : '참여자 보기'}
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* 투표자 열람 영역 (관리자 또는 기명투표 시) */}
-                            {showVoters && canViewVoters && (
-                                <div className="mt-4 p-3 bg-slate-950/50 rounded-xl border border-slate-800 space-y-3">
-                                    {poll.options.map((opt: any) => {
-                                        const voters = Object.entries(poll.votes || {}).filter(([_, vId]) => vId === opt.id).map(([uid, _]) => getOwnerNameByUid(uid));
-                                        if (voters.length === 0) return null;
-                                        return (
-                                            <div key={opt.id} className="text-[11px]">
-                                                <span className="font-black text-slate-400 mb-1 block">[{opt.text}] 선택자</span>
-                                                <span className="text-emerald-400 font-medium break-keep">{voters.join(', ')}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                <div className="bg-slate-900/50 p-4 sm:p-5 flex justify-center gap-3 border-b border-slate-800">
-                    <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.likes || activePost.likedBy)?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👍 좋아요 {(activePost.likes || activePost.likedBy)?.length || 0}</button>
-                    <button onClick={() => handleReaction('DISLIKE')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[12px] border transition-all shadow-sm ${(activePost.dislikes || activePost.dislikedBy)?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>👎 싫어요 {(activePost.dislikes || activePost.dislikedBy)?.length || 0}</button>
+                {/* 반응(좋아요/싫어요) 영역 (오픈형) */}
+                <div className="py-8 flex justify-center gap-4 border-b border-slate-800/60 w-full">
+                    <button onClick={() => handleReaction('LIKE')} className={`flex items-center gap-2 px-6 py-3 rounded-full font-black text-[13px] border transition-all shadow-md ${((isNotice ? activePost.likedBy : activePost.likes) || [])?.includes(user?.uid) ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                        👍 좋아요 {((isNotice ? activePost.likedBy : activePost.likes) || [])?.length || 0}
+                    </button>
+                    <button onClick={() => handleReaction('DISLIKE')} className={`flex items-center gap-2 px-6 py-3 rounded-full font-black text-[13px] border transition-all shadow-md ${((isNotice ? activePost.dislikedBy : activePost.dislikes) || [])?.includes(user?.uid) ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                        👎 싫어요 {((isNotice ? activePost.dislikedBy : activePost.dislikes) || [])?.length || 0}
+                    </button>
                 </div>
                 
-                {/* 댓글 영역 */}
-                <div className="p-4 sm:p-6 bg-slate-950/30 rounded-b-3xl">
-                    <h4 className="text-[12px] sm:text-[13px] font-black text-white uppercase mb-4 flex items-center gap-2 tracking-widest italic">💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span></h4>
+                {/* 댓글 영역 (오픈형) */}
+                <div className="py-6 px-2 w-full">
+                    <h4 className="text-[13px] sm:text-[14px] font-black text-white uppercase mb-6 flex items-center gap-2 tracking-widest italic">
+                        💬 Comments <span className="text-emerald-500 ml-1">{(activePost.comments || activePost.replies || []).length}</span>
+                    </h4>
                     
-                    <div className="mb-6 border-t border-slate-800/50">
-                        {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && <p className="text-[11px] text-slate-500 italic py-5 font-bold">가장 먼저 의견을 남겨보세요!</p>}
+                    <div className="mb-8 border-t border-slate-800/60">
+                        {(!(activePost.comments || activePost.replies) || (activePost.comments || activePost.replies).length === 0) && (
+                            <p className="text-[12px] text-slate-500 italic py-8 text-center font-bold">가장 먼저 의견을 남겨보세요!</p>
+                        )}
                         
                         {(activePost.comments || activePost.replies || []).filter((c:any) => !c.parentId).map((comment: any) => {
                             const replies = isNotice ? (comment.replies || []) : (activePost.comments||[]).filter((c: any) => c.parentId === comment.id);
@@ -371,13 +396,13 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                     isMaster;
 
                             return (
-                                <div key={comment.id} className="border-b border-slate-800/60 py-5 last:border-0">
-                                    <div className="flex gap-3.5">
-                                        <img src={authorProfileImg} alt="profile" className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-800" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+                                <div key={comment.id} className="border-b border-slate-800/60 py-5 w-full last:border-0">
+                                    <div className="flex gap-3 sm:gap-4 w-full">
+                                        <img src={authorProfileImg} alt="profile" className="w-10 h-10 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-baseline gap-2 mb-1.5">
-                                                <span className="font-bold text-emerald-400 text-sm whitespace-nowrap">{cName}</span>
-                                                <span className="text-slate-500 text-[10px]">
+                                            <div className="flex items-baseline gap-2 mb-2">
+                                                <span className="font-bold text-emerald-400 text-[13px] sm:text-[14px] whitespace-nowrap">{cName}</span>
+                                                <span className="text-slate-500 text-[10px] sm:text-[11px]">
                                                     {formatDate(comment.createdAt, true)}
                                                     {comment.isEdited && <span className="ml-1 text-slate-600">(수정됨)</span>}
                                                 </span>
@@ -385,26 +410,26 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                             
                                             {editingCommentId === comment.id ? (
                                                 <div className="mt-2 mb-3 flex flex-col gap-2">
-                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
+                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-[13px] outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
                                                     <div className="flex justify-end gap-2">
                                                         <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-4 py-1.5 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-xs font-bold hover:text-white transition-colors">취소</button>
-                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors">저장</button>
+                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">저장</button>
                                                     </div>
                                                 </div>
                                             ) : (
                                                 isSticker ? (
-                                                    <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-2.5" alt="sticker" />
+                                                    <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-3" alt="sticker" />
                                                 ) : (
-                                                    <p className="text-[14px] text-slate-200 mb-2.5 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{comment.text}</p>
+                                                    <p className="text-[14px] sm:text-[15px] text-slate-200 mb-3 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{comment.text}</p>
                                                 )
                                             )}
 
                                             <div className="flex items-center gap-4 text-[12px] text-slate-400 font-bold mt-1">
-                                                <button onClick={() => handleCommentReaction(comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}>
-                                                    <ThumbsUp size={13} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}
+                                                <button onClick={() => handleCommentReaction(comment.id)} className={`flex items-center gap-1.5 hover:text-emerald-400 transition-colors ${isLiked ? 'text-emerald-400' : ''}`}>
+                                                    <ThumbsUp size={14} className={isLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? comment.likedBy : comment.likes)?.length || 0}
                                                 </button>
-                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: cName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
-                                                    <MessageSquare size={13}/> 답글
+                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: comment.id, authorName: cName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1.5 hover:text-white transition-colors">
+                                                    <MessageSquare size={14}/> 답글
                                                 </button>
                                                 
                                                 {isCommentAuthor && !editingCommentId && (
@@ -418,7 +443,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                     </div>
 
                                     {replies.length > 0 && (
-                                        <div className="mt-4 space-y-4 pl-10 sm:pl-12 border-l-2 border-slate-800/50 ml-4">
+                                        <div className="mt-5 space-y-5 pl-12 sm:pl-14 border-l-2 border-slate-800/60 ml-4 w-full">
                                             {replies.map((reply: any) => {
                                                 const rName = reply.authorName || reply.ownerName || '알 수 없음';
                                                 const rProfileImg = getBestProfileImage(user, owners, reply.authorPhoto || reply.ownerPhoto, rName);
@@ -427,36 +452,36 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 const isReplyAuthor = user?.uid === (reply.authorUid || reply.ownerUid) || normalizeName(user?.mappedOwnerId) === normalizeName(rName) || isMaster;
 
                                                 return (
-                                                    <div key={reply.id} className="flex gap-3">
-                                                        <img src={rProfileImg} alt="profile" className="w-7 h-7 rounded-full object-cover shrink-0 bg-slate-800" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+                                                    <div key={reply.id} className="flex gap-3 w-full">
+                                                        <img src={rProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-baseline gap-2 mb-1.5">
-                                                                <span className="font-bold text-slate-300 text-xs whitespace-nowrap">{rName}</span>
-                                                                <span className="text-slate-500 text-[9px]">{formatDate(reply.createdAt, true)}{reply.isEdited && ' (수정됨)'}</span>
+                                                                <span className="font-bold text-slate-300 text-[12px] sm:text-[13px] whitespace-nowrap">{rName}</span>
+                                                                <span className="text-slate-500 text-[9px] sm:text-[10px]">{formatDate(reply.createdAt, true)}{reply.isEdited && ' (수정됨)'}</span>
                                                             </div>
 
                                                             {editingCommentId === reply.id ? (
                                                                 <div className="mt-2 mb-3 flex flex-col gap-2">
-                                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
+                                                                    <textarea value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-3 rounded-xl text-[12px] outline-none focus:border-emerald-500 resize-none shadow-inner" rows={2} />
                                                                     <div className="flex justify-end gap-2">
                                                                         <button onClick={() => { setEditingCommentId(null); setEditCommentText(''); }} className="px-4 py-1.5 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-xs font-bold hover:text-white transition-colors">취소</button>
-                                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors">저장</button>
+                                                                        <button onClick={handleSaveEdit} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">저장</button>
                                                                     </div>
                                                                 </div>
                                                             ) : (
                                                                 isRSticker ? (
                                                                     <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
                                                                 ) : (
-                                                                    <p className="text-[13px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{reply.text}</p>
+                                                                    <p className="text-[13px] sm:text-[14px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">{reply.text}</p>
                                                                 )
                                                             )}
 
-                                                            <div className="flex items-center gap-4 text-[11px] text-slate-400 font-bold mt-1">
-                                                                <button onClick={() => handleCommentReaction(reply.id, comment.id)} className={`flex items-center gap-1 hover:text-emerald-400 transition-colors ${isRLiked ? 'text-emerald-400' : ''}`}>
-                                                                    <ThumbsUp size={12} className={isRLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}
+                                                            <div className="flex items-center gap-4 text-[11px] text-slate-400 font-bold mt-1.5">
+                                                                <button onClick={() => handleCommentReaction(reply.id, comment.id)} className={`flex items-center gap-1.5 hover:text-emerald-400 transition-colors ${isRLiked ? 'text-emerald-400' : ''}`}>
+                                                                    <ThumbsUp size={13} className={isRLiked ? 'fill-emerald-400' : ''}/> 좋아요 {(isNotice ? reply.likedBy : reply.likes)?.length || 0}
                                                                 </button>
-                                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: reply.id, authorName: rName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1 hover:text-white transition-colors">
-                                                                    <MessageSquare size={12}/> 답글
+                                                                <button onClick={() => { setReplyingTo({ parentId: comment.id, targetId: reply.id, authorName: rName }); setTimeout(()=>commentInputRef.current?.focus(), 100) }} className="flex items-center gap-1.5 hover:text-white transition-colors">
+                                                                    <MessageSquare size={13}/> 답글
                                                                 </button>
 
                                                                 {isReplyAuthor && !editingCommentId && (
@@ -477,15 +502,15 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                         })}
                     </div>
                     
-                    {user && (
-                        <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/50 mt-4">
+                    {user ? (
+                        <div className="flex flex-col gap-2 pt-4 w-full">
                             {replyingTo && (
-                                <div className="flex justify-between items-center bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50 mb-1">
-                                    <span className="text-[11px] font-bold text-emerald-400">@{replyingTo.authorName} 님에게 답글 작성 중...</span>
-                                    <button onClick={() => setReplyingTo(null)} className="text-[10px] text-slate-400 hover:text-white font-bold px-2 py-1 bg-slate-700 rounded-md transition-colors">✕ 취소</button>
+                                <div className="flex justify-between items-center bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-700 mb-1 shadow-sm">
+                                    <span className="text-[12px] font-bold text-emerald-400">@{replyingTo.authorName} 님에게 답글 작성 중...</span>
+                                    <button onClick={() => setReplyingTo(null)} className="text-[11px] text-slate-400 hover:text-white font-bold px-3 py-1.5 bg-slate-700 rounded-lg transition-colors">✕ 취소</button>
                                 </div>
                             )}
-                            <div className="flex items-stretch gap-2 relative">
+                            <div className="flex items-stretch gap-2 sm:gap-3 relative w-full">
                                 <div className="shrink-0 relative z-[100] flex items-center justify-center">
                                     <StickerSelector onSelect={(url: string) => submitComment(!!replyingTo, url)} />
                                 </div>
@@ -494,18 +519,22 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                     value={replyingTo ? replyText : commentText} 
                                     onChange={(e) => replyingTo ? setReplyText(e.target.value) : setCommentText(e.target.value)} 
                                     onKeyDown={(e) => { if (e.key === 'Enter' && !isSending) { e.preventDefault(); submitComment(!!replyingTo); } }} 
-                                    placeholder={replyingTo ? "답글을 입력하세요..." : "내용을 입력하세요..."} 
+                                    placeholder={replyingTo ? "답글을 입력하세요..." : "따뜻한 댓글을 남겨주세요."} 
                                     disabled={isSending} 
-                                    className="flex-1 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-700 text-white text-[12px] focus:border-emerald-500 shadow-inner disabled:opacity-60" 
+                                    className="flex-1 bg-slate-900 px-4 py-3 sm:py-3.5 rounded-2xl border border-slate-700 text-white text-[13px] sm:text-[14px] focus:border-emerald-500 shadow-inner disabled:opacity-60" 
                                 />
                                 <button 
                                     onClick={() => submitComment(!!replyingTo)} 
                                     disabled={isSending || (replyingTo ? !replyText.trim() : !commentText.trim())} 
-                                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl shadow-lg shrink-0 flex items-center justify-center disabled:bg-slate-800 transition-colors"
+                                    className="px-6 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[12px] sm:text-[13px] rounded-2xl shadow-lg shrink-0 flex items-center justify-center disabled:bg-slate-800 disabled:text-slate-500 transition-colors"
                                 >
-                                    등록 <Send size={14} className="ml-1.5" />
+                                    등록 <Send size={16} className="ml-1.5" />
                                 </button>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-6 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 font-bold text-[12px] sm:text-[13px]">
+                            로그인 후 댓글을 작성할 수 있습니다.
                         </div>
                     )}
                 </div>
