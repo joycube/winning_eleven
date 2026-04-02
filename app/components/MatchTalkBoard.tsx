@@ -265,9 +265,8 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
     // 1. 특정 매치톡(방) 안에 들어왔을 때의 렌더링
     if (activePost) {
         return (
-            <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full overflow-hidden">
-                {/* 상단 뒤로가기 버튼 */}
-                <div className="mb-4 shrink-0 px-1">
+            <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full overflow-hidden w-full">
+                <div className="mb-4 shrink-0 px-2">
                     <button onClick={onClose} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                         <ArrowLeft size={14} /> <span>락커룸으로 돌아가기</span>
                     </button>
@@ -381,21 +380,20 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
 
     // 2. 매치톡 전체 "목록" 화면 렌더링
     return (
-        <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full">
+        <div className="animate-in slide-in-from-bottom-4 flex flex-col h-full w-full">
             
-            {/* 🔥 새롭게 추가된 [목록 화면의 뒤로가기 버튼] */}
-            <div className="mb-4 shrink-0 px-1">
+            <div className="mb-4 shrink-0 px-2">
                 <button onClick={onClose} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                     <ArrowLeft size={14} /> <span>락커룸으로 돌아가기</span>
                 </button>
             </div>
 
-            <div className="bg-[#0f172a] rounded-2xl border border-slate-800 shadow-xl overflow-hidden divide-y divide-slate-800/50">
-                 <div className="p-3 sm:p-4 bg-slate-900 border-b border-slate-800 flex justify-end">
+            <div className="w-full mb-6">
+                 <div className="flex justify-end mb-3 px-2">
                     <select 
                         value={selectedSeasonFilter} 
                         onChange={(e) => setSelectedSeasonFilter(e.target.value)}
-                        className="bg-slate-800 border border-slate-700 text-slate-300 text-[11px] sm:text-xs font-bold rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500 transition-colors"
+                        className="bg-slate-900 border border-slate-700 text-slate-300 text-[11px] sm:text-xs font-bold rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500 transition-colors shadow-inner"
                     >
                         <option value="ALL">모든 시즌 보기</option>
                         {seasons?.map(s => (
@@ -404,52 +402,54 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                     </select>
                 </div>
 
-                {visiblePostsList.length === 0 ? (
-                    <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic bg-slate-900/30 leading-relaxed shadow-inner border-t border-slate-800/50">
-                        &quot;해당 조건의 매치톡이 없습니다.&quot;
-                    </div>
-                ) : visiblePostsList.map((post) => (
-                    <div key={post.id} onClick={() => handleMatchClick(post)} className={`flex items-center p-3 sm:p-4 hover:bg-slate-800/40 transition-colors cursor-pointer group`}>
-                        <div className="flex flex-col items-center justify-center shrink-0 mr-3 sm:mr-4 w-[60px] sm:w-[68px]">
-                             <StatusBadge status={post.matchData.status} />
+                <div className="flex flex-col divide-y divide-slate-800/50 border-y border-slate-800/60 w-full">
+                    {visiblePostsList.length === 0 ? (
+                        <div className="p-16 text-center text-slate-400 font-black text-[14px] sm:text-[16px] italic leading-relaxed">
+                            &quot;해당 조건의 매치톡이 없습니다.&quot;
                         </div>
-                        <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-6">
-                            <div className="flex flex-col min-w-0 flex-1 overflow-visible pr-2">
-                                <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
-                                
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <h3 className="text-white font-black text-[13px] sm:text-[15px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
-                                        {post.title}
-                                    </h3>
+                    ) : visiblePostsList.map((post) => (
+                        <div key={post.id} onClick={() => handleMatchClick(post)} className="flex items-center py-2.5 px-2 hover:bg-slate-800/30 transition-colors cursor-pointer group w-full">
+                            <div className="flex flex-col items-center justify-center shrink-0 mr-3 w-[56px]">
+                                 <StatusBadge status={post.matchData.status} />
+                            </div>
+                            <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 pr-4">
+                                <div className="flex flex-col min-w-0 flex-1 overflow-visible">
+                                    <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{post.subTitle}</span>
                                     
-                                    {post.matchData.status?.toUpperCase() === 'COMPLETED' ? (
-                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-emerald-900/40 text-emerald-400 border-emerald-500/40 shadow-inner">
-                                            {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
-                                        </span>
-                                    ) : post.matchData.status?.toUpperCase() === 'LIVE' ? (
-                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-red-900/40 text-red-400 border-red-500/40 shadow-inner animate-pulse">
-                                            {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
-                                        </span>
-                                    ) : (
-                                        <span className="shrink-0 px-2 py-[2px] rounded text-[11px] sm:text-[12px] font-black border tracking-widest not-italic bg-slate-800 text-slate-500 border-slate-700 shadow-inner">
-                                            - : -
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <h3 className="text-white font-bold text-[13px] sm:text-[14px] truncate group-hover:text-blue-400 transition-colors leading-tight italic">
+                                            {post.title}
+                                        </h3>
+                                        
+                                        {post.matchData.status?.toUpperCase() === 'COMPLETED' ? (
+                                            <span className="shrink-0 px-1.5 py-[2px] rounded text-[10px] sm:text-[11px] font-black border tracking-widest not-italic bg-emerald-900/20 text-emerald-400 border-emerald-500/30">
+                                                {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                            </span>
+                                        ) : post.matchData.status?.toUpperCase() === 'LIVE' ? (
+                                            <span className="shrink-0 px-1.5 py-[2px] rounded text-[10px] sm:text-[11px] font-black border tracking-widest not-italic bg-red-900/20 text-red-400 border-red-500/30 animate-pulse">
+                                                {post.matchData.homeScore ?? '-'} : {post.matchData.awayScore ?? '-'}
+                                            </span>
+                                        ) : (
+                                            <span className="shrink-0 px-1.5 py-[2px] rounded text-[10px] sm:text-[11px] font-black border tracking-widest not-italic bg-slate-800 text-slate-500 border-slate-700">
+                                                - : -
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-
+                            </div>
+                            <div className="flex items-center shrink-0 ml-1">
+                                {/* 🚨 픽스: 세로(flex-col) 제거 후 한 줄로 나란히 배치 ("0 톡") */}
+                                <div className={`flex items-center justify-center gap-0.5 rounded-xl w-11 h-9 shrink-0 transition-colors shadow-sm ${post.comments?.length > 0 ? 'bg-blue-950/20 border border-blue-900/50 text-blue-400' : 'bg-slate-900/50 border border-slate-800 text-slate-500'}`}>
+                                    <span className="text-[13px] font-black leading-none">{post.comments?.length || 0}</span>
+                                    <span className="text-[10px] font-bold leading-none">톡</span>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2.5 shrink-0 ml-1">
-                            <div className={`flex flex-col items-center justify-center rounded-[10px] w-[40px] h-[44px] shrink-0 shadow-inner transition-colors ${post.comments?.length > 0 ? 'bg-blue-950/50 border border-blue-500/30' : 'bg-[#0f172a] border border-slate-800'}`}>
-                                <span className={`text-[12px] sm:text-[14px] font-black leading-none mb-0.5 ${post.comments?.length > 0 ? 'text-blue-400' : 'text-slate-400'}`}>{post.comments?.length || 0}</span>
-                                <span className={`text-[8px] font-bold leading-none ${post.comments?.length > 0 ? 'text-blue-500' : 'text-slate-500'}`}>매치톡</span>
-                            </div>
-                        </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
                 {hasMore && (
-                    <div className="p-3 border-t border-slate-800/50 flex justify-center bg-slate-900/30">
-                        <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-5 py-2.5 bg-slate-800 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-lg">
+                    <div className="py-4 flex justify-center w-full">
+                        <button onClick={() => setVisibleCount(v => v + 10)} className="text-slate-400 text-[11px] font-bold px-6 py-2.5 bg-slate-800/80 rounded-full hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1.5 active:scale-95 shadow-sm border border-slate-700">
                             더 보기 ▼
                         </button>
                     </div>
