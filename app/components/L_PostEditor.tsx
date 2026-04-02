@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { Image as ImageIcon, Youtube, BarChart2, Plus, Trash2, ArrowLeft, Edit3 } from 'lucide-react'; // 🚨 ArrowLeft, Edit3 추가
+import { Image as ImageIcon, Youtube, BarChart2, Plus, Trash2, ArrowLeft, Edit3 } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import { sendAutoPush } from '../utils/pushUtil';
 
@@ -100,9 +100,7 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
     };
 
     return (
-        // 🚨 픽스: 두꺼운 배경과 테두리를 걷어내고 꽉 찬 오픈형 폼 레이아웃으로 변경
         <div className="w-full animate-in slide-in-from-bottom-4 flex flex-col mb-10">
-            {/* 오픈형 헤더 & 돌아가기 버튼 (리스트 화면과 통일) */}
             <div className="flex items-center justify-between mb-6 px-2 w-full">
                 <h2 className="text-[18px] sm:text-[20px] font-black italic text-white tracking-widest flex items-center gap-2 uppercase">
                     {viewMode === 'WRITE' ? (
@@ -124,18 +122,20 @@ export default function L_PostEditor({ user, owners, viewMode, setViewMode, edit
                   <input placeholder="제목을 입력하세요 (최대 50자)" className="flex-1 bg-slate-900 text-white px-4 py-3 rounded-xl border border-slate-700 text-[14px] font-bold outline-none focus:border-emerald-500 placeholder:font-normal shadow-inner" value={postForm.title} onChange={e => setPostForm({...postForm, title: e.target.value})} />
                 </div>
                 
+                {/* 🚨 안내 문구 수정: 대표 썸네일/커버 영상임을 강조 */}
                 <div className="flex flex-col sm:flex-row gap-3 w-full">
                    <div className="flex-1 flex items-center bg-slate-900 px-4 rounded-xl border border-slate-700 focus-within:border-emerald-500 shadow-inner">
                        <ImageIcon size={16} className="text-slate-500 mr-2 shrink-0" />
-                       <input placeholder="이미지 URL (선택)" className="w-full bg-transparent text-white py-3 text-[13px] outline-none" value={postForm.imageUrl} onChange={e => setPostForm({...postForm, imageUrl: e.target.value})} />
+                       <input placeholder="대표 이미지 URL (목록 썸네일용)" className="w-full bg-transparent text-white py-3 text-[13px] outline-none" value={postForm.imageUrl} onChange={e => setPostForm({...postForm, imageUrl: e.target.value})} />
                    </div>
                    <div className="flex-1 flex items-center bg-slate-900 px-4 rounded-xl border border-slate-700 focus-within:border-emerald-500 shadow-inner">
                        <Youtube size={16} className="text-red-500/70 mr-2 shrink-0" />
-                       <input placeholder="유튜브 링크 (선택)" className="w-full bg-transparent text-white py-3 text-[13px] outline-none" value={postForm.youtubeUrl} onChange={e => setPostForm({...postForm, youtubeUrl: e.target.value})} />
+                       <input placeholder="대표 유튜브 링크 (본문 상단 플레이어)" className="w-full bg-transparent text-white py-3 text-[13px] outline-none" value={postForm.youtubeUrl} onChange={e => setPostForm({...postForm, youtubeUrl: e.target.value})} />
                    </div>
                 </div>
 
-                <textarea placeholder="자유롭게 소통해 보세요!" className="w-full h-72 sm:h-80 bg-slate-900 text-slate-200 p-5 rounded-2xl border border-slate-700 text-[14px] outline-none focus:border-emerald-500 resize-none shadow-inner leading-relaxed" value={postForm.content} onChange={e => setPostForm({...postForm, content: e.target.value})}></textarea>
+                {/* 🚨 안내 문구 수정: 본문에 링크를 넣어도 렌더링 된다는 점 안내 */}
+                <textarea placeholder="자유롭게 소통해 보세요! (이미지 URL이나 웹 주소를 본문에 붙여넣으면 자동으로 사진과 링크로 변환됩니다 ✨)" className="w-full h-72 sm:h-80 bg-slate-900 text-slate-200 p-5 rounded-2xl border border-slate-700 text-[14px] outline-none focus:border-emerald-500 resize-none shadow-inner leading-relaxed placeholder:text-slate-500 placeholder:leading-relaxed" value={postForm.content} onChange={e => setPostForm({...postForm, content: e.target.value})}></textarea>
 
                 {/* 투표 작성 UI 영역 */}
                 <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 space-y-4 w-full shadow-md">

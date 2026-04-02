@@ -34,29 +34,27 @@ const formatDate = (ts: any, includeTime = false) => {
     return includeTime ? `${datePart} ${timePart}` : datePart;
 };
 
-// 🚨 추가됨: 텍스트 내의 URL을 자동으로 찾아 <a> 태그 또는 <img> 태그로 변환해주는 함수
 const renderTextWithLinks = (text: string) => {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const imageRegex = /\.(jpeg|jpg|gif|png|webp|svg|bmp)(?:\?.*)?$/i;
-    
+    const imageRegex = /\.(jpeg|jpg|gif|png|webp|svg|bmp)(?=[\?&#]|$)/i;
+
     const parts = text.split(urlRegex);
     return parts.map((part, i) => {
         if (part.match(urlRegex)) {
-            // 이미지 주소일 경우 이미지 태그로 변환
-            if (part.match(imageRegex)) {
+            if (part.match(imageRegex) || part.includes('_next/image')) {
                 return (
+                    // 🚨 픽스: 본문 변환 이미지의 라운딩(rounded-xl), 보더(border), 그림자(shadow-md) 삭제
                     <img 
                         key={i} 
                         src={part} 
                         alt="첨부이미지" 
-                        className="max-w-full h-auto rounded-xl border border-slate-700 shadow-md my-3 block object-contain max-h-[400px]" 
+                        className="w-full h-auto my-4 block object-contain max-h-[600px]" 
                         loading="lazy" 
                         onError={(e: any) => { e.target.style.display = 'none'; }} 
                     />
                 );
             }
-            // 일반 주소일 경우 새 창 열기 링크로 변환
             return (
                 <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all">
                     {part}
@@ -70,7 +68,8 @@ const renderTextWithLinks = (text: string) => {
 const LiteYouTubeEmbed = ({ videoId }: { videoId: string }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     return (
-        <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black cursor-pointer group" onClick={() => setIsPlaying(true)}>
+        // 🚨 픽스: 유튜브 플레이어의 라운딩(rounded-xl), 테두리(border) 삭제
+        <div className="relative aspect-video w-full overflow-hidden bg-black cursor-pointer group" onClick={() => setIsPlaying(true)}>
             {!isPlaying ? (
                 <>
                     <img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="YouTube" loading="lazy" />
@@ -136,7 +135,11 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const poll = activePost.poll;
     const myVoteId = user && poll?.votes ? poll.votes[user.uid] : null;
-    const totalVotes = poll?.votes ? Object.keys(poll.votes).length : 0;
+    
+    const validOptionIds = poll?.options?.map((o: any) => o.id) || [];
+    const validVotes = Object.entries(poll?.votes || {}).filter(([_, vId]) => validOptionIds.includes(vId as string));
+    const totalVotes = validVotes.length; 
+    
     const canViewVoters = poll && (!poll.isAnonymous || isMaster); 
 
     const handleVote = async (optionId: string) => {
@@ -158,7 +161,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const getOwnerNameByUid = (uid: string) => {
         const o = owners?.find((o:any) => o.uid === uid || String(o.id) === uid);
-        return o ? o.nickname : '알 수 없는 유저';
+        return o ? o.nickname : `미등록 유저 (${uid.substring(0, 4)})`;
     };
 
     const handleCloseView = () => { setSelectedPostId(null); setViewMode('LIST'); const params = new URLSearchParams(window.location.search); params.delete('postId'); window.history.pushState(null, '', `?${params.toString()}`); };
@@ -244,8 +247,8 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     };
 
     return (
-        <div className="animate-in slide-in-from-bottom-4 space-y-4 w-full">
-            <div className="mb-2 flex items-center justify-between px-2">
+        <div className="animate-in slide-in-from-bottom-4 w-full flex flex-col pb-10">
+            <div className="mb-4 flex items-center justify-between px-2">
                 <button onClick={handleCloseView} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                     <ArrowLeft size={14} /> <span>목록으로 뒤로 가기</span>
                 </button>
@@ -253,7 +256,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
             <div className="w-full">
                 <div className="px-2 py-5 border-b border-slate-800/60 w-full">
-                    <div className="flex justify-between items-start mb-3">
+                    <div className="flex justify-between items-start mb-4">
                         <span className="bg-emerald-400/10 text-emerald-400 border-emerald-500/30 font-black text-[10px] tracking-widest uppercase px-2.5 py-0.5 rounded border flex items-center gap-1 shadow-sm">
                             {activePost.cat || '전체공지'}
                         </span>
@@ -272,39 +275,43 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col mb-3 overflow-visible">
+                    
+                    <div className="flex flex-col mb-5 overflow-visible">
                         <h2 className="text-[20px] sm:text-[24px] font-bold text-white leading-tight break-keep">{activePost.title}</h2>
                     </div>
-                    <div className="flex items-center justify-between mt-4">
-                        <div className="flex items-center gap-2.5">
+                    
+                    <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-3">
                             <img src={authorData.photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-9 h-9 rounded-full object-cover border border-slate-700 bg-slate-800 shadow-sm" />
                             <div className="flex flex-col">
                                 <span className="text-[13px] font-bold text-emerald-400 leading-tight">{authorData.name}</span>
                                 <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
                                     <span>{formatDate(activePost.createdAt, true)}</span>
                                     <span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span>
-                                    <span>• 조회 {activePost.views || 0}</span>
+                                    <span>조회 {activePost.views || 0}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="px-2 py-8 space-y-6 w-full">
+                <div className="py-8 space-y-6 w-full">
                     {(() => {
                         const ytMatch = activePost.youtubeUrl?.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([a-zA-Z0-9_-]{11})/);
                         const ytId = activePost.youtubeId || (ytMatch ? ytMatch[1] : null);
                         if (!ytId) return null;
                         return <LiteYouTubeEmbed videoId={ytId} />;
                     })()}
+                    
+                    {/* 🚨 픽스: 대표 이미지(imageUrl)의 라운딩(rounded-xl), 테두리(border), 그림자 제거 */}
                     {activePost.imageUrl && (
-                        <div className="w-full rounded-xl overflow-hidden border border-slate-800 shadow-lg flex justify-center bg-black/10">
+                        <div className="w-full flex justify-center">
                             <img src={activePost.imageUrl} alt="첨부이미지" className="w-full h-auto object-contain mx-auto max-h-[600px]" referrerPolicy="no-referrer" onError={(e: any) => { e.target.style.display = 'none'; }} />
                         </div>
                     )}
                     
-                    {/* 🚨 픽스: 본문 내의 URL을 자동으로 링크/이미지로 변환 */}
-                    <div className="text-slate-300 text-[15px] sm:text-[16px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">
+                    {/* 본문 텍스트 내 자동 변환 영역 */}
+                    <div className="px-2 text-slate-300 text-[15px] sm:text-[16px] leading-relaxed whitespace-pre-wrap break-words break-all font-medium not-italic">
                         {renderTextWithLinks(activePost.content)}
                     </div>
                 </div>
@@ -315,14 +322,14 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                             <h3 className="text-[14px] font-black text-white flex items-center gap-2">
                                 <BarChart2 className="text-blue-400" size={18} /> 투표 진행 중
                             </h3>
-                            <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded font-bold border border-slate-700 shadow-sm">
+                            <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded-md font-bold border border-slate-700 shadow-sm">
                                 {poll.isAnonymous ? '👻 무기명' : '👁️ 기명(공개)'} • 총 {totalVotes}명 참여
                             </span>
                         </div>
 
                         <div className="space-y-3">
                             {poll.options.map((opt: any) => {
-                                const count = Object.values(poll.votes || {}).filter(v => v === opt.id).length;
+                                const count = validVotes.filter(([_, vId]) => vId === opt.id).length;
                                 const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
                                 const isMyChoice = myVoteId === opt.id;
 
@@ -364,12 +371,17 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
                         {showVoters && canViewVoters && (
                             <div className="mt-4 p-4 bg-slate-900/40 rounded-xl border border-slate-800/60 space-y-4">
+                                {poll.isAnonymous && isMaster && (
+                                    <div className="text-[10px] text-red-400 font-bold mb-2 flex items-center gap-1 bg-red-900/20 px-2 py-1.5 rounded border border-red-500/30">
+                                        🚨 본 투표는 무기명이지만, 관리자 권한으로 열람 중입니다.
+                                    </div>
+                                )}
                                 {poll.options.map((opt: any) => {
-                                    const voters = Object.entries(poll.votes || {}).filter(([_, vId]) => vId === opt.id).map(([uid, _]) => getOwnerNameByUid(uid));
+                                    const voters = validVotes.filter(([_, vId]) => vId === opt.id).map(([uid, _]) => getOwnerNameByUid(uid));
                                     if (voters.length === 0) return null;
                                     return (
                                         <div key={opt.id} className="text-[12px] leading-relaxed">
-                                            <span className="font-black text-slate-400 mb-1 block">[{opt.text}] 선택자</span>
+                                            <span className="font-black text-slate-400 mb-1 block">[{opt.text}] 선택자 <span className="text-blue-400 ml-1">({voters.length}명)</span></span>
                                             <span className="text-emerald-400 font-medium break-keep">{voters.join(', ')}</span>
                                         </div>
                                     );
@@ -434,7 +446,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                 isSticker ? (
                                                     <img src={comment.text.replace('[STICKER]', '')} className="w-24 h-24 object-contain drop-shadow-md mb-3" alt="sticker" />
                                                 ) : (
-                                                    // 🚨 픽스: 댓글 내의 URL을 자동으로 링크/이미지로 변환
                                                     <div className="text-[14px] sm:text-[15px] text-slate-200 mb-3 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">
                                                         {renderTextWithLinks(comment.text)}
                                                     </div>
@@ -489,7 +500,6 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                                                                 isRSticker ? (
                                                                     <img src={reply.text.replace('[STICKER]', '')} className="w-20 h-20 object-contain drop-shadow-md mb-2" alt="sticker" />
                                                                 ) : (
-                                                                    // 🚨 픽스: 대댓글 내의 URL을 자동으로 링크/이미지로 변환
                                                                     <div className="text-[13px] sm:text-[14px] text-slate-300 mb-2 font-medium whitespace-pre-wrap break-all break-words leading-relaxed">
                                                                         {renderTextWithLinks(reply.text)}
                                                                     </div>
