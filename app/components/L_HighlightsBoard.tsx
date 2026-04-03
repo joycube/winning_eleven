@@ -51,17 +51,15 @@ const HighlightCard = ({ post, authUser, onClick, onLike }: any) => {
                     </div>
                 )}
                 
-                {/* 🚨 [픽스] 스코어 앞에 팀 엠블럼 노출 */}
+                {/* 🚨 [픽스] 스코어 팀 엠블럼 노출 (하얀 원형에 균형감 있게 배치) */}
                 {(post.homeScore !== undefined) && (
-                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[11px] font-black text-white flex items-center gap-2 shadow-md border border-white/10">
-                        <div className="flex items-center gap-1">
-                            <img src={post.homeLogo || FALLBACK_IMG} className="w-3 h-3 object-contain" alt="" />
-                            <span>{post.homeScore}</span>
+                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-md border border-white/10">
+                        <div className="w-4 h-4 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                            <img src={post.homeLogo || FALLBACK_IMG} className="w-full h-full object-contain" alt="" />
                         </div>
-                        <span className="text-white/40">:</span>
-                        <div className="flex items-center gap-1">
-                            <span>{post.awayScore}</span>
-                            <img src={post.awayLogo || FALLBACK_IMG} className="w-3 h-3 object-contain" alt="" />
+                        <span className="text-[12px] font-black text-white tracking-tighter">{post.homeScore} : {post.awayScore}</span>
+                        <div className="w-4 h-4 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                            <img src={post.awayLogo || FALLBACK_IMG} className="w-full h-full object-contain" alt="" />
                         </div>
                     </div>
                 )}
