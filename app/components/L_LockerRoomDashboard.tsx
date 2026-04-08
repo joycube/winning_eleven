@@ -330,12 +330,12 @@ export default function L_LockerRoomDashboard({
                                                 {video.matchLabel || 'HIGHLIGHT'}
                                             </div>
                                             {/* 스코어 보드 내 엠블럼 노출 */}
-                                            <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[11px] font-black text-white flex items-center gap-1.5 shadow-md border border-white/10">
-                                                <div className="w-3.5 h-3.5 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                                            <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-2.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-lg border border-white/10">
+                                                <div className="w-4 h-4 rounded-full bg-white p-0.5 flex items-center justify-center shadow-sm shrink-0">
                                                     <img src={video.homeLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
                                                 </div>
-                                                <span>{video.homeScore}:{video.awayScore}</span>
-                                                <div className="w-3.5 h-3.5 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0">
+                                                <span className="text-[12px] sm:text-[13px] font-black text-white tracking-tighter">{video.homeScore}:{video.awayScore}</span>
+                                                <div className="w-4 h-4 rounded-full bg-white p-0.5 flex items-center justify-center shadow-sm shrink-0">
                                                     <img src={video.awayLogo || SAFE_TBD_LOGO} className="w-full h-full object-contain" alt="" />
                                                 </div>
                                             </div>
@@ -393,8 +393,9 @@ export default function L_LockerRoomDashboard({
                     activeOrLatestSeason={activeOrLatestSeason}
                     activeRankingData={activeRankingData} 
                     historyData={historyData} 
-                    viewSeasonId={viewSeasonId} 
-                    setViewSeasonId={setViewSeasonId} 
+                    // 🚨 픽스 파트: 매치센터에 올바른 Prop 이름 전달!
+                    selectedSeasonId={viewSeasonId} 
+                    setSelectedSeasonId={setViewSeasonId} 
                 />
 
                 {activeVideo && <HighlightViewerModal activeVideo={activeVideo} onClose={() => setActiveVideo(null)} authUser={authUser} owners={owners} seasons={seasons} />}
