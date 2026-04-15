@@ -45,11 +45,13 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
         
         // Fisher-Yates Shuffle
         const shuffled = [...availableTeams].sort(() => Math.random() - 0.5);
-        const results = [];
+        
+        // 🚨 픽스: Vercel 빌드 에러 방지를 위해 빈 배열에 명시적 타입(Type) 지정
+        const results: { player: string, teams: MasterTeam[] }[] = [];
         let index = 0;
 
         for (const player of players) {
-            const assigned = [];
+            const assigned: MasterTeam[] = []; // 🚨 여기도 명시적 타입 지정 추가
             for (let i = 0; i < teamsPerPlayer; i++) {
                 assigned.push(shuffled[index]);
                 index++;
