@@ -1,21 +1,21 @@
 "use client";
-import React, { useState } from 'react'; // 🚨 useState 추가
+import React, { useState } from 'react'; 
 import { Trophy, Settings, LogIn, LogOut, BellRing } from 'lucide-react'; 
 import { useAuth } from '../hooks/useAuth';
 import { usePushNotification } from '../hooks/usePushNotification'; 
-import { useLongPress } from '../hooks/useLongPress'; // 🚨 롱프레스 훅 임포트
-import { QuickArcadeDraftModal } from './QuickArcadeDraftModal'; // 🚨 히든 모달 컴포넌트 임포트
+import { useLongPress } from '../hooks/useLongPress'; 
+import { QuickArcadeDraftModal } from './QuickArcadeDraftModal'; 
 
 interface TopBarProps {
   setCurrentView?: (view: any) => void;
-  masterTeams?: any[]; // 🚨 모달에 넘겨줄 마스터팀 데이터 프롭 추가
+  masterTeams?: any[]; 
+  owners?: any[]; // 🚨 픽스: 이 부분이 있어야 Vercel 빌드 에러가 나지 않습니다!
 }
 
-export const TopBar = ({ setCurrentView, masterTeams = [] }: TopBarProps) => {
+export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBarProps) => {
     const { authUser, loginWithGoogle, logout } = useAuth();
     const { requestPermissionAndSaveToken } = usePushNotification(); 
 
-    // 🚨 1. 아케이드 드래프트 모달 상태 및 롱프레스(3초) 훅 설정
     const [isArcadeDraftOpen, setIsArcadeDraftOpen] = useState(false);
     const longPressEvent = useLongPress(() => setIsArcadeDraftOpen(true), 3000);
 
@@ -25,7 +25,6 @@ export const TopBar = ({ setCurrentView, masterTeams = [] }: TopBarProps) => {
                 
                 <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-4" onClick={() => setCurrentView && setCurrentView('LOCKERROOM')}>
                     <Trophy className="text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px]" />
-                    {/* 🚨 2. 타이틀 텍스트에 롱프레스 이벤트 부착 및 텍스트 드래그 방지(select-none) */}
                     <h1 
                         {...longPressEvent}
                         className="text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2 select-none"
@@ -35,8 +34,6 @@ export const TopBar = ({ setCurrentView, masterTeams = [] }: TopBarProps) => {
                 </div>
 
                 <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
-                    
-                    {/* 🚨 로그인 여부와 상관없이 항상 노출되는 알림 켜기 버튼 */}
                     <button 
                         onClick={() => requestPermissionAndSaveToken(authUser?.uid)}
                         className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition-colors shrink-0 shadow-sm"
@@ -78,10 +75,10 @@ export const TopBar = ({ setCurrentView, masterTeams = [] }: TopBarProps) => {
                 </div>
             </div>
 
-            {/* 🚨 3. 조건부로 히든 모달 렌더링 */}
             {isArcadeDraftOpen && (
                 <QuickArcadeDraftModal 
                     masterTeams={masterTeams} 
+                    owners={owners} 
                     onClose={() => setIsArcadeDraftOpen(false)} 
                 />
             )}
