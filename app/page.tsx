@@ -823,7 +823,8 @@ export default function FootballLeagueApp() {
           </div>
       )}
 
-      <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} /></div>
+      {/* 🚨 픽스 반영: TopBar에 masterTeams와 owners를 넘겨줍니다. */}
+      <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} masterTeams={masterTeams} owners={owners} /></div>
       <NavTabs currentView={currentView} setCurrentView={handleViewChange} hasNewNotice={hasNewNotice} />
       
       {/* 🚨 픽스: 내부 컨테이너의 하단 여백 요소(space-y-8 등) 제거 */}

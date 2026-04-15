@@ -1,33 +1,47 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MasterTeam, FALLBACK_IMG } from '../types';
-import { Terminal, Users, Zap, X, Copy, CheckCircle2 } from 'lucide-react';
+import { Terminal, Users, Zap, X, Copy, CheckCircle2, Search } from 'lucide-react';
 
 interface QuickArcadeDraftModalProps {
     onClose: () => void;
     masterTeams: MasterTeam[];
+    owners?: any[]; // 🚨 오너 데이터 프롭 추가
 }
 
-export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraftModalProps) => {
+export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }: QuickArcadeDraftModalProps) => {
     const [step, setStep] = useState<'SETUP' | 'HACKING' | 'RESULT'>('SETUP');
     const [players, setPlayers] = useState<string[]>(['PLAYER 1', 'PLAYER 2']);
-    const [newPlayer, setNewPlayer] = useState('');
+    
+    // 🚨 유저 검색 관련 상태
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
     const [teamsPerPlayer, setTeamsPerPlayer] = useState(2);
     const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A', 'B', 'C']);
     
     const [draftResults, setDraftResults] = useState<{ player: string, teams: MasterTeam[] }[]>([]);
     const [copied, setCopied] = useState(false);
 
-    // 필터링된 팀 수 계산
+    // 필터링된 팀 수 계산 (안전한 배열 접근)
     const availableTeams = masterTeams.filter(t => filterTiers.includes(t.tier));
     const totalNeeded = players.length * teamsPerPlayer;
 
-    const handleAddPlayer = () => {
-        if (newPlayer.trim() && !players.includes(newPlayer.trim().toUpperCase())) {
-            setPlayers([...players, newPlayer.trim().toUpperCase()]);
-            setNewPlayer('');
+    // 🚨 유저 검색 필터링 로직
+    const filteredOwners = owners.filter(o => 
+        o.nickname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        o.legacyName?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const handleAddPlayer = (name?: string) => {
+        const playerName = (name || searchQuery).trim().toUpperCase();
+        if (playerName && !players.includes(playerName)) {
+            setPlayers([...players, playerName]);
+            setSearchQuery('');
+            setShowDropdown(false);
         }
     };
 
@@ -45,13 +59,11 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
         
         // Fisher-Yates Shuffle
         const shuffled = [...availableTeams].sort(() => Math.random() - 0.5);
-        
-        // 🚨 픽스: Vercel 빌드 에러 방지를 위해 빈 배열에 명시적 타입(Type) 지정
         const results: { player: string, teams: MasterTeam[] }[] = [];
         let index = 0;
 
         for (const player of players) {
-            const assigned: MasterTeam[] = []; // 🚨 여기도 명시적 타입 지정 추가
+            const assigned: MasterTeam[] = [];
             for (let i = 0; i < teamsPerPlayer; i++) {
                 assigned.push(shuffled[index]);
                 index++;
@@ -62,7 +74,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
         setTimeout(() => {
             setDraftResults(results);
             setStep('RESULT');
-        }, 2500); // 2.5초간 해킹(뽑기) 이펙트
+        }, 2500); 
     };
 
     const handleCopyResult = () => {
@@ -72,9 +84,19 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // 드롭다운 외부 클릭 시 닫기
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setShowDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     return (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md overflow-hidden font-mono">
-            {/* 사이버펑크 배경 효과 */}
             <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
 
             <motion.div 
@@ -83,7 +105,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
                 className="w-full max-w-2xl bg-black border-2 border-cyan-500/50 shadow-[0_0_30px_rgba(0,255,255,0.2)] relative z-10 flex flex-col max-h-[90vh]"
             >
-                {/* 헤더 */}
                 <div className="bg-cyan-950/40 border-b border-cyan-500/50 p-4 flex justify-between items-center relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-[shimmer_2s_infinite]"></div>
                     <h2 className="text-cyan-400 font-black tracking-[0.2em] flex items-center gap-2 text-lg">
@@ -94,18 +115,43 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
 
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar text-cyan-50">
                     <AnimatePresence mode="wait">
-                        {/* SETUP STATE */}
                         {step === 'SETUP' && (
                             <motion.div key="setup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
                                 
-                                {/* 플레이어 설정 */}
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-pink-500 font-bold border-b border-pink-500/30 pb-2">
                                         <Users size={16} /> 1. SET PLAYERS
                                     </div>
-                                    <div className="flex gap-2">
-                                        <input value={newPlayer} onChange={e=>setNewPlayer(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') handleAddPlayer();}} placeholder="ENTER NAME..." className="flex-1 bg-black border border-cyan-800 text-cyan-300 px-3 py-2 outline-none focus:border-cyan-400 focus:shadow-[0_0_10px_rgba(0,255,255,0.3)] uppercase" />
-                                        <button onClick={handleAddPlayer} className="bg-cyan-900/50 border border-cyan-500 text-cyan-400 px-4 py-2 font-bold hover:bg-cyan-500 hover:text-black transition-colors">ADD</button>
+                                    <div className="flex gap-2 relative" ref={dropdownRef}>
+                                        <div className="relative flex-1">
+                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                <Search size={16} className="text-cyan-600" />
+                                            </div>
+                                            <input 
+                                                value={searchQuery} 
+                                                onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }} 
+                                                onFocus={() => setShowDropdown(true)}
+                                                onKeyDown={e => {if(e.key==='Enter') handleAddPlayer();}} 
+                                                placeholder="SEARCH USER OR TYPE NAME..." 
+                                                className="w-full bg-black border border-cyan-800 text-cyan-300 pl-10 pr-3 py-2 outline-none focus:border-cyan-400 focus:shadow-[0_0_10px_rgba(0,255,255,0.3)] uppercase" 
+                                            />
+                                            {/* 🚨 자동완성 드롭다운 영역 */}
+                                            {showDropdown && searchQuery && filteredOwners.length > 0 && (
+                                                <div className="absolute top-full left-0 w-full mt-1 bg-black border border-cyan-500/50 shadow-[0_4px_20px_rgba(0,255,255,0.2)] z-50 max-h-40 overflow-y-auto custom-scrollbar">
+                                                    {filteredOwners.map(o => (
+                                                        <div 
+                                                            key={o.uid || o.docId} 
+                                                            onClick={() => handleAddPlayer(o.nickname)}
+                                                            className="px-4 py-2.5 hover:bg-cyan-900/60 cursor-pointer text-cyan-400 text-sm border-b border-cyan-900/50 last:border-0 flex justify-between items-center transition-colors"
+                                                        >
+                                                            <span className="font-bold">{o.nickname}</span>
+                                                            <span className="text-[10px] bg-cyan-950 border border-cyan-800 px-2 py-0.5 rounded-sm">USER</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button onClick={() => handleAddPlayer()} className="bg-cyan-900/50 border border-cyan-500 text-cyan-400 px-4 py-2 font-bold hover:bg-cyan-500 hover:text-black transition-colors">ADD</button>
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-2">
                                         {players.map(p => (
@@ -116,7 +162,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
                                     </div>
                                 </div>
 
-                                {/* 티어 및 팀수 설정 */}
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="space-y-3">
                                         <div className="text-cyan-500 font-bold border-b border-cyan-500/30 pb-2">2. TEAMS PER PLAYER</div>
@@ -139,7 +184,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
                                     </div>
                                 </div>
 
-                                {/* 실행 버튼 */}
                                 <div className="pt-6 border-t border-cyan-900 flex justify-between items-end">
                                     <div className="text-xs text-cyan-600">
                                         POOL: <span className="text-cyan-300">{availableTeams.length}</span> / NEED: <span className={availableTeams.length < totalNeeded ? 'text-pink-500' : 'text-cyan-300'}>{totalNeeded}</span>
@@ -155,7 +199,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
                             </motion.div>
                         )}
 
-                        {/* HACKING (LOADING) STATE */}
                         {step === 'HACKING' && (
                             <motion.div key="hacking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-64 flex flex-col items-center justify-center gap-4">
                                 <div className="text-pink-500 text-6xl animate-pulse drop-shadow-[0_0_20px_rgba(255,0,100,1)]">⚡</div>
@@ -167,7 +210,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams }: QuickArcadeDraft
                             </motion.div>
                         )}
 
-                        {/* RESULT STATE */}
                         {step === 'RESULT' && (
                             <motion.div key="result" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-6">
                                 <div className="flex justify-between items-center border-b border-cyan-500/30 pb-4">
