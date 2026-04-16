@@ -1,15 +1,14 @@
 "use client";
-import React, { useState } from 'react'; 
+import React, { useState, useRef } from 'react'; 
 import { Trophy, Settings, LogIn, LogOut, BellRing } from 'lucide-react'; 
 import { useAuth } from '../hooks/useAuth';
 import { usePushNotification } from '../hooks/usePushNotification'; 
-import { useLongPress } from '../hooks/useLongPress'; 
 import { QuickArcadeDraftModal } from './QuickArcadeDraftModal'; 
 
 interface TopBarProps {
   setCurrentView?: (view: any) => void;
   masterTeams?: any[]; 
-  owners?: any[]; // 🚨 픽스: 이 부분이 있어야 Vercel 빌드 에러가 나지 않습니다!
+  owners?: any[]; 
 }
 
 export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBarProps) => {
@@ -17,17 +16,54 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
     const { requestPermissionAndSaveToken } = usePushNotification(); 
 
     const [isArcadeDraftOpen, setIsArcadeDraftOpen] = useState(false);
-    const longPressEvent = useLongPress(() => setIsArcadeDraftOpen(true), 3000);
+    
+    // 🚨 [이스터에그 연출] 전력 과부하 상태 및 타이머 관리
+    const [isCharging, setIsCharging] = useState(false);
+    const pressTimer = useRef<NodeJS.Timeout | null>(null);
+
+    const handlePressStart = () => {
+        setIsCharging(true);
+        pressTimer.current = setTimeout(() => {
+            setIsCharging(false);
+            setIsArcadeDraftOpen(true);
+        }, 3000); // 3초 도달 시 모달 오픈
+    };
+
+    const handlePressEnd = () => {
+        setIsCharging(false);
+        if (pressTimer.current) clearTimeout(pressTimer.current);
+    };
 
     return (
         <>
+            {/* 🚨 [전력 과부하 CSS] 누르고 있는 동안 파란색 스파크가 튀며 빛이 강해집니다 */}
+            <style>{`
+                @keyframes electric-surge {
+                    0% { text-shadow: 0 0 0px #38bdf8; transform: translate(0); color: white; }
+                    25% { transform: translate(-1px, 1px); }
+                    50% { transform: translate(1px, -1px); text-shadow: 0 0 20px #38bdf8, 0 0 40px #0284c7; color: #e0f2fe; }
+                    75% { transform: translate(-1px, 1px); }
+                    100% { transform: translate(1px, -1px) scale(1.02); text-shadow: 0 0 40px #38bdf8, 0 0 80px #bae6fd, 0 0 120px #ffffff; color: #ffffff; filter: brightness(1.5); }
+                }
+                .surge-active {
+                    animation: electric-surge 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                }
+            `}</style>
+
             <div className="bg-[#050b14]/95 backdrop-blur-md border-b border-slate-800/50 py-3 px-3 sm:px-6 flex justify-between items-center sticky top-0 z-50 shadow-lg">
                 
-                <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-4" onClick={() => setCurrentView && setCurrentView('LOCKERROOM')}>
-                    <Trophy className="text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px]" />
+                {/* 🚨 터치/마우스 이벤트 직접 할당하여 과부하 상태 추적 */}
+                <div 
+                    className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-4" 
+                    onMouseDown={handlePressStart}
+                    onMouseUp={handlePressEnd}
+                    onMouseLeave={handlePressEnd}
+                    onTouchStart={handlePressStart}
+                    onTouchEnd={handlePressEnd}
+                >
+                    <Trophy className={`text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px] transition-all duration-300 ${isCharging ? 'scale-110 drop-shadow-[0_0_15px_#34d399]' : ''}`} />
                     <h1 
-                        {...longPressEvent}
-                        className="text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2 select-none"
+                        className={`text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2 select-none transition-all ${isCharging ? 'surge-active' : ''}`}
                     >
                         eFOOTBALL   Live   EVOLUTION™
                     </h1>

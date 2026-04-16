@@ -141,6 +141,14 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
     return (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[99999] flex items-center justify-center p-4">
             
+            {/* 🚨 [화이트아웃 이펙트] 모달이 뜨는 순간 섬광이 터지며 서서히 걷힙니다 */}
+            <motion.div
+                initial={{ opacity: 1, filter: "brightness(5)" }}
+                animate={{ opacity: 0, filter: "brightness(1)" }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
+                className="fixed inset-0 bg-white z-[100000] pointer-events-none mix-blend-screen"
+            />
+
             {step === 'OPENING' && (
                 <PackOpeningAnimation onOpen={() => setStep('RESULT')} />
             )}
@@ -373,27 +381,22 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
 };
 
 // =============================================================================
-// 🚨 [핵심 픽스] SUB-COMPONENT: BracketView (시드 배정 알고리즘 연동)
+// SUB-COMPONENT: BracketView
 // =============================================================================
 const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
     
-    // 🚨 픽스: 토너먼트 시드 배정 로직 (Distribute Teams Smartly 변형)
     const generateSeededBracket = (teams: any[]) => {
-        // 1. 필요한 총 슬롯 수 계산 (2의 제곱수)
         const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
         const slots: (any | null)[] = new Array(nextPowerOf2).fill(null);
         
-        // 2. 유저(Owner)별로 팀을 그룹화
         const ownerGroups = teams.reduce((acc, team) => {
             if (!acc[team.assignedPlayer.nickname]) acc[team.assignedPlayer.nickname] = [];
             acc[team.assignedPlayer.nickname].push(team);
             return acc;
         }, {} as Record<string, any[]>);
 
-        // 3. 팀이 많은 유저부터 먼저 배치 (균등 분배를 위해)
         const sortedOwners = Object.keys(ownerGroups).sort((a, b) => ownerGroups[b].length - ownerGroups[a].length);
         
-        // 4. 시드 배정 인덱스 계산 공식 (양극단으로 찢기)
         const getOrder = (n: number) => {
             const res: number[] = []; 
             const bits = Math.log2(n);
@@ -408,7 +411,6 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
         const order = getOrder(nextPowerOf2);
         let currentIdx = 0;
 
-        // 5. 계산된 시드 순서에 맞춰 유저의 팀들을 슬롯에 배치
         sortedOwners.forEach(owner => {
             ownerGroups[owner].forEach((team: any) => {
                 while (slots[order[currentIdx]] !== null) { currentIdx = (currentIdx + 1) % nextPowerOf2; }
@@ -416,7 +418,6 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
             });
         });
 
-        // 6. 1라운드(Match) 형태로 2팀씩 묶어 반환
         const matches = [];
         for (let i = 0; i < slots.length; i += 2) {
             matches.push([slots[i], slots[i+1]]);
