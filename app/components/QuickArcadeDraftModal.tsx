@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Owner, MasterTeam, Team, FALLBACK_IMG } from '../types';
-import { Search, X, LayoutGrid } from 'lucide-react';
+import { Search, X, LayoutGrid, RotateCcw, Zap } from 'lucide-react';
 
 interface QuickArcadeDraftModalProps {
     onClose: () => void;
@@ -15,6 +15,17 @@ type DraftMode = 'TOURNAMENT' | 'GROUP';
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT' | 'BRACKET';
 type PlayerType = { id: string, nickname: string, photo: string };
 
+const CUSTOM_USER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
+const shuffleArray = <T,>(array: T[]): T[] => {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+};
+
 export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }: QuickArcadeDraftModalProps) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
@@ -23,7 +34,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 
     const [step, setStep] = useState<Step>('SETTINGS');
     
-    // 🚨 1. 플레이어 상태 관리 (커스텀 유저 대응)
     const [players, setPlayers] = useState<PlayerType[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showDropdown, setShowDropdown] = useState(false);
@@ -39,7 +49,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 
     const totalNeeded = players.length * teamsPerPlayer;
 
-    // 실시간 필터 카운트 계산
     useEffect(() => {
         const count = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -49,22 +58,20 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         setFilteredCount(count);
     }, [filterCategory, filterTiers, masterTeams]);
 
-    // 유저 검색
     const filteredOwners = owners.filter(o => 
         o.nickname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
         o.legacyName?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // 🚨 픽스: 플레이어 추가 및 삭제 함수 완벽 구현
     const handleAddPlayer = (owner?: Owner) => {
         if (owner) {
             if (!players.find(p => p.id === (owner.uid || String(owner.id)))) {
-                setPlayers([...players, { id: owner.uid || String(owner.id), nickname: owner.nickname, photo: owner.photo || FALLBACK_IMG }]);
+                setPlayers([...players, { id: owner.uid || String(owner.id), nickname: owner.nickname, photo: owner.photo || CUSTOM_USER_IMG }]);
             }
         } else if (searchQuery.trim()) {
             const name = searchQuery.trim().toUpperCase();
             if (!players.find(p => p.nickname === name)) {
-                setPlayers([...players, { id: `custom-${Date.now()}`, nickname: name, photo: FALLBACK_IMG }]);
+                setPlayers([...players, { id: `custom-${Date.now()}`, nickname: name, photo: CUSTOM_USER_IMG }]);
             }
         }
         setSearchQuery('');
@@ -85,7 +92,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         else setFn(next);
     };
 
-    // 🚨 픽스: 드래프트 실행 로직
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
@@ -95,18 +101,30 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 
         if (targetPool.length < totalNeeded) return alert("팀이 부족합니다! 필터를 완화하거나 플레이어를 줄이세요.");
 
-        const shuffled = [...targetPool].sort(() => Math.random() - 0.5).slice(0, totalNeeded);
-        const results: (MasterTeam & { assignedPlayer: PlayerType })[] = [];
+        const shuffledPool = shuffleArray(targetPool).slice(0, totalNeeded);
+        
+        const teamsByPlayer: (MasterTeam & { assignedPlayer: PlayerType })[][] = players.map(() => []);
         let teamIdx = 0;
 
-        players.forEach(player => {
+        players.forEach((player, pIdx) => {
             for (let i = 0; i < teamsPerPlayer; i++) {
-                results.push({ ...shuffled[teamIdx], assignedPlayer: player });
+                teamsByPlayer[pIdx].push({ ...shuffledPool[teamIdx], assignedPlayer: player });
                 teamIdx++;
             }
         });
+
+        const seededResults: (MasterTeam & { assignedPlayer: PlayerType })[] = [];
         
-        setDraftResults(results.sort(() => Math.random() - 0.5)); // 카드 배치 랜덤화
+        for (let round = 0; round < teamsPerPlayer; round++) {
+            let roundTeams = [];
+            for (let pIdx = 0; pIdx < players.length; pIdx++) {
+                roundTeams.push(teamsByPlayer[pIdx][round]);
+            }
+            roundTeams = shuffleArray(roundTeams); 
+            seededResults.push(...roundTeams);
+        }
+        
+        setDraftResults(seededResults);
         setStep('OPENING');
     };
 
@@ -135,23 +153,21 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                     transition={{ duration: 0.2 }}
                     className="w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900 relative isolate"
                 >
-                    <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                        <h2 className="text-xl md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
-                            <span className="text-emerald-400 text-2xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK ARCADE DRAFT
+                    <div className="flex-none p-4 md:p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                        <h2 className="text-lg md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
+                            <span className="text-emerald-400 text-xl md:text-3xl drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">⚡</span> QUICK ARCADE DRAFT
                         </h2>
-                        <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
+                        <button onClick={onClose} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer transition-colors">✕</button>
                     </div>
                     
-                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-8 md:pb-0">
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-6 md:pb-0">
                         
-                        {/* =========================================================
-                            STEP 1. SETTINGS (기존 레이아웃 완전 복원) 
-                        ========================================================= */}
+                        {/* STEP 1. SETTINGS */}
                         {step === 'SETTINGS' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 p-5 md:p-8 pb-4 flex-1 flex flex-col">
+                            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 p-4 md:p-6 flex-1 flex flex-col">
                                 
-                                <div className="grid md:grid-cols-2 gap-8">
-                                    <div className="space-y-2 relative" ref={dropdownRef}>
+                                <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                                    <div className="space-y-1.5 relative" ref={dropdownRef}>
                                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Players</label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
@@ -160,15 +176,15 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                                                     value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }} 
                                                     onFocus={() => setShowDropdown(true)} onKeyDown={e => {if(e.key==='Enter') handleAddPlayer();}} 
                                                     placeholder="유저 검색 또는 이름 입력..." 
-                                                    className="w-full bg-slate-800 border border-slate-700 text-white pl-10 pr-3 py-3 rounded-xl outline-none focus:border-emerald-500 transition-colors shadow-inner" 
+                                                    className="w-full bg-slate-800 border border-slate-700 text-white pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-emerald-500 transition-colors shadow-inner text-sm" 
                                                 />
                                                 {showDropdown && searchQuery && filteredOwners.length > 0 && (
-                                                    <div className="absolute top-full left-0 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar overflow-hidden">
+                                                    <div className="absolute top-full left-0 w-full mt-1.5 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar overflow-hidden">
                                                         {filteredOwners.map(o => (
-                                                            <div key={o.uid || o.docId} onClick={() => handleAddPlayer(o)} className="px-4 py-3 hover:bg-slate-700 cursor-pointer text-white text-sm border-b border-slate-700/50 last:border-0 flex justify-between items-center transition-colors">
+                                                            <div key={o.uid || o.docId} onClick={() => handleAddPlayer(o)} className="px-4 py-2.5 hover:bg-slate-700 cursor-pointer text-white text-sm border-b border-slate-700/50 last:border-0 flex justify-between items-center transition-colors">
                                                                 <span className="font-bold flex items-center gap-2">
-                                                                    <div className="w-6 h-6 rounded-full bg-slate-900 border border-slate-600 overflow-hidden">
-                                                                        <img src={o.photo||FALLBACK_IMG} className="w-full h-full object-cover"/>
+                                                                    <div className="w-5 h-5 rounded-full bg-slate-900 border border-slate-600 overflow-hidden shrink-0">
+                                                                        <img src={o.photo||CUSTOM_USER_IMG} onError={(e:any) => e.target.src=CUSTOM_USER_IMG} className="w-full h-full object-cover"/>
                                                                     </div> {o.nickname}
                                                                 </span>
                                                             </div>
@@ -176,59 +192,59 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                                                     </div>
                                                 )}
                                             </div>
-                                            <button onClick={() => handleAddPlayer()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 rounded-xl font-bold transition-all shadow-lg active:scale-95">추가</button>
+                                            <button onClick={() => handleAddPlayer()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded-xl font-bold transition-all shadow-lg active:scale-95 text-sm">추가</button>
                                         </div>
-                                        <div className="flex flex-wrap gap-2 mt-3">
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
                                             {players.map(p => (
-                                                <div key={p.id} className="bg-slate-800 border border-slate-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm shadow-sm font-medium">
-                                                    <img src={p.photo} className="w-5 h-5 rounded-full object-cover border border-slate-500" />
-                                                    {p.nickname} <button onClick={() => handleRemovePlayer(p.id)} className="text-slate-400 hover:text-red-400"><X size={14}/></button>
+                                                <div key={p.id} className="bg-slate-800 border border-slate-600 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 text-xs shadow-sm font-medium">
+                                                    <img src={p.photo} onError={(e:any) => e.target.src=CUSTOM_USER_IMG} className="w-4 h-4 rounded-full object-cover border border-slate-500 bg-slate-900" />
+                                                    {p.nickname} <button onClick={() => handleRemovePlayer(p.id)} className="text-slate-400 hover:text-red-400 ml-1"><X size={12}/></button>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
+                                    <div className="space-y-1.5">
                                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">2. Game Mode</label>
-                                        <div className="flex bg-slate-800 p-2 rounded-2xl border border-slate-700 h-[64px] gap-2">
-                                            <button onClick={()=>setGameMode('TOURNAMENT')} className={`flex-1 rounded-xl text-sm font-black transition-all ${gameMode==='TOURNAMENT'?'bg-indigo-600 text-white shadow-lg':'text-slate-500 hover:bg-slate-700 hover:text-white'}`}>🏆 토너먼트</button>
-                                            <button onClick={()=>setGameMode('GROUP')} className={`flex-1 rounded-xl text-sm font-black transition-all ${gameMode==='GROUP'?'bg-indigo-600 text-white shadow-lg':'text-slate-500 hover:bg-slate-700 hover:text-white'}`}>📊 조별리그</button>
+                                        <div className="flex bg-slate-800 p-1.5 rounded-xl border border-slate-700 gap-1.5">
+                                            <button onClick={()=>setGameMode('TOURNAMENT')} className={`flex-1 py-2.5 rounded-lg text-sm font-black transition-all ${gameMode==='TOURNAMENT'?'bg-indigo-600 text-white shadow-md':'text-slate-500 hover:bg-slate-700 hover:text-white'}`}>🏆 토너먼트</button>
+                                            <button onClick={()=>setGameMode('GROUP')} className={`flex-1 py-2.5 rounded-lg text-sm font-black transition-all ${gameMode==='GROUP'?'bg-indigo-600 text-white shadow-md':'text-slate-500 hover:bg-slate-700 hover:text-white'}`}>📊 조별리그</button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid md:grid-cols-2 gap-8">
-                                    <div className="space-y-2">
+                                <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                                    <div className="space-y-1.5">
                                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">3. Teams per Owner</label>
-                                        <div className="flex items-center justify-between bg-slate-800 p-2 rounded-2xl border border-slate-700 h-[64px]">
-                                            <button onClick={() => setTeamsPerPlayer(Math.max(1, teamsPerPlayer - 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">-</button>
-                                            <div className="flex flex-col items-center"><span className="text-2xl font-black text-white italic">{teamsPerPlayer}</span><span className="text-[9px] text-slate-400 font-bold uppercase">Teams Each</span></div>
-                                            <button onClick={() => setTeamsPerPlayer(Math.min(5, teamsPerPlayer + 1))} className="w-12 h-full rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-2xl transition-colors">+</button>
+                                        <div className="flex items-center justify-between bg-slate-800 p-1.5 rounded-xl border border-slate-700 h-[54px]">
+                                            <button onClick={() => setTeamsPerPlayer(Math.max(1, teamsPerPlayer - 1))} className="w-12 h-full rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xl transition-colors">-</button>
+                                            <div className="flex flex-col items-center leading-none mt-0.5"><span className="text-xl font-black text-white italic">{teamsPerPlayer}</span><span className="text-[8px] text-slate-400 font-bold uppercase mt-1">Teams</span></div>
+                                            <button onClick={() => setTeamsPerPlayer(Math.min(5, teamsPerPlayer + 1))} className="w-12 h-full rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xl transition-colors">+</button>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-1.5">
                                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">4. Filter Options</label>
-                                        <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-3">
-                                            <div className="flex gap-2">
-                                                {['ALL', 'CLUB', 'NATIONAL'].map(cat => (<button key={cat} onClick={() => toggleFilterWithAll(cat, filterCategory, setFilterCategory, true)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterCategory.includes(cat) ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{cat}</button>))}
+                                        <div className="bg-slate-800 p-2.5 rounded-xl border border-slate-700 space-y-2">
+                                            <div className="flex gap-1.5">
+                                                {['ALL', 'CLUB', 'NATIONAL'].map(cat => (<button key={cat} onClick={() => toggleFilterWithAll(cat, filterCategory, setFilterCategory, true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterCategory.includes(cat) ? 'bg-emerald-600 border-emerald-500 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{cat}</button>))}
                                             </div>
-                                            <div className="flex gap-2">
-                                                {['ALL', 'S', 'A', 'B', 'C', 'D'].map(tier => (<button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterTiers.includes(tier) ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{tier === 'ALL' ? 'ALL' : tier}</button>))}
+                                            <div className="flex gap-1.5">
+                                                {['ALL', 'S', 'A', 'B', 'C', 'D'].map(tier => (<button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterTiers.includes(tier) ? 'bg-sky-600 border-sky-500 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{tier === 'ALL' ? 'ALL' : tier}</button>))}
                                             </div>
-                                            <div className="pt-2 border-t border-slate-700 text-xs flex justify-between items-center">
-                                                <span className="text-slate-500">Need: <strong className="text-white">{totalNeeded}</strong></span>
+                                            <div className="pt-1.5 border-t border-slate-700 text-xs flex justify-between items-center">
+                                                <span className="text-slate-500 font-medium">Need: <strong className="text-white">{totalNeeded}</strong></span>
                                                 <span className={`font-bold ${filteredCount >= totalNeeded ? 'text-emerald-400' : 'text-red-400'}`}>Available: {filteredCount} Teams</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className="flex-1 min-h-[20px]"></div>
+                                <div className="flex-1 min-h-[10px]"></div>
 
                                 <button 
                                     onClick={handleStartDraft} 
                                     disabled={filteredCount < totalNeeded || players.length === 0} 
-                                    className="w-full py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale !text-white font-black italic text-xl tracking-tighter uppercase rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20 relative z-10"
+                                    className="w-full py-4 sm:py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale !text-white font-black italic text-lg sm:text-xl tracking-tighter uppercase rounded-xl sm:rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20 relative z-10"
                                     style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }} 
                                 >
                                     {filteredCount < totalNeeded ? "Not Enough Teams!" : "⚡ Open The Packs ⚡"}
@@ -236,9 +252,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                             </div>
                         )}
 
-                        {/* =========================================================
-                            STEP 2. RESULT (오리지널 디자인 + 스파크 효과 유지) 
-                        ========================================================= */}
+                        {/* STEP 2. RESULT */}
                         {step === 'RESULT' && (
                             <DraftResultView 
                                 results={draftResults} 
@@ -247,9 +261,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                             />
                         )}
 
-                        {/* =========================================================
-                            STEP 3. BRACKET (대진표 / 조별리그 시각화) 
-                        ========================================================= */}
+                        {/* STEP 3. BRACKET */}
                         {step === 'BRACKET' && (
                             <BracketView 
                                 flatTeams={draftResults} 
@@ -265,7 +277,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftResultView (오리지널 카드 레이아웃 완벽 복원)
+// SUB-COMPONENT: DraftResultView
 // =============================================================================
 const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
     const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
@@ -278,7 +290,6 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* 🚨 2. 오리지널 S, A 등급 스파크 / 플로팅 효과 CSS 완벽 복원 */}
             <style jsx>{`
                 .perspective-1000 { perspective: 1000px; }
                 .preserve-3d { transform-style: preserve-3d; }
@@ -295,51 +306,50 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                 .tier-a-anim { animation: float-y 3s ease-in-out infinite; box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); border: 2px solid #ffd700 !important; }
             `}</style>
             
-            <div className="flex-none p-2 flex justify-end gap-4 px-6 mt-2">
+            <div className="flex-none p-2 flex justify-end gap-4 px-4 sm:px-6">
                 <button onClick={handleFlipAll} disabled={allFlipped} className="text-xs font-bold text-slate-400 hover:text-white underline disabled:opacity-30">전체 뒤집기</button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pb-20">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-0 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pb-6">
                     {results.map((team: any, idx: number) => {
                         const isFlipped = flippedIndices.includes(idx);
                         const backBg = backStyles[idx % 4];
 
                         return (
-                            <div key={idx} className="relative h-72 perspective-1000 cursor-pointer group" onClick={() => handleFlip(idx)}>
-                                {/* 🚨 뒷면일 때도 스파크 효과가 유지되도록 감싸는 div에 클래스 부여 */}
+                            <div key={idx} className="relative h-64 sm:h-72 perspective-1000 cursor-pointer group" onClick={() => handleFlip(idx)}>
                                 <div className={`w-full h-full relative rounded-2xl ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`}>
                                     <motion.div animate={{ rotateY: isFlipped ? 180 : 0 }} transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }} className="w-full h-full preserve-3d absolute inset-0 rounded-2xl">
                                         
-                                        {/* BACK (오리지널 뒷면) */}
+                                        {/* BACK */}
                                         <div className={`absolute inset-0 w-full h-full rounded-2xl backface-hidden ${backBg} border-2 border-slate-600 shadow-2xl flex flex-col items-center justify-center p-4 z-20`}>
                                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat"></div>
-                                            <div className="w-16 h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-3xl grayscale opacity-70">⚽</span></div>
-                                            <div className="text-center relative z-10"><p className="text-slate-300 text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
+                                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-2xl sm:text-3xl grayscale opacity-70">⚽</span></div>
+                                            <div className="text-center relative z-10"><p className="text-slate-300 text-[8px] sm:text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-lg sm:text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
                                         </div>
 
-                                        {/* FRONT (오리지널 유저 프사/이름 레이아웃 완벽 복원) */}
+                                        {/* FRONT */}
                                         <div className="absolute inset-0 w-full h-full rounded-2xl bg-slate-900 border-2 border-slate-600 flex flex-col overflow-hidden shadow-inner" style={{ transform: "rotateY(180deg)", zIndex: isFlipped ? 30 : 0 }}>
                                             {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse"></div>}
                                             {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0"></div>}
                                             
-                                            <div className="h-14 flex items-center px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm">
-                                                <div className="w-9 h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-3 bg-slate-800 shrink-0">
-                                                    <img src={team.assignedPlayer.photo} className="w-full h-full object-cover"/>
+                                            <div className="h-12 sm:h-14 flex items-center px-3 sm:px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm shrink-0">
+                                                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-2.5 bg-slate-800 shrink-0">
+                                                    <img src={team.assignedPlayer.photo} onError={(e:any)=>e.target.src=CUSTOM_USER_IMG} className="w-full h-full object-cover"/>
                                                 </div>
-                                                <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-sm font-bold text-white truncate">{team.assignedPlayer.nickname}</span></div>
+                                                <div className="flex flex-col min-w-0"><span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-xs sm:text-sm font-bold text-white truncate">{team.assignedPlayer.nickname}</span></div>
                                             </div>
 
                                             <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
-                                                <div className="w-24 h-24 relative mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
-                                                    <img src={team.logo} className="w-16 h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                                <div className="w-20 h-20 sm:w-24 sm:h-24 relative mb-2 sm:mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
+                                                    <img src={team.logo} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                                 </div>
-                                                <div className="text-center w-full px-2"><div className="font-black italic text-white text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
+                                                <div className="text-center w-full px-2"><div className="font-black italic text-white text-base sm:text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
                                             </div>
 
-                                            <div className="h-12 bg-black/60 flex justify-between items-center px-4 z-10 border-t border-white/10 backdrop-blur-md">
-                                                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider bg-white/10 px-2 py-1 rounded truncate max-w-[80px]">{team.category || team.region}</span>
-                                                <span className={`text-xs font-black italic px-3 py-1 rounded shadow-lg ${team.tier === 'S' ? 'bg-emerald-500 text-black' : team.tier === 'A' ? 'bg-yellow-500 text-black' : team.tier === 'D' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{team.tier}</span>
+                                            <div className="h-10 sm:h-12 bg-black/60 flex justify-between items-center px-3 sm:px-4 z-10 border-t border-white/10 backdrop-blur-md shrink-0">
+                                                <span className="text-[8px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-wider bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[70px] sm:max-w-[80px]">{team.category || team.region}</span>
+                                                <span className={`text-[10px] sm:text-xs font-black italic px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-lg ${team.tier === 'S' ? 'bg-emerald-500 text-black' : team.tier === 'A' ? 'bg-yellow-500 text-black' : team.tier === 'D' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{team.tier}</span>
                                             </div>
                                         </div>
                                     </motion.div>
@@ -350,57 +360,113 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                 </div>
             </div>
 
-            <div className="flex-none p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-2 gap-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                <button onClick={onRetry} className="py-4 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 !text-white border border-slate-700 transition-colors">🔄 다시 뽑기</button>
-                <button onClick={onGenerate} disabled={!allFlipped} className="py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 !text-white font-black italic text-lg shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-2"><LayoutGrid size={20} /> 대진표/조별리그 생성</button>
+            <div className="flex-none p-3 sm:p-4 bg-slate-900 border-t border-slate-800 flex gap-3 sm:gap-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                <button onClick={onRetry} className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-400 font-bold hover:bg-slate-700 !text-white border border-slate-700 transition-colors text-sm sm:text-base flex items-center justify-center gap-2">
+                    <RotateCcw size={16} /> 다시 뽑기
+                </button>
+                <button onClick={onGenerate} disabled={!allFlipped} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 !text-white font-black italic text-sm sm:text-base shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-1.5">
+                    대진표/조별리그 <LayoutGrid size={18} className="hidden sm:block" />
+                </button>
             </div>
         </div>
     );
 };
 
 // =============================================================================
-// 🚨 3. SUB-COMPONENT: BracketView (토너먼트/조별리그 뷰어 생성)
+// 🚨 [핵심 픽스] SUB-COMPONENT: BracketView (시드 배정 알고리즘 연동)
 // =============================================================================
 const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
-    if (gameMode === 'TOURNAMENT') {
+    
+    // 🚨 픽스: 토너먼트 시드 배정 로직 (Distribute Teams Smartly 변형)
+    const generateSeededBracket = (teams: any[]) => {
+        // 1. 필요한 총 슬롯 수 계산 (2의 제곱수)
+        const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
+        const slots: (any | null)[] = new Array(nextPowerOf2).fill(null);
+        
+        // 2. 유저(Owner)별로 팀을 그룹화
+        const ownerGroups = teams.reduce((acc, team) => {
+            if (!acc[team.assignedPlayer.nickname]) acc[team.assignedPlayer.nickname] = [];
+            acc[team.assignedPlayer.nickname].push(team);
+            return acc;
+        }, {} as Record<string, any[]>);
+
+        // 3. 팀이 많은 유저부터 먼저 배치 (균등 분배를 위해)
+        const sortedOwners = Object.keys(ownerGroups).sort((a, b) => ownerGroups[b].length - ownerGroups[a].length);
+        
+        // 4. 시드 배정 인덱스 계산 공식 (양극단으로 찢기)
+        const getOrder = (n: number) => {
+            const res: number[] = []; 
+            const bits = Math.log2(n);
+            for (let i = 0; i < n; i++) {
+                let rev = 0, temp = i;
+                for (let b = 0; b < bits; b++) { rev = (rev << 1) | (temp & 1); temp >>= 1; }
+                res.push(rev);
+            }
+            return res;
+        };
+        
+        const order = getOrder(nextPowerOf2);
+        let currentIdx = 0;
+
+        // 5. 계산된 시드 순서에 맞춰 유저의 팀들을 슬롯에 배치
+        sortedOwners.forEach(owner => {
+            ownerGroups[owner].forEach((team: any) => {
+                while (slots[order[currentIdx]] !== null) { currentIdx = (currentIdx + 1) % nextPowerOf2; }
+                slots[order[currentIdx]] = team;
+            });
+        });
+
+        // 6. 1라운드(Match) 형태로 2팀씩 묶어 반환
         const matches = [];
-        for (let i = 0; i < flatTeams.length; i += 2) {
-            matches.push([flatTeams[i], flatTeams[i+1]]);
+        for (let i = 0; i < slots.length; i += 2) {
+            matches.push([slots[i], slots[i+1]]);
         }
+        return matches;
+    };
+
+    if (gameMode === 'TOURNAMENT') {
+        const matches = generateSeededBracket(flatTeams);
+        
         return (
-            <div className="p-6 animate-in fade-in">
-               <h3 className="text-2xl md:text-3xl font-black italic text-white mb-8 text-center drop-shadow-md">🏆 TOURNAMENT MATCHUP</h3>
-               <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="p-4 sm:p-6 animate-in fade-in">
+               <h3 className="text-xl sm:text-2xl md:text-3xl font-black italic text-white mb-6 text-center drop-shadow-md">🏆 TOURNAMENT MATCHUP</h3>
+               <div className="space-y-3 sm:space-y-4 max-w-4xl mx-auto">
                    {matches.map((m, i) => (
-                       <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex justify-between items-center shadow-lg relative overflow-hidden">
+                       <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-3 sm:p-4 flex justify-between items-center shadow-lg relative overflow-hidden">
                            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
                            
-                           <div className="flex items-center gap-4 w-[42%]">
-                               <img src={m[0].logo||FALLBACK_IMG} className="w-12 h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1.5 shadow-inner"/>
-                               <div className="min-w-0">
-                                   <div className="text-white font-bold text-sm md:text-base truncate">{m[0].name}</div>
-                                   <div className="text-xs text-slate-400 font-bold">{m[0].assignedPlayer.nickname}</div>
-                               </div>
-                           </div>
-
-                           <div className="text-xl md:text-2xl font-black text-slate-500 italic shrink-0">VS</div>
-
-                           {m[1] ? (
-                               <div className="flex items-center gap-4 w-[42%] flex-row-reverse text-right">
-                                   <img src={m[1].logo||FALLBACK_IMG} className="w-12 h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1.5 shadow-inner"/>
+                           {/* HOME */}
+                           {m[0] ? (
+                               <div className="flex items-center gap-3 sm:gap-4 w-[42%]">
+                                   <img src={m[0].logo||FALLBACK_IMG} className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1 sm:p-1.5 shadow-inner shrink-0"/>
                                    <div className="min-w-0">
-                                       <div className="text-white font-bold text-sm md:text-base truncate">{m[1].name}</div>
-                                       <div className="text-xs text-slate-400 font-bold">{m[1].assignedPlayer.nickname}</div>
+                                       <div className="text-white font-bold text-xs sm:text-sm md:text-base truncate">{m[0].name}</div>
+                                       <div className="text-[10px] sm:text-xs text-slate-400 font-bold truncate">{m[0].assignedPlayer.nickname}</div>
                                    </div>
                                </div>
                            ) : (
-                               <div className="w-[42%] text-right text-slate-600 font-bold italic text-sm md:text-base">BYE (부전승)</div>
+                               <div className="w-[42%] text-left text-slate-600 font-bold italic text-xs sm:text-sm md:text-base pl-2">BYE (부전승)</div>
+                           )}
+
+                           <div className="text-lg sm:text-xl md:text-2xl font-black text-slate-500 italic shrink-0">VS</div>
+
+                           {/* AWAY */}
+                           {m[1] ? (
+                               <div className="flex items-center gap-3 sm:gap-4 w-[42%] flex-row-reverse text-right">
+                                   <img src={m[1].logo||FALLBACK_IMG} className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1 sm:p-1.5 shadow-inner shrink-0"/>
+                                   <div className="min-w-0">
+                                       <div className="text-white font-bold text-xs sm:text-sm md:text-base truncate">{m[1].name}</div>
+                                       <div className="text-[10px] sm:text-xs text-slate-400 font-bold truncate">{m[1].assignedPlayer.nickname}</div>
+                                   </div>
+                               </div>
+                           ) : (
+                               <div className="w-[42%] text-right text-slate-600 font-bold italic text-xs sm:text-sm md:text-base pr-2">BYE (부전승)</div>
                            )}
                        </div>
                    ))}
                </div>
-               <div className="mt-10 text-center">
-                   <button onClick={onBack} className="bg-slate-800 text-slate-400 hover:text-white px-8 py-3.5 rounded-xl font-bold transition-colors border border-slate-700">← 카드 뷰로 돌아가기</button>
+               <div className="mt-8 text-center">
+                   <button onClick={onBack} className="bg-slate-800 text-slate-400 hover:text-white px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl font-bold transition-colors border border-slate-700 text-sm sm:text-base">← 카드 뷰로 돌아가기</button>
                </div>
             </div>
         );
@@ -408,30 +474,30 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
         const groups = [];
         for (let i = 0; i < flatTeams.length; i += 4) { groups.push(flatTeams.slice(i, i+4)); }
         return (
-            <div className="p-6 animate-in fade-in">
-               <h3 className="text-2xl md:text-3xl font-black italic text-white mb-8 text-center drop-shadow-md">📊 GROUP STAGE DRAW</h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            <div className="p-4 sm:p-6 animate-in fade-in">
+               <h3 className="text-xl sm:text-2xl md:text-3xl font-black italic text-white mb-6 text-center drop-shadow-md">📊 GROUP STAGE DRAW</h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-5xl mx-auto">
                    {groups.map((g, i) => (
                        <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
-                           <div className="bg-slate-900/80 py-3 px-4 font-black italic text-emerald-400 border-b border-slate-700 tracking-widest text-lg">GROUP {String.fromCharCode(65+i)}</div>
-                           <div className="p-4 space-y-3">
+                           <div className="bg-slate-900/80 py-2.5 sm:py-3 px-4 font-black italic text-emerald-400 border-b border-slate-700 tracking-widest text-base sm:text-lg">GROUP {String.fromCharCode(65+i)}</div>
+                           <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
                                {g.map((t:any, j:number) => (
-                                   <div key={j} className="flex items-center gap-3 bg-slate-900 border border-slate-700/50 p-2.5 rounded-lg">
-                                       <span className="text-slate-500 font-black w-4 text-center">{j+1}</span>
-                                       <img src={t.logo||FALLBACK_IMG} className="w-10 h-10 object-contain bg-white rounded-full p-1 shadow-sm"/>
+                                   <div key={j} className="flex items-center gap-2 sm:gap-3 bg-slate-900 border border-slate-700/50 p-2 sm:p-2.5 rounded-lg">
+                                       <span className="text-slate-500 font-black w-3 sm:w-4 text-center text-xs sm:text-sm">{j+1}</span>
+                                       <img src={t.logo||FALLBACK_IMG} className="w-8 h-8 sm:w-10 sm:h-10 object-contain bg-white rounded-full p-1 shadow-sm shrink-0"/>
                                        <div className="flex-1 min-w-0">
-                                           <div className="text-white font-bold text-sm truncate">{t.name}</div>
-                                           <div className="text-[10px] text-slate-400 font-bold">{t.assignedPlayer.nickname}</div>
+                                           <div className="text-white font-bold text-xs sm:text-sm truncate">{t.name}</div>
+                                           <div className="text-[9px] sm:text-[10px] text-slate-400 font-bold truncate">{t.assignedPlayer.nickname}</div>
                                        </div>
-                                       <span className={`text-[10px] px-2 py-0.5 rounded font-black shadow-sm ${t.tier==='S'?'bg-emerald-500 text-black':t.tier==='A'?'bg-yellow-500 text-black':'bg-slate-700 text-white'}`}>{t.tier}</span>
+                                       <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded font-black shadow-sm shrink-0 ${t.tier==='S'?'bg-emerald-500 text-black':t.tier==='A'?'bg-yellow-500 text-black':'bg-slate-700 text-white'}`}>{t.tier}</span>
                                    </div>
                                ))}
                            </div>
                        </div>
                    ))}
                </div>
-               <div className="mt-10 text-center">
-                   <button onClick={onBack} className="bg-slate-800 text-slate-400 hover:text-white px-8 py-3.5 rounded-xl font-bold transition-colors border border-slate-700">← 카드 뷰로 돌아가기</button>
+               <div className="mt-8 text-center">
+                   <button onClick={onBack} className="bg-slate-800 text-slate-400 hover:text-white px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl font-bold transition-colors border border-slate-700 text-sm sm:text-base">← 카드 뷰로 돌아가기</button>
                </div>
             </div>
         );
@@ -439,7 +505,7 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
 };
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation (오리지널 랜덤 5종 애니메이션 완벽 복원)
+// SUB-COMPONENT: PackOpeningAnimation
 // =============================================================================
 const PremiumCard = () => (
     <div className="w-40 h-60 sm:w-48 sm:h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
