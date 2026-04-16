@@ -11,8 +11,9 @@ interface QuickArcadeDraftModalProps {
     owners?: Owner[]; 
 }
 
+// 🚨 픽스: INTRO 단계 추가
 type DraftMode = 'TOURNAMENT' | 'GROUP';
-type Step = 'SETTINGS' | 'OPENING' | 'RESULT' | 'BRACKET';
+type Step = 'INTRO' | 'SETTINGS' | 'OPENING' | 'RESULT' | 'BRACKET';
 type PlayerType = { id: string, nickname: string, photo: string };
 
 const CUSTOM_USER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
@@ -32,7 +33,8 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
     
     useEffect(() => setMounted(true), []);
 
-    const [step, setStep] = useState<Step>('SETTINGS');
+    // 🚨 시작 단계를 INTRO 시네마틱으로 설정
+    const [step, setStep] = useState<Step>('INTRO');
     
     const [players, setPlayers] = useState<PlayerType[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -102,7 +104,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         if (targetPool.length < totalNeeded) return alert("팀이 부족합니다! 필터를 완화하거나 플레이어를 줄이세요.");
 
         const shuffledPool = shuffleArray(targetPool).slice(0, totalNeeded);
-        
         const teamsByPlayer: (MasterTeam & { assignedPlayer: PlayerType })[][] = players.map(() => []);
         let teamIdx = 0;
 
@@ -114,7 +115,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         });
 
         const seededResults: (MasterTeam & { assignedPlayer: PlayerType })[] = [];
-        
         for (let round = 0; round < teamsPerPlayer; round++) {
             let roundTeams = [];
             for (let pIdx = 0; pIdx < players.length; pIdx++) {
@@ -139,27 +139,27 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
     if (!mounted) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[99999] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[99999] flex items-center justify-center p-4">
             
-            {/* 🚨 [화이트아웃 이펙트] 모달이 뜨는 순간 섬광이 터지며 서서히 걷힙니다 */}
-            <motion.div
-                initial={{ opacity: 1, filter: "brightness(5)" }}
-                animate={{ opacity: 0, filter: "brightness(1)" }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
-                className="fixed inset-0 bg-white z-[100000] pointer-events-none mix-blend-screen"
-            />
+            <AnimatePresence mode="wait">
+                {/* 🚨 1. 인트로 시네마틱 애니메이션 (카드깡 수준의 폭발 효과) */}
+                {step === 'INTRO' && (
+                    <IntroCinematic key="intro" onComplete={() => setStep('SETTINGS')} />
+                )}
+            </AnimatePresence>
 
             {step === 'OPENING' && (
                 <PackOpeningAnimation onOpen={() => setStep('RESULT')} />
             )}
 
-            {step !== 'OPENING' && (
+            {/* 인트로와 오프닝이 아닐 때 모달 등장 */}
+            {step !== 'INTRO' && step !== 'OPENING' && (
                 <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }} 
-                    animate={{ opacity: 1, scale: 1 }} 
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-2xl transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900 relative isolate"
+                    initial={{ opacity: 0, scale: 0.8, y: 100, rotateX: 20 }} 
+                    animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }} 
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    transition={{ type: "spring", stiffness: 250, damping: 20 }}
+                    className="w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900 relative isolate"
                 >
                     <div className="flex-none p-4 md:p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                         <h2 className="text-lg md:text-2xl font-black italic text-white flex items-center gap-2 md:gap-3 tracking-tighter">
@@ -170,10 +170,11 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                     
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-6 md:pb-0">
                         
-                        {/* STEP 1. SETTINGS */}
+                        {/* =========================================================
+                            STEP 1. SETTINGS
+                        ========================================================= */}
                         {step === 'SETTINGS' && (
                             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 p-4 md:p-6 flex-1 flex flex-col">
-                                
                                 <div className="grid md:grid-cols-2 gap-4 md:gap-6">
                                     <div className="space-y-1.5 relative" ref={dropdownRef}>
                                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">1. Select Players</label>
@@ -285,6 +286,70 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 };
 
 // =============================================================================
+// 🚨 [신규] SUB-COMPONENT: Intro Cinematic (이스터에그 발동 폭발 연출)
+// =============================================================================
+const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onComplete, 2200); // 2.2초간 폭발 연출 후 세팅 화면으로
+        return () => clearTimeout(timer);
+    }, [onComplete]);
+
+    return (
+        <motion.div 
+            key="intro"
+            exit={{ opacity: 0, scale: 1.2, filter: "blur(10px)" }}
+            transition={{ duration: 0.5 }}
+            className="absolute inset-0 z-[100000] flex flex-col items-center justify-center overflow-hidden"
+        >
+            <style jsx>{`
+                @keyframes violent-shake {
+                    0% { transform: translate(3px, 3px) rotate(0deg); }
+                    10% { transform: translate(-3px, -4px) rotate(-1deg); }
+                    20% { transform: translate(-5px, 0px) rotate(1deg); }
+                    30% { transform: translate(5px, 4px) rotate(0deg); }
+                    40% { transform: translate(3px, -3px) rotate(1deg); }
+                    50% { transform: translate(-3px, 4px) rotate(-1deg); }
+                    60% { transform: translate(-5px, 3px) rotate(0deg); }
+                    70% { transform: translate(5px, 3px) rotate(-1deg); }
+                    80% { transform: translate(-3px, -3px) rotate(1deg); }
+                    90% { transform: translate(3px, 4px) rotate(0deg); }
+                    100% { transform: translate(3px, -4px) rotate(-1deg); }
+                }
+                .shake-violent { animation: violent-shake 0.3s infinite; }
+            `}</style>
+            
+            {/* 화이트아웃 섬광 */}
+            <motion.div 
+                initial={{ opacity: 1 }} 
+                animate={{ opacity: [1, 0, 1, 0] }} 
+                transition={{ duration: 0.6, times: [0, 0.1, 0.2, 1] }} 
+                className="absolute inset-0 bg-white mix-blend-screen z-10" 
+            />
+            
+            {/* 거대한 충격파 */}
+            <motion.div 
+                initial={{ scale: 0, opacity: 1, borderWidth: "60px" }} 
+                animate={{ scale: 8, opacity: 0, borderWidth: "0px" }} 
+                transition={{ duration: 1, ease: "easeOut" }} 
+                className="absolute w-40 h-40 rounded-full border-emerald-400 shadow-[0_0_200px_#34d399] z-0" 
+            />
+            
+            {/* 텍스트 & 아이콘 등장 */}
+            <motion.div
+                initial={{ scale: 0.5, opacity: 0, y: 50 }}
+                animate={{ scale: [1.2, 1], opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+                className="relative z-20 flex flex-col items-center shake-violent"
+            >
+                <Zap size={120} className="text-emerald-400 fill-emerald-400 drop-shadow-[0_0_50px_#34d399] mb-4" />
+                <h2 className="text-5xl md:text-7xl font-black italic text-white tracking-tighter drop-shadow-[0_0_30px_rgba(255,255,255,1)]">ARCADE DRAFT</h2>
+                <p className="text-emerald-400 tracking-[0.4em] font-black mt-4 text-sm md:text-lg drop-shadow-[0_0_15px_#34d399]">SYSTEM OVERRIDE SUCCESS</p>
+            </motion.div>
+        </motion.div>
+    );
+};
+
+// =============================================================================
 // SUB-COMPONENT: DraftResultView
 // =============================================================================
 const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
@@ -302,13 +367,7 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                 .perspective-1000 { perspective: 1000px; }
                 .preserve-3d { transform-style: preserve-3d; }
                 .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-                @keyframes electric-shake {
-                    0% { transform: translate(0, 0) rotate(0deg); }
-                    25% { transform: translate(-2px, 1px) rotate(1deg); }
-                    50% { transform: translate(2px, -1px) rotate(-1deg); }
-                    75% { transform: translate(-1px, -2px) rotate(1deg); }
-                    100% { transform: translate(0, 0) rotate(0deg); }
-                }
+                @keyframes electric-shake { 0% { transform: translate(0, 0) rotate(0deg); } 25% { transform: translate(-2px, 1px) rotate(1deg); } 50% { transform: translate(2px, -1px) rotate(-1deg); } 75% { transform: translate(-1px, -2px) rotate(1deg); } 100% { transform: translate(0, 0) rotate(0deg); } }
                 .tier-s-anim { animation: electric-shake 0.15s infinite linear; box-shadow: 0 0 20px #00ff88, 0 0 40px #00f2ff; border: 2px solid #00ff88 !important; }
                 @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
                 .tier-a-anim { animation: float-y 3s ease-in-out infinite; box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); border: 2px solid #ffd700 !important; }
@@ -328,14 +387,12 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                             <div key={idx} className="relative h-64 sm:h-72 perspective-1000 cursor-pointer group" onClick={() => handleFlip(idx)}>
                                 <div className={`w-full h-full relative rounded-2xl ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`}>
                                     <motion.div animate={{ rotateY: isFlipped ? 180 : 0 }} transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }} className="w-full h-full preserve-3d absolute inset-0 rounded-2xl">
-                                        
                                         {/* BACK */}
                                         <div className={`absolute inset-0 w-full h-full rounded-2xl backface-hidden ${backBg} border-2 border-slate-600 shadow-2xl flex flex-col items-center justify-center p-4 z-20`}>
                                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat"></div>
                                             <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-2xl sm:text-3xl grayscale opacity-70">⚽</span></div>
                                             <div className="text-center relative z-10"><p className="text-slate-300 text-[8px] sm:text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-lg sm:text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
                                         </div>
-
                                         {/* FRONT */}
                                         <div className="absolute inset-0 w-full h-full rounded-2xl bg-slate-900 border-2 border-slate-600 flex flex-col overflow-hidden shadow-inner" style={{ transform: "rotateY(180deg)", zIndex: isFlipped ? 30 : 0 }}>
                                             {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse"></div>}
@@ -347,14 +404,12 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                                                 </div>
                                                 <div className="flex flex-col min-w-0"><span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-xs sm:text-sm font-bold text-white truncate">{team.assignedPlayer.nickname}</span></div>
                                             </div>
-
                                             <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
                                                 <div className="w-20 h-20 sm:w-24 sm:h-24 relative mb-2 sm:mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
                                                     <img src={team.logo} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                                 </div>
                                                 <div className="text-center w-full px-2"><div className="font-black italic text-white text-base sm:text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
                                             </div>
-
                                             <div className="h-10 sm:h-12 bg-black/60 flex justify-between items-center px-3 sm:px-4 z-10 border-t border-white/10 backdrop-blur-md shrink-0">
                                                 <span className="text-[8px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-wider bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[70px] sm:max-w-[80px]">{team.category || team.region}</span>
                                                 <span className={`text-[10px] sm:text-xs font-black italic px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-lg ${team.tier === 'S' ? 'bg-emerald-500 text-black' : team.tier === 'A' ? 'bg-yellow-500 text-black' : team.tier === 'D' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{team.tier}</span>
@@ -427,7 +482,6 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
 
     if (gameMode === 'TOURNAMENT') {
         const matches = generateSeededBracket(flatTeams);
-        
         return (
             <div className="p-4 sm:p-6 animate-in fade-in">
                <h3 className="text-xl sm:text-2xl md:text-3xl font-black italic text-white mb-6 text-center drop-shadow-md">🏆 TOURNAMENT MATCHUP</h3>
@@ -435,8 +489,6 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
                    {matches.map((m, i) => (
                        <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-3 sm:p-4 flex justify-between items-center shadow-lg relative overflow-hidden">
                            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
-                           
-                           {/* HOME */}
                            {m[0] ? (
                                <div className="flex items-center gap-3 sm:gap-4 w-[42%]">
                                    <img src={m[0].logo||FALLBACK_IMG} className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1 sm:p-1.5 shadow-inner shrink-0"/>
@@ -448,10 +500,7 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
                            ) : (
                                <div className="w-[42%] text-left text-slate-600 font-bold italic text-xs sm:text-sm md:text-base pl-2">BYE (부전승)</div>
                            )}
-
                            <div className="text-lg sm:text-xl md:text-2xl font-black text-slate-500 italic shrink-0">VS</div>
-
-                           {/* AWAY */}
                            {m[1] ? (
                                <div className="flex items-center gap-3 sm:gap-4 w-[42%] flex-row-reverse text-right">
                                    <img src={m[1].logo||FALLBACK_IMG} className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-contain bg-white rounded-full p-1 sm:p-1.5 shadow-inner shrink-0"/>
@@ -506,7 +555,7 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
 };
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation
+// SUB-COMPONENT: PackOpeningAnimation 
 // =============================================================================
 const PremiumCard = () => (
     <div className="w-40 h-60 sm:w-48 sm:h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
