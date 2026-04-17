@@ -11,7 +11,6 @@ interface QuickArcadeDraftModalProps {
     owners?: Owner[]; 
 }
 
-// 🚨 픽스: INTRO 단계 추가
 type DraftMode = 'TOURNAMENT' | 'GROUP';
 type Step = 'INTRO' | 'SETTINGS' | 'OPENING' | 'RESULT' | 'BRACKET';
 type PlayerType = { id: string, nickname: string, photo: string };
@@ -33,7 +32,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
     
     useEffect(() => setMounted(true), []);
 
-    // 🚨 시작 단계를 INTRO 시네마틱으로 설정
     const [step, setStep] = useState<Step>('INTRO');
     
     const [players, setPlayers] = useState<PlayerType[]>([]);
@@ -142,7 +140,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[99999] flex items-center justify-center p-4">
             
             <AnimatePresence mode="wait">
-                {/* 🚨 1. 인트로 시네마틱 애니메이션 (카드깡 수준의 폭발 효과) */}
                 {step === 'INTRO' && (
                     <IntroCinematic key="intro" onComplete={() => setStep('SETTINGS')} />
                 )}
@@ -152,7 +149,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                 <PackOpeningAnimation onOpen={() => setStep('RESULT')} />
             )}
 
-            {/* 인트로와 오프닝이 아닐 때 모달 등장 */}
             {step !== 'INTRO' && step !== 'OPENING' && (
                 <motion.div 
                     initial={{ opacity: 0, scale: 0.8, y: 100, rotateX: 20 }} 
@@ -170,9 +166,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                     
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-6 md:pb-0">
                         
-                        {/* =========================================================
-                            STEP 1. SETTINGS
-                        ========================================================= */}
                         {step === 'SETTINGS' && (
                             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 p-4 md:p-6 flex-1 flex flex-col">
                                 <div className="grid md:grid-cols-2 gap-4 md:gap-6">
@@ -261,7 +254,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                             </div>
                         )}
 
-                        {/* STEP 2. RESULT */}
                         {step === 'RESULT' && (
                             <DraftResultView 
                                 results={draftResults} 
@@ -270,7 +262,6 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                             />
                         )}
 
-                        {/* STEP 3. BRACKET */}
                         {step === 'BRACKET' && (
                             <BracketView 
                                 flatTeams={draftResults} 
@@ -286,11 +277,11 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 };
 
 // =============================================================================
-// 🚨 [신규] SUB-COMPONENT: Intro Cinematic (이스터에그 발동 폭발 연출)
+// SUB-COMPONENT: Intro Cinematic
 // =============================================================================
 const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
     useEffect(() => {
-        const timer = setTimeout(onComplete, 2200); // 2.2초간 폭발 연출 후 세팅 화면으로
+        const timer = setTimeout(onComplete, 2200); 
         return () => clearTimeout(timer);
     }, [onComplete]);
 
@@ -318,7 +309,6 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
                 .shake-violent { animation: violent-shake 0.3s infinite; }
             `}</style>
             
-            {/* 화이트아웃 섬광 */}
             <motion.div 
                 initial={{ opacity: 1 }} 
                 animate={{ opacity: [1, 0, 1, 0] }} 
@@ -326,7 +316,6 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
                 className="absolute inset-0 bg-white mix-blend-screen z-10" 
             />
             
-            {/* 거대한 충격파 */}
             <motion.div 
                 initial={{ scale: 0, opacity: 1, borderWidth: "60px" }} 
                 animate={{ scale: 8, opacity: 0, borderWidth: "0px" }} 
@@ -334,7 +323,6 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
                 className="absolute w-40 h-40 rounded-full border-emerald-400 shadow-[0_0_200px_#34d399] z-0" 
             />
             
-            {/* 텍스트 & 아이콘 등장 */}
             <motion.div
                 initial={{ scale: 0.5, opacity: 0, y: 50 }}
                 animate={{ scale: [1.2, 1], opacity: 1, y: 0 }}
@@ -350,73 +338,108 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
 };
 
 // =============================================================================
-// SUB-COMPONENT: DraftResultView
+// 🚨 [핵심 픽스] SUB-COMPONENT: DraftResultView (글로우 잘림 현상 완벽 해결)
 // =============================================================================
 const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
-    const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
+    const [flippedStates, setFlippedStates] = useState<number[]>(new Array(results.length).fill(0));
     
-    const handleFlip = (index: number) => { if (!flippedIndices.includes(index)) setFlippedIndices(prev => [...prev, index]); };
-    const handleFlipAll = () => setFlippedIndices(results.map((_: any, i: number) => i));
+    const handleFlip = (index: number) => { 
+        if (flippedStates[index] !== 0) return;
+        setFlippedStates(prev => { const next = [...prev]; next[index] = 1; return next; });
+        setTimeout(() => {
+            setFlippedStates(prev => { const next = [...prev]; next[index] = 2; return next; });
+        }, 150); 
+    };
+
+    const handleFlipAll = () => {
+        setFlippedStates(new Array(results.length).fill(1));
+        setTimeout(() => {
+            setFlippedStates(new Array(results.length).fill(2));
+        }, 150);
+    };
 
     const backStyles = ["bg-blue-950", "bg-slate-900", "bg-emerald-950", "bg-indigo-950"];
-    const allFlipped = flippedIndices.length === results.length;
+    const allFlipped = flippedStates.every(s => s === 2);
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <style jsx>{`
-                .perspective-1000 { perspective: 1000px; }
-                .preserve-3d { transform-style: preserve-3d; }
-                .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-                @keyframes electric-shake { 0% { transform: translate(0, 0) rotate(0deg); } 25% { transform: translate(-2px, 1px) rotate(1deg); } 50% { transform: translate(2px, -1px) rotate(-1deg); } 75% { transform: translate(-1px, -2px) rotate(1deg); } 100% { transform: translate(0, 0) rotate(0deg); } }
-                .tier-s-anim { animation: electric-shake 0.15s infinite linear; box-shadow: 0 0 20px #00ff88, 0 0 40px #00f2ff; border: 2px solid #00ff88 !important; }
+                @keyframes electric-shake { 
+                    0% { transform: translate(0, 0) rotate(0deg); } 
+                    25% { transform: translate(-2px, 1px) rotate(1deg); } 
+                    50% { transform: translate(2px, -1px) rotate(-1deg); } 
+                    75% { transform: translate(-1px, -2px) rotate(1deg); } 
+                    100% { transform: translate(0, 0) rotate(0deg); } 
+                }
+                .tier-s-anim { animation: electric-shake 0.15s infinite linear; }
+                
                 @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-                .tier-a-anim { animation: float-y 3s ease-in-out infinite; box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); border: 2px solid #ffd700 !important; }
+                .tier-a-anim { animation: float-y 3s ease-in-out infinite; }
             `}</style>
             
             <div className="flex-none p-2 flex justify-end gap-4 px-4 sm:px-6">
                 <button onClick={handleFlipAll} disabled={allFlipped} className="text-xs font-bold text-slate-400 hover:text-white underline disabled:opacity-30">전체 뒤집기</button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-0 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pb-6">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-10 pt-10 sm:pt-12 pb-12 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 pb-10">
                     {results.map((team: any, idx: number) => {
-                        const isFlipped = flippedIndices.includes(idx);
+                        const state = flippedStates[idx];
                         const backBg = backStyles[idx % 4];
 
+                        const borderColor = team.tier === 'S' ? 'border-[#00ff88]' : team.tier === 'A' ? 'border-[#ffd700]' : 'border-slate-700';
+
                         return (
-                            <div key={idx} className="relative h-64 sm:h-72 perspective-1000 cursor-pointer group" onClick={() => handleFlip(idx)}>
-                                <div className={`w-full h-full relative rounded-2xl ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`}>
-                                    <motion.div animate={{ rotateY: isFlipped ? 180 : 0 }} transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }} className="w-full h-full preserve-3d absolute inset-0 rounded-2xl">
-                                        {/* BACK */}
-                                        <div className={`absolute inset-0 w-full h-full rounded-2xl backface-hidden ${backBg} border-2 border-slate-600 shadow-2xl flex flex-col items-center justify-center p-4 z-20`}>
-                                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat"></div>
-                                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-2xl sm:text-3xl grayscale opacity-70">⚽</span></div>
-                                            <div className="text-center relative z-10"><p className="text-slate-300 text-[8px] sm:text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-lg sm:text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
-                                        </div>
-                                        {/* FRONT */}
-                                        <div className="absolute inset-0 w-full h-full rounded-2xl bg-slate-900 border-2 border-slate-600 flex flex-col overflow-hidden shadow-inner" style={{ transform: "rotateY(180deg)", zIndex: isFlipped ? 30 : 0 }}>
-                                            {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse"></div>}
-                                            {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0"></div>}
-                                            
-                                            <div className="h-12 sm:h-14 flex items-center px-3 sm:px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm shrink-0">
-                                                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-2.5 bg-slate-800 shrink-0">
-                                                    <img src={team.assignedPlayer.photo} onError={(e:any)=>e.target.src=CUSTOM_USER_IMG} className="w-full h-full object-cover"/>
+                            <div key={idx} className={`relative h-64 sm:h-72 cursor-pointer group ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`} onClick={() => handleFlip(idx)}>
+                                
+                                {/* 🚨 픽스: Box-shadow의 사각형 잘림(Clipping) 버그를 막기 위해, 실제 둥근 DOM 노드를 뒤에 깔고 블러 처리합니다. */}
+                                {team.tier === 'S' && <div className="absolute -inset-3 bg-gradient-to-br from-[#00ff88] to-[#00f2ff] rounded-[2rem] blur-xl opacity-60 pointer-events-none z-0"></div>}
+                                {team.tier === 'A' && <div className="absolute -inset-2 bg-[#ffd700] rounded-[2rem] blur-lg opacity-40 pointer-events-none z-0"></div>}
+                                {team.tier !== 'S' && team.tier !== 'A' && <div className="absolute inset-0 rounded-2xl shadow-xl pointer-events-none z-0"></div>}
+
+                                <motion.div 
+                                    animate={{ rotateY: state === 1 ? 90 : 0 }} 
+                                    transition={{ duration: 0.15, ease: "linear" }} 
+                                    className="w-full h-full absolute inset-0 z-10"
+                                >
+                                    <div className={`w-full h-full rounded-2xl bg-slate-900 border-2 ${borderColor} flex flex-col overflow-hidden relative`}>
+                                        
+                                        {/* state === 0 또는 1 (뒷면 렌더링) */}
+                                        {state !== 2 ? (
+                                            <div className={`absolute inset-0 w-full h-full ${backBg} flex flex-col items-center justify-center p-4 z-20`}>
+                                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat"></div>
+                                                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-2xl sm:text-3xl grayscale opacity-70">⚽</span></div>
+                                                <div className="text-center relative z-10"><p className="text-slate-300 text-[8px] sm:text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-lg sm:text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
+                                            </div>
+                                        ) : (
+                                        /* state === 2 (앞면 렌더링) */
+                                            <div className="absolute inset-0 w-full h-full flex flex-col z-20">
+                                                {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse pointer-events-none"></div>}
+                                                {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0 pointer-events-none"></div>}
+                                                
+                                                <div className="h-12 sm:h-14 flex items-center px-3 sm:px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm shrink-0">
+                                                    <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-2.5 bg-slate-800 shrink-0">
+                                                        <img src={team.assignedPlayer.photo} onError={(e:any)=>e.target.src=CUSTOM_USER_IMG} className="w-full h-full object-cover"/>
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0"><span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-xs sm:text-sm font-bold text-white truncate">{team.assignedPlayer.nickname}</span></div>
                                                 </div>
-                                                <div className="flex flex-col min-w-0"><span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold">Owner</span><span className="text-xs sm:text-sm font-bold text-white truncate">{team.assignedPlayer.nickname}</span></div>
-                                            </div>
-                                            <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
-                                                <div className="w-20 h-20 sm:w-24 sm:h-24 relative mb-2 sm:mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
-                                                    <img src={team.logo} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+
+                                                <div className="flex-1 flex flex-col items-center justify-center p-2 relative z-10">
+                                                    <div className="w-20 h-20 sm:w-24 sm:h-24 relative mb-2 sm:mb-3 filter drop-shadow-2xl bg-white rounded-full flex items-center justify-center">
+                                                        <img src={team.logo} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" alt={team.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                                    </div>
+                                                    <div className="text-center w-full px-2"><div className="font-black italic text-white text-base sm:text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
                                                 </div>
-                                                <div className="text-center w-full px-2"><div className="font-black italic text-white text-base sm:text-lg uppercase truncate leading-none tracking-tighter drop-shadow-lg">{team.name}</div></div>
+
+                                                <div className="h-10 sm:h-12 bg-black/60 flex justify-between items-center px-3 sm:px-4 z-10 border-t border-white/10 backdrop-blur-md shrink-0">
+                                                    <span className="text-[8px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-wider bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[70px] sm:max-w-[80px]">{team.category || team.region}</span>
+                                                    <span className={`text-[10px] sm:text-xs font-black italic px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-lg ${team.tier === 'S' ? 'bg-emerald-500 text-black' : team.tier === 'A' ? 'bg-yellow-500 text-black' : team.tier === 'D' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{team.tier}</span>
+                                                </div>
                                             </div>
-                                            <div className="h-10 sm:h-12 bg-black/60 flex justify-between items-center px-3 sm:px-4 z-10 border-t border-white/10 backdrop-blur-md shrink-0">
-                                                <span className="text-[8px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-wider bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[70px] sm:max-w-[80px]">{team.category || team.region}</span>
-                                                <span className={`text-[10px] sm:text-xs font-black italic px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-lg ${team.tier === 'S' ? 'bg-emerald-500 text-black' : team.tier === 'A' ? 'bg-yellow-500 text-black' : team.tier === 'D' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{team.tier}</span>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+
                             </div>
                         );
                     })}
