@@ -16,8 +16,6 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
     const { requestPermissionAndSaveToken } = usePushNotification(); 
 
     const [isArcadeDraftOpen, setIsArcadeDraftOpen] = useState(false);
-    
-    // 🚨 [이스터에그 연출] 전력 과부하 상태 및 타이머 관리
     const [isCharging, setIsCharging] = useState(false);
     const pressTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -26,7 +24,7 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
         pressTimer.current = setTimeout(() => {
             setIsCharging(false);
             setIsArcadeDraftOpen(true);
-        }, 3000); // 3초 도달 시 모달 오픈
+        }, 3000); 
     };
 
     const handlePressEnd = () => {
@@ -36,40 +34,65 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
 
     return (
         <>
-            {/* 🚨 [전력 과부하 CSS] 누르고 있는 동안 파란색 스파크가 튀며 빛이 강해집니다 */}
-            <style>{`
-                @keyframes electric-surge {
-                    0% { text-shadow: 0 0 0px #38bdf8; transform: translate(0); color: white; }
-                    25% { transform: translate(-1px, 1px); }
-                    50% { transform: translate(1px, -1px); text-shadow: 0 0 20px #38bdf8, 0 0 40px #0284c7; color: #e0f2fe; }
-                    75% { transform: translate(-1px, 1px); }
-                    100% { transform: translate(1px, -1px) scale(1.02); text-shadow: 0 0 40px #38bdf8, 0 0 80px #bae6fd, 0 0 120px #ffffff; color: #ffffff; filter: brightness(1.5); }
+            <style dangerouslySetInnerHTML={{ __html: `
+                @keyframes intense-overload {
+                    0%   { transform: translate(0, 0) scale(1); filter: brightness(1); }
+                    20%  { transform: translate(-2px, 2px) scale(1.02); filter: brightness(1.2); }
+                    40%  { transform: translate(3px, -2px) scale(1.05); filter: brightness(1.4); }
+                    60%  { transform: translate(-4px, 3px) scale(1.08); filter: brightness(1.8); }
+                    80%  { transform: translate(4px, -4px) scale(1.12); filter: brightness(2.2); }
+                    100% { transform: translate(-2px, 2px) scale(1.15); filter: brightness(3) contrast(1.5); }
+                }
+                @keyframes text-glitch-spark {
+                    0%, 100% { text-shadow: 0 0 10px #38bdf8; }
+                    25% { text-shadow: -2px 0px 0px rgba(255,0,0,0.8), 2px 0px 0px rgba(0,255,255,0.8), 0 0 20px #0ea5e9; color: #e0f2fe; }
+                    50% { text-shadow: 2px 0px 0px rgba(255,0,0,0.8), -2px 0px 0px rgba(0,255,255,0.8), 0 0 30px #bae6fd; color: #fff; }
+                    75% { text-shadow: -1px 2px 0px rgba(255,0,0,0.8), 1px -2px 0px rgba(0,255,255,0.8), 0 0 50px #ffffff; color: #bae6fd; }
+                }
+                @keyframes spark-slash-1 {
+                    0% { opacity: 0; transform: scaleX(0) translateY(-5px) rotate(3deg); }
+                    50% { opacity: 1; transform: scaleX(1.2) translateY(5px) rotate(-3deg); filter: drop-shadow(0 0 8px #fff); }
+                    100% { opacity: 0; transform: scaleX(0) translateY(10px) rotate(5deg); }
+                }
+                @keyframes spark-slash-2 {
+                    0% { opacity: 0; transform: scaleX(0) translateY(10px) rotate(-5deg); }
+                    50% { opacity: 1; transform: scaleX(1.5) translateY(-5px) rotate(10deg); filter: drop-shadow(0 0 10px #38bdf8); }
+                    100% { opacity: 0; transform: scaleX(0) translateY(-10px) rotate(-8deg); }
                 }
                 .surge-active {
-                    animation: electric-surge 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                    animation: intense-overload 3s cubic-bezier(0.5, 0, 1, 1) forwards, text-glitch-spark 0.1s infinite linear;
+                    position: relative;
+                    z-index: 100;
                 }
-            `}</style>
+                .surge-active::before, .surge-active::after {
+                    content: ""; position: absolute; left: -10%; width: 120%; height: 2px; background: #fff; opacity: 0; pointer-events: none; z-index: 101;
+                }
+                .surge-active::before { top: 40%; animation: spark-slash-1 0.15s infinite linear; }
+                .surge-active::after { top: 60%; animation: spark-slash-2 0.2s infinite linear reverse; }
+                .surge-icon { animation: intense-overload 3s forwards, text-glitch-spark 0.1s infinite; }
+            `}} />
 
-            <div className="bg-[#050b14]/95 backdrop-blur-md border-b border-slate-800/50 py-3 px-3 sm:px-6 flex justify-between items-center sticky top-0 z-50 shadow-lg">
+            <div className="bg-[#050b14]/95 backdrop-blur-md border-b border-slate-800/50 py-3 px-3 sm:px-6 flex justify-between items-center sticky top-0 z-50 shadow-lg overflow-hidden">
                 
-                {/* 🚨 터치/마우스 이벤트 직접 할당하여 과부하 상태 추적 */}
                 <div 
-                    className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-4" 
+                    className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 mr-2 relative shrink-0" 
                     onMouseDown={handlePressStart}
                     onMouseUp={handlePressEnd}
                     onMouseLeave={handlePressEnd}
                     onTouchStart={handlePressStart}
                     onTouchEnd={handlePressEnd}
                 >
-                    <Trophy className={`text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px] transition-all duration-300 ${isCharging ? 'scale-110 drop-shadow-[0_0_15px_#34d399]' : ''}`} />
+                    <Trophy className={`text-emerald-500 shrink-0 w-5 h-5 sm:w-6 sm:h-6 md:w-[26px] md:h-[26px] transition-all duration-300 ${isCharging ? 'surge-icon' : ''}`} />
+                    
+                    {/* 🚨 1줄 형태로 복구 & 폰트 최적화 & whitespace-nowrap으로 줄바꿈/잘림 방지 */}
                     <h1 
-                        className={`text-white font-black italic tracking-tighter text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md truncate pr-2 select-none transition-all ${isCharging ? 'surge-active' : ''}`}
+                        className={`text-white font-black italic tracking-tighter text-[13px] xs:text-[14px] sm:text-[18px] md:text-[22px] drop-shadow-md whitespace-nowrap select-none transition-all ${isCharging ? 'surge-active' : ''}`}
                     >
                         eFOOTBALL   Live   EVOLUTION™
                     </h1>
                 </div>
 
-                <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
+                <div className="flex items-center gap-2.5 sm:gap-4 shrink-0 ml-auto">
                     <button 
                         onClick={() => requestPermissionAndSaveToken(authUser?.uid)}
                         className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition-colors shrink-0 shadow-sm"
@@ -90,9 +113,10 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
 
                     {authUser ? (
                         <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900 border border-slate-700 pl-1 pr-2.5 sm:pr-3 py-1 rounded-full shadow-inner">
+                            <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900 border border-slate-700 pl-1 pr-1 sm:pr-3 py-1 rounded-full shadow-inner">
                                 <img src={authUser.photoURL || ''} alt="Profile" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-slate-600 object-cover shrink-0" />
-                                <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 truncate max-w-[70px] sm:max-w-[90px]">
+                                {/* 모바일에서는 닉네임 숨김 */}
+                                <span className="hidden sm:block text-[11px] font-bold text-slate-300 truncate max-w-[90px]">
                                     {authUser.mappedOwnerId || authUser.displayName}
                                 </span>
                             </div>
