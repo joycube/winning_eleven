@@ -338,14 +338,19 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
 };
 
 // =============================================================================
-// 🚨 [핵심 픽스] SUB-COMPONENT: DraftResultView (글로우 잘림 현상 완벽 해결)
+// 🚨 [핵심 픽스] SUB-COMPONENT: DraftResultView (모서리 삐져나옴 완벽 방지)
 // =============================================================================
 const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
+    // flippedStates: 0 = 뒷면(초기), 1 = 회전중(90도 교차시점), 2 = 앞면(완료)
     const [flippedStates, setFlippedStates] = useState<number[]>(new Array(results.length).fill(0));
     
     const handleFlip = (index: number) => { 
         if (flippedStates[index] !== 0) return;
+        
+        // 1단계: 카드 회전 시작 (90도 지점까지)
         setFlippedStates(prev => { const next = [...prev]; next[index] = 1; return next; });
+        
+        // 2단계: 90도가 되는 순간(150ms) 내용을 앞면으로 바꿔치기하고 0도로 렌더링
         setTimeout(() => {
             setFlippedStates(prev => { const next = [...prev]; next[index] = 2; return next; });
         }, 150); 
@@ -375,6 +380,13 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                 
                 @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
                 .tier-a-anim { animation: float-y 3s ease-in-out infinite; }
+
+                /* 🚨 WebKit 계열 브라우저의 둥근 모서리 마스킹 뚫림 현상을 막기 위한 강력한 CSS 속성 */
+                .safari-mask-fix {
+                    -webkit-mask-image: -webkit-radial-gradient(white, black);
+                    mask-image: radial-gradient(white, black);
+                    transform: translateZ(0);
+                }
             `}</style>
             
             <div className="flex-none p-2 flex justify-end gap-4 px-4 sm:px-6">
@@ -392,7 +404,7 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                         return (
                             <div key={idx} className={`relative h-64 sm:h-72 cursor-pointer group ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`} onClick={() => handleFlip(idx)}>
                                 
-                                {/* 🚨 픽스: Box-shadow의 사각형 잘림(Clipping) 버그를 막기 위해, 실제 둥근 DOM 노드를 뒤에 깔고 블러 처리합니다. */}
+                                {/* 🚨 Box-shadow의 사각형 잘림(Clipping) 버그를 막기 위해, 실제 둥근 DOM 노드를 뒤에 깔고 블러 처리합니다. */}
                                 {team.tier === 'S' && <div className="absolute -inset-3 bg-gradient-to-br from-[#00ff88] to-[#00f2ff] rounded-[2rem] blur-xl opacity-60 pointer-events-none z-0"></div>}
                                 {team.tier === 'A' && <div className="absolute -inset-2 bg-[#ffd700] rounded-[2rem] blur-lg opacity-40 pointer-events-none z-0"></div>}
                                 {team.tier !== 'S' && team.tier !== 'A' && <div className="absolute inset-0 rounded-2xl shadow-xl pointer-events-none z-0"></div>}
@@ -402,18 +414,21 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                                     transition={{ duration: 0.15, ease: "linear" }} 
                                     className="w-full h-full absolute inset-0 z-10"
                                 >
-                                    <div className={`w-full h-full rounded-2xl bg-slate-900 border-2 ${borderColor} flex flex-col overflow-hidden relative`}>
+                                    {/* 🚨 픽스: safari-mask-fix 클래스와 함께 이중 라운딩(rounded-2xl) 적용하여 직각 모서리 완전 제거 */}
+                                    <div className={`w-full h-full rounded-2xl bg-slate-900 border-2 ${borderColor} flex flex-col overflow-hidden relative safari-mask-fix`}>
                                         
                                         {/* state === 0 또는 1 (뒷면 렌더링) */}
                                         {state !== 2 ? (
-                                            <div className={`absolute inset-0 w-full h-full ${backBg} flex flex-col items-center justify-center p-4 z-20`}>
+                                            /* 🚨 픽스: 내부 레이어에도 rounded-2xl 추가하여 2중 안전 장치 */
+                                            <div className={`absolute inset-0 w-full h-full ${backBg} rounded-2xl flex flex-col items-center justify-center p-4 z-20`}>
                                                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat"></div>
                                                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-white/10 flex items-center justify-center mb-3 bg-black/30 backdrop-blur-sm relative z-10"><span className="text-2xl sm:text-3xl grayscale opacity-70">⚽</span></div>
                                                 <div className="text-center relative z-10"><p className="text-slate-300 text-[8px] sm:text-[10px] tracking-[0.2em] font-bold mb-1">OFFICIAL</p><h3 className="text-white font-black italic text-lg sm:text-xl leading-tight drop-shadow-md">eFOOTBALL<br/>TEAM 2026</h3></div>
                                             </div>
                                         ) : (
                                         /* state === 2 (앞면 렌더링) */
-                                            <div className="absolute inset-0 w-full h-full flex flex-col z-20">
+                                            /* 🚨 픽스: 내부 레이어에도 rounded-2xl 추가하여 2중 안전 장치 */
+                                            <div className="absolute inset-0 w-full h-full rounded-2xl flex flex-col z-20 bg-slate-900 overflow-hidden">
                                                 {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse pointer-events-none"></div>}
                                                 {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0 pointer-events-none"></div>}
                                                 
