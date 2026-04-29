@@ -7,7 +7,6 @@ import { getPrediction } from '../utils/predictor';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
-// 🚨 [핵심 픽스]: 원본 코드를 그대로 두되, 오너 닉네임을 찾을 때 신규 DB 필드를 유연하게 읽어오도록 수정했습니다.
 const resolveOwnerNickname = (ownersList: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
     if (!ownersList || ownersList.length === 0) return ownerName;
@@ -113,13 +112,16 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
   const renderTeamBox = (side: 'home' | 'away') => {
     const name = side === 'home' ? match.home : match.away;
-    const rawLogo = side === 'home' ? match.homeLogo : match.awayLogo;
+    const master = side === 'home' ? homeMaster : awayMaster;
+    
+    // 🚨 [로고 픽스]: 매치 데이터에 박힌 과거 로고보다 최신 masterTeam의 로고를 1순위로 가져옵니다!
+    const staticLogo = side === 'home' ? match.homeLogo : match.awayLogo;
+    const rawLogo = master?.logo || staticLogo;
     
     const rawOwner = side === 'home' ? match.homeOwner : match.awayOwner;
     const rawOwnerUid = side === 'home' ? match.homeOwnerUid : match.awayOwnerUid;
     const owner = resolveOwnerNickname(owners, rawOwner, rawOwnerUid);
     
-    const master = side === 'home' ? homeMaster : awayMaster;
     const isTbdOrBye = name === 'TBD' || name === 'BYE' || rawLogo?.includes('uefa.com');
     const displayLogo = isTbdOrBye ? SAFE_TBD_LOGO : (rawLogo || FALLBACK_IMG);
 
