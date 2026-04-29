@@ -21,7 +21,6 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
-// 🚨 [최종 픽스] 신규 DB 구조(mappedOwnerId, displayName, photoURL)까지 유연하게 찾는 헬퍼 함수
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) {
         return { nickname: ownerName, photo: FALLBACK_IMG };
@@ -112,13 +111,13 @@ export const CupSchedule = ({
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
-  // 🚨 [핵심 픽스] 스케줄 문서의 오너 이름과 마스터 팀의 오너 이름을 비교하여 진짜 오너를 찾습니다.
   const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
       const isMatchInvalid = !matchOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(matchOwner.trim().toUpperCase());
       if (!isMatchInvalid) return { name: matchOwner, uid: matchOwnerUid };
 
       const cleanName = (teamName || '').replace(/\s+/g, '').toLowerCase();
-      const master = masterTeams.find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
+      // 🚨 [타입 에러 픽스] (t as any).teamName 적용
+      const master = masterTeams.find(t => (t.name || (t as any).teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
       
       const isMasterInvalid = !master?.ownerName || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(master.ownerName.trim().toUpperCase());
       if (!isMasterInvalid && master) {
