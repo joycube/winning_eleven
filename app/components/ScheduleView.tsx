@@ -68,7 +68,8 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    const authorInfo = latestComment ? resolveOwnerInfo(owners, latestComment.authorName || latestComment.ownerName, latestComment.authorUid || latestComment.ownerUid) : null;
+    // 🚨 [타입 에러 픽스] (latestComment.authorName || latestComment.ownerName) || ''
+    const authorInfo = latestComment ? resolveOwnerInfo(owners, (latestComment.authorName || latestComment.ownerName) || '', latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
         <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
@@ -141,7 +142,6 @@ export const ScheduleView = ({
       if (!isMatchInvalid) return { name: matchOwner, uid: matchOwnerUid };
 
       const cleanName = (teamName || '').replace(/\s+/g, '').toLowerCase();
-      // 🚨 [타입 에러 픽스] (t as any).teamName 적용
       const master = masterTeams.find(t => (t.name || (t as any).teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
       
       const isMasterInvalid = !master?.ownerName || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(master.ownerName.trim().toUpperCase());
@@ -283,8 +283,9 @@ export const ScheduleView = ({
                 const homeActive = getActiveOwner(urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid, urlTargetMatch.home);
                 const awayActive = getActiveOwner(urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid, urlTargetMatch.away);
 
-                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
-                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
+                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
+                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
                 
                 onMatchClick({ ...urlTargetMatch, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner });
                 
@@ -380,8 +381,9 @@ export const ScheduleView = ({
                                                     const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                                     const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
 
-                                                    const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
-                                                    const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                                                    // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
+                                                    const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
+                                                    const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
 
                                                     let customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                     if (m.matchLabel && m.matchLabel.includes('PO')) customMatchLabel = m.matchLabel; else if (m.matchLabel && m.matchLabel.includes('결승전')) customMatchLabel = m.matchLabel;
@@ -453,8 +455,9 @@ export const ScheduleView = ({
                                                 const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                                 const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
 
-                                                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
-                                                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                                                // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
 
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                 const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
