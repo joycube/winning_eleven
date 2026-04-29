@@ -7,15 +7,20 @@ import { getPrediction } from '../utils/predictor';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
+// 🚨 [핵심 픽스]: 원본 코드를 그대로 두되, 오너 닉네임을 찾을 때 신규 DB 필드를 유연하게 읽어오도록 수정했습니다.
 const resolveOwnerNickname = (ownersList: Owner[], ownerName: string, ownerUid?: string) => {
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return ownerName;
     if (!ownersList || ownersList.length === 0) return ownerName;
     
     const search = ownerName.trim();
     const foundByUid = ownersList.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return foundByUid.nickname;
-    const foundByName = ownersList.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? foundByName.nickname : ownerName;
+    
+    if (foundByUid) {
+        return foundByUid.nickname || (foundByUid as any).mappedOwnerId || (foundByUid as any).displayName || ownerName;
+    }
+    
+    const foundByName = ownersList.find(o => o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search);
+    return foundByName ? (foundByName.nickname || (foundByName as any).mappedOwnerId || (foundByName as any).displayName || ownerName) : ownerName;
 };
 
 interface MatchCardProps {
@@ -106,7 +111,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     );
   };
 
-  // 🔥 [핵심 픽스] 옛날 3분할 렌더러 버리고 웅장한 2분할 사각 박스 형태로 리뉴얼
   const renderTeamBox = (side: 'home' | 'away') => {
     const name = side === 'home' ? match.home : match.away;
     const rawLogo = side === 'home' ? match.homeLogo : match.awayLogo;

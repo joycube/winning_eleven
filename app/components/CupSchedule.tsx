@@ -8,7 +8,7 @@ import { Season, Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 import { MessageSquare } from 'lucide-react';
 
-// 🔥 전용 대진표 컴포넌트 임포트!
+// 🔥 전용 대진표 컴포넌트 임포트
 import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
@@ -21,13 +21,28 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
+// 🚨 [최종 픽스] 신규 DB 구조(mappedOwnerId, displayName, photoURL)까지 유연하게 찾는 헬퍼 함수
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
-    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) {
+        return { nickname: ownerName, photo: FALLBACK_IMG };
+    }
+    
     const search = ownerName.trim();
-    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
-    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
+    
+    const foundUser = owners.find(o => 
+        (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || 
+        (o.uid === search || o.docId === search) ||
+        (o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search)
+    );
+
+    if (foundUser) {
+        const actualName = foundUser.nickname || (foundUser as any).mappedOwnerId || (foundUser as any).displayName || ownerName;
+        const actualPhoto = foundUser.photo || (foundUser as any).photoURL || FALLBACK_IMG;
+        
+        return { nickname: actualName, photo: actualPhoto };
+    }
+
+    return { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
 const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
@@ -96,6 +111,22 @@ export const CupSchedule = ({
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
+
+  // 🚨 [핵심 픽스] 스케줄 문서의 오너 이름과 마스터 팀의 오너 이름을 비교하여 진짜 오너를 찾습니다.
+  const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
+      const isMatchInvalid = !matchOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(matchOwner.trim().toUpperCase());
+      if (!isMatchInvalid) return { name: matchOwner, uid: matchOwnerUid };
+
+      const cleanName = (teamName || '').replace(/\s+/g, '').toLowerCase();
+      const master = masterTeams.find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
+      
+      const isMasterInvalid = !master?.ownerName || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(master.ownerName.trim().toUpperCase());
+      if (!isMasterInvalid && master) {
+          return { name: master.ownerName, uid: master.ownerUid };
+      }
+      
+      return { name: matchOwner, uid: matchOwnerUid };
+  };
 
   const getWinnerName = (match: Match | null): string => {
       if (!match) return 'TBD';
@@ -302,7 +333,6 @@ export const CupSchedule = ({
   return (
     <div className="space-y-10">
 
-        {/* 🔥 전용 대진표 컴포넌트로 완벽 교체 완료! */}
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -329,16 +359,29 @@ export const CupSchedule = ({
                                         <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                             {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                                const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                                const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                                const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                
+                                                const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
+                                                const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
+
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                                                
+                                                const customMatchLabel = `[${m.group}조] ${mIdx + 1}경기`;
+                                                const safeMatch = { 
+                                                    ...m, 
+                                                    homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
+                                                    awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
+                                                    homeOwner: translatedHomeOwner, 
+                                                    awayOwner: translatedAwayOwner,
+                                                    matchLabel: customMatchLabel
+                                                };
                                                 
                                                 return (
                                                     <div key={m.id} 
                                                          ref={(el) => matchRefs.current[m.id] = el}
                                                          className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                            <MatchCard match={{...safeMatch, matchLabel: `[${m.group}조] ${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
+                                                            <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                             {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
@@ -366,16 +409,28 @@ export const CupSchedule = ({
                                     {section.matches.map((m: any, mIdx: number) => {
                                         const isPlaceholder = m.id && m.id.startsWith('v-');
 
-                                        const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                        const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                        const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
+                                        const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
+
+                                        const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                                        const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                                        
+                                        const customMatchLabel = `${section.title.split(' ')[0]} / ${mIdx + 1}경기`;
+                                        const safeMatch = { 
+                                            ...m, 
+                                            homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
+                                            awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
+                                            homeOwner: translatedHomeOwner, 
+                                            awayOwner: translatedAwayOwner,
+                                            matchLabel: customMatchLabel 
+                                        };
                                         
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} 
                                                  ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }}
                                                  className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard match={{ ...safeMatch, matchLabel: `${section.title.split(' ')[0]} / ${mIdx + 1}경기` }} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
+                                                    <MatchCard match={safeMatch} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
@@ -396,16 +451,29 @@ export const CupSchedule = ({
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                        const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                        
+                                        const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
+                                        const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
+
+                                        const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                                        const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                                        
+                                        const customMatchLabel = m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기`;
+                                        const safeMatch = { 
+                                            ...m, 
+                                            homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
+                                            awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
+                                            homeOwner: translatedHomeOwner, 
+                                            awayOwner: translatedAwayOwner,
+                                            matchLabel: customMatchLabel 
+                                        };
                                         
                                         return (
                                             <div key={m.id} 
                                                  ref={(el) => matchRefs.current[m.id] = el}
                                                  className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
-                                                    <MatchCard match={{ ...safeMatch, matchLabel: m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기` }} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
+                                                    <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>

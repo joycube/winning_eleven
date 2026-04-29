@@ -23,13 +23,28 @@ const getTodayFormatted = () => {
   return `${year}.${month}.${day}`;
 };
 
+// 🚨 [최종 픽스] 신규 DB 구조(mappedOwnerId, displayName, photoURL)까지 유연하게 찾는 헬퍼 함수
 const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string) => {
-    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) return { nickname: ownerName, photo: FALLBACK_IMG };
+    if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) {
+        return { nickname: ownerName, photo: FALLBACK_IMG };
+    }
+    
     const search = ownerName.trim();
-    const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
-    if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
-    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search);
-    return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
+    
+    const foundUser = owners.find(o => 
+        (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || 
+        (o.uid === search || o.docId === search) ||
+        (o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search)
+    );
+
+    if (foundUser) {
+        const actualName = foundUser.nickname || (foundUser as any).mappedOwnerId || (foundUser as any).displayName || ownerName;
+        const actualPhoto = foundUser.photo || (foundUser as any).photoURL || FALLBACK_IMG;
+        
+        return { nickname: actualName, photo: actualPhoto };
+    }
+
+    return { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
 const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, onClick: () => void, owners: Owner[] }) => {
@@ -122,6 +137,22 @@ export const ScheduleView = ({
     fetchData();
   }, []);
 
+  // 🚨 [핵심 픽스] 스케줄 문서의 오너 이름과 마스터 팀의 오너 이름을 비교하여 진짜 오너를 찾습니다.
+  const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
+      const isMatchInvalid = !matchOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(matchOwner.trim().toUpperCase());
+      if (!isMatchInvalid) return { name: matchOwner, uid: matchOwnerUid };
+
+      const cleanName = (teamName || '').replace(/\s+/g, '').toLowerCase();
+      const master = masterTeams.find(t => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
+      
+      const isMasterInvalid = !master?.ownerName || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(master.ownerName.trim().toUpperCase());
+      if (!isMasterInvalid && master) {
+          return { name: master.ownerName, uid: master.ownerUid };
+      }
+      
+      return { name: matchOwner, uid: matchOwnerUid };
+  };
+
   const displayRounds = useMemo(() => {
       if (!currentSeason || !currentSeason.rounds) return [];
       
@@ -139,8 +170,8 @@ export const ScheduleView = ({
           match[side] = teamName;
           const master = getTeamMasterInfo(teamName);
           match[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName);
-          match[`${side}Owner`] = owner?.nickname || master?.ownerName || '-';
+          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+          match[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
           match[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
       };
 
@@ -250,8 +281,13 @@ export const ScheduleView = ({
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
             if (urlTargetMatch) {
-                const translatedHomeOwner = resolveOwnerInfo(owners, urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid).nickname;
-                const translatedAwayOwner = resolveOwnerInfo(owners, urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid).nickname;
+                // 🚨 urlTargetMatch 렌더링 시에도 최신 구단주 정보 반영
+                const homeActive = getActiveOwner(urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid, urlTargetMatch.home);
+                const awayActive = getActiveOwner(urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid, urlTargetMatch.away);
+
+                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+                
                 onMatchClick({ ...urlTargetMatch, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner });
                 
                 params.delete('matchId');
@@ -259,7 +295,7 @@ export const ScheduleView = ({
             }
         }, 300);
     }
-  }, [currentSeason, viewMode, owners, onMatchClick]);
+  }, [currentSeason, viewMode, owners, masterTeams, onMatchClick]);
 
   const getKoreanStageName = (stage: string, matchCount: number, seasonType: string = 'LEAGUE') => {
     const s = stage.toUpperCase();
@@ -342,14 +378,30 @@ export const ScheduleView = ({
                                             <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
                                             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {r.matches.filter((m: any) => m.stage === stageName).map((m: any, mIdx: number) => {
+                                                    
+                                                    // 🚨 픽스: 플레이오프에서도 최신 헬퍼 함수 적용
+                                                    const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
+                                                    const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
+
+                                                    const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                                                    const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+
                                                     let customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                     if (m.matchLabel && m.matchLabel.includes('PO')) customMatchLabel = m.matchLabel; else if (m.matchLabel && m.matchLabel.includes('결승전')) customMatchLabel = m.matchLabel;
+                                                    
                                                     const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                     const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                     const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                    const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                                    const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                                    const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                    
+                                                    const safeMatch = { 
+                                                        ...m, 
+                                                        matchLabel: customMatchLabel, 
+                                                        homeLogo: safeHomeLogo, 
+                                                        awayLogo: safeAwayLogo, 
+                                                        homeOwner: translatedHomeOwner, 
+                                                        awayOwner: translatedAwayOwner 
+                                                    };
+
                                                     return (
                                                         <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                             <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
@@ -400,13 +452,28 @@ export const ScheduleView = ({
                                         <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500 uppercase">{displayStageName}</h3>
                                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {r.matches.filter((m: any) => m.stage === stageName).map((m: any, mIdx: number) => {
+                                                
+                                                // 🚨 픽스: 리그 스케줄 렌더링 시 최신 헬퍼 함수 적용
+                                                const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
+                                                const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
+
+                                                const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name, homeActive.uid).nickname;
+                                                const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name, awayActive.uid).nickname;
+
                                                 const customMatchLabel = `${displayStageName} / ${mIdx + 1}경기`;
                                                 const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️|⭐)\s*/, '') || '';
                                                 const safeHomeLogo = (m.home === 'TBD' || m.home === 'BYE' || m.homeLogo?.includes('uefa.com') || m.homeLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.homeLogo;
                                                 const safeAwayLogo = (m.away === 'TBD' || m.away === 'BYE' || m.awayLogo?.includes('uefa.com') || m.awayLogo?.includes('club-generic-badge')) ? SAFE_TBD_LOGO : m.awayLogo;
-                                                const translatedHomeOwner = resolveOwnerInfo(owners, m.homeOwner, (m as any).homeOwnerUid).nickname;
-                                                const translatedAwayOwner = resolveOwnerInfo(owners, m.awayOwner, (m as any).awayOwnerUid).nickname;
-                                                const safeMatch = { ...m, matchLabel: customMatchLabel, homeLogo: safeHomeLogo, awayLogo: safeAwayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner };
+                                                
+                                                const safeMatch = { 
+                                                    ...m, 
+                                                    matchLabel: customMatchLabel, 
+                                                    homeLogo: safeHomeLogo, 
+                                                    awayLogo: safeAwayLogo, 
+                                                    homeOwner: translatedHomeOwner, 
+                                                    awayOwner: translatedAwayOwner 
+                                                };
+
                                                 return (
                                                     <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
