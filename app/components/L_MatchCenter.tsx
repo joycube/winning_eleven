@@ -108,7 +108,92 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
             const poFinal_leg2 = poFinalRounds.find((m: any) => m.matchLabel?.includes('2차전'));
             const compPoFinal = calcAgg(poFinal_leg1, poFinal_leg2);
             if (compPoFinal?.aggWinner && compPoFinal.aggWinner !== 'TBD') grandFinalRounds.forEach((m: any) => fillTeamData(m, 'away', compPoFinal.aggWinner));
+        } 
+        // 🔥 [완벽 픽스] TOURNAMENT 및 CUP의 TBD 해소를 위한 스마트 파서 탑재
+        else if (['CUP', 'TOURNAMENT'].includes(currentDashboardSeason.type)) {
+            const slots = { r8: Array(4).fill(null), r4: Array(2).fill(null), r3: Array(1).fill(null), rf: Array(1).fill(null) };
+
+            displayRounds.forEach((r: any) => {
+                if (!r.matches) return;
+                const total = r.matches.length;
+                r.matches.forEach((m: any, localIdx: number) => {
+                    const stage = m.stage?.toUpperCase() || "";
+                    const label = m.matchLabel?.toUpperCase() || "";
+                    if (stage.includes("GROUP") || stage.includes("조별")) return;
+
+                    const idMatch = m.id?.match ? m.id.match(/_M?(\d+)$/) : null;
+                    const idx = idMatch ? parseInt(idMatch[1], 10) : localIdx;
+
+                    const isThird = stage.includes("3RD") || stage.includes("34") || stage.includes("THIRD") || stage.includes("3·4위") || label.includes("3·4위");
+                    const isFinal = stage.includes("FINAL") || stage.includes("결승") || label.includes("결승");
+                    const isSemi = stage.includes("SEMI") || stage.includes("ROUND_OF_4") || stage.includes("4강") || stage.includes("준결승") || label.includes("4강");
+                    const isQuarter = stage.includes("ROUND_OF_8") || stage.includes("QUARTER") || stage.includes("8강") || label.includes("8강");
+
+                    let fallbackFinal = false, fallbackSemi = false, fallbackQuarter = false;
+
+                    if (stage === "TOURNAMENT" || stage === "토너먼트") {
+                         if (total === 1) fallbackFinal = true;
+                         else if (total === 2) fallbackSemi = true; 
+                         else if (total === 3) { if (localIdx === 2) fallbackFinal = true; else fallbackSemi = true; }
+                         else if (total === 4) fallbackQuarter = true;
+                         else if (total === 7) { if (localIdx === 6) fallbackFinal = true; else if (localIdx >= 4) fallbackSemi = true; else fallbackQuarter = true; }
+                    }
+
+                    if (isThird) slots.r3[0] = m;
+                    else if (isFinal || fallbackFinal) slots.rf[0] = m;
+                    else if (isSemi || fallbackSemi) {
+                        let targetIdx = idx < 2 ? idx : localIdx;
+                        if (total === 3) targetIdx = localIdx; else if (total === 7) targetIdx = localIdx - 4;
+                        if (targetIdx < 2) slots.r4[targetIdx] = m;
+                    } else if (isQuarter || fallbackQuarter) {
+                        let targetIdx = idx < 4 ? idx : localIdx;
+                        if (targetIdx < 4) slots.r8[targetIdx] = m;
+                    }
+                });
+            });
+
+            const getWinnerName = (match: any): string => {
+                if (!match) return 'TBD';
+                const home = match.home?.trim(); const away = match.away?.trim();
+                if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+                if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+                if (home === 'BYE' || away === 'BYE' || home === 'TBD' || away === 'TBD') return 'TBD';
+                if (match.status !== 'COMPLETED') return 'TBD';
+                const h = Number(match.homeScore || 0); const a = Number(match.awayScore || 0);
+                if (h > a) return home; if (a > h) return away; return 'TBD';
+            };
+
+            const syncWinner = (target: any, side: 'home' | 'away', source: any) => {
+                if (!target || !source) return;
+                const winner = getWinnerName(source);
+                if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                    fillTeamData(target, side, winner);
+                }
+            };
+
+            const syncLoser = (target: any, side: 'home' | 'away', source: any) => {
+                if (!target || !source) return;
+                const winner = getWinnerName(source);
+                if (winner !== 'TBD' && winner !== 'BYE') {
+                    const loser = winner === source.home ? source.away : source.home;
+                    if (loser !== 'TBD' && loser !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                        fillTeamData(target, side, loser);
+                    }
+                }
+            };
+
+            syncWinner(slots.r4[0], 'home', slots.r8[0]);
+            syncWinner(slots.r4[0], 'away', slots.r8[1]);
+            syncWinner(slots.r4[1], 'home', slots.r8[2]);
+            syncWinner(slots.r4[1], 'away', slots.r8[3]);
+
+            syncWinner(slots.rf[0], 'home', slots.r4[0]);
+            syncWinner(slots.rf[0], 'away', slots.r4[1]);
+            
+            syncLoser(slots.r3[0], 'home', slots.r4[0]);
+            syncLoser(slots.r3[0], 'away', slots.r4[1]);
         }
+
         return displayRounds;
     }, [currentDashboardSeason, masterTeams, owners]);
 
@@ -229,7 +314,6 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
     };
 
     return (
-        // 🚨 픽스: mb-8 (약 32px 띄움) 옵션을 제거하여 하단 여백을 최소화 (mb-2로 수정)
         <div className="mt-6 mb-2">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 px-1 gap-3">
                 <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2 shrink-0"><CalendarDays size={16} className="text-blue-500" /> MATCH CENTER</h3>
