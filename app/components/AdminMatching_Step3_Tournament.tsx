@@ -7,7 +7,7 @@ import { Season, Match, FALLBACK_IMG } from '../types';
 import { TeamCard } from './TeamCard';
 
 // 🔥 [핵심 분리] 어드민용 실시간 대진표 뷰어 임포트
-import { AdminLiveBracket_Tournament } from './AdminLiveBracket_Tournament';
+import AdminLiveBracket_Tournament from './AdminLiveBracket_Tournament';
 
 interface Props {
     state: any;

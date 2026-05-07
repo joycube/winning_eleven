@@ -5,11 +5,8 @@ import React, { useState, useMemo } from 'react';
 import { FALLBACK_IMG, Owner, Match } from '../types'; 
 import { ChevronRight, PlayCircle } from 'lucide-react'; 
 
-import AdminMatching_TournamentBracketViewDefault, { AdminMatching_TournamentBracketView as AdminMatching_TournamentBracketViewNamed } from './AdminMatching_TournamentBracketView';
-const AdminMatching_TournamentBracketView = AdminMatching_TournamentBracketViewDefault || AdminMatching_TournamentBracketViewNamed;
-
-import AdminMatching_LeaguePOBracketViewDefault, { AdminMatching_LeaguePOBracketView as AdminMatching_LeaguePOBracketViewNamed } from './AdminMatching_LeaguePOBracketView';
-const AdminMatching_LeaguePOBracketView = AdminMatching_LeaguePOBracketViewDefault || AdminMatching_LeaguePOBracketViewNamed;
+import AdminMatching_TournamentBracketView from './AdminMatching_TournamentBracketView';
+import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
