@@ -8,8 +8,8 @@ import { Season, Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
 import { MessageSquare } from 'lucide-react';
 
-// 🔥 전용 대진표 컴포넌트 임포트
-import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
+import AdminMatching_TournamentBracketViewDefault, { AdminMatching_TournamentBracketView as AdminMatching_TournamentBracketViewNamed } from './AdminMatching_TournamentBracketView';
+const AdminMatching_TournamentBracketView = AdminMatching_TournamentBracketViewDefault || AdminMatching_TournamentBracketViewNamed;
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -25,22 +25,17 @@ const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string)
     if (!ownerName || ['-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(ownerName.trim().toUpperCase())) {
         return { nickname: ownerName, photo: FALLBACK_IMG };
     }
-    
     const search = ownerName.trim();
-    
     const foundUser = owners.find(o => 
         (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || 
         (o.uid === search || o.docId === search) ||
         (o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search)
     );
-
     if (foundUser) {
         const actualName = foundUser.nickname || (foundUser as any).mappedOwnerId || (foundUser as any).displayName || ownerName;
         const actualPhoto = foundUser.photo || (foundUser as any).photoURL || FALLBACK_IMG;
-        
         return { nickname: actualName, photo: actualPhoto };
     }
-
     return { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
@@ -66,7 +61,6 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    // 🚨 [타입 에러 픽스] (latestComment.authorName || latestComment.ownerName) || ''
     const authorInfo = latestComment ? resolveOwnerInfo(owners, (latestComment.authorName || latestComment.ownerName) || '', latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
@@ -76,7 +70,6 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
             ) : (
                 <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
             )}
-            
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
                 {authorInfo ? authorInfo.nickname : ''}
             </div>
@@ -107,9 +100,7 @@ export const CupSchedule = ({
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || 'CUP';
-
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
@@ -118,12 +109,9 @@ export const CupSchedule = ({
 
       const cleanName = (teamName || '').replace(/\s+/g, '').toLowerCase();
       const master = masterTeams.find(t => (t.name || (t as any).teamName || '').replace(/\s+/g, '').toLowerCase() === cleanName);
-      
       const isMasterInvalid = !master?.ownerName || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(master.ownerName.trim().toUpperCase());
-      if (!isMasterInvalid && master) {
-          return { name: master.ownerName, uid: master.ownerUid };
-      }
       
+      if (!isMasterInvalid && master) return { name: master.ownerName, uid: master.ownerUid };
       return { name: matchOwner, uid: matchOwnerUid };
   };
 
@@ -160,7 +148,6 @@ export const CupSchedule = ({
           id: stats?.id || master?.id || 0,
           name: teamName,
           logo: stats?.logo || master?.logo || SAFE_TBD_LOGO,
-          // 🚨 [타입 에러 픽스] rawOwnerName || ''
           ownerName: resolveOwnerInfo(owners, rawOwnerName || '', rawOwnerUid).nickname, 
           ownerUid: rawOwnerUid, 
           region: master?.region || '',
@@ -191,6 +178,7 @@ export const CupSchedule = ({
     };
 
     let hasActualRoundOf8 = false;
+    let hasActualRoundOf4 = false;
     const groupSet = new Set<string>();
 
     currentSeason.rounds.forEach((round) => {
@@ -198,7 +186,7 @@ export const CupSchedule = ({
         round.matches.forEach((m) => {
             const stage = m.stage?.toUpperCase() || "";
             
-            if (stage.includes("GROUP")) {
+            if (stage.includes("GROUP") || stage.includes("조별")) {
                 if (m.group) groupSet.add(m.group);
                 return;
             }
@@ -206,13 +194,14 @@ export const CupSchedule = ({
             const idMatch = m.id.match(/_(\d+)$/);
             const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
             
-            if (stage.includes("3RD_PLACE") || stage.includes("34") || stage.includes("THIRD")) {
+            if (stage.includes("3RD_PLACE") || stage.includes("34") || stage.includes("THIRD") || stage.includes("3·4위")) {
                 slots.thirdPlace[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
+            } else if ((stage.includes("FINAL") || stage.includes("결승")) && !stage.includes("SEMI") && !stage.includes("QUARTER") && !stage.includes("준결승")) {
                 slots.final[0] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
+            } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4") || stage.includes("4강") || stage.includes("준결승")) {
                 if (idx < slots.roundOf4.length) slots.roundOf4[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
-            } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
+                hasActualRoundOf4 = true;
+            } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER") || stage.includes("8강")) {
                 if (idx < slots.roundOf8.length) slots.roundOf8[idx] = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
                 hasActualRoundOf8 = true; 
             }
@@ -220,6 +209,8 @@ export const CupSchedule = ({
     });
 
     const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3;
+    const teamCount = currentSeason.teams?.length || 0;
+    const needsRoundOf4 = hasActualRoundOf4 || teamCount > 2 || groupSet.size > 0;
 
     const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
         if (!target || !source) return;
@@ -263,7 +254,11 @@ export const CupSchedule = ({
     syncLoser(slots.thirdPlace[0], 'home', slots.roundOf4[0]);
     syncLoser(slots.thirdPlace[0], 'away', slots.roundOf4[1]);
 
-    return { ...slots, roundOf8: needsRoundOf8 ? slots.roundOf8 : null };
+    return { 
+        ...slots, 
+        roundOf8: needsRoundOf8 ? slots.roundOf8 : null,
+        roundOf4: needsRoundOf4 ? slots.roundOf4 : null 
+    };
   }, [currentSeason, viewSeasonId, activeRankingData, masterTeams, owners]);
 
   const displayStages = currentSeason?.type === 'LEAGUE_PLAYOFF' ? knockoutStages : internalKnockoutStages;
@@ -320,7 +315,6 @@ export const CupSchedule = ({
         const finalId = targetMatchId; 
         setTimeout(() => {
             matchRefs.current[finalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
             if (urlTargetMatch) {
                 onMatchClick(urlTargetMatch);
                 params.delete('matchId');
@@ -332,7 +326,6 @@ export const CupSchedule = ({
 
   return (
     <div className="space-y-10">
-
         {displayStages && (
             <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
                 <div className="min-w-max md:min-w-[760px] px-2">
@@ -340,7 +333,8 @@ export const CupSchedule = ({
                         <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
                         <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
                     </div>
-                    <AdminMatching_TournamentBracketView knockoutStages={displayStages} />
+                    {/* 🔥 픽스: 유저 뷰임을 알려주는 스위치 작동! */}
+                    <AdminMatching_TournamentBracketView knockoutStages={displayStages} isUserView={true} />
                 </div>
             </div>
         )}
@@ -349,7 +343,7 @@ export const CupSchedule = ({
             {displayStages ? (
                 <>
                     {currentSeason?.rounds?.map((r, rIdx) => {
-                        const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP'));
+                        const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP') || m.stage.includes('조별'));
                         if (groupMatches.length === 0) return null;
                         const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
                         return (
@@ -359,28 +353,15 @@ export const CupSchedule = ({
                                         <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                             {groupMatches.filter(m => m.group === gName).map((m, mIdx) => {
-                                                
                                                 const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                                 const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
-
-                                                // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                                                 const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                                                 const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
-                                                
                                                 const customMatchLabel = `[${m.group}조] ${mIdx + 1}경기`;
-                                                const safeMatch = { 
-                                                    ...m, 
-                                                    homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
-                                                    awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
-                                                    homeOwner: translatedHomeOwner, 
-                                                    awayOwner: translatedAwayOwner,
-                                                    matchLabel: customMatchLabel
-                                                };
+                                                const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                                 
                                                 return (
-                                                    <div key={m.id} 
-                                                         ref={(el) => matchRefs.current[m.id] = el}
-                                                         className="flex flex-col mb-2">
+                                                    <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                             {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
@@ -409,28 +390,15 @@ export const CupSchedule = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {section.matches.map((m: any, mIdx: number) => {
                                         const isPlaceholder = m.id && m.id.startsWith('v-');
-
                                         const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                         const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
-
-                                        // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                                         const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
-                                        
                                         const customMatchLabel = `${section.title.split(' ')[0]} / ${mIdx + 1}경기`;
-                                        const safeMatch = { 
-                                            ...m, 
-                                            homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
-                                            awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
-                                            homeOwner: translatedHomeOwner, 
-                                            awayOwner: translatedAwayOwner,
-                                            matchLabel: customMatchLabel 
-                                        };
+                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                         
                                         return (
-                                            <div key={m.id || `${section.id}-${mIdx}`} 
-                                                 ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }}
-                                                 className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
+                                            <div key={m.id || `${section.id}-${mIdx}`} ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }} className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                     <MatchCard match={safeMatch} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
@@ -453,28 +421,15 @@ export const CupSchedule = ({
                                 <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">{stageName}</h3></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
                                     {r.matches.filter(m => m.stage === stageName).map((m, mIdx) => {
-                                        
                                         const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                         const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
-
-                                        // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                                         const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                                         const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
-                                        
                                         const customMatchLabel = m.group ? `[${m.group}조] ${mIdx + 1}경기` : `${mIdx + 1}경기`;
-                                        const safeMatch = { 
-                                            ...m, 
-                                            homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, 
-                                            awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, 
-                                            homeOwner: translatedHomeOwner, 
-                                            awayOwner: translatedAwayOwner,
-                                            matchLabel: customMatchLabel 
-                                        };
+                                        const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                         
                                         return (
-                                            <div key={m.id} 
-                                                 ref={(el) => matchRefs.current[m.id] = el}
-                                                 className="flex flex-col mb-2">
+                                            <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
                                                 <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                     <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}

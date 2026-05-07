@@ -1,152 +1,134 @@
 "use client";
 
-import React, { useEffect, useState } from 'react'; // 🔥 1. useEffect, useState 추가
-import { Season, Match } from '../types';
-import { TeamCard } from './TeamCard';
-import { FALLBACK_IMG } from '../types';
+import React from 'react';
+import { Match, FALLBACK_IMG } from '../types';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface Props {
-    targetSeason: Season;
-    tourneyTargetSize: number;
-    // 필요한 데이터 프롭스들 (메인에서 내려받는다고 가정)
-    isLoaded?: boolean;
-    currentView?: string;
-    seasons?: Season[];
-    viewSeasonId?: number;
-    activeRankingData?: any;
-    masterTeams?: any[];
-    getOwnerUidByName?: (name: string) => string | undefined;
+    knockoutStages: {
+        roundOf8?: Match[] | null;
+        roundOf4?: Match[] | null;
+        thirdPlace?: Match[] | null;
+        final?: Match[] | null;
+    };
+    isUserView?: boolean; 
 }
 
-export const AdminLiveBracket_Tournament = ({ 
-    targetSeason, 
-    tourneyTargetSize,
-    isLoaded,
-    currentView,
-    seasons,
-    viewSeasonId,
-    activeRankingData,
-    masterTeams,
-    getOwnerUidByName
-}: Props) => {
-    // 🔥 내부 상태로 knockoutStages 관리
-    const [knockoutStages, setKnockoutStages] = useState<any>(null);
+export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView = false }: Props) => {
+    if (!knockoutStages) return null;
 
-    // 🔥 [수정된 부분] useEffect는 반드시 컴포넌트 함수 내부 이 위치에 있어야 합니다.
-    useEffect(() => {
-        if (!isLoaded || !seasons || viewSeasonId === undefined) return;
+    const hasRealData = (matches?: Match[] | null) => {
+        if (!matches) return false;
+        return matches.some(m => 
+            (m.id && !m.id.startsWith('v-')) || 
+            (m.home && m.home !== 'TBD' && m.home !== 'BYE') || 
+            (m.away && m.away !== 'TBD' && m.away !== 'BYE')
+        );
+    };
 
-        const timer = setTimeout(() => {
-            const currentSeason = seasons.find(s => s.id === viewSeasonId);
-            if (!currentSeason || (currentSeason.type !== 'CUP' && currentSeason.type !== 'TOURNAMENT') || !currentSeason.rounds) {
-                setKnockoutStages(null);
-                return;
+    const has8 = hasRealData(knockoutStages.roundOf8);
+    const has4 = hasRealData(knockoutStages.roundOf4);
+
+    const show8 = isUserView ? has8 : true;
+    const show4 = isUserView ? (has8 || has4) : true; 
+    const show3rd = isUserView ? hasRealData(knockoutStages.thirdPlace) : true;
+
+    // 🔥 [핵심 이식] 리그 플레이오프 오리지널 BracketMatchBox를 그대로 이식
+    const BracketMatchBox = ({ match, title, highlight = false, isFinal = false }: any) => {
+        if (!match) return null;
+        const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
+        const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+        
+        let winner = match.aggWinner || 'TBD'; 
+        if (winner === 'TBD' && match.status === 'COMPLETED') {
+            if (hScore !== null && aScore !== null) {
+                if (hScore > aScore) winner = match.home;
+                else if (aScore > hScore) winner = match.away;
             }
+        }
 
-            const getWinnerName = (match: Match | null): string => {
-                if (!match) return 'TBD';
-                const home = match.home?.trim();
-                const away = match.away?.trim();
-                if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
-                if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
-                if (match.status !== 'COMPLETED') return 'TBD';
-                const h = Number(match.homeScore || 0);
-                const a = Number(match.awayScore || 0);
-                return h > a ? match.home : (a > h ? match.away : 'TBD');
-            };
+        const isHomeWin = winner !== 'TBD' && winner === match.home;
+        const isAwayWin = winner !== 'TBD' && winner === match.away;
 
-            const getTeamMeta = (name: string) => {
-                if (!name || name === 'TBD') return { logo: SAFE_TBD_LOGO, owner: '-', ownerUid: undefined };
-                if (name === 'BYE') return { logo: SAFE_TBD_LOGO, owner: 'SYSTEM', ownerUid: undefined };
-                const normName = name.toLowerCase().trim();
-                const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
-                const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
-                const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
-                return {
-                    logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
-                    owner: ownerName,
-                    ownerUid: getOwnerUidByName ? getOwnerUidByName(ownerName) : undefined
-                };
-            };
+        const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
+            const isTbd = teamName === 'TBD' || teamName === 'BYE' || !teamName;
+            const displayLogo = (isTbd || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
+            const dispName = isTbd ? (teamName === 'BYE' ? 'BYE' : 'TBD') : teamName;
+            const dispOwner = isTbd ? 'Unassigned Slot' : (owner && owner !== '-' ? owner : 'CPU');
 
-            const createPlaceholder = (vId: string, stageName: string): Match => ({ 
-                id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
-                seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
-                homeOwnerUid: undefined, awayOwnerUid: undefined,
-                homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
-                homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
-            } as Match);
+            return (
+                <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] transition-colors ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+                            <img src={displayLogo} className={`${isTbd ? 'w-full h-full opacity-60' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                        </div>
+                        <div className="flex flex-col justify-center min-w-0">
+                            <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : 'text-slate-400'}`}>
+                                {dispName}
+                            </span>
+                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
+                        </div>
+                    </div>
+                    <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        {score ?? '-'}
+                    </div>
+                </div>
+            );
+        };
 
-            const slots = {
-                roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
-                roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'ROUND_OF_4')),
-                final: [createPlaceholder('v-final', 'FINAL')]
-            };
-
-            let hasActualRoundOf8 = false;
-            const groupSet = new Set<string>();
-
-            currentSeason.rounds.forEach((round) => {
-                round.matches?.forEach((m) => {
-                    const stage = m.stage?.toUpperCase() || "";
-                    if (stage.includes("GROUP")) {
-                        if (m.group) groupSet.add(m.group);
-                        return;
-                    }
-                    const idMatch = m.id.match(/_(\d+)$/);
-                    const idx = idMatch ? parseInt(idMatch[1], 10) : 0;
-
-                    if (stage.includes("FINAL") && !stage.includes("SEMI") && !stage.includes("QUARTER")) {
-                        slots.final[0] = { ...m };
-                    } else if (stage.includes("SEMI") || stage.includes("ROUND_OF_4")) {
-                        if (idx < 2) slots.roundOf4[idx] = { ...m };
-                    } else if (stage.includes("ROUND_OF_8") || stage.includes("QUARTER")) {
-                        if (idx < 4) slots.roundOf8[idx] = { ...m };
-                        hasActualRoundOf8 = true;
-                    }
-                });
-            });
-
-            const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3;
-
-            const sync = (target: any, side: 'home' | 'away', source: Match | null) => {
-                if (!target || !source) return;
-                const winner = getWinnerName(source);
-                if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
-                    target[side] = winner;
-                    const meta = getTeamMeta(winner);
-                    target[`${side}Logo`] = meta.logo;
-                    target[`${side}Owner`] = meta.owner;
-                    target[`${side}OwnerUid`] = meta.ownerUid; 
-                }
-            };
-
-            if (needsRoundOf8) {
-                sync(slots.roundOf4[0], 'home', slots.roundOf8[0]);
-                sync(slots.roundOf4[0], 'away', slots.roundOf8[1]);
-                sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
-                sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
-            }
-            sync(slots.final[0], 'home', slots.roundOf4[0]);
-            sync(slots.final[0], 'away', slots.roundOf4[1]);
-
-            setKnockoutStages({
-                ...slots,
-                roundOf8: needsRoundOf8 ? slots.roundOf8 : null
-            });
-        }, 10);
-
-        return () => clearTimeout(timer);
-    }, [seasons, viewSeasonId, activeRankingData, masterTeams, currentView, isLoaded]);
-
-    // ... 기존 렌더링 로직 (totalRounds 계산 등) ...
+        return (
+            <div className={`flex flex-col w-[200px] sm:w-[220px] ${isFinal ? 'scale-110 ml-4' : ''}`}>
+                {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
+                <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.15)]' : 'border-slate-800/50'}`}>
+                    {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeLogo)}
+                    <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                    {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayLogo)}
+                </div>
+            </div>
+        );
+    };
 
     return (
-        <div className="w-full flex flex-col items-center gap-10">
-            {/* 렌더링 코드 구현 */}
-            <p className="text-white text-xs">브래킷 데이터 로드됨</p>
+        <div className="overflow-x-auto pb-8 no-scrollbar">
+            <style dangerouslySetInnerHTML={{ __html: `
+                .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
+                .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
+                .bracket-column-wide { display: flex; flex-direction: column; justify-content: space-around; gap: 80px; position: relative; }
+            `}} />
+            <div className="bracket-tree no-scrollbar">
+                
+                {/* 1열: 8강 */}
+                {show8 && knockoutStages.roundOf8 && (
+                    <div className="bracket-column">
+                        {knockoutStages.roundOf8.map((m, i) => <BracketMatchBox key={i} title={`Quarter ${i + 1}`} match={m} />)}
+                    </div>
+                )}
+                
+                {/* 2열: 4강 */}
+                {show4 && knockoutStages.roundOf4 && (
+                    <div className={show8 ? "bracket-column-wide" : "bracket-column"}>
+                        {knockoutStages.roundOf4.map((m, i) => <BracketMatchBox key={i} title={`Semi ${i + 1}`} match={m} />)}
+                    </div>
+                )}
+                
+                {/* 3열: 결승 및 3·4위전 */}
+                <div className="bracket-column relative">
+                    <div className="relative">
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-4 z-20">👑</div>
+                        <BracketMatchBox title="Grand Final" match={knockoutStages.final?.[0]} highlight isFinal />
+                    </div>
+                    
+                    {show3rd && knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
+                        <div className="relative mt-8 opacity-90 scale-95 origin-left ml-6">
+                            <BracketMatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
+                        </div>
+                    )}
+                </div>
+
+            </div>
         </div>
     );
 };
+
+export default AdminMatching_TournamentBracketView;

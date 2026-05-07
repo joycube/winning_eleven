@@ -8,77 +8,127 @@ const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 interface Props {
     knockoutStages: {
         roundOf8?: Match[] | null;
-        roundOf4?: Match[];
-        thirdPlace?: Match[] | null; // 🔥 3, 4위전을 받기 위해 타입 추가!
-        final?: Match[];
+        roundOf4?: Match[] | null;
+        thirdPlace?: Match[] | null;
+        final?: Match[] | null;
     };
+    isUserView?: boolean; 
 }
 
-export const AdminMatching_TournamentBracketView = ({ knockoutStages }: Props) => {
+export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView = false }: Props) => {
     if (!knockoutStages) return null;
 
-    // 🎨 공통 매치 박스 디자인
-    const MatchBox = ({ match, title, isFinal = false }: { match: any, title: string, isFinal?: boolean }) => (
-        <div className={`flex flex-col w-[180px] sm:w-[200px] ${isFinal ? 'scale-110 ml-6' : ''}`}>
-            <div className="text-[10px] font-black text-slate-500 uppercase mb-2 ml-1 italic opacity-70">{title}</div>
-            <div className={`bg-[#0f141e]/90 border rounded-xl overflow-hidden shadow-2xl ${isFinal ? 'border-yellow-500/50 shadow-yellow-500/20' : 'border-slate-800'}`}>
-                {[
-                    { name: match?.home, logo: match?.homeLogo, score: match?.homeScore },
-                    { name: match?.away, logo: match?.awayLogo, score: match?.awayScore }
-                ].map((team, idx) => (
-                    <div key={idx} className={`flex items-center justify-between px-3 py-2 h-[45px] ${idx === 0 ? 'border-b border-slate-800/50' : ''} ${(!team.name || team.name === 'TBD') ? 'opacity-30' : ''}`}>
-                        <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center overflow-hidden shrink-0">
-                                <img src={(!team.name || team.name === 'TBD') ? SAFE_TBD_LOGO : (team.logo || FALLBACK_IMG)} className="w-[70%] h-[70%] object-contain" alt="" />
-                            </div>
-                            <span className="text-[11px] font-black text-white truncate uppercase">{team.name || 'TBD'}</span>
+    const hasRealData = (matches?: Match[] | null) => {
+        if (!matches) return false;
+        return matches.some(m => 
+            (m.id && !m.id.startsWith('v-')) || 
+            (m.home && m.home !== 'TBD' && m.home !== 'BYE') || 
+            (m.away && m.away !== 'TBD' && m.away !== 'BYE')
+        );
+    };
+
+    const has8 = hasRealData(knockoutStages.roundOf8);
+    const has4 = hasRealData(knockoutStages.roundOf4);
+
+    const show8 = isUserView ? has8 : true;
+    const show4 = isUserView ? (has8 || has4) : true; 
+    const show3rd = isUserView ? hasRealData(knockoutStages.thirdPlace) : true;
+
+    // 🔥 [핵심 이식] 1번 스크린샷과 동일한 그라데이션 및 CSS가 적용된 컴포넌트
+    const BracketMatchBox = ({ match, title, highlight = false, isFinal = false }: any) => {
+        if (!match) return null;
+        const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
+        const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
+        
+        let winner = match.aggWinner || 'TBD'; 
+        if (winner === 'TBD' && match.status === 'COMPLETED') {
+            if (hScore !== null && aScore !== null) {
+                if (hScore > aScore) winner = match.home;
+                else if (aScore > hScore) winner = match.away;
+            }
+        }
+
+        const isHomeWin = winner !== 'TBD' && winner === match.home;
+        const isAwayWin = winner !== 'TBD' && winner === match.away;
+
+        const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
+            const isTbd = teamName === 'TBD' || teamName === 'BYE' || !teamName;
+            const displayLogo = (isTbd || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
+            const dispName = isTbd ? (teamName === 'BYE' ? 'BYE' : 'TBD') : teamName;
+            const dispOwner = isTbd ? 'Unassigned Slot' : (owner && owner !== '-' ? owner : 'CPU');
+
+            return (
+                <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] transition-colors ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
+                            <img src={displayLogo} className={`${isTbd ? 'w-full h-full opacity-60' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                         </div>
-                        <div className="text-sm font-black text-emerald-400">{team.score || '-'}</div>
+                        <div className="flex flex-col justify-center min-w-0">
+                            <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : 'text-slate-400'}`}>
+                                {dispName}
+                            </span>
+                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
+                        </div>
                     </div>
-                ))}
+                    <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        {score ?? '-'}
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <div className={`flex flex-col w-[200px] sm:w-[220px] ${isFinal ? 'scale-110 ml-4' : ''}`}>
+                {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
+                <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.15)]' : 'border-slate-800/50'}`}>
+                    {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeLogo)}
+                    <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
+                    {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayLogo)}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="overflow-x-auto pb-8 no-scrollbar">
-            <div className="flex items-stretch gap-12 p-4 min-w-max">
+            <style dangerouslySetInnerHTML={{ __html: `
+                .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
+                .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
+                .bracket-column-wide { display: flex; flex-direction: column; justify-content: space-around; gap: 80px; position: relative; }
+            `}} />
+            <div className="bracket-tree no-scrollbar">
                 
-                {/* 1열: 8강 (roundOf8이 null이 아닐 때만) */}
-                {knockoutStages.roundOf8 && (
-                    <div className="flex flex-col justify-around gap-6">
-                        {knockoutStages.roundOf8.map((m, i) => (
-                            <MatchBox key={i} title={`Quarter ${i + 1}`} match={m} />
-                        ))}
+                {/* 1열: 8강 */}
+                {show8 && knockoutStages.roundOf8 && (
+                    <div className="bracket-column">
+                        {knockoutStages.roundOf8.map((m, i) => <BracketMatchBox key={i} title={`Quarter ${i + 1}`} match={m} />)}
                     </div>
                 )}
-
+                
                 {/* 2열: 4강 */}
-                <div className="flex flex-col justify-around gap-12">
-                    {knockoutStages.roundOf4?.map((m, i) => (
-                        <MatchBox key={i} title={`Semi ${i + 1}`} match={m} />
-                    ))}
-                </div>
-
-                {/* 3열: 결승 및 3·4위전 (통합) */}
-                <div className="flex flex-col justify-center gap-10 relative">
-                    
-                    {/* 결승전 */}
-                    <div className="relative">
-                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-3">👑</div>
-                        <MatchBox title="Grand Final" match={knockoutStages.final?.[0]} isFinal />
+                {show4 && knockoutStages.roundOf4 && (
+                    <div className={show8 ? "bracket-column-wide" : "bracket-column"}>
+                        {knockoutStages.roundOf4.map((m, i) => <BracketMatchBox key={i} title={`Semi ${i + 1}`} match={m} />)}
                     </div>
-
-                    {/* 🔥 3, 4위전 (결승전 아래에 살짝 작고 투명하게 배치) */}
-                    {knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
-                        <div className="relative ml-6 opacity-90 scale-95 origin-left mt-2">
-                            <MatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
+                )}
+                
+                {/* 3열: 결승 및 3·4위전 */}
+                <div className="bracket-column relative">
+                    <div className="relative">
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-4 z-20">👑</div>
+                        <BracketMatchBox title="Grand Final" match={knockoutStages.final?.[0]} highlight isFinal />
+                    </div>
+                    
+                    {show3rd && knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
+                        <div className="relative mt-8 opacity-90 scale-95 origin-left ml-6">
+                            <BracketMatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
                         </div>
                     )}
-                    
                 </div>
 
             </div>
         </div>
     );
 };
+
+export default AdminMatching_TournamentBracketView;

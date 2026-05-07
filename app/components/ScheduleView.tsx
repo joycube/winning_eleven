@@ -9,8 +9,11 @@ import { Season, Match, MasterTeam, Owner } from '../types';
 import { MessageSquare } from 'lucide-react';
 import { LiveFeed } from './LiveFeed';
 
-import { AdminMatching_TournamentBracketView } from './AdminMatching_TournamentBracketView';
-import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
+import AdminMatching_TournamentBracketViewDefault, { AdminMatching_TournamentBracketView as AdminMatching_TournamentBracketViewNamed } from './AdminMatching_TournamentBracketView';
+const AdminMatching_TournamentBracketView = AdminMatching_TournamentBracketViewDefault || AdminMatching_TournamentBracketViewNamed;
+
+import AdminMatching_LeaguePOBracketViewDefault, { AdminMatching_LeaguePOBracketView as AdminMatching_LeaguePOBracketViewNamed } from './AdminMatching_LeaguePOBracketView';
+const AdminMatching_LeaguePOBracketView = AdminMatching_LeaguePOBracketViewDefault || AdminMatching_LeaguePOBracketViewNamed;
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
@@ -68,7 +71,6 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
 
     if (commentCount === 0) return null;
 
-    // 🚨 [타입 에러 픽스] (latestComment.authorName || latestComment.ownerName) || ''
     const authorInfo = latestComment ? resolveOwnerInfo(owners, (latestComment.authorName || latestComment.ownerName) || '', latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
@@ -151,6 +153,165 @@ export const ScheduleView = ({
       
       return { name: matchOwner, uid: matchOwnerUid };
   };
+
+  // 🔥 [핵심 픽스] 스케줄 탭 전용 완벽한 스마트 파서 (단판, 부전승 완벽 처리)
+  const internalKnockoutStages = useMemo(() => {
+      if (!['CUP', 'TOURNAMENT'].includes(currentSeason?.type || '') || !currentSeason?.rounds) return knockoutStages;
+      
+      const createPlaceholder = (vId: string, stageName: string): Match => ({ 
+          id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
+          seasonId: currentSeason.id, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
+          homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
+          homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [] 
+      } as Match);
+
+      const slots = {
+          roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
+          roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'SEMI_FINAL')),
+          thirdPlace: [createPlaceholder('v-3rd', '3RD_PLACE')],
+          final: [createPlaceholder('v-final', 'FINAL')]
+      };
+
+      let hasActualRoundOf8 = false;
+      let hasActualRoundOf4 = false;
+      const groupSet = new Set<string>();
+
+      currentSeason.rounds.forEach((round: any) => {
+          if (!round.matches) return;
+          const totalMatchesInRound = round.matches.length;
+
+          round.matches.forEach((m: any, localIdx: number) => {
+              const stage = m.stage?.toUpperCase() || "";
+              const label = m.matchLabel?.toUpperCase() || "";
+              
+              if (stage.includes("GROUP") || stage.includes("조별")) {
+                  if (m.group) groupSet.add(m.group);
+                  return;
+              }
+
+              const idMatch = m.id?.match ? m.id.match(/_M?(\d+)$/) : null;
+              const idx = idMatch ? parseInt(idMatch[1], 10) : localIdx;
+              const mSafe = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+
+              const isThird = stage.includes("3RD") || stage.includes("34") || stage.includes("THIRD") || stage.includes("3·4위") || label.includes("3·4위");
+              const isFinal = stage.includes("FINAL") || stage.includes("결승") || label.includes("결승");
+              const isSemi = stage.includes("SEMI") || stage.includes("ROUND_OF_4") || stage.includes("4강") || stage.includes("준결승") || label.includes("4강");
+              const isQuarter = stage.includes("ROUND_OF_8") || stage.includes("QUARTER") || stage.includes("8강") || label.includes("8강");
+
+              let fallbackFinal = false;
+              let fallbackSemi = false;
+              let fallbackQuarter = false;
+
+              if (stage === "TOURNAMENT" || stage === "토너먼트") {
+                   if (totalMatchesInRound === 1) fallbackFinal = true;
+                   else if (totalMatchesInRound === 2) fallbackSemi = true; 
+                   else if (totalMatchesInRound === 3) {
+                       if (localIdx === 2) fallbackFinal = true;
+                       else fallbackSemi = true;
+                   }
+                   else if (totalMatchesInRound === 4) fallbackQuarter = true;
+                   else if (totalMatchesInRound === 7) {
+                       if (localIdx === 6) fallbackFinal = true;
+                       else if (localIdx >= 4) fallbackSemi = true;
+                       else fallbackQuarter = true;
+                   }
+              }
+
+              if (isThird) {
+                  slots.thirdPlace[0] = mSafe;
+              } else if (isFinal || fallbackFinal) {
+                  slots.final[0] = mSafe;
+              } else if (isSemi || fallbackSemi) {
+                  let targetIdx = idx < 2 ? idx : localIdx;
+                  if (totalMatchesInRound === 3) targetIdx = localIdx;
+                  else if (totalMatchesInRound === 7) targetIdx = localIdx - 4;
+                  
+                  if (targetIdx < slots.roundOf4.length) {
+                      slots.roundOf4[targetIdx] = mSafe;
+                      hasActualRoundOf4 = true;
+                  }
+              } else if (isQuarter || fallbackQuarter) {
+                  let targetIdx = idx < 4 ? idx : localIdx;
+                  if (targetIdx < slots.roundOf8.length) {
+                      slots.roundOf8[targetIdx] = mSafe;
+                      hasActualRoundOf8 = true; 
+                  }
+              }
+          });
+      });
+
+      const getWinnerName = (match: Match | null): string => {
+          if (!match) return 'TBD';
+          const home = match.home?.trim();
+          const away = match.away?.trim();
+          // BYE(부전승) 로직 완벽 처리!
+          if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
+          if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
+          if (home === 'BYE' || away === 'BYE' || home === 'TBD' || away === 'TBD') return 'TBD';
+          if (match.status !== 'COMPLETED') return 'TBD';
+          const h = Number(match.homeScore || 0);
+          const a = Number(match.awayScore || 0);
+          if (h > a) return home;
+          if (a > h) return away;
+          return 'TBD';
+      };
+
+      const getTeamMasterInfo = (teamName: string) => {
+          if (!masterTeams || masterTeams.length === 0) return undefined;
+          const cleanTarget = teamName.replace(/\s+/g, '').toLowerCase();
+          return masterTeams.find((t: any) => (t.name || (t as any).teamName || '').replace(/\s+/g, '').toLowerCase() === cleanTarget);
+      };
+
+      const syncWinner = (target: any, side: 'home' | 'away', source: Match | null) => {
+          if (!target || !source) return;
+          const winner = getWinnerName(source);
+          if (winner !== 'TBD' && winner !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+              target[side] = winner;
+              const master = getTeamMasterInfo(winner);
+              target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
+              const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+              target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
+              target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
+          }
+      };
+
+      const syncLoser = (target: any, side: 'home' | 'away', source: Match | null) => {
+          if (!target || !source) return;
+          const winner = getWinnerName(source);
+          if (winner !== 'TBD' && winner !== 'BYE') {
+              const loser = winner === source.home ? source.away : source.home;
+              if (loser !== 'TBD' && loser !== 'BYE' && (target[side] === 'TBD' || !target[side] || target[side] === 'BYE')) {
+                  target[side] = loser;
+                  const master = getTeamMasterInfo(loser);
+                  target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
+                  const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+                  target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
+                  target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
+              }
+          }
+      };
+
+      if (hasActualRoundOf8) {
+          syncWinner(slots.roundOf4[0], 'home', slots.roundOf8[0]);
+          syncWinner(slots.roundOf4[0], 'away', slots.roundOf8[1]);
+          syncWinner(slots.roundOf4[1], 'home', slots.roundOf8[2]);
+          syncWinner(slots.roundOf4[1], 'away', slots.roundOf8[3]);
+      }
+      syncWinner(slots.final[0], 'home', slots.roundOf4[0]);
+      syncWinner(slots.final[0], 'away', slots.roundOf4[1]);
+      syncLoser(slots.thirdPlace[0], 'home', slots.roundOf4[0]);
+      syncLoser(slots.thirdPlace[0], 'away', slots.roundOf4[1]);
+
+      const teamCount = currentSeason.teams?.length || 0;
+      const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3 || teamCount >= 8;
+      const needsRoundOf4 = hasActualRoundOf4 || groupSet.size > 0 || teamCount >= 3;
+
+      return { 
+          ...slots, 
+          roundOf8: needsRoundOf8 ? slots.roundOf8 : null,
+          roundOf4: needsRoundOf4 ? slots.roundOf4 : null
+      };
+  }, [currentSeason, knockoutStages, masterTeams, owners]);
 
   const displayRounds = useMemo(() => {
       if (!currentSeason || !currentSeason.rounds) return [];
@@ -283,7 +444,6 @@ export const ScheduleView = ({
                 const homeActive = getActiveOwner(urlTargetMatch.homeOwner, (urlTargetMatch as any).homeOwnerUid, urlTargetMatch.home);
                 const awayActive = getActiveOwner(urlTargetMatch.awayOwner, (urlTargetMatch as any).awayOwnerUid, urlTargetMatch.away);
 
-                // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                 const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                 const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
                 
@@ -381,7 +541,6 @@ export const ScheduleView = ({
                                                     const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                                     const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
 
-                                                    // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                                                     const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                                                     const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
 
@@ -429,7 +588,8 @@ export const ScheduleView = ({
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
                                 <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
                             </div>
-                            <AdminMatching_TournamentBracketView knockoutStages={knockoutStages} />
+                            {/* 🔥 [핵심 픽스] 스케줄 탭에서도 똑똑한 internalKnockoutStages를 전달! */}
+                            <AdminMatching_TournamentBracketView knockoutStages={internalKnockoutStages || knockoutStages} isUserView={true} />
                         </div>
                     </div>
                 )}
@@ -455,7 +615,6 @@ export const ScheduleView = ({
                                                 const homeActive = getActiveOwner(m.homeOwner, (m as any).homeOwnerUid, m.home);
                                                 const awayActive = getActiveOwner(m.awayOwner, (m as any).awayOwnerUid, m.away);
 
-                                                // 🚨 [타입 에러 픽스] homeActive.name || '' 적용
                                                 const translatedHomeOwner = resolveOwnerInfo(owners, homeActive.name || '', homeActive.uid).nickname;
                                                 const translatedAwayOwner = resolveOwnerInfo(owners, awayActive.name || '', awayActive.uid).nickname;
 
@@ -498,3 +657,5 @@ export const ScheduleView = ({
     </div>
   );
 };
+
+export default ScheduleView;
