@@ -1,134 +1,128 @@
 "use client";
 
-import React from 'react';
-import { Match, FALLBACK_IMG } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Season, Match } from '../types';
+
+// 컴포넌트 임포트 (Named, Default 모두 대응)
+import AdminMatching_TournamentBracketViewDefault, { AdminMatching_TournamentBracketView as AdminMatching_TournamentBracketViewNamed } from './AdminMatching_TournamentBracketView';
+const AdminMatching_TournamentBracketView = AdminMatching_TournamentBracketViewDefault || AdminMatching_TournamentBracketViewNamed;
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
-interface Props {
-    knockoutStages: {
-        roundOf8?: Match[] | null;
-        roundOf4?: Match[] | null;
-        thirdPlace?: Match[] | null;
-        final?: Match[] | null;
-    };
-    isUserView?: boolean; 
+// 🔥 [핵심 픽스] Vercel이 절대 에러를 뱉지 못하도록 고유한 이름의 Interface를 선언합니다.
+interface AdminLiveBracketProps {
+    targetSeason: Season;
+    tourneyTargetSize: number;
 }
 
-export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView = false }: Props) => {
-    if (!knockoutStages) return null;
+// 🔥 Props에 명확하게 AdminLiveBracketProps 타입을 지정
+export const AdminLiveBracket_Tournament = ({ targetSeason, tourneyTargetSize }: AdminLiveBracketProps) => {
+    const [knockoutStages, setKnockoutStages] = useState<any>(null);
 
-    const hasRealData = (matches?: Match[] | null) => {
-        if (!matches) return false;
-        return matches.some(m => 
-            (m.id && !m.id.startsWith('v-')) || 
-            (m.home && m.home !== 'TBD' && m.home !== 'BYE') || 
-            (m.away && m.away !== 'TBD' && m.away !== 'BYE')
-        );
-    };
+    useEffect(() => {
+        if (!targetSeason || !targetSeason.rounds) return;
 
-    const has8 = hasRealData(knockoutStages.roundOf8);
-    const has4 = hasRealData(knockoutStages.roundOf4);
+        const createPlaceholder = (vId: string, stageName: string): Match => ({ 
+            id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
+            seasonId: targetSeason.id, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
+            homePredictRate: 0, awayPredictRate: 0, stage: stageName, matchLabel: 'TBD', youtubeUrl: '',
+            homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: []
+        } as Match);
 
-    const show8 = isUserView ? has8 : true;
-    const show4 = isUserView ? (has8 || has4) : true; 
-    const show3rd = isUserView ? hasRealData(knockoutStages.thirdPlace) : true;
-
-    // 🔥 [핵심 이식] 리그 플레이오프 오리지널 BracketMatchBox를 그대로 이식
-    const BracketMatchBox = ({ match, title, highlight = false, isFinal = false }: any) => {
-        if (!match) return null;
-        const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
-        const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
-        
-        let winner = match.aggWinner || 'TBD'; 
-        if (winner === 'TBD' && match.status === 'COMPLETED') {
-            if (hScore !== null && aScore !== null) {
-                if (hScore > aScore) winner = match.home;
-                else if (aScore > hScore) winner = match.away;
-            }
-        }
-
-        const isHomeWin = winner !== 'TBD' && winner === match.home;
-        const isAwayWin = winner !== 'TBD' && winner === match.away;
-
-        const renderRow = (teamName: string, score: number | null, isWinner: boolean, owner: string, logo: string) => {
-            const isTbd = teamName === 'TBD' || teamName === 'BYE' || !teamName;
-            const displayLogo = (isTbd || logo?.includes('uefa.com')) ? SAFE_TBD_LOGO : (logo || FALLBACK_IMG);
-            const dispName = isTbd ? (teamName === 'BYE' ? 'BYE' : 'TBD') : teamName;
-            const dispOwner = isTbd ? 'Unassigned Slot' : (owner && owner !== '-' ? owner : 'CPU');
-
-            return (
-                <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] transition-colors ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                            <img src={displayLogo} className={`${isTbd ? 'w-full h-full opacity-60' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
-                        </div>
-                        <div className="flex flex-col justify-center min-w-0">
-                            <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : 'text-slate-400'}`}>
-                                {dispName}
-                            </span>
-                            <span className="text-[9px] text-slate-500 font-bold italic truncate mt-0.5">{dispOwner}</span>
-                        </div>
-                    </div>
-                    <div className={`text-lg font-black italic tracking-tighter w-8 text-right ${isWinner ? 'text-emerald-400' : 'text-slate-600'}`}>
-                        {score ?? '-'}
-                    </div>
-                </div>
-            );
+        const slots = {
+            roundOf8: Array.from({ length: 4 }, (_, i) => createPlaceholder(`v-r8-${i}`, 'ROUND_OF_8')),
+            roundOf4: Array.from({ length: 2 }, (_, i) => createPlaceholder(`v-r4-${i}`, 'SEMI_FINAL')),
+            thirdPlace: [createPlaceholder('v-3rd', '3RD_PLACE')],
+            final: [createPlaceholder('v-final', 'FINAL')]
         };
 
-        return (
-            <div className={`flex flex-col w-[200px] sm:w-[220px] ${isFinal ? 'scale-110 ml-4' : ''}`}>
-                {title && <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5 pl-1 tracking-widest opacity-60">{title}</div>}
-                <div className={`flex flex-col bg-[#0f141e]/90 backdrop-blur-md border rounded-xl overflow-hidden shadow-xl relative z-10 ${highlight ? 'border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.15)]' : 'border-slate-800/50'}`}>
-                    {renderRow(match.home, hScore, isHomeWin, match.homeOwner, match.homeLogo)}
-                    <div className="h-[1px] bg-slate-800/40 w-full relative"></div>
-                    {renderRow(match.away, aScore, isAwayWin, match.awayOwner, match.awayLogo)}
-                </div>
-            </div>
-        );
-    };
+        let hasActualRoundOf8 = false;
+        let hasActualRoundOf4 = false;
+        const groupSet = new Set<string>();
+
+        targetSeason.rounds.forEach((round) => {
+            if (!round.matches) return;
+            const totalMatchesInRound = round.matches.length;
+
+            round.matches.forEach((m, localIdx) => {
+                const stage = m.stage?.toUpperCase() || "";
+                const label = m.matchLabel?.toUpperCase() || "";
+                
+                if (stage.includes("GROUP") || stage.includes("조별")) {
+                    if (m.group) groupSet.add(m.group);
+                    return;
+                }
+
+                const idMatch = m.id?.match ? m.id.match(/_M?(\d+)$/) : null;
+                const idx = idMatch ? parseInt(idMatch[1], 10) : localIdx;
+                const mSafe = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo };
+
+                const isThird = stage.includes("3RD") || stage.includes("34") || stage.includes("THIRD") || stage.includes("3·4위") || label.includes("3·4위");
+                const isFinal = stage.includes("FINAL") || stage.includes("결승") || label.includes("결승");
+                const isSemi = stage.includes("SEMI") || stage.includes("ROUND_OF_4") || stage.includes("4강") || stage.includes("준결승") || label.includes("4강");
+                const isQuarter = stage.includes("ROUND_OF_8") || stage.includes("QUARTER") || stage.includes("8강") || label.includes("8강");
+
+                let fallbackFinal = false;
+                let fallbackSemi = false;
+                let fallbackQuarter = false;
+
+                if (stage === "TOURNAMENT" || stage === "토너먼트") {
+                     if (totalMatchesInRound === 1) fallbackFinal = true;
+                     else if (totalMatchesInRound === 2) fallbackSemi = true;
+                     else if (totalMatchesInRound === 3) {
+                         if (localIdx === 2) fallbackFinal = true;
+                         else fallbackSemi = true;
+                     }
+                     else if (totalMatchesInRound === 4) fallbackQuarter = true;
+                     else if (totalMatchesInRound === 7) {
+                         if (localIdx === 6) fallbackFinal = true;
+                         else if (localIdx >= 4) fallbackSemi = true;
+                         else fallbackQuarter = true;
+                     }
+                }
+
+                if (isThird) {
+                    slots.thirdPlace[0] = mSafe;
+                } else if (isFinal || fallbackFinal) {
+                    slots.final[0] = mSafe;
+                } else if (isSemi || fallbackSemi) {
+                    let targetIdx = idx < 2 ? idx : localIdx;
+                    if (totalMatchesInRound === 3) targetIdx = localIdx;
+                    else if (totalMatchesInRound === 7) targetIdx = localIdx - 4;
+                    
+                    if (targetIdx < slots.roundOf4.length) {
+                        slots.roundOf4[targetIdx] = mSafe;
+                        hasActualRoundOf4 = true;
+                    }
+                } else if (isQuarter || fallbackQuarter) {
+                    let targetIdx = idx < 4 ? idx : localIdx;
+                    if (targetIdx < slots.roundOf8.length) {
+                        slots.roundOf8[targetIdx] = mSafe;
+                        hasActualRoundOf8 = true; 
+                    }
+                }
+            });
+        });
+
+        const needsRoundOf8 = hasActualRoundOf8 || groupSet.size >= 3 || tourneyTargetSize >= 8;
+        const needsRoundOf4 = hasActualRoundOf4 || groupSet.size > 0 || tourneyTargetSize >= 4;
+
+        setKnockoutStages({ 
+            ...slots, 
+            roundOf8: needsRoundOf8 ? slots.roundOf8 : null,
+            roundOf4: needsRoundOf4 ? slots.roundOf4 : null
+        });
+
+    }, [targetSeason, tourneyTargetSize]);
+
+    if (!knockoutStages) return <div className="text-center text-slate-500 py-10 italic">대진표 데이터를 로딩 중입니다...</div>;
 
     return (
-        <div className="overflow-x-auto pb-8 no-scrollbar">
-            <style dangerouslySetInnerHTML={{ __html: `
-                .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
-                .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
-                .bracket-column-wide { display: flex; flex-direction: column; justify-content: space-around; gap: 80px; position: relative; }
-            `}} />
-            <div className="bracket-tree no-scrollbar">
-                
-                {/* 1열: 8강 */}
-                {show8 && knockoutStages.roundOf8 && (
-                    <div className="bracket-column">
-                        {knockoutStages.roundOf8.map((m, i) => <BracketMatchBox key={i} title={`Quarter ${i + 1}`} match={m} />)}
-                    </div>
-                )}
-                
-                {/* 2열: 4강 */}
-                {show4 && knockoutStages.roundOf4 && (
-                    <div className={show8 ? "bracket-column-wide" : "bracket-column"}>
-                        {knockoutStages.roundOf4.map((m, i) => <BracketMatchBox key={i} title={`Semi ${i + 1}`} match={m} />)}
-                    </div>
-                )}
-                
-                {/* 3열: 결승 및 3·4위전 */}
-                <div className="bracket-column relative">
-                    <div className="relative">
-                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-4 z-20">👑</div>
-                        <BracketMatchBox title="Grand Final" match={knockoutStages.final?.[0]} highlight isFinal />
-                    </div>
-                    
-                    {show3rd && knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
-                        <div className="relative mt-8 opacity-90 scale-95 origin-left ml-6">
-                            <BracketMatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
-                        </div>
-                    )}
-                </div>
-
-            </div>
+        <div className="w-full flex flex-col items-center gap-10">
+            <AdminMatching_TournamentBracketView knockoutStages={knockoutStages} isUserView={false} />
         </div>
     );
 };
 
-export default AdminMatching_TournamentBracketView;
+// 🔥 부모 컴포넌트에서 import 방식이 꼬였을 경우를 대비한 보험 (Default Export 추가)
+export default AdminLiveBracket_Tournament;
