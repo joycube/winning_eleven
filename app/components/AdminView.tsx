@@ -114,24 +114,23 @@ export const AdminView = ({
             const teamStats: Record<string, any> = {};
             const playerStats: Record<string, any> = {};
 
-            // =========================================================================
-            // 🔥 [핵심 픽스] 시즌 마감 시: 일반 리그, 플레이오프, 브라켓 등 "모든" 매치를 영혼까지 끌어모읍니다!
-            // =========================================================================
             const allMatches: any[] = [];
             
             season.rounds?.forEach(r => {
                 r.matches?.forEach(m => allMatches.push(m));
             });
-            season.playoffs?.forEach(p => {
+            
+            // 🔥 [핵심 픽스] 타입에러 방지: season을 any로 감싸서 playoffs 접근 허용!
+            (season as any).playoffs?.forEach((p: any) => {
                 if (p.matches) p.matches.forEach((m:any) => allMatches.push(m));
                 else allMatches.push(p);
             });
+            
             (season as any).brackets?.forEach((b: any) => {
                 if (b.matches) b.matches.forEach((m:any) => allMatches.push(m));
                 else allMatches.push(b);
             });
 
-            // 추출한 모든 매치를 순회하며 스탯을 누적 합산!
             allMatches.filter(m => m.status === 'COMPLETED').forEach(m => {
                 const hTeam = m.home; const aTeam = m.away;
                 
@@ -143,7 +142,6 @@ export const AdminView = ({
                 const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
 
                 const stageUpper = (m.stage || '').toUpperCase();
-                // ⚠️ 토너먼트/PO 경기라도 승무패/득실 데이터는 전부 누적합산 하도록 락을 해제합니다.
                 teamStats[hTeam].gf += hs; teamStats[hTeam].ga += as; teamStats[hTeam].gd += (hs - as);
                 teamStats[aTeam].gf += as; teamStats[aTeam].ga += hs; teamStats[aTeam].gd += (as - hs);
 
@@ -187,7 +185,6 @@ export const AdminView = ({
                 thirdOwner = sortedTeams[2]?.owner || '';
 
                 let finalMatch: any = null;
-                // 우승자 식별 로직도 모든 매치 배열(allMatches)을 바라보게 변경
                 allMatches.forEach(m => {
                     if (m.stage && m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER')) {
                         finalMatch = m;
@@ -201,7 +198,6 @@ export const AdminView = ({
                 }
             } else {
                 let finalMatch: any = null;
-                // 가장 나중에 끝난 매치를 결승으로 유추 (안전빵)
                 const completedMatches = allMatches.filter(m => m.status === 'COMPLETED');
                 if (completedMatches.length > 0) {
                     finalMatch = completedMatches[completedMatches.length - 1]; 
@@ -292,7 +288,6 @@ export const AdminView = ({
     const isSeasonView = typeof adminTab === 'number' || adminTab === 'SEASON_MENU';
     const activeTopTab = isSeasonView ? 'SEASON' : 'SYSTEM';
 
-    // 🚨 픽스: 라운딩(rounded-3xl -> rounded-xl) 및 패딩 축소로 모던한 버튼형태로 개편
     const SystemCard = ({ title, subtitle, icon, color, onClick }: any) => (
         <div 
             onClick={onClick} 
@@ -312,15 +307,12 @@ export const AdminView = ({
     );
 
     return (
-        // 🚨 픽스: 외부 라운딩 박스 제거 및 풀블리드(오픈형) 레이아웃 적용
         <div className="w-full animate-in fade-in flex flex-col pb-10">
             
-            {/* 타이틀 */}
             <div className="flex justify-between items-center mb-6 px-2 w-full">
                 <h2 className="text-[18px] sm:text-[22px] font-black italic text-emerald-400 tracking-widest uppercase">ADMIN DASHBOARD</h2>
             </div>
 
-            {/* 🚨 픽스: 탭 메뉴를 캡슐 박스 형태에서 시원한 언더라인(플랫) 형태로 교체 */}
             <div className="flex gap-4 border-b border-slate-800/60 mb-6 sm:mb-8 w-full px-2">
                 <button 
                     onClick={() => setAdminTab('SYSTEM_MENU')}
@@ -338,7 +330,6 @@ export const AdminView = ({
                 </button>
             </div>
 
-            {/* 콘텐츠 영역 */}
             <div className="w-full">
                 {activeTopTab === 'SYSTEM' && (
                     <>
@@ -355,7 +346,6 @@ export const AdminView = ({
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in slide-in-from-right-4 w-full">
-                                {/* 🚨 픽스: 뒤로 가기 버튼 영역을 답답하지 않게 트임 처리 */}
                                 <div className="mb-4 pb-4 border-b border-slate-800/60 px-2 w-full">
                                     <button onClick={() => setAdminTab('SYSTEM_MENU')} className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max">
                                         <ArrowLeft size={14} /> <span>시스템 메뉴로 돌아가기</span>
@@ -384,7 +374,6 @@ export const AdminView = ({
                                 {seasons.slice().sort((a, b) => b.id - a.id).map(s => {
                                     const isCompleted = s.status === 'COMPLETED';
                                     return (
-                                        // 🚨 픽스: 시즌 카드의 라운딩 축소 (3xl -> xl) 및 보더/배경 스타일 톤다운
                                         <div 
                                             key={s.id} 
                                             onClick={() => setAdminTab(s.id)} 
@@ -423,7 +412,6 @@ export const AdminView = ({
                                     if (!targetSeason) return <div className="text-center text-red-400 py-10">시즌 정보를 찾을 수 없습니다.</div>;
                                     return (
                                         <>
-                                            {/* 🚨 픽스: 관리자 세부 화면 상단 헤더 박스 해체 (오픈형) */}
                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-800/60 pb-5 w-full px-2">
                                                 <button onClick={() => setAdminTab('SEASON_MENU')} className="flex items-center gap-1.5 text-slate-400 hover:text-blue-400 transition-colors font-bold text-[11px] sm:text-[12px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner w-max shrink-0">
                                                     <ArrowLeft size={14} /> <span>시즌 목록으로 돌아가기</span>
