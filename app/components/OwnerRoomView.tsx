@@ -22,8 +22,50 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
     const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
     const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
+    const [uidDict, setUidDict] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const fetchHistoryDict = async () => {
+            const snap = await getDocs(collection(db, 'history_records'));
+            const dict: Record<string, string> = {};
+            snap.docs.forEach(doc => {
+                const data = doc.data();
+                data.teams?.forEach((t:any) => {
+                    if (t.owner && t.ownerId) dict[t.owner] = t.ownerId;
+                    if (t.legacyName && t.ownerId) dict[t.legacyName] = t.ownerId;
+                });
+            });
+            setUidDict(dict);
+        };
+        fetchHistoryDict();
+    }, []);
+
     // 🔥 [픽스 2] 명예의 전당과 완벽히 동일한 병합된 역사를 실시간으로 가져옵니다!
     const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners);
+
+    // =========================================================================
+    // 🚨 VERCEL 빌드 에러 픽스: 모든 Hook(useMemo 등)은 예외 처리(return)보다 위에 있어야 합니다!
+    // =========================================================================
+    const myOwnerData = owners?.find((o:any) => o.uid === user?.uid || (user?.mappedOwnerId && o.nickname === user?.mappedOwnerId));
+    const currentNick = myOwnerData?.nickname || user?.mappedOwnerId;
+
+    // 🔥 [픽스 3] 나의 모든 아이디/닉네임/과거기록을 배열로 묶어 완벽한 "내 신분증" 생성
+    const myIdentities = useMemo(() => {
+        const ids = new Set([
+            user?.uid,
+            myOwnerData?.uid,
+            myOwnerData?.docId,
+            String(myOwnerData?.id),
+            myOwnerData?.nickname,
+            myOwnerData?.mappedOwnerId,
+            ...(myOwnerData?.legacyNames || [])
+        ].filter(Boolean));
+        return Array.from(ids);
+    }, [user, myOwnerData]);
+
+    // =========================================================================
+    // 예외 처리 (Early Returns) 시작
+    // =========================================================================
 
     if (!user) {
         return (
@@ -68,23 +110,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         const matched = masterTeams?.find((m:any) => (m.name || '').toLowerCase() === teamName.toLowerCase() || (m.teamName || '').toLowerCase() === teamName.toLowerCase());
         return matched?.logo || defaultLogo || FALLBACK_IMG;
     };
-
-    const myOwnerData = owners?.find((o:any) => o.uid === user.uid || (user.mappedOwnerId && o.nickname === user.mappedOwnerId));
-    const currentNick = myOwnerData?.nickname || user.mappedOwnerId;
-
-    // 🔥 [픽스 3] 나의 모든 아이디/닉네임/과거기록을 배열로 묶어 완벽한 "내 신분증" 생성
-    const myIdentities = useMemo(() => {
-        const ids = new Set([
-            user?.uid,
-            myOwnerData?.uid,
-            myOwnerData?.docId,
-            String(myOwnerData?.id),
-            myOwnerData?.nickname,
-            myOwnerData?.mappedOwnerId,
-            ...(myOwnerData?.legacyNames || [])
-        ].filter(Boolean));
-        return Array.from(ids);
-    }, [user, myOwnerData]);
 
     // 🔥 [픽스 4] 내 신분증 중 하나라도 일치하면 내 기록으로 인식!
     const myHistory = mergedHistory?.owners?.find((o:any) => 
