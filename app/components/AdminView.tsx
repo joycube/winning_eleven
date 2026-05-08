@@ -70,6 +70,97 @@ export const AdminView = ({
         alert("스케줄 삭제 완료");
     };
 
+    // 🔥 [핵심 픽스] 과거 시즌의 누락된 PO 데이터를 일괄 복구하는 강력한 마이그레이션 스크립트!
+    const handleRunMigration = async () => {
+        if (!confirm("⚠️ [경고] 모든 과거 마감 시즌의 경기(리그+PO) 데이터를 영혼까지 끌어모아 history_records 장부를 전면 100% 재구축합니다.\n실행하시겠습니까?")) return;
+
+        try {
+            const batch = writeBatch(db);
+            let count = 0;
+
+            const userAccSnapshot = await getDocs(collection(db, 'user_accounts'));
+            const userAccounts = userAccSnapshot.docs.map(d => ({ uid: d.id, ...d.data() }));
+            
+            const getRealUid = (legacyName: string) => {
+                if (!legacyName || ['-', 'TBD', 'SYSTEM', 'BYE', 'CPU'].includes(legacyName.trim())) return null;
+                const search = legacyName.trim();
+                const foundByUid = userAccounts.find(u => u.uid === search);
+                if (foundByUid) return foundByUid.uid;
+                const foundByName = userAccounts.find(u => (u as any).mappedOwnerId === search || (u as any).displayName === search);
+                return foundByName ? foundByName.uid : search; 
+            };
+
+            const completedSeasons = seasons.filter(s => s.status === 'COMPLETED');
+
+            for (const season of completedSeasons) {
+                const teamStats: Record<string, any> = {};
+                const playerStats: Record<string, any> = {};
+                const allMatches: any[] = [];
+                
+                season.rounds?.forEach(r => r.matches?.forEach(m => allMatches.push(m)));
+                (season as any).playoffs?.forEach((p: any) => { if (p.matches) p.matches.forEach((m:any) => allMatches.push(m)); else allMatches.push(p); });
+                (season as any).brackets?.forEach((b: any) => { if (b.matches) b.matches.forEach((m:any) => allMatches.push(m)); else allMatches.push(b); });
+
+                allMatches.filter(m => m.status === 'COMPLETED').forEach(m => {
+                    const hTeam = m.home; const aTeam = m.away;
+                    if (hTeam === 'BYE' || aTeam === 'BYE' || hTeam?.includes('부전승') || aTeam?.includes('부전승')) return;
+
+                    if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, owner: m.homeOwner, ownerId: getRealUid(m.homeOwnerUid || m.homeOwner), win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0, logo: m.homeLogo };
+                    if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, owner: m.awayOwner, ownerId: getRealUid(m.awayOwnerUid || m.awayOwner), win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0, logo: m.awayLogo };
+
+                    const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
+                    teamStats[hTeam].gf += hs; teamStats[hTeam].ga += as; teamStats[hTeam].gd += (hs - as);
+                    teamStats[aTeam].gf += as; teamStats[aTeam].ga += hs; teamStats[aTeam].gd += (as - hs);
+
+                    if (hs > as) { teamStats[hTeam].win++; teamStats[hTeam].pts += 3; teamStats[aTeam].loss++; }
+                    else if (as > hs) { teamStats[aTeam].win++; teamStats[aTeam].pts += 3; teamStats[hTeam].loss++; }
+                    else { teamStats[hTeam].draw++; teamStats[aTeam].draw++; teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
+
+                    const processPlayers = (records: any[], teamName: string, ownerName: string, ownerUid: string, logo: string, type: 'goals' | 'assists') => {
+                        if (!records || !Array.isArray(records)) return;
+                        records.forEach(p => {
+                            const pName = typeof p === 'string' ? p : p.name;
+                            const count = typeof p === 'string' ? 1 : (p.count || 1);
+                            if (!pName) return;
+                            const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
+                            const pKey = `${pName}_${teamName}_${trueOwnerId}`;
+                            if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId, teamLogo: logo, goals: 0, assists: 0 };
+                            playerStats[pKey][type] += count;
+                        });
+                    };
+
+                    processPlayers(m.homeScorers, hTeam, m.homeOwner, m.homeOwnerUid, m.homeLogo, 'goals');
+                    processPlayers(m.awayScorers, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'goals');
+                    processPlayers(m.homeAssists, hTeam, m.homeOwner, m.homeOwnerUid, m.homeLogo, 'assists');
+                    processPlayers(m.awayAssists, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'assists');
+                });
+
+                const oldHistoryRef = doc(db, 'history_records', String(season.id));
+                const oldSnap = await getDoc(oldHistoryRef);
+                const oldData = oldSnap.exists() ? oldSnap.data() : {};
+
+                const historySnapshot = {
+                    ...oldData, 
+                    seasonId: season.id,
+                    seasonName: season.name,
+                    type: season.type,
+                    teams: Object.values(teamStats).map((t: any) => ({ ...t, ownerId: t.ownerId || getRealUid(t.owner) || null, legacyName: t.owner || '' })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
+                    players: Object.values(playerStats).map((p: any) => ({ ...p, ownerId: p.ownerId || getRealUid(p.owner) || null, legacyName: p.owner || '' })).sort((a:any, b:any) => b.goals - a.goals)
+                };
+
+                batch.set(oldHistoryRef, historySnapshot);
+                count++;
+            }
+
+            await batch.commit();
+            alert(`✅ 성공! 총 ${count}개의 과거 시즌 데이터(PO 포함)가 완벽하게 복구되었습니다!`);
+            window.location.reload();
+        } catch (error) {
+            console.error(error);
+            alert("마이그레이션 중 에러가 발생했습니다.");
+        }
+    };
+
     const handleCloseSeason = async (season: Season) => {
         const isAlreadyCompleted = season.status === 'COMPLETED';
         
@@ -120,7 +211,6 @@ export const AdminView = ({
                 r.matches?.forEach(m => allMatches.push(m));
             });
             
-            // 🔥 [핵심 픽스] 타입에러 방지: season을 any로 감싸서 playoffs 접근 허용!
             (season as any).playoffs?.forEach((p: any) => {
                 if (p.matches) p.matches.forEach((m:any) => allMatches.push(m));
                 else allMatches.push(p);
@@ -342,7 +432,8 @@ export const AdminView = ({
                                 <SystemCard title="팀 DB 관리" subtitle="Team Setup" icon={<Shield size={32}/>} color="from-red-500 to-rose-800" onClick={() => setAdminTab('TEAMS')} />
                                 <SystemCard title="오너 명부" subtitle="Owner Roster" icon={<Crown size={32}/>} color="from-orange-500 to-amber-800" onClick={() => setAdminTab('OWNER')} />
                                 <SystemCard title="배너 관리" subtitle="Main Banners" icon={<ImageIcon size={32}/>} color="from-pink-500 to-rose-700" onClick={() => setAdminTab('BANNER')} />
-                                <SystemCard title="실축 데이터" subtitle="Real-World Data" icon={<Globe size={32}/>} color="from-yellow-500 to-orange-700" onClick={() => setAdminTab('REAL')} />
+                                {/* 🔥 여기에 장부 일괄 복구 버튼을 추가했습니다! */}
+                                <SystemCard title="장부 일괄 복구" subtitle="DB Migration" icon={<DatabaseBackup size={32}/>} color="from-red-600 to-rose-900" onClick={handleRunMigration} />
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in slide-in-from-right-4 w-full">

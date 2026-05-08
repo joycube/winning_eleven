@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
@@ -21,14 +21,13 @@ interface HistoryViewProps {
 }
 
 export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
+  // 🔥 [FM 정석] 무거운 계산 없이 가벼워진 훅에서 이미 완성된 통계를 바로 가져옵니다.
   const { historyData, isHistoryLoading } = useHistoryRecords(owners);
 
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
-  const [allSeasons, setAllSeasons] = useState<any[]>([]);
-  const [isSeasonsLoading, setIsSeasonsLoading] = useState(true);
 
   useEffect(() => {
       const fetchLogos = async () => {
@@ -42,21 +41,6 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
       fetchLogos();
   }, []);
 
-  // 🔥 [추가] PO 데이터를 동적으로 합산하기 위해 seasons 원본을 가져옵니다.
-  useEffect(() => {
-      const fetchS = async () => {
-          try {
-              const snap = await getDocs(collection(db, 'seasons'));
-              setAllSeasons(snap.docs.map(d => d.data()));
-          } catch (e) {
-              console.error("Seasons 로드 에러:", e);
-          } finally {
-              setIsSeasonsLoading(false);
-          }
-      };
-      fetchS();
-  }, []);
-
   const getRealLogo = (teamName: string, currentLogo: string) => {
       if (!teamName) return currentLogo || FALLBACK_IMG;
       const matched = masterTeams.find(m => 
@@ -65,21 +49,6 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
       );
       if (matched && matched.logo) return matched.logo;
       return currentLogo || FALLBACK_IMG;
-  };
-
-  const resolveTrueOwnerId = (idOrName: any) => {
-      const search = String(idOrName || '').trim();
-      const found = owners.find(o => 
-          (o as any).uid === search || 
-          o.docId === search || 
-          String(o.id) === search ||
-          o.nickname === search || 
-          o.legacyName === search ||
-          (o as any).mappedOwnerId === search ||
-          ((o as any).legacyNames && (o as any).legacyNames.includes(search))
-      );
-      if (found) return (found as any).uid || found.docId || String(found.id);
-      return search;
   };
 
   const getSafeName = (idOrName: any) => {
@@ -100,153 +69,14 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
 
   const getPoints = (item: any) => Number(item?.points ?? item?.pts ?? 0);
 
-  // =========================================================================
-  // 🔥 [핵심 픽스] 전체 시즌의 "리그 + PO" 데이터를 싹 다 긁어모아 100% 다시 계산합니다.
-  // =========================================================================
-  const dynamicStats = useMemo(() => {
-      const teamMap = new Map();
-      const ownerMap = new Map();
-      const playerMap = new Map();
-
-      allSeasons.forEach(s => {
-          const processMatch = (m: any) => {
-              if (!m || m.status !== 'COMPLETED') return;
-              if (m.home === 'BYE' || m.away === 'BYE' || m.home?.includes('부전승') || m.away?.includes('부전승')) return;
-
-              const hOwnerId = resolveTrueOwnerId(m.homeOwnerUid || m.homeOwner);
-              const aOwnerId = resolveTrueOwnerId(m.awayOwnerUid || m.awayOwner);
-
-              const hScore = Number(m.homeScore || 0);
-              const aScore = Number(m.awayScore || 0);
-
-              const updateTeam = (teamName: string, ownerId: string, ownerName: string, gf: number, ga: number, logo: string) => {
-                  if (!teamName || teamName === 'TBD' || teamName === 'BYE') return;
-                  const key = `${teamName}_${ownerId}`;
-                  if (!teamMap.has(key)) teamMap.set(key, { name: teamName, ownerId, ownerName, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, pts: 0, logo });
-                  const t = teamMap.get(key);
-                  t.gf += gf; t.ga += ga; t.gd = t.gf - t.ga;
-                  if (gf > ga) { t.win += 1; t.pts += 3; }
-                  else if (gf < ga) { t.loss += 1; }
-                  else { t.draw += 1; t.pts += 1; }
-              };
-
-              updateTeam(m.home, hOwnerId, m.homeOwner, hScore, aScore, m.homeLogo);
-              updateTeam(m.away, aOwnerId, m.awayOwner, aScore, hScore, m.awayLogo);
-
-              const updateOwner = (ownerId: string, gf: number, ga: number) => {
-                  if(!ownerId || ownerId === '-' || ownerId === 'CPU') return;
-                  if (!ownerMap.has(ownerId)) ownerMap.set(ownerId, { id: ownerId, win: 0, draw: 0, loss: 0, pts: 0 });
-                  const o = ownerMap.get(ownerId);
-                  if (gf > ga) { o.win += 1; o.pts += 3; }
-                  else if (gf < ga) { o.loss += 1; }
-                  else { o.draw += 1; o.pts += 1; }
-              };
-
-              updateOwner(hOwnerId, hScore, aScore);
-              updateOwner(aOwnerId, aScore, hScore);
-
-              const processPlayers = (scorers: any[], teamName: string, ownerId: string, logo: string, type: string) => {
-                  if (!scorers || !Array.isArray(scorers)) return;
-                  scorers.forEach(s => {
-                      const pName = typeof s === 'string' ? s : s.name;
-                      const count = typeof s === 'string' ? 1 : (Number(s.count) || 1);
-                      if (!pName) return;
-                      const key = `${pName}_${teamName}_${ownerId}`;
-                      if (!playerMap.has(key)) playerMap.set(key, { name: pName, team: teamName, ownerId, teamLogo: logo, goals: 0, assists: 0 });
-                      const p = playerMap.get(key);
-                      if (type === 'GOAL') p.goals += count;
-                      if (type === 'ASSIST') p.assists += count;
-                  });
-              }
-
-              processPlayers(m.homeScorers, m.home, hOwnerId, m.homeLogo, 'GOAL');
-              processPlayers(m.homeAssists, m.home, hOwnerId, m.homeLogo, 'ASSIST');
-              processPlayers(m.awayScorers, m.away, aOwnerId, m.awayLogo, 'GOAL');
-              processPlayers(m.awayAssists, m.away, aOwnerId, m.awayLogo, 'ASSIST');
-          };
-
-          s.rounds?.forEach((r: any) => r.matches?.forEach(processMatch));
-          s.playoffs?.forEach((p: any) => { if (p.matches) p.matches.forEach(processMatch); else processMatch(p); });
-          s.brackets?.forEach((b: any) => { if (b.matches) b.matches.forEach(processMatch); else processMatch(b); });
-      });
-
-      return {
-          teams: Array.from(teamMap.values()),
-          owners: Array.from(ownerMap.values()),
-          players: Array.from(playerMap.values())
-      };
-  }, [allSeasons, owners]);
-
-  // 🔥 [안전 병합] 최신 동적 기록 위에 DB의 상금/트로피 기록을 덮어씌웁니다. (유실 방지)
-  const consolidatedOwners = useMemo(() => {
-      const ownerMap = new Map();
-      dynamicStats.owners.forEach(o => ownerMap.set(o.id, { ...o, golds: 0, silvers: 0, bronzes: 0, prize: 0 }));
-
-      if (historyData?.owners) {
-          historyData.owners.forEach((o: any) => {
-              const trueId = resolveTrueOwnerId(o.id || o.uid);
-              if (!ownerMap.has(trueId)) {
-                  ownerMap.set(trueId, { ...o, id: trueId });
-              } else {
-                  const existing = ownerMap.get(trueId);
-                  existing.golds = (existing.golds || 0) + (o.golds || 0);
-                  existing.silvers = (existing.silvers || 0) + (o.silvers || 0);
-                  existing.bronzes = (existing.bronzes || 0) + (o.bronzes || 0);
-                  existing.prize = (existing.prize || 0) + (o.prize || 0);
-                  if (o.name) existing.name = o.name;
-              }
-          });
-      }
-      return Array.from(ownerMap.values()).sort((a: any, b: any) => getPoints(b) - getPoints(a) || (b.golds||0) - (a.golds||0) || (b.win||0) - (a.win||0));
-  }, [historyData?.owners, dynamicStats.owners]);
-
-  const consolidatedTeams = useMemo(() => {
-      const teamMap = new Map();
-      dynamicStats.teams.forEach(t => teamMap.set(`${t.name}_${t.ownerId}`, { ...t }));
-
-      if (historyData?.teams) {
-          historyData.teams.forEach((t: any) => {
-              const tName = t.name?.trim();
-              if (!tName) return;
-              const trueOwnerId = resolveTrueOwnerId(t.ownerId || t.ownerName || t.owner);
-              const key = `${tName}_${trueOwnerId}`;
-              if (!teamMap.has(key)) {
-                  teamMap.set(key, { ...t, ownerId: trueOwnerId });
-              }
-          });
-      }
-      return Array.from(teamMap.values()).sort((a: any, b: any) => {
-          const aPts = getPoints(a); const bPts = getPoints(b);
-          if (bPts !== aPts) return bPts - aPts;      
-          if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); 
-          return (b.gf || 0) - (a.gf || 0);                           
-      });
-  }, [historyData?.teams, dynamicStats.teams]);
-
-  const consolidatedPlayers = useMemo(() => {
-      const playerMap = new Map();
-      dynamicStats.players.forEach(p => playerMap.set(`${p.name}_${p.team}_${p.ownerId}`, { ...p }));
-
-      if (historyData?.players) {
-          historyData.players.forEach((p: any) => {
-              const pName = p.name?.trim();
-              if (!pName) return;
-              const trueOwnerId = resolveTrueOwnerId(p.ownerId || p.ownerUid || p.owner);
-              const pTeam = p.team?.trim();
-              const key = `${pName}_${pTeam}_${trueOwnerId}`;
-              if (!playerMap.has(key)) {
-                  playerMap.set(key, { ...p, ownerId: trueOwnerId });
-              }
-          });
-      }
-      return Array.from(playerMap.values());
-  }, [historyData?.players, dynamicStats.players]);
+  const safeHistoryData = historyData || { teams: [], owners: [], players: [] };
 
   const getPlayerRanking = (players: any[]) => {
     if (!players || players.length === 0) return [];
-    const sortedPlayers = players
+    const sortedPlayers = [...players]
         .filter((p:any) => histPlayerMode === 'GOAL' ? (p.goals || 0) > 0 : (p.assists || 0) > 0)
         .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
+    
     let currentRank = 1; let skip = 0;
     return sortedPlayers.map((player, index, array) => {
         if (index > 0) {
@@ -260,13 +90,13 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
     });
   };
 
-  const rankedPlayers = getPlayerRanking(consolidatedPlayers);
+  const rankedPlayers = getPlayerRanking(safeHistoryData.players || []);
 
-  if (isHistoryLoading || isSeasonsLoading) {
+  if (isHistoryLoading) {
       return (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 animate-pulse">
               <div className="text-4xl mb-4">🏆</div>
-              <p className="text-sm font-bold tracking-widest uppercase">명예의 전당 데이터를 긁어모으는 중입니다...</p>
+              <p className="text-sm font-bold tracking-widest uppercase">명예의 전당 데이터를 불러오는 중입니다...</p>
           </div>
       );
   }
@@ -300,7 +130,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                 <table className="w-full text-left text-xs">
                     <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-4 w-8 text-center">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
                     <tbody>
-                        {consolidatedTeams.slice(0, 20).map((t:any, i:number) => {
+                        {safeHistoryData.teams.slice(0, 20).map((t:any, i:number) => {
                             const ownerDisplayName = getSafeName(t.ownerId || t.ownerName);
 
                             return (
@@ -320,7 +150,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                                 </tr>
                             );
                         })}
-                        {consolidatedTeams.length === 0 && (
+                        {safeHistoryData.teams.length === 0 && (
                             <tr><td colSpan={4} className="p-8 text-center text-slate-500 italic">기록된 팀 데이터가 없습니다.</td></tr>
                         )}
                     </tbody>
@@ -330,8 +160,8 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
 
         {historyTab === 'OWNERS' && (
             <div className="space-y-4">
-                {consolidatedOwners.length > 0 ? (() => {
-                    const legend = consolidatedOwners[0];
+                {safeHistoryData.owners && safeHistoryData.owners.length > 0 ? (() => {
+                    const legend = safeHistoryData.owners[0];
                     const matchedOwner = owners.find(o => 
                         o.nickname === legend.name || 
                         o.docId === legend.id || 
@@ -402,7 +232,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                     <div className="text-center py-10 text-slate-500 italic bg-slate-900/40 rounded-xl border border-slate-800">기록된 오너 데이터가 없습니다.</div>
                 )}
 
-                {consolidatedOwners.length > 1 && (
+                {safeHistoryData.owners && safeHistoryData.owners.length > 1 && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
                         <table className="w-full text-left text-xs">
                             <thead className="bg-slate-950 text-slate-500 uppercase">
@@ -416,7 +246,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {consolidatedOwners.slice(1).map((o:any, i:number) => {
+                                {safeHistoryData.owners.slice(1).map((o:any, i:number) => {
                                     const actualRank = i + 2; 
                                     const matchedOwner = owners.find(owner => 
                                         owner.nickname === o.name || 

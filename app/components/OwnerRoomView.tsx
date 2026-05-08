@@ -42,9 +42,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
 
     const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners);
 
-    // =========================================================================
-    // 🚨 VERCEL 빌드 에러 방지: 모든 Hook은 최상단에 위치!
-    // =========================================================================
     const myOwnerData = owners?.find((o:any) => o.uid === user?.uid || (user?.mappedOwnerId && o.nickname === user?.mappedOwnerId));
     const currentNick = myOwnerData?.nickname || user?.mappedOwnerId;
 
@@ -111,7 +108,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         myIdentities.includes(String(o.name))
     );
 
-    // 전체 승무패 및 누적 상금은 명예의 전당 DB(history_records) 데이터를 사용
     const points = myHistory?.points || myHistory?.pts || 0;
     const wins = myHistory?.win || 0;
     const draws = myHistory?.draw || 0;
@@ -123,7 +119,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
     const resolveOpponentName = (rawUid?: string, rawName?: string) => {
         const searchId = String(rawUid || '').trim();
         const searchName = String(rawName || '').trim();
-
         const found = owners?.find((o:any) => 
             (o.uid && o.uid === searchId) || 
             (o.docId && o.docId === searchId) || 
@@ -133,7 +128,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             (o.mappedOwnerId && o.mappedOwnerId === searchName) ||
             (o.legacyNames && o.legacyNames.includes(searchName))
         );
-
         if (found) return found.nickname || found.mappedOwnerId || searchName;
         return searchName && searchName !== '-' ? searchName : searchId;
     };
@@ -152,9 +146,6 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
              : 'bg-slate-800 text-slate-400 border-slate-700';
     };
 
-    // =========================================================================
-    // 🔥 PO(플레이오프) 기록까지 영혼까지 끌어모으는 전체 매치 파인더
-    // =========================================================================
     const getMyMatches = () => {
         let ownerMatches: any[] = [];
         const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
@@ -168,25 +159,18 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
             
             if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
-                if (!ownerMatches.find(ext => ext.id === m.id)) {
-                    ownerMatches.push({ ...m, amIHome });
+                // 🔥 [버그 픽스] m.id가 없어서 중복으로 취급되어 사라지던 문제를 고유한 문자열 조합(Key)으로 해결했습니다!
+                const matchKey = `${m.home}_${m.away}_${m.homeScore}_${m.awayScore}_${m.stage || ''}`;
+                if (!ownerMatches.find(ext => ext._key === matchKey)) {
+                    ownerMatches.push({ ...m, amIHome, _key: matchKey });
                 }
             }
         };
 
         sortedSeasons.forEach((s: any) => {
-            // 1. 일반 리그 라운드
             s.rounds?.forEach((r: any) => r.matches?.forEach(addMatch));
-            // 2. 플레이오프(PO) 라운드
-            s.playoffs?.forEach((p: any) => {
-                if (p.matches) p.matches.forEach(addMatch);
-                else addMatch(p);
-            });
-            // 3. 토너먼트 브라켓
-            s.brackets?.forEach((b: any) => {
-                if (b.matches) b.matches.forEach(addMatch);
-                else addMatch(b);
-            });
+            s.playoffs?.forEach((p: any) => { if (p.matches) p.matches.forEach(addMatch); else addMatch(p); });
+            s.brackets?.forEach((b: any) => { if (b.matches) b.matches.forEach(addMatch); else addMatch(b); });
         });
         return ownerMatches;
     };
@@ -358,72 +342,28 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         return map;
     })();
 
-    // =========================================================================
-    // 🔥 팀 및 선수 스탯 동적 계산 엔진 (PO 완벽 포함!)
-    // =========================================================================
     const getMyBestStats = () => {
-        const teamStatsMap: Record<string, any> = {};
-        const playerGoalMap: Record<string, any> = {};
-        const playerAssistMap: Record<string, any> = {};
-
-        myMatches.forEach(m => {
-            const isHome = m.amIHome;
-            const myTeamStr = isHome ? m.home : m.away;
-            const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
-            const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
-            
-            if (!myTeamStr || myTeamStr === 'BYE' || myTeamStr === 'TBD') return;
-
-            // 1. 내 팀 누적 스탯 합산
-            if (!teamStatsMap[myTeamStr]) {
-                const teamData = masterTeams?.find((t:any) => t.name === myTeamStr);
-                teamStatsMap[myTeamStr] = {
-                    name: myTeamStr, w: 0, d: 0, l: 0, pts: 0,
-                    gf: 0, ga: 0, gd: 0,
-                    logo: getRealLogo(myTeamStr, teamData?.logo), tier: teamData?.tier || 'C',
-                    total: 0
+        const topTeams = (mergedHistory?.teams || [])
+            .filter((t:any) => myIdentities.includes(String(t.ownerId)) || myIdentities.includes(String(t.ownerName)))
+            .map((t:any) => {
+                const teamData = masterTeams?.find((m:any) => m.name === t.name);
+                const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
+                return {
+                    name: t.name, w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || t.pts || 0,
+                    gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
+                    logo: getRealLogo(t.name, t.logo || teamData?.logo), tier: teamData?.tier || 'C',
+                    winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
                 };
-            }
-            const ts = teamStatsMap[myTeamStr];
-            ts.total += 1;
-            ts.gf += myScore;
-            ts.ga += opScore;
-            ts.gd = ts.gf - ts.ga;
-            
-            if (myScore > opScore) { ts.w += 1; ts.pts += 3; }
-            else if (myScore < opScore) { ts.l += 1; }
-            else { ts.d += 1; ts.pts += 1; }
-            ts.winRate = ts.total > 0 ? ((ts.w / ts.total) * 100).toFixed(1) : '0.0';
+            }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
 
-            // 2. 내 선수(골/어시) 누적 스탯 합산
-            const processPlayers = (scorers: any[], type: 'GOAL' | 'ASSIST') => {
-                if (!scorers || !Array.isArray(scorers)) return;
-                scorers.forEach(s => {
-                    const pName = typeof s === 'string' ? s : s.name;
-                    const count = typeof s === 'string' ? 1 : (Number(s.count) || 1);
-                    if (!pName) return;
+        const myPlayers = (mergedHistory?.players || [])
+            .filter((p:any) => myIdentities.includes(String(p.ownerId)) || myIdentities.includes(String(p.owner)));
+        
+        const topScorers = [...myPlayers].filter((p:any) => (p.goals || 0) > 0).sort((a:any, b:any) => b.goals - a.goals)
+            .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
 
-                    const map = type === 'GOAL' ? playerGoalMap : playerAssistMap;
-                    if (!map[pName]) {
-                        map[pName] = { name: pName, count: 0, team: myTeamStr, logo: getRealLogo(myTeamStr, '') };
-                    }
-                    map[pName].count += count;
-                });
-            };
-
-            if (isHome) {
-                processPlayers(m.homeScorers, 'GOAL');
-                processPlayers(m.homeAssists, 'ASSIST');
-            } else {
-                processPlayers(m.awayScorers, 'GOAL');
-                processPlayers(m.awayAssists, 'ASSIST');
-            }
-        });
-
-        // 3. 각각 정렬하여 탑 5 추출
-        const topTeams = Object.values(teamStatsMap).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf).slice(0, 5);
-        const topScorers = Object.values(playerGoalMap).sort((a:any, b:any) => b.count - a.count).slice(0, 5);
-        const topAssists = Object.values(playerAssistMap).sort((a:any, b:any) => b.count - a.count).slice(0, 5);
+        const topAssists = [...myPlayers].filter((p:any) => (p.assists || 0) > 0).sort((a:any, b:any) => b.assists - a.assists)
+            .map((p:any) => ({ name: p.name, count: p.assists, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
 
         return { topTeams, topScorers, topAssists };
     };
