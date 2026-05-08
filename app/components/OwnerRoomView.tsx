@@ -4,8 +4,9 @@ import { doc, writeBatch, arrayUnion, collection, getDocs } from 'firebase/fires
 import { db } from '../firebase';
 import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles, ChevronRight } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
+import { useHistoryRecords } from '../hooks/useHistoryRecords'; // 🔥 [픽스 1] 병합 엔진 임포트
 
-export default function OwnerRoomView({ user, masterTeams, historyData, seasons, owners }: any) {
+export default function OwnerRoomView({ user, masterTeams, seasons, owners }: any) {
     const [isEditing, setIsEditing] = useState(false);
     
     const [editNickname, setEditNickname] = useState('');
@@ -21,23 +22,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
     const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
-    const [uidDict, setUidDict] = useState<Record<string, string>>({});
-
-    useEffect(() => {
-        const fetchHistoryDict = async () => {
-            const snap = await getDocs(collection(db, 'history_records'));
-            const dict: Record<string, string> = {};
-            snap.docs.forEach(doc => {
-                const data = doc.data();
-                data.teams?.forEach((t:any) => {
-                    if (t.owner && t.ownerId) dict[t.owner] = t.ownerId;
-                    if (t.legacyName && t.ownerId) dict[t.legacyName] = t.ownerId;
-                });
-            });
-            setUidDict(dict);
-        };
-        fetchHistoryDict();
-    }, []);
+    // 🔥 [픽스 2] 명예의 전당과 완벽히 동일한 병합된 역사를 실시간으로 가져옵니다!
+    const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners);
 
     if (!user) {
         return (
@@ -84,11 +70,30 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     };
 
     const myOwnerData = owners?.find((o:any) => o.uid === user.uid || (user.mappedOwnerId && o.nickname === user.mappedOwnerId));
-    
     const currentNick = myOwnerData?.nickname || user.mappedOwnerId;
-    const myHistory = historyData?.owners?.find((o:any) => o.uid === user.uid);
 
-    const points = myHistory?.points || 0;
+    // 🔥 [픽스 3] 나의 모든 아이디/닉네임/과거기록을 배열로 묶어 완벽한 "내 신분증" 생성
+    const myIdentities = useMemo(() => {
+        const ids = new Set([
+            user?.uid,
+            myOwnerData?.uid,
+            myOwnerData?.docId,
+            String(myOwnerData?.id),
+            myOwnerData?.nickname,
+            myOwnerData?.mappedOwnerId,
+            ...(myOwnerData?.legacyNames || [])
+        ].filter(Boolean));
+        return Array.from(ids);
+    }, [user, myOwnerData]);
+
+    // 🔥 [픽스 4] 내 신분증 중 하나라도 일치하면 내 기록으로 인식!
+    const myHistory = mergedHistory?.owners?.find((o:any) => 
+        myIdentities.includes(String(o.id)) || 
+        myIdentities.includes(String(o.uid)) || 
+        myIdentities.includes(String(o.name))
+    );
+
+    const points = myHistory?.points || myHistory?.pts || 0;
     const wins = myHistory?.win || 0;
     const draws = myHistory?.draw || 0;
     const losses = myHistory?.loss || 0;
@@ -96,23 +101,23 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "0.0";
     const prizeMoney = myHistory?.prize || 0;
 
-    const resolveUid = (rawUid?: string, rawName?: string) => {
-        if (rawUid && rawUid.length > 5) return rawUid; 
-        if (!rawName) return undefined;
-        const search = rawName.trim();
-        if (uidDict[search]) return uidDict[search];
-        const found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
-        return found?.uid || found?.docId;
-    };
-
+    // 상대방 닉네임 번역기
     const resolveOpponentName = (rawUid?: string, rawName?: string) => {
-        let found = null;
-        if (rawUid) found = owners?.find((o:any) => o.uid === rawUid || o.docId === rawUid || String(o.id) === rawUid);
-        if (!found && rawName) {
-            const search = rawName.trim();
-            found = owners?.find((o:any) => o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search));
-        }
-        return found?.nickname || rawName || '-';
+        const searchId = String(rawUid || '').trim();
+        const searchName = String(rawName || '').trim();
+
+        const found = owners?.find((o:any) => 
+            (o.uid && o.uid === searchId) || 
+            (o.docId && o.docId === searchId) || 
+            (o.id && String(o.id) === searchId) ||
+            (o.nickname && o.nickname === searchName) || 
+            (o.legacyName && o.legacyName === searchName) ||
+            (o.mappedOwnerId && o.mappedOwnerId === searchName) ||
+            (o.legacyNames && o.legacyNames.includes(searchName))
+        );
+
+        if (found) return found.nickname || found.mappedOwnerId || searchName;
+        return searchName && searchName !== '-' ? searchName : searchId;
     };
 
     const myTeam = masterTeams?.find((m:any) => (m.docId || m.id) === myOwnerData?.favoriteTeamId);
@@ -131,20 +136,19 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const getMyMatches = () => {
         let ownerMatches: any[] = [];
-        
         const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
 
         sortedSeasons.forEach((s: any) => {
             s.rounds?.forEach((r: any) => {
                 r.matches?.forEach((m: any) => {
-                    const hUid = resolveUid(m.homeOwnerUid, m.homeOwner);
-                    const aUid = resolveUid(m.awayOwnerUid, m.awayOwner);
+                    const amIHome = myIdentities.includes(String(m.homeOwnerUid)) || myIdentities.includes(String(m.homeOwner));
+                    const amIAway = myIdentities.includes(String(m.awayOwnerUid)) || myIdentities.includes(String(m.awayOwner));
 
-                    const isMyMatch = hUid === user.uid || aUid === user.uid;
+                    const isMyMatch = amIHome || amIAway;
                     const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
                     
                     if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
-                        ownerMatches.push({ ...m, resolvedHomeUid: hUid, resolvedAwayUid: aUid });
+                        ownerMatches.push({ ...m, amIHome });
                     }
                 });
             });
@@ -155,7 +159,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const myMatches = getMyMatches();
 
     const recentForm = myMatches.slice(-5).map(m => {
-        const isHome = m.resolvedHomeUid === user.uid;
+        const isHome = m.amIHome;
         const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
         const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
         if (myScore > opScore) return 'W';
@@ -183,7 +187,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     let gf = 0; let ga = 0;
     myMatches.forEach(m => {
-        const isHome = m.resolvedHomeUid === user.uid;
+        const isHome = m.amIHome;
         gf += isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
         ga += isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
     });
@@ -207,9 +211,8 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
         const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
         
         myMatches.forEach(m => {
-            const isHome = m.resolvedHomeUid === user.uid; 
-            
-            let targetUid = isHome ? m.resolvedAwayUid : m.resolvedHomeUid;
+            const isHome = m.amIHome; 
+            let targetUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
             let targetRawName = isHome ? m.awayOwner : m.homeOwner;
             let targetTeamName = isHome ? m.away : m.home; 
             
@@ -224,19 +227,17 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
                 logo = opTeamData?.logo || FALLBACK_IMG; 
                 tier = opTeamData?.tier || 'C';
             } else {
-                let opOwnerData = null;
-                if (targetUid) {
-                    opOwnerData = owners?.find((o:any) => o.uid === targetUid || o.docId === targetUid || String(o.id) === targetUid);
-                }
-                if (!opOwnerData && targetRawName) {
-                    const search = targetRawName.trim();
-                    opOwnerData = owners?.find((o:any) => 
-                        o.nickname === search || o.legacyName === search || o.legacyNames?.includes(search)
-                    );
-                }
-                
-                targetName = opOwnerData?.nickname || targetRawName; 
+                targetName = resolveOpponentName(targetUid, targetRawName);
                 if (!targetName || targetName === 'SYSTEM' || targetName === 'CPU' || targetName === 'BYE') return;
+                
+                const searchId = String(targetUid || '').trim();
+                const searchName = String(targetName).trim();
+                const opOwnerData = owners?.find((o:any) => 
+                    (o.uid && o.uid === searchId) || 
+                    (o.docId && o.docId === searchId) || 
+                    (o.nickname && o.nickname === searchName) ||
+                    (o.mappedOwnerId && o.mappedOwnerId === searchName)
+                );
                 
                 logo = opOwnerData?.photo || FALLBACK_IMG; 
                 tier = 'O'; 
@@ -265,13 +266,13 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
 
     const getTeamRecentMatches = (teamName: string) => {
         const teamMatches = myMatches.filter(m => {
-            const isHome = m.resolvedHomeUid === user.uid;
+            const isHome = m.amIHome;
             const myTeamStr = isHome ? m.home : m.away;
             return myTeamStr === teamName;
         });
         
         return teamMatches.reverse().slice(0, 5).map(m => {
-            const isHome = m.resolvedHomeUid === user.uid;
+            const isHome = m.amIHome;
             const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
             const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
             const opTeam = isHome ? m.away : m.home;
@@ -289,7 +290,7 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     const playerDistributionMap = (() => {
         const map: any = {};
         myMatches.forEach(m => {
-            const isHome = m.resolvedHomeUid === user.uid;
+            const isHome = m.amIHome;
             const opTeam = isHome ? m.away : m.home;
             const opLogo = getRealLogo(opTeam, isHome ? m.awayLogo : m.homeLogo);
             const opOwnerUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
@@ -323,20 +324,23 @@ export default function OwnerRoomView({ user, masterTeams, historyData, seasons,
     })();
 
     const getMyBestStats = () => {
-        const topTeams = (historyData?.teams || [])
-            .filter((t:any) => t.ownerUid === user.uid)
+        // 🔥 [픽스 5] 완벽히 병합된 mergedHistory에서 '나의 모든 신분증'을 대조해 팀을 뽑아냅니다
+        const topTeams = (mergedHistory?.teams || [])
+            .filter((t:any) => myIdentities.includes(String(t.ownerId)) || myIdentities.includes(String(t.ownerName)))
             .map((t:any) => {
                 const teamData = masterTeams?.find((m:any) => m.name === t.name);
                 const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
                 return {
-                    name: t.name, w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || 0,
+                    name: t.name, w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || t.pts || 0,
                     gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
                     logo: getRealLogo(t.name, t.logo || teamData?.logo), tier: teamData?.tier || 'C',
                     winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
                 };
             }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
 
-        const myPlayers = (historyData?.players || []).filter((p:any) => p.ownerUid === user.uid);
+        // 🔥 [픽스 6] 동일하게 병합된 mergedHistory에서 선수들을 뽑아냅니다.
+        const myPlayers = (mergedHistory?.players || [])
+            .filter((p:any) => myIdentities.includes(String(p.ownerId)) || myIdentities.includes(String(p.owner)));
         
         const topScorers = [...myPlayers].filter((p:any) => (p.goals || 0) > 0).sort((a:any, b:any) => b.goals - a.goals)
             .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
