@@ -1,8 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { useHistoryRecords } from '../hooks/useHistoryRecords'; 
 
 const getTodayFormatted = () => {
   const date = new Date();
@@ -13,15 +16,17 @@ const getTodayFormatted = () => {
 };
 
 interface HistoryViewProps {
-  historyData: any;
+  historyData: any; 
   owners?: Owner[]; 
 }
 
-export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
+export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
+  // 🔥 [수정 완료] owners 배열을 훅으로 전달하여 완벽한 병합 엔진이 작동하도록 합니다!
+  const { historyData, isHistoryLoading } = useHistoryRecords(owners);
+
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
-  // 🔥 [엠블럼 복구 마법] 컴포넌트 스스로 진짜 팀 로고를 찾아옵니다.
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
 
   useEffect(() => {
@@ -30,7 +35,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
               const snap = await getDocs(collection(db, "master_teams"));
               setMasterTeams(snap.docs.map(d => d.data()));
           } catch (e) {
-              console.error("마스터 팀 로고를 불러오는 데 실패했습니다:", e);
+              console.error("마스터 팀 로고 에러:", e);
           }
       };
       fetchLogos();
@@ -46,37 +51,41 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
       return currentLogo || FALLBACK_IMG;
   };
 
-  /**
-   * 🔥 [출력 매핑 쉴드 최종 강화] 
-   * UID(외계어), docId, 숫자 ID, 닉네임 중 하나라도 일치하면 무조건 실제 닉네임을 반환합니다.
-   * 이 로직이 있어야 명예의 전당 리스트에 외계어가 남지 않습니다.
-   */
-  const getSafeName = (idOrName: string) => {
-    if (!idOrName) return '';
-    const search = idOrName.toString().trim();
+  // 🔥 [가장 완벽한 번역기] UID를 받아와서 현재 닉네임으로 변환
+  const getSafeName = (idOrName: any) => {
+    if (!idOrName || idOrName === '0' || idOrName === 0 || idOrName === '-') return '';
+    const search = String(idOrName).trim();
     
-    // 1. UID / docId / id 로 마스터 리스트 대조 (가장 정확한 방법)
+    // 현재 접속자 명단(owners)에서 철저하게 비교 검증
     const found = owners.find(o => 
-        o.docId === search || 
-        String(o.id) === search || 
-        (o as any).uid === search
+      (o as any).uid === search || 
+      o.docId === search || 
+      String(o.id) === search ||
+      o.nickname === search || 
+      o.legacyName === search ||
+      (o as any).mappedOwnerId === search 
     );
-    if (found) return found.nickname;
+    
+    // 찾았다면 그 사람의 현재 최신 닉네임(또는 mappedOwnerId)을 반환
+    if (found) return found.nickname || (found as any).mappedOwnerId || search;
 
-    // 2. 텍스트 매칭 (대소문자/공백 무시하여 'NO.7'을 'No.7'로 교정)
-    const matched = owners.find(o => 
-      (o.nickname || '').replace(/\s+/g, '').toLowerCase() === search.replace(/\s+/g, '').toLowerCase()
-    );
-    return matched ? matched.nickname : idOrName;
+    return search;
   };
 
-  /**
-   * 🔥 [데이터 필드 정규화]
-   * DB의 pts와 points 중 존재하는 값을 숫자로 변환하여 안전하게 가져옵니다.
-   */
   const getPoints = (item: any) => Number(item?.points ?? item?.pts ?? 0);
 
-  const sortedTeams = [...(historyData.teams || [])].sort((a: any, b: any) => {
+  if (isHistoryLoading) {
+      return (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-500 animate-pulse">
+              <div className="text-4xl mb-4">🏆</div>
+              <p className="text-sm font-bold tracking-widest uppercase">명예의 전당 데이터를 불러오는 중입니다...</p>
+          </div>
+      );
+  }
+
+  const safeHistoryData = historyData || { teams: [], owners: [], players: [] };
+
+  const sortedTeams = [...(safeHistoryData.teams || [])].sort((a: any, b: any) => {
     const aPts = getPoints(a); const bPts = getPoints(b);
     if (bPts !== aPts) return bPts - aPts;      
     if ((b.gd || 0) !== (a.gd || 0)) return (b.gd || 0) - (a.gd || 0); 
@@ -84,6 +93,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
   });
 
   const getPlayerRanking = (players: any[]) => {
+    if (!players || players.length === 0) return [];
     const sortedPlayers = players
         .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
         .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
@@ -100,7 +110,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
     });
   };
 
-  const rankedPlayers = getPlayerRanking(historyData.players || []);
+  const rankedPlayers = getPlayerRanking(safeHistoryData.players || []);
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -129,19 +139,32 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
         {historyTab === 'TEAMS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-4 w-8">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
+                    <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-4 w-8 text-center">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
                     <tbody>
-                        {sortedTeams.slice(0, 20).map((t:any, i:number) => (
-                            <tr key={i} className="border-b border-slate-800/50">
-                                <td className="p-4 text-center text-slate-600">{i+1}</td>
-                                <td className="p-4 font-bold text-white flex items-center gap-2">
-                                    {/* 🔥 [수정] getRealLogo를 통해 마스터 DB의 진짜 로고를 주입합니다. */}
-                                    <img src={getRealLogo(t.name, t.logo)} className="w-6 h-6 object-contain bg-white rounded-full p-0.5 flex-shrink-0" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}}/>{t.name} <span className="text-[9px] text-slate-500">({getSafeName(t.owner)})</span>
-                                </td>
-                                <td className="p-4 text-center text-slate-400 uppercase">{t.win}W {t.draw}D {t.loss}L</td>
-                                <td className="p-4 text-right text-emerald-400 font-bold">{getPoints(t)}</td>
-                            </tr>
-                        ))}
+                        {sortedTeams.slice(0, 20).map((t:any, i:number) => {
+                            // UID를 넣으면 알아서 최신 닉네임으로 변환해서 꺼내옵니다
+                            const ownerDisplayName = getSafeName(t.ownerId || t.ownerName);
+
+                            return (
+                                <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                                    <td className={`p-4 text-center font-bold ${i < 3 ? 'text-emerald-400' : 'text-slate-600'}`}>{i+1}</td>
+                                    <td className="p-4 font-bold text-white flex items-center gap-3">
+                                        <img src={getRealLogo(t.name, t.logo)} className="w-7 h-7 object-contain bg-white rounded-full p-1 flex-shrink-0 shadow-sm" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}}/>
+                                        <div className="flex flex-col">
+                                            <span className="text-[13px] leading-tight">{t.name}</span>
+                                            {ownerDisplayName && (
+                                                <span className="text-[10px] text-slate-500 font-bold mt-[1px]">({ownerDisplayName})</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-center text-slate-400 uppercase tracking-wider font-medium">{t.win}W {t.draw}D {t.loss}L</td>
+                                    <td className="p-4 text-right text-emerald-400 font-black text-[14px]">{getPoints(t)}</td>
+                                </tr>
+                            );
+                        })}
+                        {sortedTeams.length === 0 && (
+                            <tr><td colSpan={4} className="p-8 text-center text-slate-500 italic">기록된 팀 데이터가 없습니다.</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -149,17 +172,18 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
         {historyTab === 'OWNERS' && (
             <div className="space-y-4">
-                {historyData.owners.length > 0 && (() => {
-                    const legend = historyData.owners[0];
-                    // 🔥 [수정] 닉네임뿐만 아니라 UID/docId/id 로도 마스터 명부를 뒤져 정확한 구단주 객체를 찾습니다.
+                {safeHistoryData.owners && safeHistoryData.owners.length > 0 ? (() => {
+                    const legend = safeHistoryData.owners[0];
                     const matchedOwner = owners.find(o => 
                         o.nickname === legend.name || 
-                        o.docId === legend.name || 
-                        String(o.id) === legend.name || 
-                        (o as any).uid === legend.name
+                        o.docId === legend.id || 
+                        String(o.id) === legend.id || 
+                        (o as any).uid === legend.id
                     );
                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
-                    const displayName = matchedOwner?.nickname || legend.name;
+                    
+                    // UID 기반으로 최신 닉네임 가져오기
+                    const displayName = getSafeName(legend.id) || matchedOwner?.nickname || legend.name;
 
                     return (
                         <div className="mb-6 relative flex flex-col">
@@ -207,7 +231,7 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
 
                                             <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
                                                 <span className="text-[9px] text-emerald-400 block font-black mb-0.5 uppercase">TOTAL PRIZE</span>
-                                                <span className="text-base font-bold text-white leading-none">₩ {legend.prize.toLocaleString()}</span>
+                                                <span className="text-base font-bold text-white leading-none">₩ {(legend.prize || 0).toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -218,71 +242,76 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                             </div>
                         </div>
                     );
-                })()}
+                })() : (
+                    <div className="text-center py-10 text-slate-500 italic bg-slate-900/40 rounded-xl border border-slate-800">기록된 오너 데이터가 없습니다.</div>
+                )}
 
-                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-950 text-slate-500 uppercase">
-                            <tr>
-                                <th className="px-2 py-3 w-8 text-center">#</th>
-                                <th className="px-2 py-3">Owner</th>
-                                <th className="px-2 py-3 text-center">Rec</th>
-                                <th className="px-2 py-3 text-center text-emerald-400">Pts</th>
-                                <th className="px-2 py-3 text-center">Awards</th>
-                                <th className="px-2 py-3 text-right">Prize</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {historyData.owners.slice(1).map((o:any, i:number) => {
-                                const actualRank = i + 2; 
-                                // 🔥 [수정] 리스트의 각 항목에서도 UID/docId를 통한 완벽한 구단주 매칭 및 프로필 로드
-                                const matchedOwner = owners.find(owner => 
-                                    owner.nickname === o.name || 
-                                    owner.docId === o.name || 
-                                    String(owner.id) === o.name || 
-                                    (owner as any).uid === o.name
-                                );
-                                const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
-                                const displayName = matchedOwner?.nickname || o.name;
+                {safeHistoryData.owners && safeHistoryData.owners.length > 1 && (
+                    <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-lg">
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-950 text-slate-500 uppercase">
+                                <tr>
+                                    <th className="px-2 py-3 w-8 text-center">#</th>
+                                    <th className="px-2 py-3">Owner</th>
+                                    <th className="px-2 py-3 text-center">Rec</th>
+                                    <th className="px-2 py-3 text-center text-emerald-400">Pts</th>
+                                    <th className="px-2 py-3 text-center">Awards</th>
+                                    <th className="px-2 py-3 text-right">Prize</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {safeHistoryData.owners.slice(1).map((o:any, i:number) => {
+                                    const actualRank = i + 2; 
+                                    const matchedOwner = owners.find(owner => 
+                                        owner.nickname === o.name || 
+                                        owner.docId === o.id || 
+                                        String(owner.id) === o.id || 
+                                        (owner as any).uid === o.id
+                                    );
+                                    const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
+                                    
+                                    // UID 기반 최신 닉네임 가져오기
+                                    const displayName = getSafeName(o.id) || matchedOwner?.nickname || o.name;
 
-                                return (
-                                    <tr key={i} className="border-b border-slate-800/50">
-                                        <td className={`px-2 py-3 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
-                                        
-                                        <td className="px-2 py-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-8 h-8 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-600' : 'border-slate-700'}`}>
-                                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                    return (
+                                        <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                                            <td className={`px-2 py-3 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
+                                            
+                                            <td className="px-2 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-8 h-8 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-600' : 'border-slate-700'}`}>
+                                                        <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                                    </div>
+                                                    <span className={`font-bold text-xs whitespace-nowrap ${actualRank===2 ? 'text-slate-200' : actualRank===3 ? 'text-orange-200' : 'text-white'}`}>{displayName}</span>
                                                 </div>
-                                                <span className={`font-bold text-xs whitespace-nowrap ${actualRank===2 ? 'text-slate-200' : actualRank===3 ? 'text-orange-200' : 'text-white'}`}>{displayName}</span>
-                                            </div>
-                                        </td>
+                                            </td>
 
-                                        <td className="px-2 py-3 text-center text-slate-400 text-[11px] font-medium whitespace-nowrap uppercase">
-                                            <span className="text-white">{o.win}</span>W <span className="mx-0.5"></span>
-                                            <span className="text-slate-500">{o.draw}D</span> <span className="mx-0.5"></span>
-                                            <span className="text-red-400">{o.loss}L</span>
-                                        </td>
+                                            <td className="px-2 py-3 text-center text-slate-400 text-[11px] font-medium whitespace-nowrap uppercase">
+                                                <span className="text-white">{o.win}</span>W <span className="mx-0.5"></span>
+                                                <span className="text-slate-500">{o.draw}D</span> <span className="mx-0.5"></span>
+                                                <span className="text-red-400">{o.loss}L</span>
+                                            </td>
 
-                                        <td className="px-2 py-3 text-center text-emerald-400 font-black text-sm">
-                                            {getPoints(o)}
-                                        </td>
+                                            <td className="px-2 py-3 text-center text-emerald-400 font-black text-sm">
+                                                {getPoints(o)}
+                                            </td>
 
-                                        <td className="px-2 py-3 text-center text-[10px]">
-                                            <div className="flex justify-center gap-1">
-                                                {o.golds>0 && <span>🥇{o.golds}</span>}
-                                                {o.silvers>0 && <span>🥈{o.silvers}</span>}
-                                                {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
-                                                {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
-                                            </div>
-                                        </td>
-                                        <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap uppercase">₩ {o.prize.toLocaleString()}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                            <td className="px-2 py-3 text-center text-[10px]">
+                                                <div className="flex justify-center gap-1">
+                                                    {o.golds>0 && <span>🥇{o.golds}</span>}
+                                                    {o.silvers>0 && <span>🥈{o.silvers}</span>}
+                                                    {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
+                                                    {(o.golds||0)+(o.silvers||0)+(o.bronzes||0)===0 && <span className="text-slate-700">-</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap uppercase">₩ {(o.prize||0).toLocaleString()}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         )}
 
@@ -293,19 +322,34 @@ export const HistoryView = ({ historyData, owners = [] }: HistoryViewProps) => {
                     <button onClick={()=>setHistPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
                 </div>
                 <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{histPlayerMode}</th></tr></thead>
+                    <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-3 w-8 text-center">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{histPlayerMode}</th></tr></thead>
                     <tbody>
-                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => (
-                            <tr key={i} className="border-b border-slate-800/50">
-                                <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
-                                <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({getSafeName(p.owner)})</span></td>
-                                <td className="p-3 text-slate-400 flex items-center gap-2">
-                                    {/* 🔥 [수정] getRealLogo를 통해 마스터 DB의 진짜 로고를 주입합니다. */}
-                                    <img src={getRealLogo(p.team, p.teamLogo)} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} /><span>{p.team}</span>
-                                </td>
-                                <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
-                            </tr>
-                        ))}
+                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => {
+                            // UID 기반으로 최신 닉네임 가져오기
+                            const ownerDisplayName = getSafeName(p.ownerId || p.owner);
+
+                            return (
+                                <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                                    <td className={`p-3 text-center ${p.rank<=3?'text-emerald-400 font-bold':'text-slate-600'}`}>{p.rank}</td>
+                                    <td className="p-3 font-bold text-white flex flex-col justify-center">
+                                        <span className="text-[13px]">{p.name}</span>
+                                        {ownerDisplayName && (
+                                            <span className="text-[10px] text-slate-500 font-normal">({ownerDisplayName})</span>
+                                        )}
+                                    </td>
+                                    <td className="p-3 text-slate-400">
+                                        <div className="flex items-center gap-2">
+                                            <img src={getRealLogo(p.team, p.teamLogo)} className="w-6 h-6 object-contain rounded-full bg-white p-0.5 shadow-sm" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                            <span className="text-[12px]">{p.team}</span>
+                                        </div>
+                                    </td>
+                                    <td className={`p-3 text-right font-black text-[14px] ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
+                                </tr>
+                            );
+                        })}
+                        {rankedPlayers.length === 0 && (
+                            <tr><td colSpan={4} className="p-8 text-center text-slate-500 italic">기록된 선수 데이터가 없습니다.</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>
