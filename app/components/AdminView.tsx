@@ -114,45 +114,62 @@ export const AdminView = ({
             const teamStats: Record<string, any> = {};
             const playerStats: Record<string, any> = {};
 
+            // =========================================================================
+            // 🔥 [핵심 픽스] 시즌 마감 시: 일반 리그, 플레이오프, 브라켓 등 "모든" 매치를 영혼까지 끌어모읍니다!
+            // =========================================================================
+            const allMatches: any[] = [];
+            
             season.rounds?.forEach(r => {
-                r.matches?.filter(m => m.status === 'COMPLETED').forEach(m => {
-                    const hTeam = m.home; const aTeam = m.away;
-                    
-                    if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, owner: m.homeOwner, win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0 };
-                    if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, owner: m.awayOwner, win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0 };
+                r.matches?.forEach(m => allMatches.push(m));
+            });
+            season.playoffs?.forEach(p => {
+                if (p.matches) p.matches.forEach((m:any) => allMatches.push(m));
+                else allMatches.push(p);
+            });
+            (season as any).brackets?.forEach((b: any) => {
+                if (b.matches) b.matches.forEach((m:any) => allMatches.push(m));
+                else allMatches.push(b);
+            });
 
-                    const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
+            // 추출한 모든 매치를 순회하며 스탯을 누적 합산!
+            allMatches.filter(m => m.status === 'COMPLETED').forEach(m => {
+                const hTeam = m.home; const aTeam = m.away;
+                
+                if (hTeam === 'BYE' || aTeam === 'BYE' || hTeam?.includes('부전승') || aTeam?.includes('부전승')) return;
 
-                    const stageUpper = (m.stage || '').toUpperCase();
-                    const isKnockout = ['ROUND_OF', 'SEMI', 'FINAL', 'PO', '34'].some(k => stageUpper.includes(k) || (r.name || '').toUpperCase().includes(k));
+                if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, owner: m.homeOwner, ownerId: getRealUid(m.homeOwnerUid || m.homeOwner), win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0, logo: m.homeLogo };
+                if (!teamStats[aTeam]) teamStats[aTeam] = { name: aTeam, owner: m.awayOwner, ownerId: getRealUid(m.awayOwnerUid || m.awayOwner), win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0, logo: m.awayLogo };
 
-                    if (!isKnockout) {
-                        teamStats[hTeam].gf += hs; teamStats[hTeam].ga += as; teamStats[hTeam].gd += (hs - as);
-                        teamStats[aTeam].gf += as; teamStats[aTeam].ga += hs; teamStats[aTeam].gd += (as - hs);
+                const hs = Number(m.homeScore || 0); const as = Number(m.awayScore || 0);
 
-                        if (hs > as) { teamStats[hTeam].win++; teamStats[hTeam].pts += 3; teamStats[aTeam].loss++; }
-                        else if (as > hs) { teamStats[aTeam].win++; teamStats[aTeam].pts += 3; teamStats[hTeam].loss++; }
-                        else { teamStats[hTeam].draw++; teamStats[aTeam].draw++; teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
-                    }
+                const stageUpper = (m.stage || '').toUpperCase();
+                // ⚠️ 토너먼트/PO 경기라도 승무패/득실 데이터는 전부 누적합산 하도록 락을 해제합니다.
+                teamStats[hTeam].gf += hs; teamStats[hTeam].ga += as; teamStats[hTeam].gd += (hs - as);
+                teamStats[aTeam].gf += as; teamStats[aTeam].ga += hs; teamStats[aTeam].gd += (as - hs);
 
-                    const processPlayers = (records: any[], teamName: string, ownerName: string, type: 'goals' | 'assists') => {
-                        if (!records || !Array.isArray(records)) return;
-                        records.forEach(p => {
-                            const pName = typeof p === 'string' ? p : p.name;
-                            const count = typeof p === 'string' ? 1 : (p.count || 1);
-                            if (!pName) return;
-                            
-                            const pKey = `${pName}-${teamName}`;
-                            if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, goals: 0, assists: 0 };
-                            playerStats[pKey][type] += count;
-                        });
-                    };
+                if (hs > as) { teamStats[hTeam].win++; teamStats[hTeam].pts += 3; teamStats[aTeam].loss++; }
+                else if (as > hs) { teamStats[aTeam].win++; teamStats[aTeam].pts += 3; teamStats[hTeam].loss++; }
+                else { teamStats[hTeam].draw++; teamStats[aTeam].draw++; teamStats[hTeam].pts += 1; teamStats[aTeam].pts += 1; }
 
-                    processPlayers(m.homeScorers, hTeam, m.homeOwner, 'goals');
-                    processPlayers(m.awayScorers, aTeam, m.awayOwner, 'goals');
-                    processPlayers(m.homeAssists, hTeam, m.homeOwner, 'assists');
-                    processPlayers(m.awayAssists, aTeam, m.awayOwner, 'assists');
-                });
+                const processPlayers = (records: any[], teamName: string, ownerName: string, ownerUid: string, logo: string, type: 'goals' | 'assists') => {
+                    if (!records || !Array.isArray(records)) return;
+                    records.forEach(p => {
+                        const pName = typeof p === 'string' ? p : p.name;
+                        const count = typeof p === 'string' ? 1 : (p.count || 1);
+                        if (!pName) return;
+                        
+                        const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
+                        const pKey = `${pName}_${teamName}_${trueOwnerId}`;
+
+                        if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId, teamLogo: logo, goals: 0, assists: 0 };
+                        playerStats[pKey][type] += count;
+                    });
+                };
+
+                processPlayers(m.homeScorers, hTeam, m.homeOwner, m.homeOwnerUid, m.homeLogo, 'goals');
+                processPlayers(m.awayScorers, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'goals');
+                processPlayers(m.homeAssists, hTeam, m.homeOwner, m.homeOwnerUid, m.homeLogo, 'assists');
+                processPlayers(m.awayAssists, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'assists');
             });
 
             let firstOwner = '', secondOwner = '', thirdOwner = '';
@@ -170,11 +187,12 @@ export const AdminView = ({
                 thirdOwner = sortedTeams[2]?.owner || '';
 
                 let finalMatch: any = null;
-                season.rounds?.forEach(r => r.matches?.forEach(m => {
-                    if (m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER')) {
+                // 우승자 식별 로직도 모든 매치 배열(allMatches)을 바라보게 변경
+                allMatches.forEach(m => {
+                    if (m.stage && m.stage.toUpperCase().includes('FINAL') && !m.stage.toUpperCase().includes('SEMI') && !m.stage.toUpperCase().includes('QUARTER')) {
                         finalMatch = m;
                     }
-                }));
+                });
 
                 if (finalMatch && finalMatch.status === 'COMPLETED') {
                     const hs = Number(finalMatch.homeScore); const as = Number(finalMatch.awayScore);
@@ -183,11 +201,11 @@ export const AdminView = ({
                 }
             } else {
                 let finalMatch: any = null;
-                season.rounds?.forEach(r => {
-                    if (r.matches && r.matches.length > 0) {
-                        finalMatch = r.matches[r.matches.length - 1]; 
-                    }
-                });
+                // 가장 나중에 끝난 매치를 결승으로 유추 (안전빵)
+                const completedMatches = allMatches.filter(m => m.status === 'COMPLETED');
+                if (completedMatches.length > 0) {
+                    finalMatch = completedMatches[completedMatches.length - 1]; 
+                }
 
                 if (finalMatch && finalMatch.status === 'COMPLETED') {
                     const hs = Number(finalMatch.homeScore); const as = Number(finalMatch.awayScore);
@@ -241,12 +259,12 @@ export const AdminView = ({
                 closedAt: new Date().toISOString(),
                 teams: Object.values(teamStats).map((t: any) => ({
                     ...t,
-                    ownerId: getRealUid(t.owner) || null, 
+                    ownerId: t.ownerId || getRealUid(t.owner) || null, 
                     legacyName: t.owner || ''
                 })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
                 players: Object.values(playerStats).map((p: any) => ({
                     ...p,
-                    ownerId: getRealUid(p.owner) || null, 
+                    ownerId: p.ownerId || getRealUid(p.owner) || null, 
                     legacyName: p.owner || ''
                 })).sort((a:any, b:any) => b.goals - a.goals),
                 awards: {
