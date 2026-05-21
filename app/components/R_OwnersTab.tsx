@@ -35,7 +35,7 @@ export default function R_OwnersTab({
         const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === strName || o.docId === strName));
         if (foundByUid) return foundByUid.nickname;
         
-        const foundByName = owners.find(o => o.nickname === strName || o.legacyName === strName || (((o as any).legacyNames || []) as string[]).includes(strName));
+        const foundByName = owners.find(o => o.nickname === strName || o.legacyName === strName || (((o as any).legacyNames || []) as any[]).includes(strName));
         return foundByName ? foundByName.nickname : strName;
     } catch (e) {
         return String(ownerName || '-');

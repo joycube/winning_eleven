@@ -48,7 +48,7 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
         }
 
         if (n) {
-            const byName = owners.find(o => o.nickname === n || o.legacyName === n || (((o as any).legacyNames || []) as string[]).includes(n) || o.uid === n || o.docId === n);
+            const byName = owners.find(o => o.nickname === n || o.legacyName === n || (((o as any).legacyNames || []) as any[]).includes(n) || o.uid === n || o.docId === n);
             if (byName) return { nickname: byName.nickname, photo: byName.photo || (byName as any).profileImage || DEFAULT_AVATAR };
         }
 
@@ -61,7 +61,7 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                 if (byMasterUid) return { nickname: byMasterUid.nickname, photo: byMasterUid.photo || (byMasterUid as any).profileImage || DEFAULT_AVATAR };
             }
             if (mName && mName !== 'undefined') {
-                const byMasterName = owners.find(o => o.nickname === mName || o.legacyName === mName || (((o as any).legacyNames || []) as string[]).includes(mName) || o.uid === mName);
+                const byMasterName = owners.find(o => o.nickname === mName || o.legacyName === mName || (((o as any).legacyNames || []) as any[]).includes(mName) || o.uid === mName);
                 if (byMasterName) return { nickname: byMasterName.nickname, photo: byMasterName.photo || (byMasterName as any).profileImage || DEFAULT_AVATAR };
                 return { nickname: mName, photo: DEFAULT_AVATAR }; 
             }

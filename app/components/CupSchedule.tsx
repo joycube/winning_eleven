@@ -29,7 +29,7 @@ const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string)
     const foundUser = owners.find(o => 
         (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || 
         (o.uid === search || o.docId === search) ||
-        (o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as string[]).includes(search) || (o as any).mappedOwnerId === search || (o as any).displayName === search)
+        (o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as any[]).includes(search) || (o as any).mappedOwnerId === search || (o as any).displayName === search)
     );
     if (foundUser) {
         const actualName = foundUser.nickname || (foundUser as any).mappedOwnerId || (foundUser as any).displayName || ownerName;

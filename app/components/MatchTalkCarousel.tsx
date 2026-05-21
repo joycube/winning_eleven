@@ -94,7 +94,7 @@ export const MatchTalkCarousel = ({
                 match[side] = teamName;
                 const master = masterTeams.find((m: any) => m.name === teamName);
                 match[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-                const owner = owners.find(o => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName));
+                const owner = owners.find(o => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as any[]).includes(master?.ownerName));
                 match[`${side}Owner`] = owner?.nickname || master?.ownerName || '-';
                 match[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
             };

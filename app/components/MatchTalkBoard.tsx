@@ -29,7 +29,7 @@ const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string)
     const search = ownerName.trim();
     const foundByUid = owners.find(o => (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || (o.uid === search || o.docId === search));
     if (foundByUid) return { nickname: foundByUid.nickname, photo: foundByUid.photo || FALLBACK_IMG };
-    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as string[]).includes(search));
+    const foundByName = owners.find(o => o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as any[]).includes(search));
     return foundByName ? { nickname: foundByName.nickname, photo: foundByName.photo || FALLBACK_IMG } : { nickname: ownerName, photo: FALLBACK_IMG };
 };
 
