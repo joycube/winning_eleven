@@ -18,7 +18,7 @@ const resolveOwnerNickname = (ownersList: Owner[], ownerName: string, ownerUid?:
         return foundByUid.nickname || (foundByUid as any).mappedOwnerId || (foundByUid as any).displayName || ownerName;
     }
     
-    const foundByName = ownersList.find(o => o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search);
+    const foundByName = ownersList.find(o => o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as string[]).includes(search) || (o as any).mappedOwnerId === search || (o as any).displayName === search);
     return foundByName ? (foundByName.nickname || (foundByName as any).mappedOwnerId || (foundByName as any).displayName || ownerName) : ownerName;
 };
 

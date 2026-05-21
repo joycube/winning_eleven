@@ -139,7 +139,7 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
               target[side] = winner;
               const master = getTeamMasterInfo(winner);
               target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-              const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+              const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName) || (o as any).mappedOwnerId === master?.ownerName);
               target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
               target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
           }
@@ -154,7 +154,7 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
                   target[side] = loser;
                   const master = getTeamMasterInfo(loser);
                   target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-                  const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+                  const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName) || (o as any).mappedOwnerId === master?.ownerName);
                   target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
                   target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
               }

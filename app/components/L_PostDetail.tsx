@@ -15,10 +15,14 @@ const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 const getBestProfileImage = (userObj: any, ownersList: any[], savedPhoto: string, authorName: string) => {
     const targetName = authorName || userObj?.mappedOwnerId || userObj?.displayName;
     if (ownersList && ownersList.length > 0) {
-        const matchedOwner = ownersList.find((o: any) => 
-            (userObj?.uid && (o.uid === userObj.uid || String(o.id) === String(userObj.uid) || o.docId === userObj.uid)) ||
-            normalizeName(o.nickname) === normalizeName(targetName)
-        );
+        const target = normalizeName(targetName);
+        const matchedOwner = ownersList.find((o: any) => {
+            if (userObj?.uid && (o.uid === userObj.uid || String(o.id) === String(userObj.uid) || o.docId === userObj.uid)) return true;
+            if (normalizeName(o.nickname) === target) return true;
+            if (o.legacyName && normalizeName(o.legacyName) === target) return true;
+            const arr: string[] = (o as any).legacyNames || [];
+            return arr.some((n) => normalizeName(n) === target);
+        });
         if (matchedOwner && !isBadImage(matchedOwner.photo)) return String(matchedOwner.photo);
     }
     if (userObj?.photoURL && !isBadImage(userObj.photoURL)) return String(userObj.photoURL);
@@ -124,7 +128,15 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
         const rawId = activePost.authorUid || activePost.ownerUid || activePost.authorId || activePost.ownerId; 
         const rawPhoto = activePost.authorPhoto || activePost.ownerPhoto;
         let matchedOwner = owners?.find((o:any) => o.uid === rawId || String(o.id) === String(rawId) || o.docId === rawId);
-        if (!matchedOwner && rawName) matchedOwner = owners?.find((o:any) => normalizeName(o.nickname) === normalizeName(rawName));
+        if (!matchedOwner && rawName) {
+            const target = normalizeName(rawName);
+            matchedOwner = owners?.find((o:any) => {
+                if (normalizeName(o.nickname) === target) return true;
+                if (o.legacyName && normalizeName(o.legacyName) === target) return true;
+                const arr: string[] = (o as any).legacyNames || [];
+                return arr.some((n) => normalizeName(n) === target);
+            });
+        }
         if (!matchedOwner && (!rawName || rawName === '운영진')) matchedOwner = owners?.find((o: any) => o.role === 'ADMIN');
         const finalName = matchedOwner?.nickname || rawName || '운영진';
         return { name: finalName, photo: getBestProfileImage(user, owners, rawPhoto, finalName) };

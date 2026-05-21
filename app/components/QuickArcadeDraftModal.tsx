@@ -60,7 +60,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 
     const filteredOwners = owners.filter(o => 
         o.nickname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        o.legacyName?.toLowerCase().includes(searchQuery.toLowerCase())
+        o.legacyName?.toLowerCase().includes(searchQuery.toLowerCase()) || (((o as any).legacyNames || []) as string[]).some((n) => n.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     const handleAddPlayer = (owner?: Owner) => {

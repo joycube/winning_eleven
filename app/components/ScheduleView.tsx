@@ -33,7 +33,7 @@ const resolveOwnerInfo = (owners: Owner[], ownerName: string, ownerUid?: string)
     const foundUser = owners.find(o => 
         (ownerUid && (o.uid === ownerUid || o.docId === ownerUid)) || 
         (o.uid === search || o.docId === search) ||
-        (o.nickname === search || o.legacyName === search || (o as any).mappedOwnerId === search || (o as any).displayName === search)
+        (o.nickname === search || o.legacyName === search || (((o as any).legacyNames || []) as string[]).includes(search) || (o as any).mappedOwnerId === search || (o as any).displayName === search)
     );
 
     if (foundUser) {
@@ -266,7 +266,7 @@ export const ScheduleView = ({
               target[side] = winner;
               const master = getTeamMasterInfo(winner);
               target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-              const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+              const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName) || (o as any).mappedOwnerId === master?.ownerName);
               target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
               target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
           }
@@ -281,7 +281,7 @@ export const ScheduleView = ({
                   target[side] = loser;
                   const master = getTeamMasterInfo(loser);
                   target[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-                  const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+                  const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName) || (o as any).mappedOwnerId === master?.ownerName);
                   target[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
                   target[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
               }
@@ -327,7 +327,7 @@ export const ScheduleView = ({
           match[side] = teamName;
           const master = getTeamMasterInfo(teamName);
           match[`${side}Logo`] = master?.logo || FALLBACK_IMG;
-          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (o as any).mappedOwnerId === master?.ownerName);
+          const owner = owners?.find((o:any) => o.nickname === master?.ownerName || o.legacyName === master?.ownerName || (((o as any).legacyNames || []) as string[]).includes(master?.ownerName) || (o as any).mappedOwnerId === master?.ownerName);
           match[`${side}Owner`] = owner?.nickname || (owner as any)?.mappedOwnerId || master?.ownerName || '-';
           match[`${side}OwnerUid`] = owner?.uid || master?.ownerUid || '';
       };

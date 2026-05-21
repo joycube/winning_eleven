@@ -107,7 +107,8 @@ export interface Owner {
   nickname: string;
   email?: string;     // 🔥 TS(2339) 에러 해결을 위한 핵심 필드
   role?: 'USER' | 'ADMIN'; // 🔥 권한 필드
-  legacyName?: string | null; // 🔥 과거 기록 추적용 꼬리표
+  legacyName?: string | null; // 🔥 과거 기록 추적용 꼬리표 (단수, 구버전)
+  legacyNames?: string[]; // 🔥 [추가] 과거 닉네임 누적 배열 (다중 닉네임 변경 추적용)
   photo?: string;
   password?: string;
   totalWins?: number; 
