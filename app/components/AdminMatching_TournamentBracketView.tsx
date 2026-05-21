@@ -12,35 +12,29 @@ interface Props {
         thirdPlace?: Match[] | null;
         final?: Match[] | null;
     };
-    isUserView?: boolean; 
+    isUserView?: boolean;
 }
 
 export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView = false }: Props) => {
     if (!knockoutStages) return null;
 
-    const hasRealData = (matches?: Match[] | null) => {
-        if (!matches) return false;
-        return matches.some(m => 
-            (m.id && !m.id.startsWith('v-')) || 
-            (m.home && m.home !== 'TBD' && m.home !== 'BYE') || 
-            (m.away && m.away !== 'TBD' && m.away !== 'BYE')
-        );
-    };
-
-    const has8 = hasRealData(knockoutStages.roundOf8);
-    const has4 = hasRealData(knockoutStages.roundOf4);
-
-    const show8 = isUserView ? has8 : true;
-    const show4 = isUserView ? (has8 || has4) : true; 
-    const show3rd = isUserView ? hasRealData(knockoutStages.thirdPlace) : true;
+    // 🔥 [버그 픽스] 유저뷰 토너먼트 브래킷 표시 조건 수정
+    //   - 기존 문제: hasRealData() 가 가상 ID('v-r8-0' 등)나 TBD 팀을 false로 판정해서,
+    //     8강 진출팀이 결정되기 전까지 브래킷에 결승만 덩그러니 표시되던 버그
+    //   - 수정: 라운드 슬롯이 존재(배열로 정의)하면 TBD 상태라도 브래킷 빈 슬롯으로 표시
+    //     → 그룹 스테이지 진행 중에도 토너먼트 구조 전체를 미리 볼 수 있음
+    //   - 매치카드 영역(하단)과 브래킷(상단) 표시 일관성 회복
+    const show8 = Array.isArray(knockoutStages.roundOf8) && knockoutStages.roundOf8.length > 0;
+    const show4 = Array.isArray(knockoutStages.roundOf4) && knockoutStages.roundOf4.length > 0;
+    const show3rd = Array.isArray(knockoutStages.thirdPlace) && knockoutStages.thirdPlace.length > 0;
 
     // 🔥 [핵심 이식] 1번 스크린샷과 동일한 그라데이션 및 CSS가 적용된 컴포넌트
     const BracketMatchBox = ({ match, title, highlight = false, isFinal = false }: any) => {
         if (!match) return null;
         const hScore = match.homeScore !== '' ? Number(match.homeScore) : null;
         const aScore = match.awayScore !== '' ? Number(match.awayScore) : null;
-        
-        let winner = match.aggWinner || 'TBD'; 
+
+        let winner = match.aggWinner || 'TBD';
         if (winner === 'TBD' && match.status === 'COMPLETED') {
             if (hScore !== null && aScore !== null) {
                 if (hScore > aScore) winner = match.home;
@@ -97,28 +91,28 @@ export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView
                 .bracket-column-wide { display: flex; flex-direction: column; justify-content: space-around; gap: 80px; position: relative; }
             `}} />
             <div className="bracket-tree no-scrollbar">
-                
+
                 {/* 1열: 8강 */}
                 {show8 && knockoutStages.roundOf8 && (
                     <div className="bracket-column">
                         {knockoutStages.roundOf8.map((m, i) => <BracketMatchBox key={i} title={`Quarter ${i + 1}`} match={m} />)}
                     </div>
                 )}
-                
+
                 {/* 2열: 4강 */}
                 {show4 && knockoutStages.roundOf4 && (
                     <div className={show8 ? "bracket-column-wide" : "bracket-column"}>
                         {knockoutStages.roundOf4.map((m, i) => <BracketMatchBox key={i} title={`Semi ${i + 1}`} match={m} />)}
                     </div>
                 )}
-                
+
                 {/* 3열: 결승 및 3·4위전 */}
                 <div className="bracket-column relative">
                     <div className="relative">
                         <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-2xl animate-bounce ml-4 z-20">👑</div>
                         <BracketMatchBox title="Grand Final" match={knockoutStages.final?.[0]} highlight isFinal />
                     </div>
-                    
+
                     {show3rd && knockoutStages.thirdPlace && knockoutStages.thirdPlace[0] && (
                         <div className="relative mt-8 opacity-90 scale-95 origin-left ml-6">
                             <BracketMatchBox title="3rd Place Match" match={knockoutStages.thirdPlace[0]} />
