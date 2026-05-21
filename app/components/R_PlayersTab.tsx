@@ -183,7 +183,9 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
               <tbody className="divide-y divide-slate-800/50">
                 {rankedPlayers.length === 0 ? (
                     <tr><td colSpan={4} className="p-12 text-center text-slate-500 font-bold italic">기록이 없습니다.</td></tr>
-                ) : rankedPlayers.slice(0, 20).map((p: any, i: number) => {
+                ) : rankedPlayers.map((p: any, i: number) => {
+                    // 🔥 [수정] 기존 .slice(0, 20) 제거 — 득점/어시스트가 1개라도 있는
+                    //   모든 선수를 노출 (시즌 후반에도 모든 기록자 표시 보장)
                     if(!p) return null;
                     const isTop3 = p.rank <= 3;
                     const isExpanded = expandedPlayer === p.name;
