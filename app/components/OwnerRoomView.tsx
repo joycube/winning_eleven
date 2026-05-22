@@ -1,10 +1,12 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { doc, writeBatch, arrayUnion, collection, getDocs } from 'firebase/firestore'; 
+import { doc, writeBatch, arrayUnion, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles, ChevronRight } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
-import { useHistoryRecords } from '../hooks/useHistoryRecords'; 
+import { useHistoryRecords } from '../hooks/useHistoryRecords';
+// 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
+import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
 
 export default function OwnerRoomView({ user, masterTeams, seasons, owners }: any) {
     const [isEditing, setIsEditing] = useState(false);
@@ -378,34 +380,41 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         setIsSaving(true);
         try {
             const targetDocId = myOwnerData?.docId || user.uid;
-            const userRef = doc(db, 'users', targetDocId); 
-            const batch = writeBatch(db); 
-            
-            let isNameChanged = false;
-            const updatePayload: any = { photo: editPhoto };
+            const isNameChanged = !!(editNickname && editNickname !== myOwnerData?.nickname);
 
-            if (editNickname && editNickname !== myOwnerData?.nickname) {
-                isNameChanged = true;
-                updatePayload.nickname = editNickname;
-                
-                if (myOwnerData?.nickname) {
-                    updatePayload.legacyNames = arrayUnion(myOwnerData.nickname);
+            // 🔒 [High 패치 H2] 닉네임 중복 검증 — 다른 owner 와 nickname/legacyName/legacyNames 충돌 차단
+            if (isNameChanged) {
+                const check = checkNicknameAvailable(owners || [], editNickname, targetDocId);
+                if (!check.ok) {
+                    alert(`🚨 닉네임 변경 불가\n\n사유: ${check.reason}\n충돌 대상: ${check.conflictWith}`);
+                    setIsSaving(false);
+                    return;
                 }
-                
-                const accountRef = doc(db, 'user_accounts', user.uid);
-                batch.update(accountRef, { mappedOwnerId: editNickname });
             }
 
-            if (editTeamId) {
-                updatePayload.favoriteTeamId = editTeamId;
+            const batch = writeBatch(db);
+
+            // 🔥 [H1] 닉네임 변경은 공통 헬퍼로 처리 — users.nickname + legacyNames + user_accounts.mappedOwnerId
+            if (isNameChanged) {
+                enqueueNicknameChange(db, batch, {
+                    ownerDocId: targetDocId,
+                    accountUid: user.uid,
+                    newNickname: editNickname,
+                    oldNickname: myOwnerData?.nickname || null,
+                });
             }
 
-            batch.update(userRef, updatePayload);
+            // 추가 필드 (photo / favoriteTeamId) 는 같은 batch 로 함께 커밋
+            const extraPayload: any = { photo: editPhoto };
+            if (editTeamId) extraPayload.favoriteTeamId = editTeamId;
+            const userRef = doc(db, 'users', targetDocId);
+            batch.update(userRef, extraPayload);
+
             await batch.commit();
 
             alert('✅ 설정이 성공적으로 저장되었습니다!');
             setIsEditing(false);
-            
+
             if (isNameChanged || editTeamId) window.location.reload();
 
         } catch (e: any) {

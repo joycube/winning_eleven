@@ -229,13 +229,77 @@ export const generateRoundsLogic = (season: Season): Round[] => {
             const order = getOrder(targetSize);
             let currentIdx = 0;
         
+            // 1차 배치 — 비트-리버설 순서로 동일 오너 분산 (기존 휴리스틱)
             sortedOwners.forEach(owner => {
                 ownerGroups[owner].forEach(team => {
                     while (slots[order[currentIdx]] !== null) { currentIdx = (currentIdx + 1) % targetSize; }
                     slots[order[currentIdx]] = team;
                 });
             });
-        
+
+            // 🔒 [High 패치 H6] 동일 오너 1라운드 충돌 해소 패스
+            //   비트-리버설 휴리스틱은 같은 오너 팀이 많거나 BYE 분포가 특정 패턴일 때
+            //   pair (2k, 2k+1) 슬롯에 같은 owner 가 들어갈 수 있음. swap 으로 해소 시도.
+            const isSameOwner = (a: Team | null, b: Team | null) =>
+                !!a && !!b && !!a.ownerName && a.ownerName !== '-' && a.ownerName === b.ownerName;
+
+            const MAX_SWAP_ROUNDS = 4; // 무한 루프 방지
+            for (let round = 0; round < MAX_SWAP_ROUNDS; round++) {
+                let resolvedAny = false;
+                for (let pair = 0; pair < targetSize; pair += 2) {
+                    const home = slots[pair];
+                    const away = slots[pair + 1];
+                    if (!isSameOwner(home, away)) continue;
+
+                    // away 를 다른 페어의 away 와 교환 시도
+                    let swapped = false;
+                    for (let other = 0; other < targetSize; other += 2) {
+                        if (other === pair) continue;
+                        const otherAway = slots[other + 1];
+                        // 교환 후 양쪽 페어가 모두 충돌이 아니어야 함
+                        if (
+                            !isSameOwner(home, otherAway) &&
+                            !isSameOwner(slots[other], away)
+                        ) {
+                            slots[pair + 1] = otherAway;
+                            slots[other + 1] = away;
+                            swapped = true;
+                            resolvedAny = true;
+                            break;
+                        }
+                    }
+
+                    // away 교환이 안 되면 home 교환도 시도
+                    if (!swapped) {
+                        for (let other = 0; other < targetSize; other += 2) {
+                            if (other === pair) continue;
+                            const otherHome = slots[other];
+                            if (
+                                !isSameOwner(otherHome, away) &&
+                                !isSameOwner(home, slots[other + 1])
+                            ) {
+                                slots[pair] = otherHome;
+                                slots[other] = home;
+                                resolvedAny = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!resolvedAny) break; // 더 해소할 게 없으면 종료
+            }
+
+            // 최종 검증 — 여전히 충돌 잔여 시 콘솔 경고 (Step3 확인 단계에서 한 번 더 봄)
+            for (let pair = 0; pair < targetSize; pair += 2) {
+                if (isSameOwner(slots[pair], slots[pair + 1])) {
+                    console.warn(
+                        `[scheduler] distributeTeamsSmartly: 1라운드 동일 오너 충돌 잔여 — ` +
+                        `pair ${pair / 2}, owner=${slots[pair]?.ownerName}. ` +
+                        `해소 불가능한 분포 (같은 오너 팀 수 > targetSize/2). 관리자 확인 필요.`
+                    );
+                }
+            }
+
             return slots.map(t => t || { id: -1, name: 'BYE', logo: FALLBACK_IMG, ownerName: '-', seasonId: 0, region: '', tier: '', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 });
         };
 

@@ -197,11 +197,18 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
         return displayRounds;
     }, [currentDashboardSeason, masterTeams, owners]);
 
+    // 🔒 [High 패치 H4] PENDING 상태 처리 명시화.
+    //   - status === 'COMPLETED' 면 완료된 매치 (upcoming 에서 제외)
+    //   - 점수가 둘 다 입력돼 있으면 status 가 PENDING 으로 남아있어도 완료로 간주 (좀비 가드)
+    //   - BYE 는 어떤 경우에도 upcoming 에 포함하지 않음
     const upcomingMatchesList = useMemo(() => {
         const matches: any[] = [];
-        processedRounds.forEach((r: any) => r.matches?.forEach((m: any) => { 
-            const isNotPlayed = m.status === 'SCHEDULED' || m.status === 'PENDING' || (!m.homeScore && !m.awayScore && m.status !== 'COMPLETED');
-            if (isNotPlayed && m.home !== 'BYE' && m.away !== 'BYE') matches.push({ ...m, matchLabel: r.name }); 
+        processedRounds.forEach((r: any) => r.matches?.forEach((m: any) => {
+            const isCompleted = m.status === 'COMPLETED';
+            const isBye = m.status === 'BYE' || m.home === 'BYE' || m.away === 'BYE';
+            const hasScores = !!m.homeScore && !!m.awayScore;
+            const isNotPlayed = !isCompleted && !hasScores; // PENDING / UPCOMING / SCHEDULED 모두 포함
+            if (isNotPlayed && !isBye) matches.push({ ...m, matchLabel: r.name });
         }));
         return matches.slice(0, 5);
     }, [processedRounds]);

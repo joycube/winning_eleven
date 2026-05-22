@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react'; 
+import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { Owner } from '../types';
 import { UserCheck, UserPlus, Trash2, Search, ShieldAlert } from 'lucide-react';
+// 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
+import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
 
 const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
@@ -57,22 +59,42 @@ export const AdminOwnerManager = ({ owners }: Props) => {
 
     try {
       if (activeTab === 'EXISTING' && editId) {
-        // 🔥 정보 및 권한 업데이트 (안전한 명부 업데이트만 수행)
-        const updatePayload: any = { nickname: name, role: role };
-        if (photo.trim() !== '') {
-            updatePayload.photo = photo.trim();
+        // 🔒 [High 패치 H2] 닉네임 중복 검증 — 자기 자신은 제외
+        const isNameChanged = oldNickname !== name;
+        if (isNameChanged) {
+            const check = checkNicknameAvailable(owners, name, editId);
+            if (!check.ok) {
+                alert(`🚨 닉네임 변경 불가\n\n사유: ${check.reason}\n충돌 대상: ${check.conflictWith}`);
+                setIsLoading(false);
+                return;
+            }
         }
 
-        // 로그인 계정의 연동 이름 및 권한 업데이트
+        // 🔥 [H1] 닉네임 변경 + role + photo 를 writeBatch 로 원자적으로 처리
+        const batch = writeBatch(db);
         const targetAcc = userAccounts.find(acc => acc.mappedOwnerId === oldNickname);
-        if (targetAcc && targetAcc.docId) {
-             await updateDoc(doc(db, 'user_accounts', String(targetAcc.docId)), { 
-                 mappedOwnerId: name,
-                 role: role // 🔥 명부(users)의 권한과 로그인 계정(user_accounts)의 권한 동기화
-             });
+
+        if (isNameChanged) {
+            // users.nickname + legacyNames + user_accounts.mappedOwnerId
+            enqueueNicknameChange(db, batch, {
+                ownerDocId: editId,
+                accountUid: targetAcc?.docId || null,
+                newNickname: name,
+                oldNickname,
+            });
         }
 
-        await updateDoc(doc(db, 'users', editId), updatePayload);
+        // 추가 필드 (role 은 항상, photo 는 입력 시에만)
+        const extraUserPayload: any = { role };
+        if (photo.trim() !== '') extraUserPayload.photo = photo.trim();
+        batch.update(doc(db, 'users', editId), extraUserPayload);
+
+        // user_accounts.role 동기화 (닉네임 변경 여부와 무관하게 항상)
+        if (targetAcc && targetAcc.docId) {
+            batch.update(doc(db, 'user_accounts', String(targetAcc.docId)), { role });
+        }
+
+        await batch.commit();
         alert(`✅ [${name}]님의 정보 및 권한(${role})이 안전하게 수정되었습니다!\n(과거 기록은 UID 기반으로 자동 연동 유지됨)`);
 
       } else if (activeTab === 'PENDING' && pendingEmail) {
@@ -80,36 +102,63 @@ export const AdminOwnerManager = ({ owners }: Props) => {
         if (!targetAcc) return alert("해당 G메일 계정을 찾을 수 없습니다.");
 
         const existingOwner = owners.find(o => o.nickname === (oldNickname || name));
+
+        // 🔒 [H2] 닉네임 중복 검증 — 신규 매핑/생성 시
+        // 기존 owner 와 매핑하는 경우엔 자기 자신을 selfDocId 로 제외
+        const check = checkNicknameAvailable(owners, name, existingOwner?.docId || null);
+        if (!check.ok && (!existingOwner || existingOwner.nickname !== name)) {
+            // 단, 이미 그 닉네임을 가진 owner 와 매핑하는 케이스는 정상 (existingOwner.nickname === name)
+            alert(`🚨 닉네임 사용 불가\n\n사유: ${check.reason}\n충돌 대상: ${check.conflictWith}`);
+            setIsLoading(false);
+            return;
+        }
+
         const finalPhoto = photo.trim() || targetAcc.photoUrl || COMMON_DEFAULT_PROFILE;
 
         if (existingOwner && existingOwner.docId) {
-            // 🔥 기존 오너 정보 업데이트
-            const updatePayload: any = { nickname: name, role: role };
-            if (photo.trim() !== '') updatePayload.photo = photo.trim(); 
-            await updateDoc(doc(db, 'users', String(existingOwner.docId)), updatePayload);
+            // 🔥 기존 owner 와 매핑 — 닉네임이 바뀌면 helper 로, 안 바뀌면 role/photo 만
+            const batch = writeBatch(db);
+            const isNameChanged = existingOwner.nickname !== name;
+            if (isNameChanged) {
+                enqueueNicknameChange(db, batch, {
+                    ownerDocId: String(existingOwner.docId),
+                    accountUid: targetAcc.docId || null,
+                    newNickname: name,
+                    oldNickname: existingOwner.nickname,
+                });
+            }
+            const extraUserPayload: any = { role };
+            if (photo.trim() !== '') extraUserPayload.photo = photo.trim();
+            batch.update(doc(db, 'users', String(existingOwner.docId)), extraUserPayload);
+            if (targetAcc.docId) {
+                // mappedOwnerId 는 helper 가 처리 (닉네임 변경 시), role 만 따로
+                batch.update(doc(db, 'user_accounts', String(targetAcc.docId)), {
+                    role,
+                    ...(isNameChanged ? {} : { mappedOwnerId: name }),
+                });
+            }
+            await batch.commit();
         } else if (!existingOwner) {
-            // 🔥 신규 오너 생성
+            // 🔥 신규 owner 생성 (addDoc 은 batch 미지원이라 별도 호출)
             await addDoc(collection(db, 'users'), {
-              id: Date.now(), nickname: name, photo: finalPhoto, win: 0, draw: 0, loss: 0, role: role
+                id: Date.now(), nickname: name, photo: finalPhoto, win: 0, draw: 0, loss: 0, role,
             });
+            if (targetAcc.docId) {
+                await updateDoc(doc(db, 'user_accounts', String(targetAcc.docId)), {
+                    mappedOwnerId: name,
+                    role,
+                });
+            }
         }
 
-        // 🔥 로그인 계정에 연동된 닉네임 업데이트 및 PENDING -> USER/ADMIN 상태 변경
-        if (targetAcc.docId) {
-            await updateDoc(doc(db, 'user_accounts', String(targetAcc.docId)), { 
-                mappedOwnerId: name,
-                role: role // 🔥 이 코드가 추가되어 PENDING 상태를 벗어납니다!
-            });
-        }
-        
         alert(`✅ [${name}] 구단주 연동 및 권한 처리가 완료되었습니다!`);
       }
-      
-      await fetchUserAccounts(); 
+
+      await fetchUserAccounts();
       resetForm();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('저장 중 오류가 발생했습니다.');
+      alert(`저장 중 오류가 발생했습니다: ${e?.message || e}`);
     } finally {
       setIsLoading(false);
     }

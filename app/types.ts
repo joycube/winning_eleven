@@ -18,7 +18,10 @@ export interface Match {
 
   homeScore: string;
   awayScore: string;
-  status: 'UPCOMING' | 'COMPLETED' | 'BYE';
+  // 🔒 [High 패치 H4] 'PENDING' 추가 — 일부 레거시 매치 데이터가 PENDING 으로 남아있어
+  //   분기 처리(L_MatchCenter 등)에서 사용. 신규 매치는 항상 'UPCOMING' 으로 생성,
+  //   점수 확정 시 'COMPLETED' 로 전환. 'PENDING' 은 레거시 호환 + 의도된 대기 상태용.
+  status: 'UPCOMING' | 'PENDING' | 'COMPLETED' | 'BYE';
   youtubeUrl?: string;
   stage: string;
   matchLabel: string;

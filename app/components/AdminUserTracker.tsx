@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Owner, FALLBACK_IMG } from '../types'; 
+import { Owner, FALLBACK_IMG } from '../types';
+// 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
+import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
 
 interface AdminUserTrackerProps {
   owners: Owner[];
@@ -104,27 +106,46 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
       const data = editData[uid];
       if (!data.nickname.trim()) { alert("닉네임을 입력해주세요."); setProcessingId(null); return; }
 
-      const batch = writeBatch(db);
-      
-      batch.update(doc(db, 'user_accounts', uid), {
-        mappedOwnerId: data.nickname,
-        role: data.role
-      });
-
       const ownerMatch = owners.find(o => (o as any).uid === uid || String(o.id) === uid || o.docId === uid);
-      const userRef = doc(db, 'users', uid);
+      const newNickname = data.nickname.trim();
+      const isNameChanged = !!(ownerMatch && ownerMatch.nickname !== newNickname);
 
-      const updatePayload: any = {
-        nickname: data.nickname,
-        photo: data.photo
-      };
-
-      if (ownerMatch && ownerMatch.nickname !== data.nickname && !ownerMatch.legacyName) {
-         updatePayload.legacyName = ownerMatch.nickname;
+      // 🔒 [High 패치 H2] 닉네임 중복 검증 — ownerMatch 자기 자신은 제외
+      if (isNameChanged) {
+          const check = checkNicknameAvailable(owners, newNickname, ownerMatch?.docId || null);
+          if (!check.ok) {
+              alert(`🚨 닉네임 변경 불가\n\n사유: ${check.reason}\n충돌 대상: ${check.conflictWith}`);
+              setProcessingId(null);
+              return;
+          }
       }
 
-      batch.set(userRef, updatePayload, { merge: true });
-      
+      const batch = writeBatch(db);
+
+      // 🔥 [H1] 닉네임 변경은 공통 헬퍼로
+      //   - ownerMatch 가 있으면 그 docId 사용 (정상 경로)
+      //   - ownerMatch 가 없는 신규 매핑은 uid 를 doc id 로 set merge (기존 동작 유지)
+      if (ownerMatch && isNameChanged) {
+          enqueueNicknameChange(db, batch, {
+              ownerDocId: String(ownerMatch.docId || uid),
+              accountUid: uid,
+              newNickname,
+              oldNickname: ownerMatch.nickname,
+          });
+          // 추가 필드 (photo / role)
+          batch.update(doc(db, 'users', String(ownerMatch.docId || uid)), { photo: data.photo });
+          batch.update(doc(db, 'user_accounts', uid), { role: data.role });
+      } else {
+          // 닉네임 변경 없음 — 기존 처럼 photo/role 만 갱신
+          // (신규 owner doc 가 없을 가능성에 대비해 set merge 유지)
+          const userRef = doc(db, 'users', String(ownerMatch?.docId || uid));
+          batch.set(userRef, { nickname: newNickname, photo: data.photo }, { merge: true });
+          batch.update(doc(db, 'user_accounts', uid), {
+              mappedOwnerId: newNickname,
+              role: data.role,
+          });
+      }
+
       await batch.commit();
       alert('✅ 정보가 성공적으로 수정되었습니다.\n(앱 전반에 즉시 동기화됩니다.)');
       fetchUsers();
