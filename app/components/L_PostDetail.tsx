@@ -3,7 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
+// 🔒 [Critical 패치 v4] arrayUnion / arrayRemove 추가 (C4: 좋아요 원자적 처리)
+import { doc, updateDoc, deleteDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send, BarChart2, Users, CheckCircle2 } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import StickerSelector from './StickerSelector';
@@ -151,7 +152,9 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
     const validVotes = Object.entries(poll?.votes || {}).filter(([_, vId]) => validOptionIds.includes(vId as string));
     const totalVotes = validVotes.length; 
     
-    const canViewVoters = poll && (!poll.isAnonymous || isMaster); 
+    // 🔒 [Critical 패치 v4 - C5] 익명(무기명) 투표는 관리자에게도 명단 비공개.
+    //   기존: const canViewVoters = poll && (!poll.isAnonymous || isMaster);
+    const canViewVoters = poll && !poll.isAnonymous;
 
     const handleVote = async (optionId: string) => {
         if (!user) return alert("🚨 로그인 후 투표 가능합니다.");
@@ -177,15 +180,44 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
     const handleCloseView = () => { setSelectedPostId(null); setViewMode('LIST'); const params = new URLSearchParams(window.location.search); params.delete('postId'); window.history.pushState(null, '', `?${params.toString()}`); };
     const handleDeletePost = async () => { if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?")) return; try { await deleteDoc(doc(db, isNotice ? 'notices' : 'posts', activePost.id)); alert("🗑️ 삭제되었습니다."); handleCloseView(); } catch (e: any) { alert("삭제 실패: " + e.message); } };
+    // 🔒 [Critical 패치 v4 - C4] 좋아요/싫어요 read-modify-write → 원자적 처리 (arrayUnion / arrayRemove).
+    //   동시 클릭 시 데이터 손실(race condition) 방지.
     const handleReaction = async (type: 'LIKE' | 'DISLIKE') => {
         if (!user) return alert("🚨 로그인이 필요합니다.");
         try {
             const postRef = doc(db, isNotice ? 'notices' : 'posts', activePost.id);
-            let likes = (isNotice ? activePost.likedBy : activePost.likes) || []; let dislikes = (isNotice ? activePost.dislikedBy : activePost.dislikes) || [];
-            if (type === 'LIKE') { if (likes.includes(user.uid)) likes = likes.filter((uid: string) => uid !== user.uid); else { likes.push(user.uid); dislikes = dislikes.filter((uid: string) => uid !== user.uid); } } 
-            else { if (dislikes.includes(user.uid)) dislikes = dislikes.filter((uid: string) => uid !== user.uid); else { dislikes.push(user.uid); likes = likes.filter((uid: string) => uid !== user.uid); } }
-            if (isNotice) await updateDoc(postRef, { likedBy: likes, dislikedBy: dislikes, updatedAt: new Date().toISOString() }); else await updateDoc(postRef, { likes, dislikes });
-        } catch (e) {}
+
+            // 현재 사용자의 좋아요/싫어요 상태를 기준으로 토글 방향 결정
+            const likedKey = isNotice ? 'likedBy' : 'likes';
+            const dislikedKey = isNotice ? 'dislikedBy' : 'dislikes';
+            const currentLikes: string[] = (activePost as any)[likedKey] || [];
+            const currentDislikes: string[] = (activePost as any)[dislikedKey] || [];
+            const alreadyLiked = currentLikes.includes(user.uid);
+            const alreadyDisliked = currentDislikes.includes(user.uid);
+
+            const updatePayload: Record<string, any> = {};
+
+            if (type === 'LIKE') {
+                // 좋아요 토글: 이미 눌렀으면 제거, 안 눌렀으면 추가
+                updatePayload[likedKey] = alreadyLiked ? arrayRemove(user.uid) : arrayUnion(user.uid);
+                // 좋아요를 새로 누르는 경우 싫어요에서는 빼줌
+                if (!alreadyLiked && alreadyDisliked) {
+                    updatePayload[dislikedKey] = arrayRemove(user.uid);
+                }
+            } else {
+                // 싫어요 토글
+                updatePayload[dislikedKey] = alreadyDisliked ? arrayRemove(user.uid) : arrayUnion(user.uid);
+                if (!alreadyDisliked && alreadyLiked) {
+                    updatePayload[likedKey] = arrayRemove(user.uid);
+                }
+            }
+
+            if (isNotice) updatePayload.updatedAt = new Date().toISOString();
+
+            await updateDoc(postRef, updatePayload);
+        } catch (e) {
+            console.error('handleReaction error:', e);
+        }
     };
     const submitComment = async (isReply: boolean, stickerUrl?: string) => {
         if (!user || isSending) return; 
