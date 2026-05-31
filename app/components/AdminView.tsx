@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore'; 
+import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Banner } from '../types';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
 import { AdminBannerManager } from './AdminBannerManager';
@@ -27,8 +27,8 @@ interface AdminViewProps {
     masterTeams: MasterTeam[];
     banners: Banner[];
     onAdminLogin?: (pw: string) => Promise<boolean> | boolean;
-    onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void; 
-    onSaveOwner: (name: string, photo: string, editId: string | null) => void; 
+    onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void;
+    onSaveOwner: (name: string, photo: string, editId: string | null) => void;
     onNavigateToSchedule: (seasonId: number) => void;
 }
 
@@ -71,6 +71,7 @@ export const AdminView = ({
     };
 
     // 🔥 [핵심 픽스] 과거 시즌의 누락된 PO 데이터를 일괄 복구하는 강력한 마이그레이션 스크립트!
+    // 🛠️ [HoF 픽스 v2] processPlayers 키에서 teamName 제거 + 명시적 owners 배열 추가
     const handleRunMigration = async () => {
         if (!confirm("⚠️ [경고] 모든 과거 마감 시즌의 경기(리그+PO) 데이터를 영혼까지 끌어모아 history_records 장부를 전면 100% 재구축합니다.\n실행하시겠습니까?")) return;
 
@@ -80,14 +81,14 @@ export const AdminView = ({
 
             const userAccSnapshot = await getDocs(collection(db, 'user_accounts'));
             const userAccounts = userAccSnapshot.docs.map(d => ({ uid: d.id, ...d.data() }));
-            
+
             const getRealUid = (legacyName: string) => {
                 if (!legacyName || ['-', 'TBD', 'SYSTEM', 'BYE', 'CPU'].includes(legacyName.trim())) return null;
                 const search = legacyName.trim();
                 const foundByUid = userAccounts.find(u => u.uid === search);
                 if (foundByUid) return foundByUid.uid;
                 const foundByName = userAccounts.find(u => (u as any).mappedOwnerId === search || (u as any).displayName === search);
-                return foundByName ? foundByName.uid : search; 
+                return foundByName ? foundByName.uid : search;
             };
 
             const completedSeasons = seasons.filter(s => s.status === 'COMPLETED');
@@ -96,7 +97,7 @@ export const AdminView = ({
                 const teamStats: Record<string, any> = {};
                 const playerStats: Record<string, any> = {};
                 const allMatches: any[] = [];
-                
+
                 season.rounds?.forEach(r => r.matches?.forEach(m => allMatches.push(m)));
                 (season as any).playoffs?.forEach((p: any) => { if (p.matches) p.matches.forEach((m:any) => allMatches.push(m)); else allMatches.push(p); });
                 (season as any).brackets?.forEach((b: any) => { if (b.matches) b.matches.forEach((m:any) => allMatches.push(m)); else allMatches.push(b); });
@@ -123,9 +124,21 @@ export const AdminView = ({
                             const count = typeof p === 'string' ? 1 : (p.count || 1);
                             if (!pName) return;
                             const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
-                            const pKey = `${pName}_${teamName}_${trueOwnerId}`;
-                            if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId, teamLogo: logo, goals: 0, assists: 0 };
+                            // 🛠️ [HoF 픽스 v2] 팀명을 키에서 제외 — 같은 시즌 내 클럽/국대 혼용도 합산되도록
+                            const pKey = `${pName}_${trueOwnerId}`;
+                            if (!playerStats[pKey]) {
+                                playerStats[pKey] = {
+                                    name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId,
+                                    teamLogo: logo, goals: 0, assists: 0,
+                                    teamsPlayed: {} // 🛠️ 팀별 분포 보존
+                                };
+                            }
                             playerStats[pKey][type] += count;
+                            // 팀별 골/어시 분포 누적
+                            if (!playerStats[pKey].teamsPlayed[teamName]) {
+                                playerStats[pKey].teamsPlayed[teamName] = { goals: 0, assists: 0, logo };
+                            }
+                            playerStats[pKey].teamsPlayed[teamName][type] += count;
                         });
                     };
 
@@ -135,17 +148,36 @@ export const AdminView = ({
                     processPlayers(m.awayAssists, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'assists');
                 });
 
+                // 🛠️ [HoF 픽스 v2] 명시적 owners 배열 산출
+                const ownerStats: Record<string, any> = {};
+                Object.values(teamStats).forEach((t: any) => {
+                    const oid = String(t.ownerId || getRealUid(t.owner) || t.owner || '').trim();
+                    if (!oid || oid === '-' || oid === 'CPU' || oid === 'BYE' || oid === 'TBD') return;
+                    if (!ownerStats[oid]) {
+                        ownerStats[oid] = { id: oid, name: t.owner || '', win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+                    }
+                    const o = ownerStats[oid];
+                    o.win += t.win || 0;
+                    o.draw += t.draw || 0;
+                    o.loss += t.loss || 0;
+                    o.gf += t.gf || 0;
+                    o.ga += t.ga || 0;
+                    o.gd += t.gd || 0;
+                    o.pts += t.pts || 0;
+                });
+
                 const oldHistoryRef = doc(db, 'history_records', String(season.id));
                 const oldSnap = await getDoc(oldHistoryRef);
                 const oldData = oldSnap.exists() ? oldSnap.data() : {};
 
                 const historySnapshot = {
-                    ...oldData, 
+                    ...oldData,
                     seasonId: season.id,
                     seasonName: season.name,
                     type: season.type,
                     teams: Object.values(teamStats).map((t: any) => ({ ...t, ownerId: t.ownerId || getRealUid(t.owner) || null, legacyName: t.owner || '' })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
-                    players: Object.values(playerStats).map((p: any) => ({ ...p, ownerId: p.ownerId || getRealUid(p.owner) || null, legacyName: p.owner || '' })).sort((a:any, b:any) => b.goals - a.goals)
+                    players: Object.values(playerStats).map((p: any) => ({ ...p, ownerId: p.ownerId || getRealUid(p.owner) || null, legacyName: p.owner || '' })).sort((a:any, b:any) => b.goals - a.goals),
+                    owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts) // 🛠️ 명시적 owners 배열
                 };
 
                 batch.set(oldHistoryRef, historySnapshot);
@@ -161,10 +193,11 @@ export const AdminView = ({
         }
     };
 
+    // 🛠️ [HoF 픽스 v2] processPlayers 키에서 teamName 제거 + 명시적 owners 배열 추가
     const handleCloseSeason = async (season: Season) => {
         const isAlreadyCompleted = season.status === 'COMPLETED';
-        
-        const confirmMsg = isAlreadyCompleted 
+
+        const confirmMsg = isAlreadyCompleted
             ? `이미 마감된 '${season.name}' 시즌입니다.\n과거 기록 보존을 위해 명예의 전당용 '스냅샷'만 새롭게(UID 기반으로) 재생성하시겠습니까?\n(상금 장부는 중복 지급되지 않습니다.)`
             : `정말 '${season.name}' 시즌을 마감하시겠습니까?\n\n💰 수익이 장부에 등록되며\n🏆 명예의 전당 스냅샷에 영구 박제됩니다.`;
 
@@ -174,9 +207,9 @@ export const AdminView = ({
             const ledgerRef = collection(db, 'finance_ledger');
             const q = query(ledgerRef, where("seasonId", "==", String(season.id)), where("type", "==", "REVENUE"));
             const existingDocs = await getDocs(q);
-            
+
             const skipFinance = !existingDocs.empty;
-            
+
             if (skipFinance && !isAlreadyCompleted) {
                 alert("🚨 이미 상금이 정산된 시즌입니다. 스냅샷만 재생성합니다.");
             }
@@ -184,38 +217,38 @@ export const AdminView = ({
             const userAccSnapshot = await getDocs(collection(db, 'user_accounts'));
             const userAccounts = userAccSnapshot.docs.map(d => {
                 const data = d.data();
-                return { 
-                    uid: d.id, 
-                    mappedOwnerId: data.mappedOwnerId as string | undefined, 
-                    displayName: data.displayName as string | undefined 
+                return {
+                    uid: d.id,
+                    mappedOwnerId: data.mappedOwnerId as string | undefined,
+                    displayName: data.displayName as string | undefined
                 };
             });
 
             const getRealUid = (legacyName: string) => {
                 if (!legacyName || ['-', 'TBD', 'SYSTEM', 'BYE', 'CPU'].includes(legacyName.trim())) return null;
                 const search = legacyName.trim();
-                
+
                 const foundByUid = userAccounts.find(u => u.uid === search);
                 if (foundByUid) return foundByUid.uid;
 
                 const foundByName = userAccounts.find(u => u.mappedOwnerId === search || u.displayName === search);
-                return foundByName ? foundByName.uid : search; 
+                return foundByName ? foundByName.uid : search;
             };
 
             const teamStats: Record<string, any> = {};
             const playerStats: Record<string, any> = {};
 
             const allMatches: any[] = [];
-            
+
             season.rounds?.forEach(r => {
                 r.matches?.forEach(m => allMatches.push(m));
             });
-            
+
             (season as any).playoffs?.forEach((p: any) => {
                 if (p.matches) p.matches.forEach((m:any) => allMatches.push(m));
                 else allMatches.push(p);
             });
-            
+
             (season as any).brackets?.forEach((b: any) => {
                 if (b.matches) b.matches.forEach((m:any) => allMatches.push(m));
                 else allMatches.push(b);
@@ -223,7 +256,7 @@ export const AdminView = ({
 
             allMatches.filter(m => m.status === 'COMPLETED').forEach(m => {
                 const hTeam = m.home; const aTeam = m.away;
-                
+
                 if (hTeam === 'BYE' || aTeam === 'BYE' || hTeam?.includes('부전승') || aTeam?.includes('부전승')) return;
 
                 if (!teamStats[hTeam]) teamStats[hTeam] = { name: hTeam, owner: m.homeOwner, ownerId: getRealUid(m.homeOwnerUid || m.homeOwner), win: 0, draw: 0, loss: 0, pts: 0, gd: 0, gf: 0, ga: 0, logo: m.homeLogo };
@@ -245,12 +278,24 @@ export const AdminView = ({
                         const pName = typeof p === 'string' ? p : p.name;
                         const count = typeof p === 'string' ? 1 : (p.count || 1);
                         if (!pName) return;
-                        
-                        const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
-                        const pKey = `${pName}_${teamName}_${trueOwnerId}`;
 
-                        if (!playerStats[pKey]) playerStats[pKey] = { name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId, teamLogo: logo, goals: 0, assists: 0 };
+                        const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
+                        // 🛠️ [HoF 픽스 v2] 팀명을 키에서 제외 — 같은 시즌 내 클럽/국대 혼용도 합산되도록
+                        const pKey = `${pName}_${trueOwnerId}`;
+
+                        if (!playerStats[pKey]) {
+                            playerStats[pKey] = {
+                                name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId,
+                                teamLogo: logo, goals: 0, assists: 0,
+                                teamsPlayed: {} // 🛠️ 팀별 분포 보존 (추후 UI 확장용)
+                            };
+                        }
                         playerStats[pKey][type] += count;
+                        // 팀별 골/어시 분포 누적
+                        if (!playerStats[pKey].teamsPlayed[teamName]) {
+                            playerStats[pKey].teamsPlayed[teamName] = { goals: 0, assists: 0, logo };
+                        }
+                        playerStats[pKey].teamsPlayed[teamName][type] += count;
                     });
                 };
 
@@ -261,17 +306,17 @@ export const AdminView = ({
             });
 
             let firstOwner = '', secondOwner = '', thirdOwner = '';
-            let grandChampionOwner = ''; 
+            let grandChampionOwner = '';
 
             const sortedTeams = Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
-            
+
             if (season.type === 'LEAGUE') {
-                firstOwner = sortedTeams[0]?.owner || ''; 
-                secondOwner = sortedTeams[1]?.owner || ''; 
+                firstOwner = sortedTeams[0]?.owner || '';
+                secondOwner = sortedTeams[1]?.owner || '';
                 thirdOwner = sortedTeams[2]?.owner || '';
             } else if (season.type === 'LEAGUE_PLAYOFF' || season.type === 'CUP') {
-                firstOwner = sortedTeams[0]?.owner || ''; 
-                secondOwner = sortedTeams[1]?.owner || ''; 
+                firstOwner = sortedTeams[0]?.owner || '';
+                secondOwner = sortedTeams[1]?.owner || '';
                 thirdOwner = sortedTeams[2]?.owner || '';
 
                 let finalMatch: any = null;
@@ -290,7 +335,7 @@ export const AdminView = ({
                 let finalMatch: any = null;
                 const completedMatches = allMatches.filter(m => m.status === 'COMPLETED');
                 if (completedMatches.length > 0) {
-                    finalMatch = completedMatches[completedMatches.length - 1]; 
+                    finalMatch = completedMatches[completedMatches.length - 1];
                 }
 
                 if (finalMatch && finalMatch.status === 'COMPLETED') {
@@ -313,11 +358,11 @@ export const AdminView = ({
                     const realUid = getRealUid(legacyOwnerName);
                     if (realUid && amount > 0) {
                         batch.set(doc(ledgerRef), {
-                            seasonId: String(season.id), 
+                            seasonId: String(season.id),
                             ownerId: String(realUid),
                             type: 'REVENUE',
-                            amount: Number(amount), 
-                            title: title, 
+                            amount: Number(amount),
+                            title: title,
                             createdAt: new Date().toISOString()
                         });
                     }
@@ -338,6 +383,24 @@ export const AdminView = ({
                 addPrize(topAssist, prizes.assist, `${season.name} 도움왕 🅰️`);
             }
 
+            // 🛠️ [HoF 픽스 v2] 명시적 owners 배열 산출 — useHistoryRecords 가 teams[]에서 유추 안 하고 직접 사용
+            const ownerStats: Record<string, any> = {};
+            Object.values(teamStats).forEach((t: any) => {
+                const oid = String(t.ownerId || getRealUid(t.owner) || t.owner || '').trim();
+                if (!oid || oid === '-' || oid === 'CPU' || oid === 'BYE' || oid === 'TBD') return;
+                if (!ownerStats[oid]) {
+                    ownerStats[oid] = { id: oid, name: t.owner || '', win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+                }
+                const o = ownerStats[oid];
+                o.win += t.win || 0;
+                o.draw += t.draw || 0;
+                o.loss += t.loss || 0;
+                o.gf += t.gf || 0;
+                o.ga += t.ga || 0;
+                o.gd += t.gd || 0;
+                o.pts += t.pts || 0;
+            });
+
             const historySnapshot = {
                 seasonId: season.id,
                 seasonName: season.name,
@@ -345,14 +408,16 @@ export const AdminView = ({
                 closedAt: new Date().toISOString(),
                 teams: Object.values(teamStats).map((t: any) => ({
                     ...t,
-                    ownerId: t.ownerId || getRealUid(t.owner) || null, 
+                    ownerId: t.ownerId || getRealUid(t.owner) || null,
                     legacyName: t.owner || ''
                 })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
                 players: Object.values(playerStats).map((p: any) => ({
                     ...p,
-                    ownerId: p.ownerId || getRealUid(p.owner) || null, 
+                    ownerId: p.ownerId || getRealUid(p.owner) || null,
                     legacyName: p.owner || ''
                 })).sort((a:any, b:any) => b.goals - a.goals),
+                // 🛠️ [HoF 픽스 v2] 명시적 owners 배열
+                owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts),
                 awards: {
                     champion: getRealUid(grandChampionOwner || firstOwner) || null,
                     second: getRealUid(secondOwner) || null,
@@ -366,9 +431,9 @@ export const AdminView = ({
             batch.update(doc(db, 'seasons', String(season.id)), { status: 'COMPLETED' });
 
             await batch.commit();
-            
+
             alert(`🎉 [${season.name}] ${skipFinance ? '스냅샷 재생성' : '정산 및 박제'} 완료!`);
-            setAdminTab('SEASON_MENU'); 
+            setAdminTab('SEASON_MENU');
         } catch (error) {
             console.error("🚨 정산/박제 오류:", error);
             alert("정산 및 스냅샷 생성 중 오류가 발생했습니다.");
@@ -379,8 +444,8 @@ export const AdminView = ({
     const activeTopTab = isSeasonView ? 'SEASON' : 'SYSTEM';
 
     const SystemCard = ({ title, subtitle, icon, color, onClick }: any) => (
-        <div 
-            onClick={onClick} 
+        <div
+            onClick={onClick}
             className={`relative overflow-hidden rounded-xl p-5 cursor-pointer transition-all hover:scale-105 hover:shadow-xl hover:shadow-emerald-900/20 group border border-slate-700/50 bg-gradient-to-br ${color} h-[110px] sm:h-[130px] flex flex-col justify-between`}
         >
             <div className="absolute -right-4 -bottom-4 opacity-20 transform group-hover:scale-125 transition-transform duration-500">
@@ -398,20 +463,20 @@ export const AdminView = ({
 
     return (
         <div className="w-full animate-in fade-in flex flex-col pb-10">
-            
+
             <div className="flex justify-between items-center mb-6 px-2 w-full">
                 <h2 className="text-[18px] sm:text-[22px] font-black italic text-emerald-400 tracking-widest uppercase">ADMIN DASHBOARD</h2>
             </div>
 
             <div className="flex gap-4 border-b border-slate-800/60 mb-6 sm:mb-8 w-full px-2">
-                <button 
+                <button
                     onClick={() => setAdminTab('SYSTEM_MENU')}
                     className={`pb-3 pr-2 text-[14px] sm:text-[15px] font-black tracking-widest transition-all relative flex items-center gap-2 ${activeTopTab === 'SYSTEM' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                     <Settings size={18} /> 시스템 관리
                     {activeTopTab === 'SYSTEM' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400" />}
                 </button>
-                <button 
+                <button
                     onClick={() => setAdminTab('SEASON_MENU')}
                     className={`pb-3 px-2 text-[14px] sm:text-[15px] font-black tracking-widest transition-all relative flex items-center gap-2 ${activeTopTab === 'SEASON' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
                 >
@@ -442,14 +507,14 @@ export const AdminView = ({
                                         <ArrowLeft size={14} /> <span>시스템 메뉴로 돌아가기</span>
                                     </button>
                                 </div>
-                                
+
                                 {adminTab === 'CREATE_SEASON' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
                                 {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
                                 {adminTab === 'NOTICE' && <AdminNoticeManager />}
                                 {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
-                                
+
                                 {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} owners={owners} />}
-                                
+
                                 {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
                                 {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
                                 {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
@@ -465,9 +530,9 @@ export const AdminView = ({
                                 {seasons.slice().sort((a, b) => b.id - a.id).map(s => {
                                     const isCompleted = s.status === 'COMPLETED';
                                     return (
-                                        <div 
-                                            key={s.id} 
-                                            onClick={() => setAdminTab(s.id)} 
+                                        <div
+                                            key={s.id}
+                                            onClick={() => setAdminTab(s.id)}
                                             className={`p-5 rounded-xl cursor-pointer transition-all hover:-translate-y-1 shadow-md group border ${isCompleted ? 'bg-slate-900/50 border-slate-800 hover:border-slate-600' : 'bg-slate-900 border-slate-800 hover:border-blue-500/50 hover:bg-slate-800'}`}
                                         >
                                             <div className="flex justify-between items-start mb-4">
@@ -510,7 +575,7 @@ export const AdminView = ({
                                                 <div className="flex flex-col items-center flex-1 justify-center min-w-0">
                                                     <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Manage Season</span>
                                                     <h2 className="text-[16px] md:text-[18px] font-black text-blue-400 truncate w-full text-center">
-                                                        {targetSeason.name} 
+                                                        {targetSeason.name}
                                                         {targetSeason.status === 'COMPLETED' && <span className="text-[10px] text-yellow-500 ml-2 border border-yellow-500/50 bg-yellow-950/30 px-2 py-0.5 rounded uppercase tracking-widest align-middle">Closed</span>}
                                                     </h2>
                                                 </div>
@@ -523,7 +588,7 @@ export const AdminView = ({
                                                     </button>
                                                 </div>
                                             </div>
-                                            
+
                                             {targetSeason.type === 'CUP' ? (
                                                 <AdminCupSetup targetSeason={targetSeason} owners={owners} leagues={leagues} masterTeams={masterTeams} onNavigateToSchedule={onNavigateToSchedule} />
                                             ) : (
