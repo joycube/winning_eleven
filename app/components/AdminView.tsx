@@ -71,7 +71,7 @@ export const AdminView = ({
     };
 
     // 🔥 [핵심 픽스] 과거 시즌의 누락된 PO 데이터를 일괄 복구하는 강력한 마이그레이션 스크립트!
-    // 🛠️ [HoF 픽스 v2] processPlayers 키에서 teamName 제거 + 명시적 owners 배열 추가
+    // 🛠️ [HoF 픽스 v3] 선수 키에 teamName 포함 — 같은 선수가 클럽/국대로 뛰면 별도 entry로 분리 + 명시적 owners 배열
     const handleRunMigration = async () => {
         if (!confirm("⚠️ [경고] 모든 과거 마감 시즌의 경기(리그+PO) 데이터를 영혼까지 끌어모아 history_records 장부를 전면 100% 재구축합니다.\n실행하시겠습니까?")) return;
 
@@ -124,21 +124,15 @@ export const AdminView = ({
                             const count = typeof p === 'string' ? 1 : (p.count || 1);
                             if (!pName) return;
                             const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
-                            // 🛠️ [HoF 픽스 v2] 팀명을 키에서 제외 — 같은 시즌 내 클럽/국대 혼용도 합산되도록
-                            const pKey = `${pName}_${trueOwnerId}`;
+                            // 🛠️ [HoF 픽스 v3] 팀명을 키에 포함 — 같은 선수가 클럽/국대로 뛰면 분리
+                            const pKey = `${pName}_${teamName}_${trueOwnerId}`;
                             if (!playerStats[pKey]) {
                                 playerStats[pKey] = {
                                     name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId,
-                                    teamLogo: logo, goals: 0, assists: 0,
-                                    teamsPlayed: {} // 🛠️ 팀별 분포 보존
+                                    teamLogo: logo, goals: 0, assists: 0
                                 };
                             }
                             playerStats[pKey][type] += count;
-                            // 팀별 골/어시 분포 누적
-                            if (!playerStats[pKey].teamsPlayed[teamName]) {
-                                playerStats[pKey].teamsPlayed[teamName] = { goals: 0, assists: 0, logo };
-                            }
-                            playerStats[pKey].teamsPlayed[teamName][type] += count;
                         });
                     };
 
@@ -148,7 +142,7 @@ export const AdminView = ({
                     processPlayers(m.awayAssists, aTeam, m.awayOwner, m.awayOwnerUid, m.awayLogo, 'assists');
                 });
 
-                // 🛠️ [HoF 픽스 v2] 명시적 owners 배열 산출
+                // 🛠️ [HoF 픽스 v3] 명시적 owners 배열 산출
                 const ownerStats: Record<string, any> = {};
                 Object.values(teamStats).forEach((t: any) => {
                     const oid = String(t.ownerId || getRealUid(t.owner) || t.owner || '').trim();
@@ -177,7 +171,7 @@ export const AdminView = ({
                     type: season.type,
                     teams: Object.values(teamStats).map((t: any) => ({ ...t, ownerId: t.ownerId || getRealUid(t.owner) || null, legacyName: t.owner || '' })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
                     players: Object.values(playerStats).map((p: any) => ({ ...p, ownerId: p.ownerId || getRealUid(p.owner) || null, legacyName: p.owner || '' })).sort((a:any, b:any) => b.goals - a.goals),
-                    owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts) // 🛠️ 명시적 owners 배열
+                    owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts)
                 };
 
                 batch.set(oldHistoryRef, historySnapshot);
@@ -193,7 +187,8 @@ export const AdminView = ({
         }
     };
 
-    // 🛠️ [HoF 픽스 v2] processPlayers 키에서 teamName 제거 + 명시적 owners 배열 추가
+    // 🛠️ [HoF 픽스 v3] processPlayers 키에 teamName 포함 — 같은 선수가 클럽/국대로 뛰면 별도 entry로 분리
+    //                  명시적 owners 배열 추가 — useHistoryRecords가 teams[]에서 유추 안 하고 직접 사용
     const handleCloseSeason = async (season: Season) => {
         const isAlreadyCompleted = season.status === 'COMPLETED';
 
@@ -280,22 +275,17 @@ export const AdminView = ({
                         if (!pName) return;
 
                         const trueOwnerId = getRealUid(ownerUid || ownerName) || ownerUid || ownerName;
-                        // 🛠️ [HoF 픽스 v2] 팀명을 키에서 제외 — 같은 시즌 내 클럽/국대 혼용도 합산되도록
-                        const pKey = `${pName}_${trueOwnerId}`;
+                        // 🛠️ [HoF 픽스 v3] 팀명을 키에 포함 — 같은 선수가 클럽/국대로 뛰면 별도 entry로 분리
+                        //   예) 음바페(Real Madrid)와 음바페(FRANCE)를 따로 집계
+                        const pKey = `${pName}_${teamName}_${trueOwnerId}`;
 
                         if (!playerStats[pKey]) {
                             playerStats[pKey] = {
                                 name: pName, team: teamName, owner: ownerName, ownerId: trueOwnerId,
-                                teamLogo: logo, goals: 0, assists: 0,
-                                teamsPlayed: {} // 🛠️ 팀별 분포 보존 (추후 UI 확장용)
+                                teamLogo: logo, goals: 0, assists: 0
                             };
                         }
                         playerStats[pKey][type] += count;
-                        // 팀별 골/어시 분포 누적
-                        if (!playerStats[pKey].teamsPlayed[teamName]) {
-                            playerStats[pKey].teamsPlayed[teamName] = { goals: 0, assists: 0, logo };
-                        }
-                        playerStats[pKey].teamsPlayed[teamName][type] += count;
                     });
                 };
 
@@ -383,7 +373,7 @@ export const AdminView = ({
                 addPrize(topAssist, prizes.assist, `${season.name} 도움왕 🅰️`);
             }
 
-            // 🛠️ [HoF 픽스 v2] 명시적 owners 배열 산출 — useHistoryRecords 가 teams[]에서 유추 안 하고 직접 사용
+            // 🛠️ [HoF 픽스 v3] 명시적 owners 배열 산출
             const ownerStats: Record<string, any> = {};
             Object.values(teamStats).forEach((t: any) => {
                 const oid = String(t.ownerId || getRealUid(t.owner) || t.owner || '').trim();
@@ -416,7 +406,6 @@ export const AdminView = ({
                     ownerId: p.ownerId || getRealUid(p.owner) || null,
                     legacyName: p.owner || ''
                 })).sort((a:any, b:any) => b.goals - a.goals),
-                // 🛠️ [HoF 픽스 v2] 명시적 owners 배열
                 owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts),
                 awards: {
                     champion: getRealUid(grandChampionOwner || firstOwner) || null,
