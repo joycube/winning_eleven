@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import { useHistoryRecords } from '../hooks/useHistoryRecords'; 
+import { useHistoryRecords } from '../hooks/useHistoryRecords';
 
 const getTodayFormatted = () => {
   const date = new Date();
@@ -16,9 +16,14 @@ const getTodayFormatted = () => {
 };
 
 interface HistoryViewProps {
-  historyData: any; 
-  owners?: Owner[]; 
+  historyData: any;
+  owners?: Owner[];
 }
+
+// 🛠️ [HoF 더보기 패치] 초기 노출 개수와 클릭당 증가량, 최대 노출 개수
+const INITIAL_VISIBLE = 20;
+const STEP = 20;
+const MAX_VISIBLE = 100;
 
 export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
   // 🔥 [FM 정석] 무거운 계산 없이 가벼워진 훅에서 이미 완성된 통계를 바로 가져옵니다.
@@ -28,6 +33,21 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
   const [masterTeams, setMasterTeams] = useState<any[]>([]);
+
+  // 🛠️ [HoF 더보기 패치] 탭별로 노출 개수 상태 관리
+  const [teamsVisible, setTeamsVisible] = useState<number>(INITIAL_VISIBLE);
+  const [playersVisible, setPlayersVisible] = useState<number>(INITIAL_VISIBLE);
+
+  // 탭 전환 시 노출 개수 초기화 (사용자 흐름 자연스럽게)
+  useEffect(() => {
+    setTeamsVisible(INITIAL_VISIBLE);
+    setPlayersVisible(INITIAL_VISIBLE);
+  }, [historyTab]);
+
+  // 득점 ↔ 어시스트 모드 전환 시 선수 노출 개수 초기화
+  useEffect(() => {
+    setPlayersVisible(INITIAL_VISIBLE);
+  }, [histPlayerMode]);
 
   useEffect(() => {
       const fetchLogos = async () => {
@@ -43,8 +63,8 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
 
   const getRealLogo = (teamName: string, currentLogo: string) => {
       if (!teamName) return currentLogo || FALLBACK_IMG;
-      const matched = masterTeams.find(m => 
-          (m.name || '').toLowerCase() === teamName.toLowerCase() || 
+      const matched = masterTeams.find(m =>
+          (m.name || '').toLowerCase() === teamName.toLowerCase() ||
           (m.teamName || '').toLowerCase() === teamName.toLowerCase()
       );
       if (matched && matched.logo) return matched.logo;
@@ -54,11 +74,11 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
   const getSafeName = (idOrName: any) => {
     if (!idOrName || idOrName === '0' || idOrName === 0 || idOrName === '-') return '';
     const search = String(idOrName).trim();
-    const found = owners.find(o => 
-      (o as any).uid === search || 
-      o.docId === search || 
+    const found = owners.find(o =>
+      (o as any).uid === search ||
+      o.docId === search ||
       String(o.id) === search ||
-      o.nickname === search || 
+      o.nickname === search ||
       o.legacyName === search ||
       (o as any).mappedOwnerId === search ||
       ((o as any).legacyNames && (o as any).legacyNames.includes(search))
@@ -76,7 +96,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
     const sortedPlayers = [...players]
         .filter((p:any) => histPlayerMode === 'GOAL' ? (p.goals || 0) > 0 : (p.assists || 0) > 0)
         .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists);
-    
+
     let currentRank = 1; let skip = 0;
     return sortedPlayers.map((player, index, array) => {
         if (index > 0) {
@@ -100,6 +120,32 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
           </div>
       );
   }
+
+  // 🛠️ [HoF 더보기 패치] 공통 '더보기' 버튼 컴포넌트
+  const LoadMoreButton = ({
+    currentVisible,
+    totalCount,
+    onLoadMore,
+    label = '더보기'
+  }: { currentVisible: number, totalCount: number, onLoadMore: () => void, label?: string }) => {
+    const cap = Math.min(MAX_VISIBLE, totalCount);
+    if (currentVisible >= cap) return null;
+    const remaining = cap - currentVisible;
+    const nextStep = Math.min(STEP, remaining);
+    return (
+      <div className="bg-slate-950/40 border-t border-slate-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span className="text-[11px] text-slate-500 font-bold tracking-wider uppercase">
+          {currentVisible} / {cap}{totalCount > MAX_VISIBLE ? ` (전체 ${totalCount}명 중 ${MAX_VISIBLE}명까지 표시)` : ''}
+        </span>
+        <button
+          onClick={onLoadMore}
+          className="bg-purple-700 hover:bg-purple-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-lg transition-colors shadow-lg"
+        >
+          {label} (+{nextStep})
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -130,7 +176,8 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                 <table className="w-full text-left text-xs">
                     <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-4 w-8 text-center">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
                     <tbody>
-                        {safeHistoryData.teams.slice(0, 20).map((t:any, i:number) => {
+                        {/* 🛠️ [HoF 더보기 패치] 20개 기본, 더보기로 +20씩 최대 100까지 */}
+                        {safeHistoryData.teams.slice(0, teamsVisible).map((t:any, i:number) => {
                             const ownerDisplayName = getSafeName(t.ownerId || t.ownerName);
 
                             return (
@@ -155,6 +202,12 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                         )}
                     </tbody>
                 </table>
+                {/* 🛠️ [HoF 더보기 패치] 더보기 버튼 */}
+                <LoadMoreButton
+                  currentVisible={teamsVisible}
+                  totalCount={safeHistoryData.teams.length}
+                  onLoadMore={() => setTeamsVisible(v => Math.min(v + STEP, MAX_VISIBLE))}
+                />
             </div>
         )}
 
@@ -162,10 +215,10 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
             <div className="space-y-4">
                 {safeHistoryData.owners && safeHistoryData.owners.length > 0 ? (() => {
                     const legend = safeHistoryData.owners[0];
-                    const matchedOwner = owners.find(o => 
-                        o.nickname === legend.name || 
-                        o.docId === legend.id || 
-                        String(o.id) === legend.id || 
+                    const matchedOwner = owners.find(o =>
+                        o.nickname === legend.name ||
+                        o.docId === legend.id ||
+                        String(o.id) === legend.id ||
                         (o as any).uid === legend.id
                     );
                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
@@ -176,7 +229,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                             <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-[#0f172a]">
                                 <div className="absolute inset-0 green-neon-bg z-0"></div>
                                 <div className="green-sweep-beam z-0"></div>
-                                
+
                                 <div className="relative z-10 flex flex-col md:flex-row items-center p-5 gap-6 bg-slate-950/40 backdrop-blur-sm pb-10">
                                     <div className="relative pt-4 pl-10">
                                         <div className="absolute -top-2 -left-6 text-6xl z-20 trophy-float-straight silver-trophy">🏆</div>
@@ -195,7 +248,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                                         <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300 mb-4 drop-shadow-sm tracking-tight">
                                             {displayName}
                                         </h2>
-                                        
+
                                         <div className="flex flex-col gap-2 w-full">
                                             <div className="grid grid-cols-3 gap-2 w-full">
                                                 <div className="bg-slate-900/80 rounded-lg py-2 border border-slate-700/50 flex flex-col items-center justify-center">
@@ -247,11 +300,11 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                             </thead>
                             <tbody>
                                 {safeHistoryData.owners.slice(1).map((o:any, i:number) => {
-                                    const actualRank = i + 2; 
-                                    const matchedOwner = owners.find(owner => 
-                                        owner.nickname === o.name || 
-                                        owner.docId === o.id || 
-                                        String(owner.id) === o.id || 
+                                    const actualRank = i + 2;
+                                    const matchedOwner = owners.find(owner =>
+                                        owner.nickname === o.name ||
+                                        owner.docId === o.id ||
+                                        String(owner.id) === o.id ||
                                         (owner as any).uid === o.id
                                     );
                                     const displayPhoto = matchedOwner?.photo || FALLBACK_IMG;
@@ -260,7 +313,7 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                                     return (
                                         <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                                             <td className={`px-2 py-3 text-center font-bold ${actualRank===2?'text-slate-300':actualRank===3?'text-orange-400':'text-slate-600'}`}>{actualRank}</td>
-                                            
+
                                             <td className="px-2 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <div className={`w-8 h-8 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 ${actualRank===2 ? 'border-slate-400' : actualRank===3 ? 'border-orange-600' : 'border-slate-700'}`}>
@@ -308,7 +361,8 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                 <table className="w-full text-left text-xs">
                     <thead className="bg-slate-900 text-slate-500 uppercase"><tr><th className="p-3 w-8 text-center">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{histPlayerMode}</th></tr></thead>
                     <tbody>
-                        {rankedPlayers.slice(0, 20).map((p:any, i:number) => {
+                        {/* 🛠️ [HoF 더보기 패치] 20개 기본, 더보기로 +20씩 최대 100까지 */}
+                        {rankedPlayers.slice(0, playersVisible).map((p:any, i:number) => {
                             const ownerDisplayName = getSafeName(p.ownerId || p.ownerUid || p.owner);
 
                             return (
@@ -335,6 +389,12 @@ export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
                         )}
                     </tbody>
                 </table>
+                {/* 🛠️ [HoF 더보기 패치] 더보기 버튼 */}
+                <LoadMoreButton
+                  currentVisible={playersVisible}
+                  totalCount={rankedPlayers.length}
+                  onLoadMore={() => setPlayersVisible(v => Math.min(v + STEP, MAX_VISIBLE))}
+                />
             </div>
         )}
     </div>
