@@ -976,7 +976,7 @@ export default function FootballLeagueApp() {
         )}
         {currentView === 'SCHEDULE' && (
           <ScheduleView
-            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData: combinedHistoryData, knockoutStages } as any)}
+            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData: combinedHistoryData, knockoutStages, ownersFromParent: owners} as any)}
           />
         )}
 

@@ -44,16 +44,33 @@ export const LiveFeed = ({
     }, []);
 
     // 🔥 [디벨롭] 프로필이 없으면 무조건 내장 DEFAULT_AVATAR 반환
+    // 🛠️ [LiveFeed 픽스] 매칭 필드 대폭 확장 — legacyName, legacyNames[], mappedOwnerId 까지 검색
+    //   match_comments 의 authorName 이 옛 닉네임/매핑ID 일 때도 현재 owner 프로필을 찾음
+    //   정규화(trim + lowercase) 로 공백/대소문자 차이도 흡수
     const getOwnerProfile = (idOrName: string, fallbackName?: string) => {
-        const search1 = idOrName?.toString().trim();
-        const search2 = fallbackName?.toString().trim();
-        const found = owners?.find((o:any) => 
-            o.docId === search1 || String(o.id) === search1 || o.uid === search1 || o.nickname === search1 ||
-            (search2 && o.nickname === search2)
-        );
-        
+        const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+        const s1 = norm(idOrName);
+        const s2 = norm(fallbackName);
+
+        if (!owners || (!s1 && !s2)) return DEFAULT_AVATAR;
+
+        const matchesOwner = (o: any) => {
+            const candidates: string[] = [];
+            if (o?.docId) candidates.push(norm(o.docId));
+            if (o?.id !== undefined && o?.id !== null) candidates.push(norm(o.id));
+            if (o?.uid) candidates.push(norm(o.uid));
+            if (o?.nickname) candidates.push(norm(o.nickname));
+            if (o?.legacyName) candidates.push(norm(o.legacyName));
+            if (Array.isArray(o?.legacyNames)) {
+                o.legacyNames.forEach((n: string) => { if (n) candidates.push(norm(n)); });
+            }
+            if (o?.mappedOwnerId) candidates.push(norm(o.mappedOwnerId));
+            return (s1 && candidates.includes(s1)) || (s2 && candidates.includes(s2));
+        };
+
+        const found = owners.find(matchesOwner);
         const photo = found?.photo || found?.profileImage || found?.photoUrl;
-        return (photo && photo.trim() !== '') ? photo : DEFAULT_AVATAR;
+        return (photo && String(photo).trim() !== '') ? photo : DEFAULT_AVATAR;
     };
 
     // 2. 커뮤니티 데이터 가공

@@ -99,16 +99,24 @@ interface ScheduleViewProps {
   activeRankingData: any;
   historyData: any;
   knockoutStages?: any;
+  // 🛠️ [LiveFeed 픽스] page.tsx 의 enriched owners (user_accounts 와 매칭된 uid 포함) 받기
+  ownersFromParent?: Owner[];
 }
 
-export const ScheduleView = ({ 
+export const ScheduleView = ({
   seasons, viewSeasonId, setViewSeasonId, onMatchClick,
-  activeRankingData, historyData, knockoutStages
+  activeRankingData, historyData, knockoutStages,
+  ownersFromParent
 }: ScheduleViewProps) => {
   const [viewMode, setViewMode] = useState<'LEAGUE' | 'CUP' | 'LEAGUE_PLAYOFF' | 'TOURNAMENT'>('LEAGUE');
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
-  const [owners, setOwners] = useState<Owner[]>([]);
+  // 🛠️ [LiveFeed 픽스] 자체 페치는 폴백으로 유지 — 부모가 owners 안 줄 때만 사용
+  const [localOwners, setLocalOwners] = useState<Owner[]>([]);
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // 🛠️ [LiveFeed 픽스] 부모 prop 이 비어있지 않으면 그걸 우선 사용 (uid 매핑 포함된 enriched 데이터)
+  const owners: Owner[] = (ownersFromParent && ownersFromParent.length > 0) ? ownersFromParent : localOwners;
+  const setOwners = setLocalOwners; // 기존 코드 호환성
 
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
 
@@ -117,7 +125,7 @@ export const ScheduleView = ({
     else if (currentSeason?.type === 'LEAGUE_PLAYOFF') setViewMode('LEAGUE_PLAYOFF');
     else if (currentSeason?.type === 'TOURNAMENT') setViewMode('TOURNAMENT');
     else setViewMode('LEAGUE');
-  }, [viewSeasonId, seasons, currentSeason]); 
+  }, [viewSeasonId, seasons, currentSeason]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -127,14 +135,17 @@ export const ScheduleView = ({
         const teams = teamSnapshot.docs.map(doc => ({ id: doc.data().id, ...doc.data() })) as MasterTeam[];
         setMasterTeams(teams);
 
-        const userQ = query(collection(db, 'users'));
-        const userSnapshot = await getDocs(userQ);
-        const userList = userSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })) as Owner[];
-        setOwners(userList);
+        // 🛠️ [LiveFeed 픽스] 부모가 owners 주면 자체 페치 생략 (네트워크/state 낭비 방지)
+        if (!ownersFromParent || ownersFromParent.length === 0) {
+          const userQ = query(collection(db, 'users'));
+          const userSnapshot = await getDocs(userQ);
+          const userList = userSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })) as Owner[];
+          setLocalOwners(userList);
+        }
       } catch (error) { console.error(error); }
     };
     fetchData();
-  }, []);
+  }, [ownersFromParent]);
 
   const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
       const isMatchInvalid = !matchOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(matchOwner.trim().toUpperCase());
