@@ -2,12 +2,12 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { Owner, MasterTeam, FALLBACK_IMG } from '../types'; 
-import { getTierBadgeColor } from '../utils/helpers'; 
-import { QuickDraftModal } from './QuickDraftModal'; 
+import { Owner, MasterTeam, FALLBACK_IMG } from '../types';
+import { getTierBadgeColor } from '../utils/helpers';
+import { QuickDraftModal } from './QuickDraftModal';
 
 interface Props {
-    state: any; 
+    state: any;
     owners: Owner[];
     masterTeams: MasterTeam[];
 }
@@ -20,8 +20,28 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
         displaySortedLeagues, availableTeams,
         setFilterCategory, setFilterLeague, setFilterTier, setSearchTeam,
         setSelectedOwnerId, setSelectedMasterTeamDocId, setIsDraftOpen, setRandomResult, setIsFlipping,
-        handleRandom, handleAddTeam, handleDraftApply
+        handleRandom, handleAddTeam, handleDraftApply,
+        // 🛠️ [매칭 중복 픽스 옵션B] useAdminMatching 에서 노출된 세션 매칭 set
+        matchedTeamDocIds,
+        // targetSeason 의 기존 팀명 추출용 (state 에 포함됨)
     } = state;
+
+    // 🛠️ [매칭 중복 픽스 옵션B] QuickDraftModal 에 넘길 배제 팀명 산출
+    //   - targetSeason 에 이미 등록된 팀명 + 세션 내 랜덤 매칭으로 잠긴 docId 의 팀명
+    const excludeTeamNames = React.useMemo(() => {
+        const names = new Set<string>();
+        // 1) 시즌에 이미 등록된 팀
+        const seasonTeams = state?.targetSeason?.teams || [];
+        seasonTeams.forEach((t: any) => { if (t?.name) names.add(String(t.name)); });
+        // 2) 세션 내 매칭된 docId → masterTeams 에서 이름 역조회
+        if (matchedTeamDocIds && matchedTeamDocIds.size > 0) {
+            masterTeams.forEach(mt => {
+                const docId = mt.docId || String(mt.id);
+                if (matchedTeamDocIds.has(docId) && mt.name) names.add(mt.name);
+            });
+        }
+        return Array.from(names);
+    }, [state?.targetSeason?.teams, matchedTeamDocIds, masterTeams]);
 
     return (
         <div className={`bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 relative ${isRolling || isFlipping ? 'z-[55]' : ''}`}>
@@ -54,7 +74,7 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
                     <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold"><option value="">All Leagues</option>{displaySortedLeagues.map((l:any) => <option key={l.id} value={l.name}>{l.name}</option>)}</select>
-                    
+
                     {/* 🔥 [D 등급 추가] 랜덤/수동 매칭 필터에 D Tier 옵션 추가 */}
                     <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs font-bold">
                         <option value="ALL">All Tiers</option>
@@ -89,8 +109,8 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
                         </div>
                     ) : (
                         <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
-                            {availableTeams.map((t:any) => { 
-                                const isSelected = selectedMasterTeamDocId === (t.docId || String(t.id)); 
+                            {availableTeams.map((t:any) => {
+                                const isSelected = selectedMasterTeamDocId === (t.docId || String(t.id));
                                 return (
                                     <div id={`team-card-${t.id}`} key={t.id} onClick={() => setSelectedMasterTeamDocId(t.docId || String(t.id))} className={`relative bg-slate-900 p-3 rounded-2xl border flex flex-col items-center cursor-pointer group transition-all ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500 bg-emerald-900/10' : 'border-slate-800 hover:border-slate-600'}`}>
                                         <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-2xl p-2 mb-2">
@@ -99,7 +119,7 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
                                         <span className="text-[10px] text-center text-slate-300 w-full truncate font-black italic tracking-tighter group-hover:text-white uppercase">{t.name}</span>
                                         <span className={`text-[9px] px-2 py-0.5 rounded-full mt-1 font-black italic ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
                                     </div>
-                                ); 
+                                );
                             })}
                         </div>
                     )
@@ -107,8 +127,15 @@ export const AdminMatching_Step1_TeamSelect = ({ state, owners, masterTeams }: P
             </div>
 
             <button onClick={handleAddTeam} disabled={isRolling || hasSchedule} className={`w-full py-4 font-black italic tracking-tighter rounded-2xl shadow-2xl text-sm transition-all ${isRolling || hasSchedule ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white uppercase active:scale-95'}`}>{hasSchedule ? '🔒 SCHEDULE GENERATED (LOCKED)' : (isRolling ? 'PACK OPENING...' : '✅ SIGN THIS TEAM TO SEASON')}</button>
-            
-            <QuickDraftModal isOpen={isDraftOpen} onClose={() => setIsDraftOpen(false)} owners={owners} masterTeams={masterTeams} onConfirm={handleDraftApply} />
+
+            <QuickDraftModal
+                isOpen={isDraftOpen}
+                onClose={() => setIsDraftOpen(false)}
+                owners={owners}
+                masterTeams={masterTeams}
+                onConfirm={handleDraftApply}
+                excludeTeamNames={excludeTeamNames}
+            />
         </div>
     );
 };

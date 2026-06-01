@@ -6,10 +6,10 @@ import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic } from '../utils/helpers';
 
 export const useAdminMatching = (
-    targetSeason: Season, 
-    owners: Owner[], 
-    leagues: League[], 
-    masterTeams: MasterTeam[], 
+    targetSeason: Season,
+    owners: Owner[],
+    leagues: League[],
+    masterTeams: MasterTeam[],
     onNavigateToSchedule: (id: number) => void
 ) => {
     // 1. 공통 State
@@ -17,8 +17,15 @@ export const useAdminMatching = (
     const [selectedMasterTeamDocId, setSelectedMasterTeamDocId] = useState('');
     const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
     const [isRolling, setIsRolling] = useState(false);
-    const [isFlipping, setIsFlipping] = useState(false); 
+    const [isFlipping, setIsFlipping] = useState(false);
     const [isDraftOpen, setIsDraftOpen] = useState(false);
+
+    // 🛠️ [매칭 중복 픽스 옵션B] 한 번 랜덤 매칭된 팀의 docId 누적 (세션 내 영구 배제)
+    //   - handleRandom 으로 finalWinner 가 정해지는 순간 추가
+    //   - 사인하든 안 하든, 세션(컴포넌트 마운트) 유지 동안 풀에서 배제됨
+    //   - handleRemoveTeam(시즌에서 팀 제거) 시에는 풀 복귀를 위해 함께 제거
+    //   - 컴포넌트 unmount 시 자연 초기화
+    const [matchedTeamDocIds, setMatchedTeamDocIds] = useState<Set<string>>(new Set());
 
     // 검색 필터 State
     const [filterCategory, setFilterCategory] = useState('ALL');
@@ -94,8 +101,8 @@ export const useAdminMatching = (
         }
     }, [hasSchedule, targetSeason]);
 
-    useEffect(() => { 
-        if (randomResult && !isRolling) setRandomResult(null); 
+    useEffect(() => {
+        if (randomResult && !isRolling) setRandomResult(null);
     }, [filterCategory, filterLeague, filterTier, searchTeam]);
 
     useEffect(() => {
@@ -114,13 +121,19 @@ export const useAdminMatching = (
 
     const availableTeams = useMemo(() => {
         const assignedNames = new Set(targetSeason.teams?.map(t => t.name) || []);
-        let teams = masterTeams.filter(t => !assignedNames.has(t.name));
+        // 🛠️ [매칭 중복 픽스 옵션B] 이미 시즌 등록 + 세션 내 랜덤 매칭된 팀 모두 풀에서 배제
+        let teams = masterTeams.filter(t => {
+            if (assignedNames.has(t.name)) return false;
+            const docId = t.docId || String(t.id);
+            if (matchedTeamDocIds.has(docId)) return false;
+            return true;
+        });
         if (filterCategory !== 'ALL') teams = teams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
         if (filterLeague) teams = teams.filter(t => t.region === filterLeague);
         if (filterTier !== 'ALL') teams = teams.filter(t => t.tier?.trim() === filterTier);
         if (searchTeam) teams = teams.filter(t => t.name.toLowerCase().includes(searchTeam.toLowerCase()));
         return getSortedTeamsLogic(teams, '');
-    }, [masterTeams, targetSeason, filterCategory, filterLeague, filterTier, searchTeam]);
+    }, [masterTeams, targetSeason, filterCategory, filterLeague, filterTier, searchTeam, matchedTeamDocIds]);
 
     // ==========================================
     // 💡 공통 핸들러 (Add, Remove, Generate)
@@ -153,7 +166,17 @@ export const useAdminMatching = (
             if (intervalRef.current) clearInterval(intervalRef.current);
             setRandomResult(finalWinner);
             setSelectedMasterTeamDocId(finalWinner.docId || String(finalWinner.id));
-            setIsFlipping(true); setIsRolling(false); 
+            setIsFlipping(true); setIsRolling(false);
+
+            // 🛠️ [매칭 중복 픽스 옵션B] 매칭 결과 확정 시점에 영구 배제 set 에 추가
+            //   - 사인하지 않아도 다음 랜덤 매칭에서 이 팀은 나오지 않음
+            const winnerDocId = finalWinner.docId || String(finalWinner.id);
+            setMatchedTeamDocIds(prev => {
+                const next = new Set(prev);
+                next.add(winnerDocId);
+                return next;
+            });
+
             setTimeout(() => { document.getElementById(`team-card-${finalWinner.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 500);
         }, 2500);
     };
@@ -167,12 +190,19 @@ export const useAdminMatching = (
         if (targetSeason.teams?.some(t => t.name === mTeam.name)) return alert(`🚫 이미 등록된 팀입니다: ${mTeam.name}`);
 
         const newTeam: Team = {
-            id: Date.now(), seasonId: targetSeason.id, name: mTeam.name, logo: mTeam.logo, 
-            ownerName: owner.nickname, ownerUid: owner.uid || owner.docId || '', 
-            region: mTeam.region, tier: mTeam.tier, 
+            id: Date.now(), seasonId: targetSeason.id, name: mTeam.name, logo: mTeam.logo,
+            ownerName: owner.nickname, ownerUid: owner.uid || owner.docId || '',
+            region: mTeam.region, tier: mTeam.tier,
             win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0
         };
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: [...(targetSeason.teams || []), newTeam] });
+        // 🛠️ [매칭 중복 픽스] 수동 추가(검색 후 클릭) 경로로 들어온 팀도 풀에서 영구 배제
+        const docId = mTeam.docId || String(mTeam.id);
+        setMatchedTeamDocIds(prev => {
+            const next = new Set(prev);
+            next.add(docId);
+            return next;
+        });
         setSelectedMasterTeamDocId(''); setRandomResult(null); setIsFlipping(false);
     };
 
@@ -186,6 +216,17 @@ export const useAdminMatching = (
             })).filter(r => r.matches && r.matches.length > 0);
         }
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams, rounds: updatedRounds });
+        // 🛠️ [매칭 중복 픽스] 시즌에서 제거된 팀은 매칭 풀에 다시 복귀 가능하도록 set 에서 제거
+        const removedMaster = masterTeams.find(mt => mt.name === teamName);
+        if (removedMaster) {
+            const docId = removedMaster.docId || String(removedMaster.id);
+            setMatchedTeamDocIds(prev => {
+                if (!prev.has(docId)) return prev;
+                const next = new Set(prev);
+                next.delete(docId);
+                return next;
+            });
+        }
     };
 
     const recordEntryFeesInternal = async (seasonId: number|string, seasonName: string, totalPrize: number, ownerIds: string[]) => {
@@ -217,7 +258,7 @@ export const useAdminMatching = (
 
         const shuffledTeams = [...refreshedTeams].sort(() => Math.random() - 0.5);
         const rounds = generateRoundsLogic({ ...targetSeason, teams: shuffledTeams, rounds: [] });
-        
+
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: shuffledTeams, rounds });
 
         if (!isRegen && (targetSeason as any).totalPrize) {
@@ -233,8 +274,17 @@ export const useAdminMatching = (
         const existingNames = new Set(targetSeason.teams?.map(t => t.name) || []);
         const filtered = newTeams.filter(t => !existingNames.has(t.name));
         if (filtered.length === 0) return;
-        await updateDoc(doc(db, "seasons", String(targetSeason.id)), { 
-            teams: [...(targetSeason.teams || []), ...filtered.map(t => ({ ...t, seasonId: targetSeason.id }))] 
+        await updateDoc(doc(db, "seasons", String(targetSeason.id)), {
+            teams: [...(targetSeason.teams || []), ...filtered.map(t => ({ ...t, seasonId: targetSeason.id }))]
+        });
+        // 🛠️ [매칭 중복 픽스] 퀵 드래프트로 들어온 팀들도 풀에서 배제 (master_teams 기준 docId)
+        setMatchedTeamDocIds(prev => {
+            const next = new Set(prev);
+            filtered.forEach(t => {
+                const m = masterTeams.find(mt => mt.name === t.name);
+                if (m) next.add(m.docId || String(m.id));
+            });
+            return next;
         });
     };
 
@@ -247,7 +297,11 @@ export const useAdminMatching = (
         filterCategory, filterLeague, filterTier, searchTeam,
         selectedOwnerId, selectedMasterTeamDocId, isDraftOpen,
         displaySortedLeagues, availableTeams,
-        
+
+        // 🛠️ [매칭 중복 픽스] 외부에서 QuickDraftModal 에 넘겨주기 위해 노출
+        targetSeason,
+        matchedTeamDocIds,
+
         // 공통 Setter
         setFilterCategory, setFilterLeague, setFilterTier, setSearchTeam,
         setSelectedOwnerId, setSelectedMasterTeamDocId, setIsDraftOpen, setRandomResult, setIsFlipping,
@@ -257,7 +311,7 @@ export const useAdminMatching = (
 
         // Playoff 특화
         poWaitingPool, setPoWaitingPool, poBracket, setPoBracket, isPoLocked,
-        
+
         // Tournament 특화
         tourneyWaitingPool, setTourneyWaitingPool, tourneyBracket, setTourneyBracket, isTourneyLocked, tourneyTargetSize
     };

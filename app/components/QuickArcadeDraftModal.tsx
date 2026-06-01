@@ -8,7 +8,7 @@ import { Search, X, LayoutGrid, RotateCcw, Zap } from 'lucide-react';
 interface QuickArcadeDraftModalProps {
     onClose: () => void;
     masterTeams: MasterTeam[];
-    owners?: Owner[]; 
+    owners?: Owner[];
 }
 
 type DraftMode = 'TOURNAMENT' | 'GROUP';
@@ -29,37 +29,46 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }: QuickArcadeDraftModalProps) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
-    
+
     useEffect(() => setMounted(true), []);
 
     const [step, setStep] = useState<Step>('INTRO');
-    
+
     const [players, setPlayers] = useState<PlayerType[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const [teamsPerPlayer, setTeamsPerPlayer] = useState<number>(2);
-    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']); 
-    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A', 'B', 'C']); 
+    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']);
+    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A', 'B', 'C']);
     const [gameMode, setGameMode] = useState<DraftMode>('TOURNAMENT');
 
     const [draftResults, setDraftResults] = useState<(MasterTeam & { assignedPlayer: PlayerType })[]>([]);
     const [filteredCount, setFilteredCount] = useState(0);
 
+    // 🛠️ [매칭 중복 픽스 옵션B] 모달 세션 내 이미 드래프트된 팀 docId set
+    //   - handleStartDraft 성공 시 draftResults 의 docId 들을 추가
+    //   - 모달이 닫히면 컴포넌트 unmount 되어 자연 초기화됨
+    //   - "다시 뽑기" 로 SETTINGS 로 돌아와도 set 은 유지 → 같은 팀 재추첨 방지
+    const [sessionDraftedTeamIds, setSessionDraftedTeamIds] = useState<Set<string>>(new Set());
+
     const totalNeeded = players.length * teamsPerPlayer;
 
     useEffect(() => {
         const count = masterTeams.filter(t => {
+            // 🛠️ [매칭 중복 픽스 옵션B] 이미 드래프트된 팀은 카운트에서도 제외
+            const docId = t.docId || String(t.id);
+            if (sessionDraftedTeamIds.has(docId)) return false;
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
             if (!filterTiers.includes('ALL') && !filterTiers.includes(t.tier)) return false;
             return true;
         }).length;
         setFilteredCount(count);
-    }, [filterCategory, filterTiers, masterTeams]);
+    }, [filterCategory, filterTiers, masterTeams, sessionDraftedTeamIds]);
 
-    const filteredOwners = owners.filter(o => 
-        o.nickname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const filteredOwners = owners.filter(o =>
+        o.nickname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         o.legacyName?.toLowerCase().includes(searchQuery.toLowerCase()) || (((o as any).legacyNames || []) as any[]).some((n) => n.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
@@ -86,14 +95,17 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
         if (isCat && val === 'ALL') { setFn(['ALL']); return; }
         let next = [...current];
         if (isCat && next.includes('ALL')) next = [];
-        if (next.includes(val)) next = next.filter(v => v !== val); 
+        if (next.includes(val)) next = next.filter(v => v !== val);
         else next = [...next, val];
-        if (next.length === 0) setFn(isCat ? ['ALL'] : ['S']); 
+        if (next.length === 0) setFn(isCat ? ['ALL'] : ['S']);
         else setFn(next);
     };
 
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
+            // 🛠️ [매칭 중복 픽스 옵션B] 이미 드래프트된 팀은 풀에서 영구 배제
+            const docId = t.docId || String(t.id);
+            if (sessionDraftedTeamIds.has(docId)) return false;
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
             if (!filterTiers.includes('ALL') && !filterTiers.includes(t.tier)) return false;
             return true;
@@ -118,10 +130,17 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
             for (let pIdx = 0; pIdx < players.length; pIdx++) {
                 roundTeams.push(teamsByPlayer[pIdx][round]);
             }
-            roundTeams = shuffleArray(roundTeams); 
+            roundTeams = shuffleArray(roundTeams);
             seededResults.push(...roundTeams);
         }
-        
+
+        // 🛠️ [매칭 중복 픽스 옵션B] 드래프트된 팀들을 세션 set 에 누적 → 다음 드래프트에서 배제
+        setSessionDraftedTeamIds(prev => {
+            const next = new Set(prev);
+            seededResults.forEach(t => next.add(t.docId || String(t.id)));
+            return next;
+        });
+
         setDraftResults(seededResults);
         setStep('OPENING');
     };
@@ -138,7 +157,7 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 
     return (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[99999] flex items-center justify-center p-4">
-            
+
             <AnimatePresence mode="wait">
                 {step === 'INTRO' && (
                     <IntroCinematic key="intro" onComplete={() => setStep('SETTINGS')} />
@@ -150,9 +169,9 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
             )}
 
             {step !== 'INTRO' && step !== 'OPENING' && (
-                <motion.div 
-                    initial={{ opacity: 0, scale: 0.8, y: 100, rotateX: 20 }} 
-                    animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }} 
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.8, y: 100, rotateX: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: "spring", stiffness: 250, damping: 20 }}
                     className="w-full max-w-6xl max-h-[85vh] flex flex-col rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] transition-colors duration-500 border border-slate-700 overflow-hidden bg-slate-900 relative isolate"
@@ -163,9 +182,9 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                         </h2>
                         <button onClick={onClose} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer transition-colors">✕</button>
                     </div>
-                    
+
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-6 md:pb-0">
-                        
+
                         {step === 'SETTINGS' && (
                             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 p-4 md:p-6 flex-1 flex flex-col">
                                 <div className="grid md:grid-cols-2 gap-4 md:gap-6">
@@ -174,11 +193,11 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
                                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                                                <input 
-                                                    value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }} 
-                                                    onFocus={() => setShowDropdown(true)} onKeyDown={e => {if(e.key==='Enter') handleAddPlayer();}} 
-                                                    placeholder="유저 검색 또는 이름 입력..." 
-                                                    className="w-full bg-slate-800 border border-slate-700 text-white pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-emerald-500 transition-colors shadow-inner text-sm" 
+                                                <input
+                                                    value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }}
+                                                    onFocus={() => setShowDropdown(true)} onKeyDown={e => {if(e.key==='Enter') handleAddPlayer();}}
+                                                    placeholder="유저 검색 또는 이름 입력..."
+                                                    className="w-full bg-slate-800 border border-slate-700 text-white pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-emerald-500 transition-colors shadow-inner text-sm"
                                                 />
                                                 {showDropdown && searchQuery && filteredOwners.length > 0 && (
                                                     <div className="absolute top-full left-0 w-full mt-1.5 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar overflow-hidden">
@@ -240,14 +259,14 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex-1 min-h-[10px]"></div>
 
-                                <button 
-                                    onClick={handleStartDraft} 
-                                    disabled={filteredCount < totalNeeded || players.length === 0} 
+                                <button
+                                    onClick={handleStartDraft}
+                                    disabled={filteredCount < totalNeeded || players.length === 0}
                                     className="w-full py-4 sm:py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale !text-white font-black italic text-lg sm:text-xl tracking-tighter uppercase rounded-xl sm:rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20 relative z-10"
-                                    style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }} 
+                                    style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
                                 >
                                     {filteredCount < totalNeeded ? "Not Enough Teams!" : "⚡ Open The Packs ⚡"}
                                 </button>
@@ -255,18 +274,18 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
                         )}
 
                         {step === 'RESULT' && (
-                            <DraftResultView 
-                                results={draftResults} 
-                                onRetry={() => setStep('SETTINGS')} 
-                                onGenerate={() => setStep('BRACKET')} 
+                            <DraftResultView
+                                results={draftResults}
+                                onRetry={() => setStep('SETTINGS')}
+                                onGenerate={() => setStep('BRACKET')}
                             />
                         )}
 
                         {step === 'BRACKET' && (
-                            <BracketView 
-                                flatTeams={draftResults} 
-                                gameMode={gameMode} 
-                                onBack={() => setStep('RESULT')} 
+                            <BracketView
+                                flatTeams={draftResults}
+                                gameMode={gameMode}
+                                onBack={() => setStep('RESULT')}
                             />
                         )}
                     </div>
@@ -281,12 +300,12 @@ export const QuickArcadeDraftModal = ({ onClose, masterTeams = [], owners = [] }
 // =============================================================================
 const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
     useEffect(() => {
-        const timer = setTimeout(onComplete, 2200); 
+        const timer = setTimeout(onComplete, 2200);
         return () => clearTimeout(timer);
     }, [onComplete]);
 
     return (
-        <motion.div 
+        <motion.div
             key="intro"
             exit={{ opacity: 0, scale: 1.2, filter: "blur(10px)" }}
             transition={{ duration: 0.5 }}
@@ -308,21 +327,21 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
                 }
                 .shake-violent { animation: violent-shake 0.3s infinite; }
             `}</style>
-            
-            <motion.div 
-                initial={{ opacity: 1 }} 
-                animate={{ opacity: [1, 0, 1, 0] }} 
-                transition={{ duration: 0.6, times: [0, 0.1, 0.2, 1] }} 
-                className="absolute inset-0 bg-white mix-blend-screen z-10" 
+
+            <motion.div
+                initial={{ opacity: 1 }}
+                animate={{ opacity: [1, 0, 1, 0] }}
+                transition={{ duration: 0.6, times: [0, 0.1, 0.2, 1] }}
+                className="absolute inset-0 bg-white mix-blend-screen z-10"
             />
-            
-            <motion.div 
-                initial={{ scale: 0, opacity: 1, borderWidth: "60px" }} 
-                animate={{ scale: 8, opacity: 0, borderWidth: "0px" }} 
-                transition={{ duration: 1, ease: "easeOut" }} 
-                className="absolute w-40 h-40 rounded-full border-emerald-400 shadow-[0_0_200px_#34d399] z-0" 
+
+            <motion.div
+                initial={{ scale: 0, opacity: 1, borderWidth: "60px" }}
+                animate={{ scale: 8, opacity: 0, borderWidth: "0px" }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="absolute w-40 h-40 rounded-full border-emerald-400 shadow-[0_0_200px_#34d399] z-0"
             />
-            
+
             <motion.div
                 initial={{ scale: 0.5, opacity: 0, y: 50 }}
                 animate={{ scale: [1.2, 1], opacity: 1, y: 0 }}
@@ -342,13 +361,13 @@ const IntroCinematic = ({ onComplete }: { onComplete: () => void }) => {
 // =============================================================================
 const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
     const [flippedStates, setFlippedStates] = useState<number[]>(new Array(results.length).fill(0));
-    
-    const handleFlip = (index: number) => { 
+
+    const handleFlip = (index: number) => {
         if (flippedStates[index] !== 0) return;
         setFlippedStates(prev => { const next = [...prev]; next[index] = 1; return next; });
         setTimeout(() => {
             setFlippedStates(prev => { const next = [...prev]; next[index] = 2; return next; });
-        }, 150); 
+        }, 150);
     };
 
     const handleFlipAll = () => {
@@ -364,15 +383,15 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <style jsx>{`
-                @keyframes electric-shake { 
-                    0% { transform: translate(0, 0) rotate(0deg); } 
-                    25% { transform: translate(-2px, 1px) rotate(1deg); } 
-                    50% { transform: translate(2px, -1px) rotate(-1deg); } 
-                    75% { transform: translate(-1px, -2px) rotate(1deg); } 
-                    100% { transform: translate(0, 0) rotate(0deg); } 
+                @keyframes electric-shake {
+                    0% { transform: translate(0, 0) rotate(0deg); }
+                    25% { transform: translate(-2px, 1px) rotate(1deg); }
+                    50% { transform: translate(2px, -1px) rotate(-1deg); }
+                    75% { transform: translate(-1px, -2px) rotate(1deg); }
+                    100% { transform: translate(0, 0) rotate(0deg); }
                 }
                 .tier-s-anim { animation: electric-shake 0.15s infinite linear; }
-                
+
                 @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
                 .tier-a-anim { animation: float-y 3s ease-in-out infinite; }
 
@@ -382,11 +401,11 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                     transform: translateZ(0);
                 }
             `}</style>
-            
+
             <div className="flex-none p-2 flex justify-end gap-4 px-4 sm:px-6">
                 <button onClick={handleFlipAll} disabled={allFlipped} className="text-xs font-bold text-slate-400 hover:text-white underline disabled:opacity-30">전체 뒤집기</button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-6 sm:p-10 pt-10 sm:pt-12 pb-12 custom-scrollbar" style={{ transform: 'translate3d(0,0,0)' }}>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 pb-10">
                     {results.map((team: any, idx: number) => {
@@ -397,18 +416,18 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
 
                         return (
                             <div key={idx} className={`relative h-64 sm:h-72 cursor-pointer group ${team.tier === 'S' ? 'tier-s-anim' : team.tier === 'A' ? 'tier-a-anim' : ''}`} onClick={() => handleFlip(idx)}>
-                                
+
                                 {team.tier === 'S' && <div className="absolute -inset-3 bg-gradient-to-br from-[#00ff88] to-[#00f2ff] rounded-[2rem] blur-xl opacity-60 pointer-events-none z-0"></div>}
                                 {team.tier === 'A' && <div className="absolute -inset-2 bg-[#ffd700] rounded-[2rem] blur-lg opacity-40 pointer-events-none z-0"></div>}
                                 {team.tier !== 'S' && team.tier !== 'A' && <div className="absolute inset-0 rounded-2xl shadow-xl pointer-events-none z-0"></div>}
 
-                                <motion.div 
-                                    animate={{ rotateY: state === 1 ? 90 : 0 }} 
-                                    transition={{ duration: 0.15, ease: "linear" }} 
+                                <motion.div
+                                    animate={{ rotateY: state === 1 ? 90 : 0 }}
+                                    transition={{ duration: 0.15, ease: "linear" }}
                                     className="w-full h-full absolute inset-0 z-10"
                                 >
                                     <div className={`w-full h-full rounded-2xl border-2 ${borderColor} flex flex-col overflow-hidden relative safari-mask-fix ${state !== 2 ? backBg : 'bg-slate-900'}`}>
-                                        
+
                                         {state !== 2 ? (
                                             <>
                                                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay bg-repeat pointer-events-none z-0"></div>
@@ -422,7 +441,7 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
                                                 {/* 🚨 픽스: 내부 레이어에 직접 rounded-2xl 속성 적용하여 삐져나옴 완벽 마스킹 */}
                                                 {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse pointer-events-none rounded-2xl"></div>}
                                                 {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0 pointer-events-none rounded-2xl"></div>}
-                                                
+
                                                 {/* 🚨 픽스: Header 영역 (rounded-t-[14px]) */}
                                                 <div className="h-12 sm:h-14 flex items-center px-3 sm:px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm shrink-0 rounded-t-[14px]">
                                                     <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-2.5 bg-slate-800 shrink-0">
@@ -470,11 +489,11 @@ const DraftResultView = ({ results, onRetry, onGenerate }: any) => {
 // SUB-COMPONENT: BracketView
 // =============================================================================
 const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
-    
+
     const generateSeededBracket = (teams: any[]) => {
         const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
         const slots: (any | null)[] = new Array(nextPowerOf2).fill(null);
-        
+
         const ownerGroups = teams.reduce((acc, team) => {
             if (!acc[team.assignedPlayer.nickname]) acc[team.assignedPlayer.nickname] = [];
             acc[team.assignedPlayer.nickname].push(team);
@@ -482,9 +501,9 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
         }, {} as Record<string, any[]>);
 
         const sortedOwners = Object.keys(ownerGroups).sort((a, b) => ownerGroups[b].length - ownerGroups[a].length);
-        
+
         const getOrder = (n: number) => {
-            const res: number[] = []; 
+            const res: number[] = [];
             const bits = Math.log2(n);
             for (let i = 0; i < n; i++) {
                 let rev = 0, temp = i;
@@ -493,7 +512,7 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
             }
             return res;
         };
-        
+
         const order = getOrder(nextPowerOf2);
         let currentIdx = 0;
 
@@ -586,7 +605,7 @@ const BracketView = ({ flatTeams, gameMode, onBack }: any) => {
 };
 
 // =============================================================================
-// SUB-COMPONENT: PackOpeningAnimation 
+// SUB-COMPONENT: PackOpeningAnimation
 // =============================================================================
 const PremiumCard = () => (
     <div className="w-40 h-60 sm:w-48 sm:h-72 shrink-0 bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-600 rounded-xl border-2 border-white/30 shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center relative overflow-hidden">
@@ -600,26 +619,26 @@ const PremiumCard = () => (
 
 const PackOpeningAnimation = ({ onOpen }: { onOpen: () => void }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
-    const [animType] = useState<number>(() => Math.floor(Math.random() * 5)); 
+    const [animType] = useState<number>(() => Math.floor(Math.random() * 5));
     const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
 
     useEffect(() => { return () => timeoutRefs.current.forEach(clearTimeout); }, []);
 
-    const handleClick = () => { 
-        if (phase !== 'IDLE') return; 
-        setPhase('CHARGING'); 
-        timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800)); 
-        timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200)); 
-        timeoutRefs.current.push(setTimeout(() => { 
-            setPhase('DEALING'); 
+    const handleClick = () => {
+        if (phase !== 'IDLE') return;
+        setPhase('CHARGING');
+        timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800));
+        timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200));
+        timeoutRefs.current.push(setTimeout(() => {
+            setPhase('DEALING');
             timeoutRefs.current.push(setTimeout(onOpen, 3500));
-        }, 1600)); 
+        }, 1600));
     };
 
     const handleSkip = (e: React.MouseEvent) => {
-        e.stopPropagation(); 
-        timeoutRefs.current.forEach(clearTimeout); 
-        onOpen(); 
+        e.stopPropagation();
+        timeoutRefs.current.forEach(clearTimeout);
+        onOpen();
     };
 
     return (
@@ -634,12 +653,12 @@ const PackOpeningAnimation = ({ onOpen }: { onOpen: () => void }) => {
 
             <AnimatePresence>
                 {phase !== 'DEALING' && (
-                    <motion.div 
+                    <motion.div
                         onClick={handleClick}
                         animate={
-                            phase === 'CHARGING' ? { scale: [1, 1.05, 0.98, 1.02], filter: "brightness(1.5)", y: [0, -5, 5, 0] } : 
+                            phase === 'CHARGING' ? { scale: [1, 1.05, 0.98, 1.02], filter: "brightness(1.5)", y: [0, -5, 5, 0] } :
                             phase === 'CONTRACTING' ? { scale: 0.2, opacity: 1, rotate: [0, 10, -10, 0], filter: "brightness(3) contrast(2)", transition: { duration: 0.4, ease: "backIn" } } :
-                            phase === 'EXPLODING' ? { scale: 30, opacity: 0, filter: "brightness(5) blur(20px)", transition: { duration: 0.4, ease: "easeOut" } } : 
+                            phase === 'EXPLODING' ? { scale: 30, opacity: 0, filter: "brightness(5) blur(20px)", transition: { duration: 0.4, ease: "easeOut" } } :
                             { scale: 1, y: [0, -10, 0] }
                         }
                         transition={ phase === 'IDLE' ? { y: { repeat: Infinity, duration: 2 } } : phase === 'CHARGING' ? { duration: 0.1, repeat: Infinity } : {} }
@@ -689,7 +708,7 @@ const PackOpeningAnimation = ({ onOpen }: { onOpen: () => void }) => {
                     {animType === 3 && (
                         <div className="absolute inset-0 flex items-center justify-center w-full h-full">
                             {Array.from({ length: 24 }).map((_, i) => {
-                                const angle = (Math.PI * 2 * i) / 24; const dist = 1000 + (i % 3) * 200; 
+                                const angle = (Math.PI * 2 * i) / 24; const dist = 1000 + (i % 3) * 200;
                                 return (
                                     <motion.div key={`burst-${i}`} className="absolute" initial={{ scale: 0.3, opacity: 0, x: 0, y: 0 }} animate={{ scale: [0.5, 1.2], opacity: [1, 0], x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }} transition={{ duration: 0.6, repeat: Infinity, delay: (i % 4) * 0.15, ease: "easeOut" }}>
                                         <div className="blur-[2px] opacity-70 shrink-0"><PremiumCard /></div>

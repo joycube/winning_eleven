@@ -15,23 +15,34 @@ interface QuickDraftModalProps {
     owners: Owner[];
     masterTeams: MasterTeam[];
     onConfirm: (teams: Team[]) => void;
+    // 🛠️ [매칭 중복 픽스 옵션B] 풀에서 영구 배제할 팀명 (시즌 등록 + 세션 내 매칭된 팀)
+    excludeTeamNames?: string[];
 }
 
 type Step = 'SETTINGS' | 'OPENING' | 'RESULT';
 
-export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm }: QuickDraftModalProps) => {
+export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfirm, excludeTeamNames = [] }: QuickDraftModalProps) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
     const [mounted, setMounted] = useState(false);
-    
+
     useEffect(() => setMounted(true), []);
 
     const [step, setStep] = useState<Step>('SETTINGS');
     const [selectedOwnerIds, setSelectedOwnerIds] = useState<number[]>([]);
     const [teamsPerOwner, setTeamsPerOwner] = useState<number>(2);
-    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']); 
-    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A']); 
+    const [filterCategory, setFilterCategory] = useState<string[]>(['ALL']);
+    const [filterTiers, setFilterTiers] = useState<string[]>(['S', 'A']);
     const [draftResults, setDraftResults] = useState<Team[]>([]);
     const [filteredCount, setFilteredCount] = useState(0);
+
+    // 🛠️ [매칭 중복 픽스 옵션B] 정규화된 배제 set (대소문자/공백 무시)
+    const excludeSet = React.useMemo(() => {
+        const s = new Set<string>();
+        (excludeTeamNames || []).forEach(n => {
+            if (n) s.add(String(n).trim().toLowerCase());
+        });
+        return s;
+    }, [excludeTeamNames]);
 
     useEffect(() => {
         if (!mounted) return;
@@ -49,7 +60,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
             dialog.close();
             document.body.style.overflow = 'unset';
         }
-        
+
         const handleCancel = (e: Event) => {
             e.preventDefault();
             onClose();
@@ -63,16 +74,20 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 
     useEffect(() => {
         const count = masterTeams.filter(t => {
+            // 🛠️ [매칭 중복 픽스 옵션B] 배제 set 에 포함된 팀은 카운트에서 제외
+            if (excludeSet.has(String(t.name || '').trim().toLowerCase())) return false;
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
             if (!filterTiers.includes('ALL') && !filterTiers.includes(t.tier)) return false;
             return true;
         }).length;
         setFilteredCount(count);
-    }, [filterCategory, filterTiers, masterTeams]);
+    }, [filterCategory, filterTiers, masterTeams, excludeSet]);
 
     // 🔥 [FM 수술] 팀 무작위 할당 시 UID 뼈대 장착
+    // 🛠️ [매칭 중복 픽스 옵션B] excludeSet 기반으로 풀에서 영구 배제 적용
     const handleStartDraft = () => {
         const targetPool = masterTeams.filter(t => {
+            if (excludeSet.has(String(t.name || '').trim().toLowerCase())) return false;
             if (!filterCategory.includes('ALL') && !filterCategory.includes(t.category)) return false;
             if (!filterTiers.includes('ALL') && !filterTiers.includes(t.tier)) return false;
             return true;
@@ -106,7 +121,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
     if (!mounted) return null;
 
     return (
-        <dialog 
+        <dialog
             ref={dialogRef}
             className="bg-transparent p-0 m-0 w-screen h-screen max-w-none max-h-none border-none backdrop:bg-black/95 backdrop:backdrop-blur-xl"
             style={{ zIndex: 99999 }}
@@ -117,9 +132,9 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
 
             {isOpen && step !== 'OPENING' && (
                 <div className="w-full h-[100dvh] flex items-center justify-center p-4">
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.95 }} 
-                        animate={{ opacity: 1, scale: 1 }} 
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
                         style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}
@@ -131,7 +146,7 @@ export const QuickDraftModal = ({ isOpen, onClose, owners, masterTeams, onConfir
                             </h2>
                             <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold border border-slate-600 cursor-pointer">✕</button>
                         </div>
-                        
+
                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative flex flex-col pb-8 md:pb-0">
                             {step === 'SETTINGS' && (
                                 <div className="flex-1 flex flex-col p-5 md:p-8">
@@ -184,14 +199,14 @@ const DraftSettings = ({ owners, selectedOwnerIds, setSelectedOwnerIds, teamsPer
                 {/* 🔥 [D 등급 추가] D 필터 옵션 추가 */}
                 <div className="flex gap-2">{['ALL', 'S', 'A', 'B', 'C', 'D'].map(tier => (<button key={tier} onClick={() => toggleFilterWithAll(tier, filterTiers, setFilterTiers)} className={`flex-1 py-2 rounded-lg text-[10px] font-black tracking-wider uppercase border transition-all ${filterTiers.includes(tier) ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-500/20' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}>{tier === 'ALL' ? 'ALL' : tier}</button>))}</div><div className="pt-2 border-t border-slate-700 text-xs flex justify-between items-center"><span className="text-slate-500">Need: <strong className="text-white">{totalNeeded}</strong></span><span className={`font-bold ${filteredCount >= totalNeeded ? 'text-emerald-400' : 'text-red-400'}`}>Available: {filteredCount} Teams</span></div></div></div>
             </div>
-            
+
             <div className="flex-1 min-h-[20px]"></div>
 
-            <button 
-                onClick={onStart} 
-                disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0} 
+            <button
+                onClick={onStart}
+                disabled={filteredCount < totalNeeded || selectedOwnerIds.length === 0}
                 className="w-full py-5 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 disabled:opacity-50 disabled:grayscale !text-white font-black italic text-xl tracking-tighter uppercase rounded-2xl shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform hover:scale-[1.01] active:scale-[0.98] border border-white/20 relative z-10"
-                style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }} 
+                style={{ color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
             >
                 {filteredCount < totalNeeded ? "Not Enough Teams!" : "⚡ Open The Packs ⚡"}
             </button>
@@ -217,34 +232,34 @@ const PremiumCard = () => (
 // =============================================================================
 const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardCount: number }) => {
     const [phase, setPhase] = useState<'IDLE' | 'CHARGING' | 'CONTRACTING' | 'EXPLODING' | 'DEALING'>('IDLE');
-    const [animType, setAnimType] = useState<number>(0); 
-    
+    const [animType, setAnimType] = useState<number>(0);
+
     const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
 
     useEffect(() => {
         return () => timeoutRefs.current.forEach(clearTimeout);
     }, []);
 
-    const handleClick = () => { 
-        if (phase !== 'IDLE') return; 
-        
+    const handleClick = () => {
+        if (phase !== 'IDLE') return;
+
         setAnimType(Math.floor(Math.random() * 5));
 
-        setPhase('CHARGING'); 
-        timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800)); 
-        timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200)); 
-        timeoutRefs.current.push(setTimeout(() => { 
-            setPhase('DEALING'); 
+        setPhase('CHARGING');
+        timeoutRefs.current.push(setTimeout(() => setPhase('CONTRACTING'), 800));
+        timeoutRefs.current.push(setTimeout(() => setPhase('EXPLODING'), 1200));
+        timeoutRefs.current.push(setTimeout(() => {
+            setPhase('DEALING');
             timeoutRefs.current.push(setTimeout(() => {
                 onOpen();
             }, 3500));
-        }, 1600)); 
+        }, 1600));
     };
 
     const handleSkip = (e: React.MouseEvent) => {
-        e.stopPropagation(); 
-        timeoutRefs.current.forEach(clearTimeout); 
-        onOpen(); 
+        e.stopPropagation();
+        timeoutRefs.current.forEach(clearTimeout);
+        onOpen();
     };
 
     return (
@@ -264,7 +279,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                     100% { transform: translate(1px, -2px) rotate(-1deg); }
                 }
                 .shake-hard { animation: shake 0.1s infinite; }
-                
+
                 @keyframes electric-pulse {
                     0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
                     50% { box-shadow: 0 0 50px 20px rgba(14, 165, 233, 0.7); }
@@ -277,13 +292,13 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
 
             <AnimatePresence>
                 {phase !== 'DEALING' && (
-                    <motion.div 
-                        layoutId="pack" 
+                    <motion.div
+                        layoutId="pack"
                         onClick={handleClick}
                         animate={
-                            phase === 'CHARGING' ? { scale: [1, 1.05, 0.98, 1.02], filter: "brightness(1.5)", y: [0, -5, 5, 0] } : 
+                            phase === 'CHARGING' ? { scale: [1, 1.05, 0.98, 1.02], filter: "brightness(1.5)", y: [0, -5, 5, 0] } :
                             phase === 'CONTRACTING' ? { scale: 0.2, opacity: 1, rotate: [0, 10, -10, 0], filter: "brightness(3) contrast(2)", transition: { duration: 0.4, ease: "backIn" } } :
-                            phase === 'EXPLODING' ? { scale: 30, opacity: 0, filter: "brightness(5) blur(20px)", transition: { duration: 0.4, ease: "easeOut" } } : 
+                            phase === 'EXPLODING' ? { scale: 30, opacity: 0, filter: "brightness(5) blur(20px)", transition: { duration: 0.4, ease: "easeOut" } } :
                             { scale: 1, y: [0, -10, 0] }
                         }
                         transition={ phase === 'IDLE' ? { y: { repeat: Infinity, duration: 2 } } : phase === 'CHARGING' ? { duration: 0.1, repeat: Infinity } : {} }
@@ -299,7 +314,7 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                                 <div className={`text-8xl mb-6 drop-shadow-md ${phase === 'CHARGING' ? 'text-white' : 'animate-pulse'}`}>⚡</div>
                                 <div className="font-black text-white text-4xl italic tracking-tighter leading-none drop-shadow-lg"> PREMIUM<br/>PACK </div>
                             </div>
-                            
+
                             {phase === 'IDLE' && (
                                 <div className="absolute bottom-8 left-0 right-0 text-center">
                                     <p className="text-sky-900 font-bold text-sm animate-bounce bg-white/90 py-1.5 px-4 rounded-full inline-block shadow-lg">CLICK TO OPEN</p>
@@ -354,8 +369,8 @@ const PackOpeningAnimation = ({ onOpen, cardCount }: { onOpen: () => void, cardC
                     {animType === 3 && (
                         <div className="absolute inset-0 flex items-center justify-center w-full h-full">
                             {Array.from({ length: 24 }).map((_, i) => {
-                                const angle = (Math.PI * 2 * i) / 24; 
-                                const dist = 1000 + (i % 3) * 200; 
+                                const angle = (Math.PI * 2 * i) / 24;
+                                const dist = 1000 + (i % 3) * 200;
                                 return (
                                     <motion.div key={`burst-${i}`} className="absolute" initial={{ scale: 0.3, opacity: 0, x: 0, y: 0 }} animate={{ scale: [0.5, 1.2], opacity: [1, 0], x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }} transition={{ duration: 0.6, repeat: Infinity, delay: (i % 4) * 0.15, ease: "easeOut" }}>
                                         <div className="blur-[2px] opacity-70 shrink-0"><PremiumCard /></div>
@@ -437,7 +452,7 @@ const DraftResultView = ({ results, owners, onRetry, onConfirm }: any) => {
                                         <div className="absolute inset-0 w-full h-full rounded-2xl bg-slate-900 border-2 border-slate-600 flex flex-col overflow-hidden shadow-inner" style={{ transform: "rotateY(180deg)", zIndex: isFlipped ? 30 : 0 }}>
                                             {team.tier === 'S' && <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/60 via-blue-900/20 to-transparent z-0 animate-pulse"></div>}
                                             {team.tier === 'A' && <div className="absolute inset-0 bg-gradient-to-t from-yellow-900/40 via-orange-900/10 to-transparent z-0"></div>}
-                                            
+
                                             <div className="h-14 flex items-center px-4 border-b border-white/10 bg-black/40 z-10 backdrop-blur-sm">
                                                 <div className="w-9 h-9 rounded-full border-2 border-slate-400 overflow-hidden mr-3 bg-slate-800 shrink-0">
                                                     {owner?.photo ? <img src={owner.photo} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-[10px]">👤</div>}
