@@ -1,9 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react'; 
-import { db } from './firebase'; 
-import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'; 
+import React, { useState, useEffect, useMemo } from 'react';
+import { db } from './firebase';
+import { doc, updateDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore';
 import { Season, Match, Notice } from './types';
 
 import dynamic from 'next/dynamic';
@@ -25,6 +25,12 @@ import { usePushNotification } from './hooks/usePushNotification';
 import { sendAutoPush } from './utils/pushUtil';
 import { processTournamentAdvancement } from './utils/scheduler';
 
+// 🛠️ [TBD 패치] 가상 매치 추론 + LEAGUE_PLAYOFF 자동 진출 헬퍼
+import {
+  getEffectiveMatch,
+  applyLeaguePlayoffProgression,
+} from './utils/playoffProgression';
+
 const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
 const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
 const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
@@ -40,7 +46,7 @@ export default function FootballLeagueApp() {
   const { seasons, owners, masterTeams, leagues, banners, historyRecords, isLoaded } = useLeagueData();
   const { authUser, isLoading: isAuthLoading } = useAuth();
   const { requestPermissionAndSaveToken } = usePushNotification();
-  
+
   // =====================================================================
   // 🔥 [핵심 픽스] 파이어베이스 숫자 키(0,1,2) 구조 완벽 대응 파서
   // =====================================================================
@@ -54,7 +60,7 @@ export default function FootballLeagueApp() {
       historyRecords.forEach((data: any) => {
           // 🚨 파이어베이스 구조에 맞게 숫자 키(0, 1, 2)만 정확하게 추출
           const teamKeys = Object.keys(data).filter(k => !isNaN(Number(k))).sort((a, b) => Number(a) - Number(b));
-          
+
           teamKeys.forEach((key, index) => {
               const t = data[key];
               if (!t || !t.name || t.name === 'BYE' || t.name === 'TBD') return;
@@ -78,14 +84,14 @@ export default function FootballLeagueApp() {
               if (oId && oId !== '-' && oId !== 'CPU') {
                   if (!ownerMap.has(oId)) {
                       ownerMap.set(oId, {
-                          id: oId, 
-                          name: t.owner || t.legacyName, 
-                          win: 0, draw: 0, loss: 0, pts: 0, 
+                          id: oId,
+                          name: t.owner || t.legacyName,
+                          win: 0, draw: 0, loss: 0, pts: 0,
                           golds: 0, silvers: 0, bronzes: 0, prize: 0
                       });
                   }
                   const ownerStats = ownerMap.get(oId);
-                  if (t.owner && t.owner !== '-') ownerStats.name = t.owner; 
+                  if (t.owner && t.owner !== '-') ownerStats.name = t.owner;
 
                   ownerStats.win += Number(t.win || 0);
                   ownerStats.draw += Number(t.draw || 0);
@@ -130,8 +136,8 @@ export default function FootballLeagueApp() {
 
   const [currentView, setCurrentView] = useState<'LOCKERROOM' | 'RANKING' | 'SCHEDULE' | 'HISTORY' | 'FINANCE' | 'OWNERROOM' | 'ADMIN'>('LOCKERROOM');
   const [viewSeasonId, setViewSeasonId] = useState<number>(0);
-  const [adminTab, setAdminTab] = useState<any>('NEW'); 
-  
+  const [adminTab, setAdminTab] = useState<any>('NEW');
+
   const { activeRankingData, historyData } = useLeagueStats(seasons, viewSeasonId, owners, historyRecords);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
@@ -170,7 +176,7 @@ export default function FootballLeagueApp() {
           const mergedPlayersMap = new Map();
 
           const uidLookup = new Map<string, string>();
-          
+
           historyRecords?.forEach((hr: any) => {
               hr.teams?.forEach((t: any) => {
                   if (t.owner && t.ownerId) uidLookup.set(t.owner, t.ownerId);
@@ -191,10 +197,10 @@ export default function FootballLeagueApp() {
           });
 
           historyData?.owners?.forEach((o: any) => {
-              const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name; 
-              
+              const uid = o.ownerId || o.uid || uidLookup.get(o.name) || o.name;
+
               if (!mergedOwnersMap.has(uid)) {
-                  mergedOwnersMap.set(uid, { ...o, uid }); 
+                  mergedOwnersMap.set(uid, { ...o, uid });
               } else {
                   const ex = mergedOwnersMap.get(uid);
                   ex.win += o.win || 0; ex.draw += o.draw || 0; ex.loss += o.loss || 0;
@@ -210,23 +216,23 @@ export default function FootballLeagueApp() {
 
           historyData?.players?.forEach((p: any) => {
               const uid = p.ownerId || p.ownerUid || uidLookup.get(p.owner) || p.owner;
-              const pk = `${p.name}_${p.team}`; 
+              const pk = `${p.name}_${p.team}`;
               mergedPlayersMap.set(pk, { ...p, ownerUid: uid });
           });
 
           const activeSeasons = seasons?.filter(s => s.status === 'ACTIVE') || [];
-          
+
           activeSeasons.forEach((s: any) => {
               s.rounds?.forEach((r: any) => {
                   r.matches?.forEach((m: any) => {
                       if (m.status === 'COMPLETED' && m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승')) {
-                          
+
                           const hUid = m.homeOwnerUid || uidLookup.get(m.homeOwner) || m.homeOwner || "";
                           const aUid = m.awayOwnerUid || uidLookup.get(m.awayOwner) || m.awayOwner || "";
 
                           if (!mergedTeamsMap.has(m.home)) mergedTeamsMap.set(m.home, { name: m.home, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.homeLogo, ownerUid: hUid });
                           if (!mergedTeamsMap.has(m.away)) mergedTeamsMap.set(m.away, { name: m.away, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0, logo: m.awayLogo, ownerUid: aUid });
-                          
+
                           const hTeam = mergedTeamsMap.get(m.home);
                           const aTeam = mergedTeamsMap.get(m.away);
 
@@ -258,17 +264,17 @@ export default function FootballLeagueApp() {
                                   const pName = p.name?.trim();
                                   if (!pName) return;
                                   const pk = `${pName}_${teamName}`;
-                                  
+
                                   if (!mergedPlayersMap.has(pk)) {
                                       mergedPlayersMap.set(pk, { name: pName, team: teamName, goals: 0, assists: 0, teamLogo, ownerUid });
                                   }
                                   const pRec = mergedPlayersMap.get(pk);
-                                  
+
                                   if (isGoal) pRec.goals += Number(p.count || 1);
                                   else pRec.assists += Number(p.count || 1);
-                                  
+
                                   pRec.teamLogo = teamLogo;
-                                  pRec.ownerUid = ownerUid; 
+                                  pRec.ownerUid = ownerUid;
                               });
                           };
 
@@ -285,7 +291,7 @@ export default function FootballLeagueApp() {
               const latestOwner = owners.find(u => u.uid === o.uid || String(u.id) === o.uid || u.docId === o.uid);
               return {
                   ...o,
-                  name: latestOwner ? latestOwner.nickname : (o.name || o.uid) 
+                  name: latestOwner ? latestOwner.nickname : (o.name || o.uid)
               };
           });
 
@@ -309,17 +315,17 @@ export default function FootballLeagueApp() {
               teams: finalTeams,
               owners: finalOwners.sort((a, b) => b.points - a.points || b.win - a.win),
               players: finalPlayers,
-              allTimeStats: (historyData as any)?.allTimeStats || [] 
+              allTimeStats: (historyData as any)?.allTimeStats || []
           });
 
-      }, 10); 
+      }, 10);
 
       return () => clearTimeout(timer);
-  }, [historyData, seasons, owners, historyRecords, isLoaded]); 
+  }, [historyData, seasons, owners, historyRecords, isLoaded]);
 
   const handleViewChange = (newView: any) => {
       setCurrentView(newView);
-      
+
       if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
           params.set('view', newView);
@@ -328,7 +334,7 @@ export default function FootballLeagueApp() {
               params.delete('postId');
               params.delete('noticeId');
               window.history.pushState(null, '', `?${params.toString()}`);
-              window.dispatchEvent(new Event('popstate')); 
+              window.dispatchEvent(new Event('popstate'));
           } else if (newView === 'RANKING' || newView === 'SCHEDULE') {
               if (seasons && seasons.length > 0) {
                   const latestSeasonId = seasons[0].id;
@@ -355,8 +361,8 @@ export default function FootballLeagueApp() {
     const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snap) => {
         const fetchedNotices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice));
-        setNotices(fetchedNotices); 
-        
+        setNotices(fetchedNotices);
+
         const popupNotice = fetchedNotices.find(n => n.isPopup);
         if (popupNotice) {
             const hideUntil = localStorage.getItem(`hide_notice_${popupNotice.id}`);
@@ -373,7 +379,7 @@ export default function FootballLeagueApp() {
         console.error("🚨 Error fetching notices:", error);
     });
 
-    return () => unsubscribe(); 
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -418,7 +424,7 @@ export default function FootballLeagueApp() {
               if (home === 'BYE' && away !== 'BYE' && away !== 'TBD') return away;
               if (away === 'BYE' && home !== 'BYE' && home !== 'TBD') return home;
               if (match.status !== 'COMPLETED') return 'TBD';
-              
+
               const h = Number(match.homeScore || 0);
               const a = Number(match.awayScore || 0);
               if (h > a) return match.home;
@@ -432,16 +438,16 @@ export default function FootballLeagueApp() {
               const normName = name.toLowerCase().trim();
               const stats = activeRankingData?.teams?.find((t: any) => t.name.toLowerCase().trim() === normName);
               const master = masterTeams?.find((m: any) => (m.name || m.teamName || '').toLowerCase().trim() === normName);
-              
+
               const ownerName = stats?.ownerName || (master as any)?.ownerName || 'CPU';
               return {
                   logo: stats?.logo || (master as any)?.logo || SAFE_TBD_LOGO,
                   owner: ownerName,
-                  ownerUid: getOwnerUidByName(ownerName) 
+                  ownerUid: getOwnerUidByName(ownerName)
               };
           };
 
-          const createPlaceholder = (vId: string, stageName: string): Match => ({ 
+          const createPlaceholder = (vId: string, stageName: string): Match => ({
               id: vId, home: 'TBD', away: 'TBD', homeScore: '', awayScore: '', status: 'UPCOMING',
               seasonId: viewSeasonId, homeLogo: SAFE_TBD_LOGO, awayLogo: SAFE_TBD_LOGO, homeOwner: '-', awayOwner: '-',
               homeOwnerUid: undefined, awayOwnerUid: undefined,
@@ -462,7 +468,7 @@ export default function FootballLeagueApp() {
           currentSeason.rounds.forEach((round) => {
               round.matches?.forEach((m) => {
                   const stage = m.stage?.toUpperCase() || "";
-                  
+
                   if (stage.includes("GROUP")) {
                       if (m.group) groupSet.add(m.group);
                       return;
@@ -494,7 +500,7 @@ export default function FootballLeagueApp() {
                   const meta = getTeamMeta(winner);
                   target[`${side}Logo`] = meta.logo;
                   target[`${side}Owner`] = meta.owner;
-                  target[`${side}OwnerUid`] = meta.ownerUid; 
+                  target[`${side}OwnerUid`] = meta.ownerUid;
                   target[`${side}Score`] = '';
               }
           };
@@ -521,7 +527,7 @@ export default function FootballLeagueApp() {
               sync(slots.roundOf4[1], 'home', slots.roundOf8[2]);
               sync(slots.roundOf4[1], 'away', slots.roundOf8[3]);
           }
-          
+
           sync(slots.final[0], 'home', slots.roundOf4[0]);
           sync(slots.final[0], 'away', slots.roundOf4[1]);
 
@@ -559,29 +565,55 @@ export default function FootballLeagueApp() {
 
   const handleMatchClick = (m: Match) => setEditingMatch(m);
 
+  // ====================================================================
+  // 🛠️ [TBD 패치 v1] handleSaveMatchResult 교체본
+  //   - 가상 매치(v-3rd, v-final) 점수 저장 시 SEMI_FINAL 결과로부터 실제 팀명 추론
+  //   - LEAGUE_PLAYOFF 타입에서 ROUND_OF_4 / SEMI_FINAL 합산 완성 시 다음 라운드 TBD 자동 채우기
+  //   - 안전 보장:
+  //       1) 기존 마감 시즌엔 영향 없음 (함수 호출 시점에만 발화)
+  //       2) 진출 갱신 시 목적지 매치가 COMPLETED 면 스킵 (기존 결과 보존)
+  //       3) 합산 무승부 시 자동 진출 안 함 (수동 승자 결정 대기)
+  //       4) TOURNAMENT 분기는 원본 그대로
+  //       5) CUP nextMatchId 로직 원본 그대로
+  // ====================================================================
   const handleSaveMatchResult = async (matchId: string, hScore: string, aScore: string, yt: string, records: any, manualWinner: 'HOME'|'AWAY'|null) => {
       if(!editingMatch) return;
       const s = seasons.find(se => se.id === editingMatch.seasonId);
       if(!s || !s.rounds) return;
+
+      // 🛠️ [TBD 패치] 가상 매치 실제 팀 추론 (TOURNAMENT 외 타입)
+      const { effective: effectiveMatch, needsAlert: needsTeamResolutionAlert } =
+          s.type === 'TOURNAMENT'
+              ? { effective: editingMatch, needsAlert: false }
+              : getEffectiveMatch(editingMatch, matchId, s.rounds);
+
+      if (needsTeamResolutionAlert) {
+          setEditingMatch(null);
+          return alert('⚠️ 이전 라운드(SEMI_FINAL)의 모든 매치가 확정되지 않았습니다.\n진출 팀이 결정된 후 다시 시도해주세요.');
+      }
 
       const injectUidToPlayers = (players: any[], teamOwnerName: string) => {
           const ownerUid = getOwnerUidByName(teamOwnerName);
           return players.map((p: any) => ({ ...p, ownerUid: ownerUid }));
       };
 
+      // safeRecords 는 effectiveMatch 의 오너 이름 기준 (가상 매치라면 실제 오너로 추론된 값)
       const safeRecords = {
-          homeScorers: injectUidToPlayers(records?.homeScorers || [], editingMatch.homeOwner),
-          awayScorers: injectUidToPlayers(records?.awayScorers || [], editingMatch.awayOwner),
-          homeAssists: injectUidToPlayers(records?.homeAssists || [], editingMatch.homeOwner),
-          awayAssists: injectUidToPlayers(records?.awayAssists || [], editingMatch.awayOwner)
+          homeScorers: injectUidToPlayers(records?.homeScorers || [], effectiveMatch.homeOwner),
+          awayScorers: injectUidToPlayers(records?.awayScorers || [], effectiveMatch.awayOwner),
+          homeAssists: injectUidToPlayers(records?.homeAssists || [], effectiveMatch.homeOwner),
+          awayAssists: injectUidToPlayers(records?.awayAssists || [], effectiveMatch.awayOwner)
       };
 
+      // ──────────────────────────────────────────────────────────────────
+      // TOURNAMENT 타입 — 원본 로직 그대로
+      // ──────────────────────────────────────────────────────────────────
       if (s.type === 'TOURNAMENT') {
-          let newRounds = JSON.parse(JSON.stringify(s.rounds)); 
-          
+          let newRounds = JSON.parse(JSON.stringify(s.rounds));
+
           const matchIndex = newRounds[0].matches.findIndex((m: any) => m.id === matchId);
           if (matchIndex === -1) return;
-          
+
           newRounds[0].matches[matchIndex] = {
               ...newRounds[0].matches[matchIndex],
               homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
@@ -606,9 +638,9 @@ export default function FootballLeagueApp() {
               if (manualWinner === 'AWAY') { effectiveHScore = 0; effectiveAScore = 1; }
 
               const advancedMatches = processTournamentAdvancement(
-                  newRounds[0].matches, 
-                  matchId, 
-                  effectiveHScore, 
+                  newRounds[0].matches,
+                  matchId,
+                  effectiveHScore,
                   effectiveAScore
               );
               newRounds[0].matches = advancedMatches;
@@ -632,8 +664,8 @@ export default function FootballLeagueApp() {
                   awayScore: aScore,
                   matchLabel: editingMatch.matchLabel || editingMatch.stage,
                   createdAt: Date.now(),
-              }, { merge: true }); 
-              
+              }, { merge: true });
+
               const snap = await getDocs(query(collection(db, "highlights"), where("id", "==", matchId)));
               if (snap.empty) {
                   await updateDoc(highlightRef, { views: 0, likes: [], commentCount: 0 });
@@ -649,9 +681,12 @@ export default function FootballLeagueApp() {
           }
 
           setEditingMatch(null);
-          return; 
+          return;
       }
 
+      // ──────────────────────────────────────────────────────────────────
+      // LEAGUE / LEAGUE_PLAYOFF / CUP 공통 처리
+      // ──────────────────────────────────────────────────────────────────
       let newRounds = [...s.rounds];
       let currentRoundIndex = -1;
 
@@ -663,19 +698,24 @@ export default function FootballLeagueApp() {
           if (matchId === 'v-final') vTargetRIdx = 2;
           else if (matchId.includes('r4')) { vTargetRIdx = 1; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
           else if (matchId.includes('r8')) { vTargetRIdx = 0; vTargetMIdx = parseInt(matchId.split('-')[2]) || 0; }
+          else if (matchId === 'v-3rd') {
+              // 3·4위전 — Final 라운드와 같은 위치(마지막)
+              vTargetRIdx = newRounds.length;
+          }
 
           while (newRounds.length <= vTargetRIdx) {
               const nextRnd = newRounds.length + 1;
-              newRounds.push({ 
-                round: nextRnd, 
+              newRounds.push({
+                round: nextRnd,
                 name: nextRnd === 3 ? 'Final' : nextRnd === 2 ? 'Semi-Final' : 'Quarter-Final',
                 seasonId: viewSeasonId,
-                matches: [] 
+                matches: []
               });
           }
       }
 
-      const predictionSnapshot = calculateMatchSnapshot(editingMatch.home, editingMatch.away, activeRankingData, combinedHistoryData || { allTimeStats: [] }, masterTeams);
+      // 예측률 스냅샷 — effectiveMatch 기반 (가상 매치라면 실제 팀명)
+      const predictionSnapshot = calculateMatchSnapshot(effectiveMatch.home, effectiveMatch.away, activeRankingData, combinedHistoryData || { allTimeStats: [] }, masterTeams);
 
       newRounds = newRounds.map((r, rIdx) => {
           let matches = [...r.matches];
@@ -687,15 +727,15 @@ export default function FootballLeagueApp() {
                   currentRoundIndex = rIdx;
                   let aggUpdate = {};
                   if (s.type === 'LEAGUE_PLAYOFF' && manualWinner) {
-                      aggUpdate = { aggWinner: manualWinner === 'HOME' ? editingMatch.home : editingMatch.away };
+                      aggUpdate = { aggWinner: manualWinner === 'HOME' ? effectiveMatch.home : effectiveMatch.away };
                   }
 
-                  return { 
+                  return {
                       ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
                       ...safeRecords,
                       homePredictRate: predictionSnapshot.homePredictRate,
                       awayPredictRate: predictionSnapshot.awayPredictRate,
-                      ...aggUpdate 
+                      ...aggUpdate
                   };
               }
               return m;
@@ -703,8 +743,9 @@ export default function FootballLeagueApp() {
 
           if (!found && isVirtual && rIdx === vTargetRIdx) {
               currentRoundIndex = rIdx;
+              // 🛠️ [TBD 패치] effectiveMatch 의 home/away (TBD 가 아닌 실제 팀명) 으로 새 매치 저장
               const newMatchData: Match = {
-                  ...editingMatch,
+                  ...effectiveMatch,
                   id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                   homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
                   ...safeRecords,
@@ -717,34 +758,37 @@ export default function FootballLeagueApp() {
           return { ...r, matches };
       });
 
+      // ──────────────────────────────────────────────────────────────────
+      // CUP — nextMatchId 진출 로직 (원본 그대로, effectiveMatch 기반)
+      // ──────────────────────────────────────────────────────────────────
       if (s.type === 'CUP' && currentRoundIndex !== -1) {
           type WinTeamType = {name: string, logo: string, owner: string, ownerUid?: string};
-          const hTeam: WinTeamType = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner, ownerUid: editingMatch.homeOwnerUid || getOwnerUidByName(editingMatch.homeOwner)};
-          const aTeam: WinTeamType = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner, ownerUid: editingMatch.awayOwnerUid || getOwnerUidByName(editingMatch.awayOwner)};
+          const hTeam: WinTeamType = {name: effectiveMatch.home, logo: effectiveMatch.homeLogo, owner: effectiveMatch.homeOwner, ownerUid: effectiveMatch.homeOwnerUid || getOwnerUidByName(effectiveMatch.homeOwner)};
+          const aTeam: WinTeamType = {name: effectiveMatch.away, logo: effectiveMatch.awayLogo, owner: effectiveMatch.awayOwner, ownerUid: effectiveMatch.awayOwnerUid || getOwnerUidByName(effectiveMatch.awayOwner)};
 
           let winningTeam: WinTeamType | null = null;
           const h = Number(hScore); const a = Number(aScore);
-          const isGroupStage = editingMatch.matchLabel?.toUpperCase().includes('GROUP') || editingMatch.stage?.toUpperCase().includes('GROUP');
+          const isGroupStage = effectiveMatch.matchLabel?.toUpperCase().includes('GROUP') || effectiveMatch.stage?.toUpperCase().includes('GROUP');
 
-          if (editingMatch.away === 'BYE' || editingMatch.away === 'BYE (부전승)') winningTeam = hTeam;
+          if (effectiveMatch.away === 'BYE' || effectiveMatch.away === 'BYE (부전승)') winningTeam = hTeam;
           else if (manualWinner === 'HOME') winningTeam = hTeam;
           else if (manualWinner === 'AWAY') winningTeam = aTeam;
           else if (h > a) winningTeam = hTeam;
           else if (a > h) winningTeam = aTeam;
           else if (!isGroupStage) return alert("⚠️ 무승부입니다! 승자를 선택해주세요.");
 
-          const mAny = editingMatch as any;
+          const mAny = effectiveMatch as any;
           if (winningTeam && !isGroupStage && mAny.nextMatchId) {
               newRounds = newRounds.map(round => ({
                   ...round,
                   matches: round.matches.map(m => {
                       if (m.id === mAny.nextMatchId) {
-                          const update = mAny.nextMatchSide === 'HOME' 
-                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner, homeOwnerUid: winningTeam!.ownerUid } 
-                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner, awayOwnerUid: winningTeam!.ownerUid }; 
-                          
-                          return { 
-                              ...m, 
+                          const update = mAny.nextMatchSide === 'HOME'
+                              ? { home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner, homeOwnerUid: winningTeam!.ownerUid }
+                              : { away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner, awayOwnerUid: winningTeam!.ownerUid };
+
+                          return {
+                              ...m,
                               ...update,
                               homeScore: '',
                               awayScore: '',
@@ -757,8 +801,24 @@ export default function FootballLeagueApp() {
           }
       }
 
+      // ──────────────────────────────────────────────────────────────────
+      // 🛠️ [TBD 패치] LEAGUE_PLAYOFF 자동 진출 채우기 (신규)
+      //   - ROUND_OF_4 양 다리 완성 → SEMI_FINAL TBD 채우기
+      //   - SEMI_FINAL 양 다리 완성 → GRAND FINAL TBD 채우기
+      //   - 헬퍼 내부에서 목적지 COMPLETED 시 갱신 스킵 보장
+      // ──────────────────────────────────────────────────────────────────
+      if (s.type === 'LEAGUE_PLAYOFF' && currentRoundIndex !== -1) {
+          try {
+              newRounds = applyLeaguePlayoffProgression(newRounds, matchId, s.id);
+          } catch (error) {
+              // 진출 로직 실패해도 점수 저장은 진행 (방어적)
+              console.error('🚨 LEAGUE_PLAYOFF 진출 자동 채우기 에러:', error);
+          }
+      }
+
       await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });
 
+      // 하이라이트 저장 — effectiveMatch 기반 (TBD 가 아닌 실제 팀명 사용)
       if (yt && yt.trim() !== '') {
           const highlightRef = doc(collection(db, "highlights"), matchId);
           await setDoc(highlightRef, {
@@ -767,26 +827,27 @@ export default function FootballLeagueApp() {
               seasonId: s.id,
               seasonName: s.name,
               youtubeUrl: yt,
-              homeTeam: editingMatch.home,
-              awayTeam: editingMatch.away,
-              homeLogo: editingMatch.homeLogo,
-              awayLogo: editingMatch.awayLogo,
+              homeTeam: effectiveMatch.home,
+              awayTeam: effectiveMatch.away,
+              homeLogo: effectiveMatch.homeLogo,
+              awayLogo: effectiveMatch.awayLogo,
               homeScore: hScore,
               awayScore: aScore,
-              matchLabel: editingMatch.matchLabel || editingMatch.stage,
-              createdAt: Date.now(), 
-          }, { merge: true }); 
-          
+              matchLabel: effectiveMatch.matchLabel || effectiveMatch.stage,
+              createdAt: Date.now(),
+          }, { merge: true });
+
           const snap = await getDocs(query(collection(db, "highlights"), where("id", "==", matchId)));
           if (snap.empty) {
               await updateDoc(highlightRef, { views: 0, likes: [], commentCount: 0 });
           }
       }
 
+      // 푸시 알림 — effectiveMatch 기반
       try {
           const pushTitle = "🏆 경기 결과 확정";
-          const pushBody = `[${editingMatch.home}] ${hScore} : ${aScore} [${editingMatch.away}] - 결과를 확인하세요!`;
-          sendAutoPush(pushTitle, pushBody); 
+          const pushBody = `[${effectiveMatch.home}] ${hScore} : ${aScore} [${effectiveMatch.away}] - 결과를 확인하세요!`;
+          sendAutoPush(pushTitle, pushBody);
       } catch (error) {
           console.error("푸시 발송 에러:", error);
       }
@@ -823,7 +884,7 @@ export default function FootballLeagueApp() {
       setCurrentView('SCHEDULE'); setViewSeasonId(seasonId);
       const params = new URLSearchParams(window.location.search);
       params.set('view', 'SCHEDULE'); params.set('season', String(seasonId));
-      if (isKnockout) params.set('phase', 'KNOCKOUT'); 
+      if (isKnockout) params.set('phase', 'KNOCKOUT');
       window.history.replaceState(null, '', `?${params.toString()}`);
   };
 
@@ -848,14 +909,14 @@ export default function FootballLeagueApp() {
                       animation-play-state: paused;
                   }
               `}</style>
-              
+
               <div className="flex items-center w-full overflow-hidden">
                   <span className="shrink-0 bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 px-2 py-0.5 rounded text-[10px] font-black mr-4 z-10 shadow-[0_0_10px_rgba(52,211,153,0.2)]">전체 공지</span>
-                  
-                  <div 
+
+                  <div
                       className="flex-1 overflow-hidden cursor-pointer flex"
                       onClick={() => {
-                          setCurrentView('LOCKERROOM'); 
+                          setCurrentView('LOCKERROOM');
                           if (typeof window !== 'undefined') {
                               const params = new URLSearchParams(window.location.search);
                               params.set('view', 'LOCKERROOM');
@@ -863,7 +924,7 @@ export default function FootballLeagueApp() {
                               window.history.pushState(null, '', `?${params.toString()}`);
                               window.dispatchEvent(new Event('forceNoticeCheck'));
                           }
-                      }} 
+                      }}
                   >
                       <div className="animate-ticker-seamless gap-16 pr-16 text-emerald-400/90 font-bold text-[11px] sm:text-xs tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">
                           <span>{latestPopupNotice.title}</span>
@@ -874,8 +935,8 @@ export default function FootballLeagueApp() {
                   </div>
               </div>
 
-              <button 
-                  onClick={handleCloseTicker} 
+              <button
+                  onClick={handleCloseTicker}
                   className="shrink-0 ml-4 bg-slate-800/80 hover:bg-slate-700 text-slate-400 px-2 py-1 rounded text-[10px] font-black transition-all border border-slate-700/50 z-10"
                   title="오늘 하루 보지 않기"
               >
@@ -886,81 +947,81 @@ export default function FootballLeagueApp() {
 
       <div className="relative"><BannerSlider banners={banners || []} /><TopBar setCurrentView={handleViewChange} masterTeams={masterTeams} owners={owners} /></div>
       <NavTabs currentView={currentView} setCurrentView={handleViewChange} hasNewNotice={hasNewNotice} />
-      
+
       <main className="max-w-6xl mx-auto px-4 md:px-8 pb-4">
-        
+
         {currentView === 'LOCKERROOM' && (
-            <LockerRoomView 
-                user={authUser as any} 
-                notices={notices} 
-                seasons={seasons} 
-                masterTeams={masterTeams} 
-                owners={owners} 
-                activeRankingData={activeRankingData} 
-                historyData={combinedHistoryData} 
-                viewSeasonId={viewSeasonId} 
-                setViewSeasonId={setViewSeasonId} 
+            <LockerRoomView
+                user={authUser as any}
+                notices={notices}
+                seasons={seasons}
+                masterTeams={masterTeams}
+                owners={owners}
+                activeRankingData={activeRankingData}
+                historyData={combinedHistoryData}
+                viewSeasonId={viewSeasonId}
+                setViewSeasonId={setViewSeasonId}
             />
         )}
 
         {currentView === 'RANKING' && (
-            <RankingView 
-                seasons={seasons} 
-                viewSeasonId={viewSeasonId} 
-                setViewSeasonId={setViewSeasonId} 
-                activeRankingData={activeRankingData} 
-                owners={owners} 
-                knockoutStages={knockoutStages} 
+            <RankingView
+                seasons={seasons}
+                viewSeasonId={viewSeasonId}
+                setViewSeasonId={setViewSeasonId}
+                activeRankingData={activeRankingData}
+                owners={owners}
+                knockoutStages={knockoutStages}
             />
         )}
         {currentView === 'SCHEDULE' && (
-          <ScheduleView 
-            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData: combinedHistoryData, knockoutStages } as any)} 
+          <ScheduleView
+            {...({ seasons, viewSeasonId, setViewSeasonId, onMatchClick: handleMatchClick, activeRankingData, historyData: combinedHistoryData, knockoutStages } as any)}
           />
         )}
-        
+
         {/* 🔥 [핵심 픽스] HistoryView에만 오차율 0%의 perfectHistoryData를 주입합니다! */}
         {currentView === 'HISTORY' && <HistoryView historyData={perfectHistoryData} owners={owners} />}
-        
+
         {currentView === 'FINANCE' && (
             <FinanceView owners={owners} seasons={seasons} user={authUser as any} />
         )}
 
         {currentView === 'OWNERROOM' && (
-            <OwnerRoomView 
-                user={authUser as any} 
-                masterTeams={masterTeams} 
-                historyData={combinedHistoryData} 
-                seasons={seasons} 
-                owners={owners} 
+            <OwnerRoomView
+                user={authUser as any}
+                masterTeams={masterTeams}
+                historyData={combinedHistoryData}
+                seasons={seasons}
+                owners={owners}
             />
         )}
 
         {currentView === 'ADMIN' && authUser?.role === 'ADMIN' && (
-          <AdminView 
-            adminTab={adminTab} 
-            setAdminTab={setAdminTab} 
-            seasons={seasons} 
-            owners={owners} 
-            leagues={leagues} 
-            masterTeams={masterTeams} 
-            banners={banners || []} 
-            onAdminLogin={() => true} 
-            onCreateSeason={handleCreateSeason} 
-            onSaveOwner={handleSaveOwner} 
-            onNavigateToSchedule={handleNavigateToSchedule} 
+          <AdminView
+            adminTab={adminTab}
+            setAdminTab={setAdminTab}
+            seasons={seasons}
+            owners={owners}
+            leagues={leagues}
+            masterTeams={masterTeams}
+            banners={banners || []}
+            onAdminLogin={() => true}
+            onCreateSeason={handleCreateSeason}
+            onSaveOwner={handleSaveOwner}
+            onNavigateToSchedule={handleNavigateToSchedule}
           />
         )}
       </main>
       <Footer />
-      
+
       {editingMatch && (
-        <MatchEditModal 
-            match={editingMatch} 
-            onClose={() => setEditingMatch(null)} 
-            onSave={handleSaveMatchResult} 
-            isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'} 
-            teamPlayers={getTeamPlayers} 
+        <MatchEditModal
+            match={editingMatch}
+            onClose={() => setEditingMatch(null)}
+            onSave={handleSaveMatchResult}
+            isTournament={seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' || seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'CUP'}
+            teamPlayers={getTeamPlayers}
             owners={owners}
         />
       )}
