@@ -281,9 +281,17 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     setIsFlipping(false);
   };
 
+  // 🛠️ [매칭 중복 픽스] dedup 키를 name 으로 통일 (masterId vs 임시ID 불일치 해결)
+  //   - 기존엔 used 집합이 masterId(실수치), filter 가 t.id(임시값) 비교 → 매칭 안 됨 → 중복 통과
+  //   - name 기반 정규화(trim+lowercase) 로 안정적 dedup
   const handleDraftApply = (newTeams: Team[]) => {
-    const used = new Set([...unassignedPool.map(t => t.masterId), ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null).map(t => t.masterId)]);
-    setUnassignedPool(prev => [...prev, ...newTeams.filter(t => !used.has(t.id)).map((t,i) => ({ id:`draft_${Date.now()}_${i}`, masterId:t.id, name:t.name, logo:t.logo, ownerName:t.ownerName||'CPU', ownerUid: (t as any).ownerUid || '', region:t.region, tier:t.tier, realRankScore:t.realRankScore, realFormScore:t.realFormScore }))]);
+    const usedNames = new Set([
+        ...unassignedPool.map(t => String(t.name || '').trim().toLowerCase()),
+        ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null).map(t => String(t.name || '').trim().toLowerCase())
+    ]);
+    setUnassignedPool(prev => [...prev, ...newTeams
+        .filter(t => !usedNames.has(String(t.name || '').trim().toLowerCase()))
+        .map((t,i) => ({ id:`draft_${Date.now()}_${i}`, masterId:t.id, name:t.name, logo:t.logo, ownerName:t.ownerName||'CPU', ownerUid: (t as any).ownerUid || '', region:t.region, tier:t.tier, realRankScore:t.realRankScore, realFormScore:t.realFormScore }))]);
   };
 
   const handleDragStart = (e: React.DragEvent, entry: CupEntry) => { setDraggedEntry(entry); setDraggedTournamentEntry(entry); e.dataTransfer.effectAllowed = "move"; };
@@ -538,7 +546,18 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
       )}
 
       {/* 🔥 [수정됨] 누락되었던 퀵 드래프트 모달 렌더링 추가 */}
-      <QuickDraftModal isOpen={isDraftOpen} onClose={() => setIsDraftOpen(false)} owners={owners} masterTeams={masterTeams} onConfirm={handleDraftApply} />
+      {/* 🛠️ [매칭 중복 픽스] excludeTeamNames 로 unassignedPool + groups 의 모든 팀명 전달 — 두 번째 퀵 매칭에서 이미 뽑힌 팀 자동 배제 */}
+      <QuickDraftModal
+        isOpen={isDraftOpen}
+        onClose={() => setIsDraftOpen(false)}
+        owners={owners}
+        masterTeams={masterTeams}
+        onConfirm={handleDraftApply}
+        excludeTeamNames={[
+          ...unassignedPool.map(t => t.name),
+          ...Object.values(groups).flat().filter((t): t is CupEntry => t !== null).map(t => t.name)
+        ]}
+      />
 
     </div>
   );
