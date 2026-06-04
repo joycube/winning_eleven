@@ -569,7 +569,7 @@ export const ScheduleView = ({
                                                     };
 
                                                     return (
-                                                        <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
+                                                        <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
                                                             <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -641,7 +641,7 @@ export const ScheduleView = ({
                                                 };
 
                                                 return (
-                                                    <div key={m.id} ref={(el) => matchRefs.current[m.id] = el} className="flex flex-col mb-2">
+                                                    <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
                                                         <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
