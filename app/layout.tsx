@@ -1,17 +1,20 @@
 import React from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
+// 🔒 [Day 1 — Next.js 14 호환] viewport/themeColor 를 별도 export 로 분리
+//   Next 14 부터 metadata.viewport / metadata.themeColor 는 deprecated → 새 Viewport export 사용
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#020617",
+};
 
 export const metadata: Metadata = {
   title: "eFootball™ Live evolution™",
   description: "Join the League! eFootball Super League Management System.",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
-  themeColor: "#020617",
   manifest: "/manifest.json", // 🔥 스마트폰이 앱으로 인식하게 만드는 마법의 한 줄 추가
   openGraph: {
     title: "eFootball™ Live evolution™",
