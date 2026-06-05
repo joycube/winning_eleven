@@ -55,6 +55,35 @@ export const useLeagueData = () => {
             markLoaded(label);
         };
 
+        // 🛠️ [UI 픽스 v2] 방어적 타임아웃 — 환경별 분기
+        //   - 프로덕션 (Vercel): 30초 — Firestore 가 정상 도착할 시간 충분히 확보 (회귀 방지)
+        //   - StackBlitz/webcontainer: 4초 — cross-origin 차단으로 어차피 hang 되므로 빠르게 폴백
+        //   - 일반 환경에선 onSnapshot 이 1~2초 안에 도착하므로 timeout 발화 자체가 거의 없음
+        const isWebContainerEnv = (() => {
+            if (typeof window === 'undefined') return false;
+            const host = window.location?.hostname || '';
+            let isInIframe = false;
+            try { isInIframe = window.self !== window.top; } catch { isInIframe = true; }
+            return (
+                host.includes('webcontainer.io') ||
+                host.includes('stackblitz.io') ||
+                host.includes('stackblitz.com') ||
+                host.includes('local-credentialless') ||
+                (isInIframe && host.includes('local-'))
+            );
+        })();
+        const LOAD_TIMEOUT_MS = isWebContainerEnv ? 4000 : 30000;
+        const forceLoadTimer = setTimeout(() => {
+            setLoadedFlags(prev => {
+                const next = { ...prev };
+                let changed = false;
+                (Object.keys(next) as (keyof LoadedFlags)[]).forEach(k => {
+                    if (!next[k]) { next[k] = true; changed = true; console.warn(`[useLeagueData] ${k} timeout — forcing loaded (env: ${isWebContainerEnv ? 'webcontainer' : 'production'})`); }
+                });
+                return changed ? next : prev;
+            });
+        }, LOAD_TIMEOUT_MS);
+
         // 1. Owners (명부 관리)
         const u1 = onSnapshot(
             query(collection(db, "users"), orderBy("id", "asc")),
@@ -128,7 +157,10 @@ export const useLeagueData = () => {
             onSnapErr('historyRecords')
         );
 
-        return () => { u1(); uAccounts(); u2(); u3(); u4(); u5(); u6(); };
+        return () => {
+            clearTimeout(forceLoadTimer);
+            u1(); uAccounts(); u2(); u3(); u4(); u5(); u6();
+        };
     }, []);
 
     /**
@@ -136,14 +168,81 @@ export const useLeagueData = () => {
      * 명부 관리 데이터(rawOwners)와 G메일 가입자 데이터(userAccounts)를 결합합니다.
      * 이제 owners 배열 안에 구단주의 닉네임과 UID(8p954v...)가 한 몸이 되어 내려갑니다!
      */
+    // 🛠️ [UI 픽스 v3] 회귀 진단 + 강력 매칭
+    //   - 정규화: trim + 공백/점/하이픈/언더바 제거 + 소문자 (L_PostDetail 와 동일 규칙)
+    //   - linkedAccount 매칭 4단계 폴백:
+    //       1) acc.uid === owner.uid / owner.docId  (가장 안전)
+    //       2) acc.mappedOwnerId === owner.nickname / legacyName / legacyNames[]
+    //       3) acc.displayName === owner.nickname / legacyName / legacyNames[]
+    //       4) (디버그) 위 어디서도 못 잡으면 마지막에 console.warn 으로 안내
+    //   - owner.photo 가 empty string '' 인 경우도 falsy 라 linkedAccount.photoURL 로 자동 폴백됨
     const owners = useMemo(() => {
-        return rawOwners.map(owner => {
-            const linkedAccount = userAccounts.find(acc => acc.mappedOwnerId === owner.nickname);
+        const normLoose = (v: any) => String(v ?? '').replace(/[\s\.\-\_]/g, '').toLowerCase();
+
+        const enriched = rawOwners.map(owner => {
+            const ownerDocId = String((owner as any).docId ?? '').trim();
+            const ownerUid = String((owner as any).uid ?? '').trim();
+            const nickN = normLoose((owner as any).nickname);
+            const legacyN = normLoose((owner as any).legacyName);
+            const legacyArrN = (((owner as any).legacyNames || []) as any[]).map(normLoose).filter(Boolean);
+
+            const linkedAccount = userAccounts.find(acc => {
+                if (!acc) return false;
+                // 1) uid 직매칭 (handleApprove 로 만들어진 owner 는 docId === firebaseUser.uid)
+                const accUid = String(acc.uid ?? '').trim();
+                if (accUid && (accUid === ownerUid || accUid === ownerDocId)) return true;
+                // 2) mappedOwnerId 매칭
+                const mapN = normLoose(acc.mappedOwnerId);
+                if (mapN) {
+                    if (nickN && mapN === nickN) return true;
+                    if (legacyN && mapN === legacyN) return true;
+                    if (legacyArrN.includes(mapN)) return true;
+                }
+                // 3) displayName 매칭 (admin 이 아직 매핑 안 한 PENDING 사용자도 본인 사진은 보이도록)
+                const dispN = normLoose(acc.displayName);
+                if (dispN) {
+                    if (nickN && dispN === nickN) return true;
+                    if (legacyN && dispN === legacyN) return true;
+                    if (legacyArrN.includes(dispN)) return true;
+                }
+                return false;
+            });
+
+            const ownerPhoto =
+                (owner as any).photo
+                || (owner as any).profileImage
+                || (owner as any).photoUrl
+                || (owner as any).photoURL
+                || (linkedAccount?.photoURL ?? '')
+                || (linkedAccount?.photoUrl ?? '')
+                || (linkedAccount?.photo ?? '')
+                || '';
+
             return {
                 ...owner,
-                uid: linkedAccount ? linkedAccount.uid : undefined,
-            };
+                uid: linkedAccount ? linkedAccount.uid : ownerUid,
+                photo: ownerPhoto,
+                photoURL: ownerPhoto,
+            } as Owner;
         });
+
+        // 디버그: photo 가 비어있는 owner 가 몇 명인지 한 번만 출력
+        if (typeof window !== 'undefined' && enriched.length > 0) {
+            const missing = enriched.filter(o => !(o as any).photo);
+            if (missing.length > 0) {
+                console.warn(
+                    `[useLeagueData][v3-diag] photo 없음: ${missing.length}/${enriched.length}명`,
+                    missing.slice(0, 5).map(o => ({
+                        nickname: (o as any).nickname,
+                        docId: (o as any).docId,
+                        uid: (o as any).uid,
+                        hasLinked: !!userAccounts.find(a => a.uid === (o as any).uid),
+                    }))
+                );
+            }
+        }
+
+        return enriched;
     }, [rawOwners, userAccounts]);
 
     return { seasons, owners, masterTeams, leagues, banners, historyRecords, isLoaded };

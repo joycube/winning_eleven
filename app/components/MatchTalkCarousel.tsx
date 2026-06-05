@@ -172,12 +172,33 @@ export const MatchTalkCarousel = ({
         return top5;
     }, [matchCommentsData, processedSeasons]);
 
+    // 🛠️ [UI 픽스 v2] LiveFeed.tsx 와 동일하게 매칭 필드 대폭 확장
+    //   - 기존: o.uid / o.docId / o.id / o.nickname 만 비교 → mappedOwnerId, legacyName, legacyNames[] 매칭 실패
+    //   - 변경: 정규화(trim+lowercase) + legacy/매핑 필드까지 모두 후보로 비교
+    //   - No.7 베컴 처럼 닉네임이 미묘하게 다른 케이스도 잡힘
     const getOwnerProfile = (uid: string, fallbackName?: string) => {
-        const found = owners?.find(o => 
-            o.uid === uid || o.docId === uid || String(o.id) === uid || o.nickname === fallbackName
-        );
+        const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+        const s1 = norm(uid);
+        const s2 = norm(fallbackName);
+        if (!owners || (!s1 && !s2)) return DEFAULT_AVATAR;
+
+        const matchesOwner = (o: any) => {
+            const candidates: string[] = [];
+            if (o?.docId) candidates.push(norm(o.docId));
+            if (o?.id !== undefined && o?.id !== null) candidates.push(norm(o.id));
+            if (o?.uid) candidates.push(norm(o.uid));
+            if (o?.nickname) candidates.push(norm(o.nickname));
+            if (o?.legacyName) candidates.push(norm(o.legacyName));
+            if (Array.isArray(o?.legacyNames)) {
+                o.legacyNames.forEach((n: string) => { if (n) candidates.push(norm(n)); });
+            }
+            if (o?.mappedOwnerId) candidates.push(norm(o.mappedOwnerId));
+            return (s1 && candidates.includes(s1)) || (s2 && candidates.includes(s2));
+        };
+
+        const found = owners.find(matchesOwner);
         const photo = found?.photo || (found as any)?.profileImage || (found as any)?.photoUrl;
-        return (photo && photo.trim() !== '') ? photo : DEFAULT_AVATAR;
+        return (photo && String(photo).trim() !== '') ? photo : DEFAULT_AVATAR;
     };
 
     const getTeamMasterInfo = (teamName: string) => {

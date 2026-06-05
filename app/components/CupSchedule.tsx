@@ -101,6 +101,8 @@ export const CupSchedule = ({
   const currentSeason = seasons.find(s => s.id === viewSeasonId);
   const pureSeasonName = currentSeason?.name?.replace(/^(🏆|🏳️|⚔️|⚽|🗓️)\s*/, '') || 'CUP';
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  // 🛠️ [UI 픽스] Tournament Bracket 접기/펼치기 토글
+  const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
@@ -327,14 +329,34 @@ export const CupSchedule = ({
   return (
     <div className="space-y-10">
         {displayStages && (
-            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
-                <div className="min-w-max md:min-w-[760px] px-2">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
-                        <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+            <div className="pb-4 border-b border-slate-800/50 mb-8">
+                <div className="overflow-x-auto no-scrollbar bracket-scroll-smooth">
+                    <div className="min-w-max md:min-w-[760px] px-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-1 h-5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                            <h3 className="text-lg font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+                        </div>
+                        {/* 🛠️ [UI 픽스] 접기/펼치기 토글 — 기본 380px 클리핑, '더보기' 클릭 시 전체 노출 */}
+                        <div className={`relative transition-all duration-500 ease-out ${bracketExpanded ? 'max-h-[6000px]' : 'max-h-[380px] overflow-hidden'}`}>
+                            {/* 🔥 픽스: 유저 뷰임을 알려주는 스위치 작동! */}
+                            <AdminMatching_TournamentBracketView knockoutStages={displayStages} isUserView={true} />
+                            {!bracketExpanded && (
+                                <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#020617] via-[#020617]/85 to-transparent pointer-events-none" />
+                            )}
+                        </div>
                     </div>
-                    {/* 🔥 픽스: 유저 뷰임을 알려주는 스위치 작동! */}
-                    <AdminMatching_TournamentBracketView knockoutStages={displayStages} isUserView={true} />
+                </div>
+                {/* 🛠️ [UI 픽스] 접기/펼치기 토글 버튼 — 사이트 톤(indigo 액센트 + italic black) */}
+                <div className="flex justify-center mt-2">
+                    <button
+                        onClick={() => setBracketExpanded(v => !v)}
+                        className="group bg-slate-900/80 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-indigo-900/20 active:scale-95 flex items-center gap-2"
+                    >
+                        <span>{bracketExpanded ? '▴ 접기' : '▾ 더보기'}</span>
+                        <span className="text-slate-500 group-hover:text-indigo-200 text-[9px] tracking-normal">
+                            {bracketExpanded ? '(BRACKET 닫기)' : '(BRACKET 펼치기)'}
+                        </span>
+                    </button>
                 </div>
             </div>
         )}
@@ -362,7 +384,8 @@ export const CupSchedule = ({
                                                 
                                                 return (
                                                     <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                        {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl (MatchCard 내부와 정렬), emerald 호버 강조 */}
+                                                        <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                             {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -399,7 +422,8 @@ export const CupSchedule = ({
                                         
                                         return (
                                             <div key={m.id || `${section.id}-${mIdx}`} ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }} className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl, emerald 호버 강조 */}
+                                                <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
                                                     <MatchCard match={safeMatch} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -430,7 +454,8 @@ export const CupSchedule = ({
                                         
                                         return (
                                             <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl, emerald 호버 강조 */}
+                                                <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
                                                     <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>

@@ -5,7 +5,6 @@
 //   기존 로직은 app/hooks/* 와 app/utils/handleSaveMatchResult.ts 로 분리됨.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 
 import type { Match } from './types';
 
@@ -15,6 +14,17 @@ import { BannerSlider } from './components/BannerSlider';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
 import InAppBrowserGuard from './components/InAppBrowserGuard';
+
+// 🛠️ [Day 2 분할 픽스 v2] next/dynamic 제거 — Next.js 14.2 의 "next/dynamic css was called outside a request scope" 버그 회피
+//   App Router 는 일반 import 도 클라이언트 번들에서 자동 코드 스플릿함
+import LockerRoomView from './components/LockerRoomView';
+import OwnerRoomView from './components/OwnerRoomView';
+import { RankingView } from './components/RankingView';
+import { ScheduleView } from './components/ScheduleView';
+import { HistoryView } from './components/HistoryView';
+import { FinanceView } from './components/FinanceView';
+import { AdminView } from './components/AdminView';
+import { MatchEditModal } from './components/MatchEditModal';
 
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
@@ -34,14 +44,6 @@ import { createHandleSaveMatchResult } from './utils/handleSaveMatchResult';
 import { db } from './firebase';
 import { doc, updateDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 
-const LockerRoomView = dynamic(() => import('./components/LockerRoomView'));
-const OwnerRoomView = dynamic(() => import('./components/OwnerRoomView'));
-const RankingView = dynamic(() => import('./components/RankingView').then(mod => mod.RankingView));
-const ScheduleView = dynamic(() => import('./components/ScheduleView').then(mod => mod.ScheduleView));
-const HistoryView = dynamic(() => import('./components/HistoryView').then(mod => mod.HistoryView));
-const FinanceView = dynamic(() => import('./components/FinanceView').then(mod => mod.FinanceView));
-const AdminView = dynamic(() => import('./components/AdminView').then(mod => mod.AdminView));
-const MatchEditModal = dynamic(() => import('./components/MatchEditModal').then(mod => mod.MatchEditModal));
 
 export default function FootballLeagueApp() {
   // ──────────────────────────────────────────────────────────────────

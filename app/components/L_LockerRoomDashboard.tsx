@@ -44,7 +44,28 @@ export default function L_LockerRoomDashboard({
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null); 
 
-  const isDataLoading = !owners || owners.length === 0 || !posts || !activeRankingData || !historyData;
+  // 🛠️ [UI 픽스 v2] 환경별 timeout — production 회귀 방지
+  //   - 프로덕션: 30초 (Firestore 가 1~2초에 응답하므로 timeout 발화 사실상 없음)
+  //   - StackBlitz/webcontainer: 4초 (빠른 폴백)
+  //   - 기존 owners.length===0 체크는 제거 (빈 배열도 "도착 완료" 로 간주)
+  const [forceUnskeleton, setForceUnskeleton] = useState(false);
+  useEffect(() => {
+    const isWebContainerEnv = (() => {
+      if (typeof window === 'undefined') return false;
+      const host = window.location?.hostname || '';
+      let isInIframe = false;
+      try { isInIframe = window.self !== window.top; } catch { isInIframe = true; }
+      return host.includes('webcontainer.io') || host.includes('stackblitz.io') ||
+             host.includes('stackblitz.com') || host.includes('local-credentialless') ||
+             (isInIframe && host.includes('local-'));
+    })();
+    const t = setTimeout(() => setForceUnskeleton(true), isWebContainerEnv ? 4000 : 30000);
+    return () => clearTimeout(t);
+  }, []);
+  // 기본 체크: undefined/null 일 때만 로딩 (빈 배열은 통과)
+  //   원본의 owners.length===0 / !historyData / !activeRankingData 체크는 의도적으로 제거
+  //   (이 체크들이 production 에서도 일시적으로 true 가 되어 스켈레톤이 길어졌던 원인)
+  const isDataLoading = !forceUnskeleton && (owners == null || posts == null);
 
   const activeOrLatestSeason = useMemo(() => {
       if (!seasons || seasons.length === 0) return null;

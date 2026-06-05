@@ -354,7 +354,8 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
               
               {/* 🔥 탭 1: 매치 톡 (채팅방) 영역 */}
               {activeTab === 'TALK' && (
-                  <div className="flex flex-col h-full w-full relative">
+                  // 🛠️ [UI 픽스] h-full → flex-1 min-h-0 — RECORD 탭과 동일한 패턴으로 정렬
+                  <div className="flex flex-col flex-1 min-h-0 w-full relative">
                       
                       <div className="flex-1 overflow-y-auto px-3 sm:px-5 pt-4 pb-4 space-y-5 min-h-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                           {comments.length === 0 ? (
@@ -445,7 +446,8 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
 
               {/* 🔥 탭 2: 기록실 영역 */}
               {activeTab === 'RECORD' && (
-                  <div className="flex flex-col h-full w-full overflow-hidden relative">
+                  // 🛠️ [UI 픽스] h-full → flex-1 min-h-0 — 저장 버튼이 모달 하단 밖으로 밀려나가는 이중 스크롤 버그 해결
+                  <div className="flex flex-col flex-1 min-h-0 w-full overflow-hidden relative">
                       <div className="flex-1 overflow-y-auto p-3 sm:p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                           {!hasRecordPermission ? (
                               <div className="flex flex-col items-center justify-center h-full text-slate-500 pt-8 pb-8">

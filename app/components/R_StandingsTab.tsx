@@ -24,6 +24,8 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [expandedGroupTeam, setExpandedGroupTeam] = useState<string | null>(null);
   const [expandedTotalTeam, setExpandedTotalTeam] = useState<string | null>(null);
+  // 🛠️ [UI 픽스 v2] Season 탭의 BRACKET 접기/펼치기 토글 (TOURNAMENT / LEAGUE_PLAYOFF / CUP 공유)
+  const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
 
   // 🔥 [핵심 픽스] 스탠딩 탭에도 똑똑한 뇌(스마트 파서)를 완벽하게 이식합니다!
   const internalKnockoutStages = useMemo(() => {
@@ -406,52 +408,107 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
     <div className="space-y-12 fade-in">
         
         {currentSeason?.type === 'TOURNAMENT' && (
-            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
-                <div className="min-w-max md:min-w-[760px] px-2">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
-                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
+            <div className="pb-4 border-b border-slate-800/50 mb-8">
+                <div className="overflow-x-auto no-scrollbar bracket-scroll-smooth">
+                    <div className="min-w-max md:min-w-[760px] px-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+                            <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
+                        </div>
+                        {/* 🛠️ [UI 픽스 v2] 접기/펼치기 토글 */}
+                        <div className={`relative transition-all duration-500 ease-out ${bracketExpanded ? 'max-h-[6000px]' : 'max-h-[380px] overflow-hidden'}`}>
+                            <AdminMatching_TournamentBracketView
+                                knockoutStages={internalKnockoutStages}
+                                isUserView={true}
+                            />
+                            {!bracketExpanded && (
+                                <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#020617] via-[#020617]/85 to-transparent pointer-events-none" />
+                            )}
+                        </div>
                     </div>
-                    {/* 🔥 픽스 1: 완벽히 해석된 internalKnockoutStages를 전달! */}
-                    <AdminMatching_TournamentBracketView 
-                        knockoutStages={internalKnockoutStages}
-                        isUserView={true}
-                    />
+                </div>
+                <div className="flex justify-center mt-2">
+                    <button
+                        onClick={() => setBracketExpanded(v => !v)}
+                        className="group bg-slate-900/80 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-indigo-900/20 active:scale-95 flex items-center gap-2"
+                    >
+                        <span>{bracketExpanded ? '▴ 접기' : '▾ 더보기'}</span>
+                        <span className="text-slate-500 group-hover:text-indigo-200 text-[9px] tracking-normal">
+                            {bracketExpanded ? '(BRACKET 닫기)' : '(BRACKET 펼치기)'}
+                        </span>
+                    </button>
                 </div>
             </div>
         )}
 
         {currentSeason?.type === 'LEAGUE_PLAYOFF' && (
-            <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
-                <div className="min-w-max md:min-w-[760px] px-2">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
-                        <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3>
+            <div className="pb-4 border-b border-slate-800/50 mb-8">
+                <div className="overflow-x-auto no-scrollbar bracket-scroll-smooth">
+                    <div className="min-w-max md:min-w-[760px] px-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                            <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">PLAYOFF BRACKET</h3>
+                        </div>
+                        {/* 🛠️ [UI 픽스 v2] 접기/펼치기 토글 */}
+                        <div className={`relative transition-all duration-500 ease-out ${bracketExpanded ? 'max-h-[6000px]' : 'max-h-[380px] overflow-hidden'}`}>
+                            <AdminMatching_LeaguePOBracketView
+                                currentSeason={currentSeason}
+                                owners={owners}
+                                masterTeams={masterTeams}
+                                activeRankingData={computedTeamsData}
+                            />
+                            {!bracketExpanded && (
+                                <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#020617] via-[#020617]/85 to-transparent pointer-events-none" />
+                            )}
+                        </div>
                     </div>
-                    <AdminMatching_LeaguePOBracketView 
-                        currentSeason={currentSeason} 
-                        owners={owners} 
-                        masterTeams={masterTeams} 
-                        activeRankingData={computedTeamsData}
-                    />
+                </div>
+                <div className="flex justify-center mt-2">
+                    <button
+                        onClick={() => setBracketExpanded(v => !v)}
+                        className="group bg-slate-900/80 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-indigo-900/20 active:scale-95 flex items-center gap-2"
+                    >
+                        <span>{bracketExpanded ? '▴ 접기' : '▾ 더보기'}</span>
+                        <span className="text-slate-500 group-hover:text-indigo-200 text-[9px] tracking-normal">
+                            {bracketExpanded ? '(BRACKET 닫기)' : '(BRACKET 펼치기)'}
+                        </span>
+                    </button>
                 </div>
             </div>
         )}
 
         {currentSeason?.type === 'CUP' && internalKnockoutStages && (
-        <div className="overflow-x-auto pb-4 no-scrollbar">
-            <div className={`${internalKnockoutStages.roundOf8 ? 'min-w-[750px]' : 'min-w-[500px]'} px-4`}>
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
-                    <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+            <div className="pb-4 mb-8">
+                <div className="overflow-x-auto no-scrollbar bracket-scroll-smooth">
+                    <div className={`${internalKnockoutStages.roundOf8 ? 'min-w-[750px]' : 'min-w-[500px]'} px-4`}>
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-1.5 h-6 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]"></div>
+                            <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Tournament Bracket</h3>
+                        </div>
+                        {/* 🛠️ [UI 픽스 v2] 접기/펼치기 토글 */}
+                        <div className={`relative transition-all duration-500 ease-out ${bracketExpanded ? 'max-h-[6000px]' : 'max-h-[380px] overflow-hidden'}`}>
+                            <AdminMatching_TournamentBracketView
+                                knockoutStages={internalKnockoutStages}
+                                isUserView={true}
+                            />
+                            {!bracketExpanded && (
+                                <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#020617] via-[#020617]/85 to-transparent pointer-events-none" />
+                            )}
+                        </div>
+                    </div>
                 </div>
-                {/* 🔥 픽스 2: CUP에서도 동일 적용 */}
-                <AdminMatching_TournamentBracketView 
-                    knockoutStages={internalKnockoutStages}
-                    isUserView={true}
-                />
+                <div className="flex justify-center mt-2">
+                    <button
+                        onClick={() => setBracketExpanded(v => !v)}
+                        className="group bg-slate-900/80 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-indigo-900/20 active:scale-95 flex items-center gap-2"
+                    >
+                        <span>{bracketExpanded ? '▴ 접기' : '▾ 더보기'}</span>
+                        <span className="text-slate-500 group-hover:text-indigo-200 text-[9px] tracking-normal">
+                            {bracketExpanded ? '(BRACKET 닫기)' : '(BRACKET 펼치기)'}
+                        </span>
+                    </button>
+                </div>
             </div>
-        </div>
         )}
 
         {currentSeason?.type === 'CUP' && (

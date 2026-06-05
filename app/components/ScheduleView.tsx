@@ -112,6 +112,8 @@ export const ScheduleView = ({
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   // 🛠️ [LiveFeed 픽스] 자체 페치는 폴백으로 유지 — 부모가 owners 안 줄 때만 사용
   const [localOwners, setLocalOwners] = useState<Owner[]>([]);
+  // 🛠️ [UI 픽스] Tournament Bracket 접기/펼치기 토글
+  const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   // 🛠️ [LiveFeed 픽스] 부모 prop 이 비어있지 않으면 그걸 우선 사용 (uid 매핑 포함된 enriched 데이터)
@@ -570,7 +572,8 @@ export const ScheduleView = ({
 
                                                     return (
                                                         <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                            <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                            {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl (MatchCard 내부와 정렬), emerald 호버 강조 */}
+                                                            <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
@@ -590,14 +593,34 @@ export const ScheduleView = ({
         ) : (
             <>
                 {viewMode === 'TOURNAMENT' && (
-                    <div className="overflow-x-auto pb-4 no-scrollbar border-b border-slate-800/50 mb-8">
-                        <div className="min-w-max md:min-w-[760px] px-2">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
-                                <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
+                    <div className="pb-4 border-b border-slate-800/50 mb-8">
+                        <div className="overflow-x-auto no-scrollbar bracket-scroll-smooth">
+                            <div className="min-w-max md:min-w-[760px] px-2">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+                                    <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">TOURNAMENT BRACKET</h3>
+                                </div>
+                                {/* 🛠️ [UI 픽스] 접기/펼치기 토글 — 기본 380px 클리핑, '더보기' 클릭 시 전체 노출 */}
+                                <div className={`relative transition-all duration-500 ease-out ${bracketExpanded ? 'max-h-[6000px]' : 'max-h-[380px] overflow-hidden'}`}>
+                                    {/* 🔥 [핵심 픽스] 스케줄 탭에서도 똑똑한 internalKnockoutStages를 전달! */}
+                                    <AdminMatching_TournamentBracketView knockoutStages={internalKnockoutStages || knockoutStages} isUserView={true} />
+                                    {!bracketExpanded && (
+                                        <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#020617] via-[#020617]/85 to-transparent pointer-events-none" />
+                                    )}
+                                </div>
                             </div>
-                            {/* 🔥 [핵심 픽스] 스케줄 탭에서도 똑똑한 internalKnockoutStages를 전달! */}
-                            <AdminMatching_TournamentBracketView knockoutStages={internalKnockoutStages || knockoutStages} isUserView={true} />
+                        </div>
+                        {/* 🛠️ [UI 픽스] 접기/펼치기 토글 버튼 — 사이트 톤(indigo 액센트 + italic black) */}
+                        <div className="flex justify-center mt-2">
+                            <button
+                                onClick={() => setBracketExpanded(v => !v)}
+                                className="group bg-slate-900/80 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-indigo-900/20 active:scale-95 flex items-center gap-2"
+                            >
+                                <span>{bracketExpanded ? '▴ 접기' : '▾ 더보기'}</span>
+                                <span className="text-slate-500 group-hover:text-indigo-200 text-[9px] tracking-normal">
+                                    {bracketExpanded ? '(BRACKET 닫기)' : '(BRACKET 펼치기)'}
+                                </span>
+                            </button>
                         </div>
                     </div>
                 )}

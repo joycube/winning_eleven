@@ -35,35 +35,68 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
         fetchHistoryRecords();
     }, []);
 
+    // 🛠️ [UI 픽스 v2-fix] resolveOwnerInfo 회귀 수정
+    //   - 정규화(소문자/trim) + 확장 후보 키(docId, id, uid, nickname, legacyName, legacyNames[], mappedOwnerId)
+    //   - photo 폴백 다중화(photo / profileImage / photoUrl / photoURL)
+    //   - owners 미스 시 masterTeamInfo 까지 동일 패턴으로 재탐색
     const resolveOwnerInfo = (rawName: any, rawUid?: any, masterTeamInfo?: any) => {
+        const norm = (v: any) => String(v ?? '').trim().toLowerCase();
         let n = String(rawName || '').trim();
         if (n === 'undefined' || n === 'null') n = '';
-
         let u = String(rawUid || '').trim();
         if (u === 'undefined' || u === 'null') u = '';
 
-        if (u) {
-            const byUid = owners.find(o => o.uid === u || o.docId === u);
-            if (byUid) return { nickname: byUid.nickname, photo: byUid.photo || (byUid as any).profileImage || DEFAULT_AVATAR };
+        const pickPhoto = (o: any): string => {
+            const p = o?.photo || o?.profileImage || o?.photoUrl || o?.photoURL;
+            return (p && String(p).trim() !== '') ? p : '';
+        };
+
+        const matchesKey = (o: any, key: string) => {
+            const k = norm(key);
+            if (!k) return false;
+            const cands: string[] = [];
+            if (o?.docId) cands.push(norm(o.docId));
+            if (o?.id !== undefined && o?.id !== null) cands.push(norm(o.id));
+            if (o?.uid) cands.push(norm(o.uid));
+            if (o?.nickname) cands.push(norm(o.nickname));
+            if (o?.legacyName) cands.push(norm(o.legacyName));
+            if (Array.isArray(o?.legacyNames)) o.legacyNames.forEach((x: string) => x && cands.push(norm(x)));
+            if (o?.mappedOwnerId) cands.push(norm(o.mappedOwnerId));
+            return cands.includes(k);
+        };
+
+        const findOwner = (key: string) => key ? owners.find(o => matchesKey(o, key)) : undefined;
+
+        // 1) UID 우선 매칭
+        const byUid = findOwner(u);
+        if (byUid) {
+            const ph = pickPhoto(byUid);
+            return { nickname: byUid.nickname, photo: ph || DEFAULT_AVATAR };
         }
 
-        if (n) {
-            const byName = owners.find(o => o.nickname === n || o.legacyName === n || (((o as any).legacyNames || []) as any[]).includes(n) || o.uid === n || o.docId === n);
-            if (byName) return { nickname: byName.nickname, photo: byName.photo || (byName as any).profileImage || DEFAULT_AVATAR };
+        // 2) 이름 매칭
+        const byName = findOwner(n);
+        if (byName) {
+            const ph = pickPhoto(byName);
+            return { nickname: byName.nickname, photo: ph || DEFAULT_AVATAR };
         }
 
+        // 3) masterTeamInfo 폴백
         if (masterTeamInfo) {
             const mName = String(masterTeamInfo.ownerName || '').trim();
             const mUid = String(masterTeamInfo.ownerUid || '').trim();
-            
-            if (mUid) {
-                const byMasterUid = owners.find(o => o.uid === mUid || o.docId === mUid);
-                if (byMasterUid) return { nickname: byMasterUid.nickname, photo: byMasterUid.photo || (byMasterUid as any).profileImage || DEFAULT_AVATAR };
+            const byMUid = findOwner(mUid);
+            if (byMUid) {
+                const ph = pickPhoto(byMUid);
+                return { nickname: byMUid.nickname, photo: ph || DEFAULT_AVATAR };
             }
             if (mName && mName !== 'undefined') {
-                const byMasterName = owners.find(o => o.nickname === mName || o.legacyName === mName || (((o as any).legacyNames || []) as any[]).includes(mName) || o.uid === mName);
-                if (byMasterName) return { nickname: byMasterName.nickname, photo: byMasterName.photo || (byMasterName as any).profileImage || DEFAULT_AVATAR };
-                return { nickname: mName, photo: DEFAULT_AVATAR }; 
+                const byMName = findOwner(mName);
+                if (byMName) {
+                    const ph = pickPhoto(byMName);
+                    return { nickname: byMName.nickname, photo: ph || DEFAULT_AVATAR };
+                }
+                return { nickname: mName, photo: DEFAULT_AVATAR };
             }
         }
 

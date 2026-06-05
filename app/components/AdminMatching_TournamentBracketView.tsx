@@ -83,14 +83,21 @@ export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView
         );
     };
 
+    // 🛠️ [UI 픽스 v2] 이중 overflow-x-auto 제거 — 부모 컨테이너가 단일 스크롤 핸들링
     return (
-        <div className="overflow-x-auto pb-8 no-scrollbar">
+        <div className="pb-8">
             <style dangerouslySetInnerHTML={{ __html: `
                 .bracket-tree { display: inline-flex; align-items: center; justify-content: flex-start; gap: 40px; padding: 10px 0 20px 4px; min-width: max-content; }
                 .bracket-column { display: flex; flex-direction: column; justify-content: center; gap: 40px; position: relative; }
                 .bracket-column-wide { display: flex; flex-direction: column; justify-content: space-around; gap: 80px; position: relative; }
+                /* 🛠️ [UI 픽스 v2] BRACKET 부드러운 가로 스크롤 (iOS 모멘텀 + scroll-behavior smooth) */
+                .bracket-scroll-smooth {
+                    -webkit-overflow-scrolling: touch;
+                    scroll-behavior: smooth;
+                    overscroll-behavior-x: contain;
+                }
             `}} />
-            <div className="bracket-tree no-scrollbar">
+            <div className="bracket-tree">
 
                 {/* 1열: 8강 */}
                 {show8 && knockoutStages.roundOf8 && (
