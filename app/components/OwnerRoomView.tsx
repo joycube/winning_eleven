@@ -344,33 +344,87 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         return map;
     })();
 
-    const getMyBestStats = () => {
-        const topTeams = (mergedHistory?.teams || [])
-            .filter((t:any) => myIdentities.includes(String(t.ownerId)) || myIdentities.includes(String(t.ownerName)))
-            .map((t:any) => {
-                const teamData = masterTeams?.find((m:any) => m.name === t.name);
-                const total = (t.win || 0) + (t.draw || 0) + (t.loss || 0);
-                return {
-                    name: t.name, w: t.win || 0, d: t.draw || 0, l: t.loss || 0, pts: t.points || t.pts || 0,
-                    gf: t.gf || 0, ga: t.ga || 0, gd: (t.gf || 0) - (t.ga || 0),
-                    logo: getRealLogo(t.name, t.logo || teamData?.logo), tier: teamData?.tier || 'C',
-                    winRate: total > 0 ? (((t.win || 0) / total) * 100).toFixed(1) : '0.0'
+    // 🛠️ [v3.2 P0 픽스] MyBestTeam / TopScorer / TopAssist 를 myMatches 로 직접 집계
+    //   기존: mergedHistory 만 사용 → history_records 박제된 종료 시즌만 합산 → 진행 중 시즌 누락
+    //   수정: myMatches (seasons 전체 매치) 로 직접 집계 → 진행 중 + 종료 시즌의 완료 매치 모두 포함
+    //   DB 부담: 0 (이미 메모리에 있는 데이터 한 번 더 순회만)
+    const hasActiveSeason = useMemo(() => {
+        return (seasons || []).some((s: any) => {
+            const status = String(s?.status || '').toUpperCase();
+            return status === 'ACTIVE' || status === 'IN_PROGRESS' || status === 'OPEN' || (!status && s?.rounds && s.rounds.length > 0);
+        });
+    }, [seasons]);
+
+    const { topTeams, topScorers, topAssists } = useMemo(() => {
+        const teamStats: Record<string, any> = {};
+        const playerStats: Record<string, any> = {};
+
+        myMatches.forEach((m: any) => {
+            const isHome = m.amIHome;
+            const myTeam = isHome ? m.home : m.away;
+            if (!myTeam || myTeam === 'TBD' || myTeam === 'BYE') return;
+            const myTeamLogo = isHome ? m.homeLogo : m.awayLogo;
+            const myScore = Number((isHome ? m.homeScore : m.awayScore) || 0);
+            const opScore = Number((isHome ? m.awayScore : m.homeScore) || 0);
+
+            // ── 팀 집계 ──
+            if (!teamStats[myTeam]) {
+                const teamData = masterTeams?.find((mt: any) => mt.name === myTeam);
+                teamStats[myTeam] = {
+                    name: myTeam,
+                    logo: getRealLogo(myTeam, myTeamLogo || teamData?.logo),
+                    tier: teamData?.tier || 'C',
+                    w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0,
                 };
-            }).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
+            }
+            const ts = teamStats[myTeam];
+            ts.gf += myScore; ts.ga += opScore;
+            if (myScore > opScore) { ts.w += 1; ts.pts += 3; }
+            else if (myScore < opScore) { ts.l += 1; }
+            else { ts.d += 1; ts.pts += 1; }
 
-        const myPlayers = (mergedHistory?.players || [])
-            .filter((p:any) => myIdentities.includes(String(p.ownerId)) || myIdentities.includes(String(p.owner)));
-        
-        const topScorers = [...myPlayers].filter((p:any) => (p.goals || 0) > 0).sort((a:any, b:any) => b.goals - a.goals)
-            .map((p:any) => ({ name: p.name, count: p.goals, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
+            // ── 선수 집계 (이 매치에서 내 팀의 득점/어시스트) ──
+            const myScorersArr  = isHome ? (m.homeScorers || []) : (m.awayScorers || []);
+            const myAssistsArr  = isHome ? (m.homeAssists || []) : (m.awayAssists || []);
 
-        const topAssists = [...myPlayers].filter((p:any) => (p.assists || 0) > 0).sort((a:any, b:any) => b.assists - a.assists)
-            .map((p:any) => ({ name: p.name, count: p.assists, team: p.team, logo: getRealLogo(p.team, p.teamLogo) })).slice(0, 5);
+            const processPlayer = (list: any[], type: 'goals' | 'assists') => {
+                if (!Array.isArray(list)) return;
+                list.forEach((s: any) => {
+                    const pName = typeof s === 'string' ? s : s.name;
+                    const count = typeof s === 'string' ? 1 : (s.count || 1);
+                    if (!pName) return;
+                    const key = `${pName}__${myTeam}`;
+                    if (!playerStats[key]) {
+                        playerStats[key] = { name: pName, team: myTeam, logo: getRealLogo(myTeam, myTeamLogo), goals: 0, assists: 0 };
+                    }
+                    playerStats[key][type] += count;
+                });
+            };
+            processPlayer(myScorersArr, 'goals');
+            processPlayer(myAssistsArr, 'assists');
+        });
 
-        return { topTeams, topScorers, topAssists };
-    };
+        const teamsArr = Object.values(teamStats).map((t: any) => {
+            const total = t.w + t.d + t.l;
+            return {
+                ...t,
+                gd: t.gf - t.ga,
+                winRate: total > 0 ? ((t.w / total) * 100).toFixed(1) : '0.0',
+            };
+        }).sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
 
-    const { topTeams, topScorers, topAssists } = getMyBestStats();
+        const scorersArr = Object.values(playerStats)
+            .filter((p: any) => p.goals > 0)
+            .map((p: any) => ({ name: p.name, count: p.goals, team: p.team, logo: p.logo }))
+            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+
+        const assistsArr = Object.values(playerStats)
+            .filter((p: any) => p.assists > 0)
+            .map((p: any) => ({ name: p.name, count: p.assists, team: p.team, logo: p.logo }))
+            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+
+        return { topTeams: teamsArr, topScorers: scorersArr, topAssists: assistsArr };
+    }, [myMatches, masterTeams]);
 
     const availableTeams = masterTeams || []; 
     const uniqueRegions = Array.from(new Set(availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean))).sort() as string[];
@@ -596,10 +650,15 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
                 
                 <div className="w-full flex flex-col h-full">
-                    <div className="flex border-b border-slate-800/80 pb-3 mb-2">
+                    <div className="flex border-b border-slate-800/80 pb-3 mb-2 items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-[13px] sm:text-[14px] font-black tracking-widest text-slate-200 leading-none uppercase">
                             <div className="w-1.5 h-3 bg-blue-500 rounded-full"></div> MY BEST TEAMS
                         </div>
+                        {hasActiveSeason && (
+                            <span className="flex items-center gap-1 text-[9px] font-black text-rose-400 bg-rose-950/40 border border-rose-900/60 px-2 py-[2px] rounded-full italic">
+                                <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span> LIVE 포함
+                            </span>
+                        )}
                     </div>
                     
                     <div className="flex-1 flex flex-col pt-1">
@@ -683,15 +742,22 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                 </div>
 
                 <div className="w-full flex flex-col h-full">
-                    <div className="flex gap-4 border-b border-slate-800/80 pb-2 mb-2 w-full">
-                        <button onClick={() => { setPlayerTab('GOAL'); setExpandedPlayer(null); }} className={`pb-2 pr-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                            ⚽ TOP SCORERS
-                            {playerTab === 'GOAL' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-yellow-400" />}
-                        </button>
-                        <button onClick={() => { setPlayerTab('ASSIST'); setExpandedPlayer(null); }} className={`pb-2 px-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'ASSIST' ? 'text-red-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                            🅰️ TOP ASSISTS
-                            {playerTab === 'ASSIST' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-red-400" />}
-                        </button>
+                    <div className="flex gap-4 border-b border-slate-800/80 pb-2 mb-2 w-full items-center justify-between">
+                        <div className="flex gap-4">
+                            <button onClick={() => { setPlayerTab('GOAL'); setExpandedPlayer(null); }} className={`pb-2 pr-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'GOAL' ? 'text-yellow-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                                ⚽ TOP SCORERS
+                                {playerTab === 'GOAL' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-yellow-400" />}
+                            </button>
+                            <button onClick={() => { setPlayerTab('ASSIST'); setExpandedPlayer(null); }} className={`pb-2 px-2 text-[12px] sm:text-[13px] font-black tracking-widest transition-all relative flex items-center gap-1.5 uppercase ${playerTab === 'ASSIST' ? 'text-red-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                                🅰️ TOP ASSISTS
+                                {playerTab === 'ASSIST' && <span className="absolute bottom-[-9px] left-0 w-full h-[2px] bg-red-400" />}
+                            </button>
+                        </div>
+                        {hasActiveSeason && (
+                            <span className="flex items-center gap-1 text-[9px] font-black text-rose-400 bg-rose-950/40 border border-rose-900/60 px-2 py-[2px] rounded-full italic shrink-0">
+                                <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span> LIVE 포함
+                            </span>
+                        )}
                     </div>
 
                     <div className="flex-1 flex flex-col pt-1 w-full">
