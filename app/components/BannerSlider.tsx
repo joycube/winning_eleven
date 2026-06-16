@@ -34,22 +34,21 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
     if (vId) {
         const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
-        // 🛠️ 좌우 레터박스에 동일 영상 썸네일 블러 BG. 영상은 원본 16:9 비율 그대로 중앙 정렬.
         const thumbUrl = `https://img.youtube.com/vi/${vId}/maxresdefault.jpg`;
 
         return (
             <div className="w-full h-full bg-black relative overflow-hidden">
-                {/* 1. 블러 처리된 썸네일 배경 — 좌우 레터박스 자리만 채움 */}
+                {/* 1. 블러 썸네일 배경 — 데스크탑 레터박스 영역을 채움 */}
                 <div
                     aria-hidden="true"
                     className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
                     style={{ backgroundImage: `url(${thumbUrl})` }}
                 />
-                {/* 2. iframe — 16:9 비율 유지 중앙 정렬 (원본 그대로) */}
+                {/* 2. iframe — 모바일은 가로 풀 (위아래 살짝 잘림), 데스크탑은 16:9 비율 유지 중앙 정렬 */}
                 <div className="absolute inset-0 flex items-center justify-center">
                     <iframe
                         src={embedUrl}
-                        className="block h-full max-w-full pointer-events-none shadow-2xl"
+                        className="block w-full sm:w-auto sm:h-full pointer-events-none shadow-2xl"
                         style={{ aspectRatio: '16/9' }}
                         allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
                         title={b.description || 'Banner Video'}
@@ -60,7 +59,7 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
             </div>
         );
     } else {
-        // 🛠️ 이미지도 동일 — 원본 비율 (object-contain) + 좌우 레터박스에 같은 이미지 블러 BG
+        // 🛠️ 모바일은 object-cover (가로 가득, 위아래 살짝 잘림), sm 이상은 object-contain + 블러 BG
         return (
             <div className="w-full h-full bg-black relative overflow-hidden">
                 {/* 1. 블러 처리된 동일 이미지 배경 */}
@@ -69,14 +68,14 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
                     className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
                     style={{ backgroundImage: `url(${url})` }}
                 />
-                {/* 2. 원본 이미지 — Next/Image fill + object-contain 으로 비율 유지 중앙 정렬 */}
+                {/* 2. 본 이미지 — 모바일 cover / 데스크탑 contain */}
                 <Image
                     src={url}
                     alt={b.description || 'Banner'}
                     fill
                     priority
                     sizes="(max-width: 768px) 100vw, 1200px"
-                    className="object-contain"
+                    className="object-cover sm:object-contain"
                 />
                 {/* 3. 살짝 다크 그라데이션 (상단 공지 가독성용) */}
                 <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
