@@ -18,11 +18,22 @@ interface RPlayersTabProps {
 //   REGULAR = 정규/조별만 / PLAYOFF = 토너먼트/PO 만
 type StageMode = 'TOTAL' | 'REGULAR' | 'PLAYOFF';
 
+// 🛠️ [v3.2] Load More — 기본 10명, 더보기마다 +10명
+const PLAYER_PAGE_SIZE = 10;
+
 export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   // 🛠️ [v3] TOTAL 탭이 기본. TOTAL/REGULAR/PLAYOFF 세 모드 지원
   const [rankPlayerStageMode, setRankPlayerStageMode] = useState<StageMode>('TOTAL');
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+  // 🛠️ [v3.2] 현재 노출 인원 수
+  const [visibleCount, setVisibleCount] = useState<number>(PLAYER_PAGE_SIZE);
+
+  // 모드 (TOTAL/REGULAR/PLAYOFF, GOAL/ASSIST) 변경 시 카운트 리셋 — 새 리스트는 10명부터 다시
+  React.useEffect(() => {
+      setVisibleCount(PLAYER_PAGE_SIZE);
+      setExpandedPlayer(null);
+  }, [rankPlayerStageMode, rankPlayerMode]);
 
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
     try {
@@ -202,9 +213,8 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
               <tbody className="divide-y divide-slate-800/50">
                 {rankedPlayers.length === 0 ? (
                     <tr><td colSpan={4} className="p-12 text-center text-slate-500 font-bold italic">기록이 없습니다.</td></tr>
-                ) : rankedPlayers.map((p: any, i: number) => {
-                    // 🔥 [수정] 기존 .slice(0, 20) 제거 — 득점/어시스트가 1개라도 있는
-                    //   모든 선수를 노출 (시즌 후반에도 모든 기록자 표시 보장)
+                ) : rankedPlayers.slice(0, visibleCount).map((p: any, i: number) => {
+                    // 🛠️ [v3.2] Load More — 기본 10명, 더보기마다 +10명씩 추가 노출
                     if(!p) return null;
                     const isTop3 = p.rank <= 3;
                     const isExpanded = expandedPlayer === p.name;
@@ -285,6 +295,28 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                 })}
               </tbody>
           </table>
+          {/* 🛠️ [v3.2] Load More — 기본 10명, 추가 +10명/click */}
+          {rankedPlayers.length > visibleCount && (
+              <div className="flex justify-center py-3 border-t border-slate-800/50 bg-[#0a1322]">
+                  <button
+                      onClick={() => setVisibleCount(c => c + PLAYER_PAGE_SIZE)}
+                      className={`bg-slate-900 text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg active:scale-95 flex items-center gap-2 border ${
+                          rankPlayerMode === 'GOAL'
+                              ? 'border-yellow-500/40 hover:border-yellow-400 text-yellow-300 hover:bg-yellow-900/30 hover:text-white shadow-yellow-900/20'
+                              : 'border-blue-500/40 hover:border-blue-400 text-blue-300 hover:bg-blue-900/30 hover:text-white shadow-blue-900/20'
+                      }`}
+                  >
+                      <span>▾ 더보기</span>
+                      <span className="text-slate-500 text-[9px] tracking-normal">({rankedPlayers.length - visibleCount}명 더)</span>
+                  </button>
+              </div>
+          )}
+          {/* 진행률 안내 — 모두 노출되면 표시 */}
+          {rankedPlayers.length > PLAYER_PAGE_SIZE && rankedPlayers.length <= visibleCount && (
+              <div className="flex justify-center py-2 border-t border-slate-800/50 bg-[#0a1322]/50">
+                  <span className="text-[10px] text-slate-500 italic">전체 {rankedPlayers.length}명 모두 표시 중</span>
+              </div>
+          )}
       </div>
     </div>
   );
