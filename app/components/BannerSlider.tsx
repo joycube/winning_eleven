@@ -34,39 +34,53 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
     if (vId) {
         const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
-        // 🛠️ 태블릿/PC 레터박스 축소 — 썸네일 블러 배경 채움 + iframe 중앙 정렬
+        // 🛠️ 좌우 레터박스에 동일 영상 썸네일 블러 BG. 영상은 원본 16:9 비율 그대로 중앙 정렬.
         const thumbUrl = `https://img.youtube.com/vi/${vId}/maxresdefault.jpg`;
 
         return (
             <div className="w-full h-full bg-black relative overflow-hidden">
-                {/* 1. 블러 처리된 썸네일 배경 — 레터박스 자리를 채움 */}
+                {/* 1. 블러 처리된 썸네일 배경 — 좌우 레터박스 자리만 채움 */}
                 <div
                     aria-hidden="true"
-                    className="absolute inset-0 bg-cover bg-center scale-110 blur-2xl opacity-60"
+                    className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
                     style={{ backgroundImage: `url(${thumbUrl})` }}
                 />
-                {/* 2. iframe — 16:9 비율 유지하면서 컨테이너에 cover 처리 (좌우 잘림 허용, 중앙은 보존) */}
-                <iframe
-                    src={embedUrl}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.78vh] min-w-full h-[56.25vw] min-h-full pointer-events-none opacity-90"
-                    allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
-                    title={b.description || 'Banner Video'}
-                />
-                {/* 3. 클릭 차단 + 약간의 다크 그라데이션 */}
-                <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/10 via-transparent to-black/30" />
+                {/* 2. iframe — 16:9 비율 유지 중앙 정렬 (원본 그대로) */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <iframe
+                        src={embedUrl}
+                        className="block h-full max-w-full pointer-events-none shadow-2xl"
+                        style={{ aspectRatio: '16/9' }}
+                        allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
+                        title={b.description || 'Banner Video'}
+                    />
+                </div>
+                {/* 3. 클릭 차단 + 살짝 다크 그라데이션 (상단 공지 가독성용) */}
+                <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/30 via-transparent to-black/30" />
             </div>
         );
     } else {
-        // 🔥 [수정] 무거운 원본 <img> 태그 대신 Next.js <Image> 컴포넌트 적용 (자동 압축, 리사이징, 최우선 로딩)
+        // 🛠️ 이미지도 동일 — 원본 비율 (object-contain) + 좌우 레터박스에 같은 이미지 블러 BG
         return (
-            <Image 
-                src={url} 
-                alt={b.description || 'Banner'} 
-                fill // 부모 요소를 꽉 채우도록 설정 (기존 w-full h-full 대체)
-                priority // 최상단 배너이므로 브라우저가 최우선으로 로딩하도록 강제
-                sizes="(max-width: 768px) 100vw, 1200px" // 모바일과 PC 화면에 맞게 최적화된 용량만 다운로드
-                className="object-cover opacity-60" 
-            />
+            <div className="w-full h-full bg-black relative overflow-hidden">
+                {/* 1. 블러 처리된 동일 이미지 배경 */}
+                <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
+                    style={{ backgroundImage: `url(${url})` }}
+                />
+                {/* 2. 원본 이미지 — Next/Image fill + object-contain 으로 비율 유지 중앙 정렬 */}
+                <Image
+                    src={url}
+                    alt={b.description || 'Banner'}
+                    fill
+                    priority
+                    sizes="(max-width: 768px) 100vw, 1200px"
+                    className="object-contain"
+                />
+                {/* 3. 살짝 다크 그라데이션 (상단 공지 가독성용) */}
+                <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
+            </div>
         );
     }
   };
