@@ -60,6 +60,112 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         return Array.from(ids);
     }, [user, myOwnerData]);
 
+    // 🛠️ [v3.2 P0 픽스] 라이브 베스트 통계 — early return 이전에 배치 (React Hooks 규칙 준수)
+    //   seasons (진행 중 + 종료 시즌) 의 모든 완료 매치를 직접 순회해서 팀/선수 누적
+    //   DB 부담 0건 — 이미 메모리에 있는 데이터 한 번 더 훑는 작업
+    const liveBestStats = useMemo(() => {
+        const empty = { topTeams: [] as any[], topScorers: [] as any[], topAssists: [] as any[], hasActiveSeason: false };
+        if (!seasons || !Array.isArray(seasons) || !myIdentities || myIdentities.length === 0) return empty;
+
+        const localGetLogo = (teamName: string, defaultLogo: string) => {
+            if (!teamName) return defaultLogo || FALLBACK_IMG;
+            const matched = masterTeams?.find((m: any) =>
+                (m.name || '').toLowerCase() === teamName.toLowerCase() ||
+                (m.teamName || '').toLowerCase() === teamName.toLowerCase()
+            );
+            return matched?.logo || defaultLogo || FALLBACK_IMG;
+        };
+
+        const hasActiveSeason = (seasons || []).some((s: any) => {
+            const status = String(s?.status || '').toUpperCase();
+            return status === 'ACTIVE' || status === 'IN_PROGRESS' || status === 'OPEN' || (!status && s?.rounds && s.rounds.length > 0);
+        });
+
+        // 매치 수집 (getMyMatches 와 동일 로직 — 인라인)
+        const matches: any[] = [];
+        const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
+        const addMatch = (m: any) => {
+            if (!m) return;
+            const amIHome = myIdentities.includes(String(m.homeOwnerUid)) || myIdentities.includes(String(m.homeOwner));
+            const amIAway = myIdentities.includes(String(m.awayOwnerUid)) || myIdentities.includes(String(m.awayOwner));
+            const isMyMatch = amIHome || amIAway;
+            const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
+            if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
+                const matchKey = `${m.home}_${m.away}_${m.homeScore}_${m.awayScore}_${m.stage || ''}`;
+                if (!matches.find((ext: any) => ext._key === matchKey)) {
+                    matches.push({ ...m, amIHome, _key: matchKey });
+                }
+            }
+        };
+        sortedSeasons.forEach((s: any) => {
+            s.rounds?.forEach((r: any) => r.matches?.forEach(addMatch));
+            s.playoffs?.forEach((p: any) => { if (p.matches) p.matches.forEach(addMatch); else addMatch(p); });
+            s.brackets?.forEach((b: any) => { if (b.matches) b.matches.forEach(addMatch); else addMatch(b); });
+        });
+
+        // 팀/선수 집계
+        const teamStats: Record<string, any> = {};
+        const playerStats: Record<string, any> = {};
+        matches.forEach((m: any) => {
+            const isHome = m.amIHome;
+            const myTeam = isHome ? m.home : m.away;
+            if (!myTeam || myTeam === 'TBD' || myTeam === 'BYE') return;
+            const myTeamLogo = isHome ? m.homeLogo : m.awayLogo;
+            const myScore = Number((isHome ? m.homeScore : m.awayScore) || 0);
+            const opScore = Number((isHome ? m.awayScore : m.homeScore) || 0);
+
+            if (!teamStats[myTeam]) {
+                const teamData = masterTeams?.find((mt: any) => mt.name === myTeam);
+                teamStats[myTeam] = {
+                    name: myTeam,
+                    logo: localGetLogo(myTeam, myTeamLogo || teamData?.logo),
+                    tier: teamData?.tier || 'C',
+                    w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0,
+                };
+            }
+            const ts = teamStats[myTeam];
+            ts.gf += myScore; ts.ga += opScore;
+            if (myScore > opScore) { ts.w += 1; ts.pts += 3; }
+            else if (myScore < opScore) { ts.l += 1; }
+            else { ts.d += 1; ts.pts += 1; }
+
+            const processPlayer = (list: any[], type: 'goals' | 'assists') => {
+                if (!Array.isArray(list)) return;
+                list.forEach((s: any) => {
+                    const pName = typeof s === 'string' ? s : s.name;
+                    const count = typeof s === 'string' ? 1 : (s.count || 1);
+                    if (!pName) return;
+                    const key = `${pName}__${myTeam}`;
+                    if (!playerStats[key]) {
+                        playerStats[key] = { name: pName, team: myTeam, logo: localGetLogo(myTeam, myTeamLogo), goals: 0, assists: 0 };
+                    }
+                    playerStats[key][type] += count;
+                });
+            };
+            processPlayer(isHome ? (m.homeScorers || []) : (m.awayScorers || []), 'goals');
+            processPlayer(isHome ? (m.homeAssists || []) : (m.awayAssists || []), 'assists');
+        });
+
+        const teamsArr = Object.values(teamStats).map((t: any) => {
+            const total = t.w + t.d + t.l;
+            return { ...t, gd: t.gf - t.ga, winRate: total > 0 ? ((t.w / total) * 100).toFixed(1) : '0.0' };
+        }).sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
+
+        const scorersArr = Object.values(playerStats)
+            .filter((p: any) => p.goals > 0)
+            .map((p: any) => ({ name: p.name, count: p.goals, team: p.team, logo: p.logo }))
+            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+
+        const assistsArr = Object.values(playerStats)
+            .filter((p: any) => p.assists > 0)
+            .map((p: any) => ({ name: p.name, count: p.assists, team: p.team, logo: p.logo }))
+            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+
+        return { topTeams: teamsArr, topScorers: scorersArr, topAssists: assistsArr, hasActiveSeason };
+    }, [seasons, myIdentities, masterTeams]);
+
+    const { topTeams, topScorers, topAssists, hasActiveSeason } = liveBestStats;
+
     if (!user) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] text-center animate-in fade-in zoom-in-95 mt-10">
@@ -344,87 +450,8 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         return map;
     })();
 
-    // 🛠️ [v3.2 P0 픽스] MyBestTeam / TopScorer / TopAssist 를 myMatches 로 직접 집계
-    //   기존: mergedHistory 만 사용 → history_records 박제된 종료 시즌만 합산 → 진행 중 시즌 누락
-    //   수정: myMatches (seasons 전체 매치) 로 직접 집계 → 진행 중 + 종료 시즌의 완료 매치 모두 포함
-    //   DB 부담: 0 (이미 메모리에 있는 데이터 한 번 더 순회만)
-    const hasActiveSeason = useMemo(() => {
-        return (seasons || []).some((s: any) => {
-            const status = String(s?.status || '').toUpperCase();
-            return status === 'ACTIVE' || status === 'IN_PROGRESS' || status === 'OPEN' || (!status && s?.rounds && s.rounds.length > 0);
-        });
-    }, [seasons]);
-
-    const { topTeams, topScorers, topAssists } = useMemo(() => {
-        const teamStats: Record<string, any> = {};
-        const playerStats: Record<string, any> = {};
-
-        myMatches.forEach((m: any) => {
-            const isHome = m.amIHome;
-            const myTeam = isHome ? m.home : m.away;
-            if (!myTeam || myTeam === 'TBD' || myTeam === 'BYE') return;
-            const myTeamLogo = isHome ? m.homeLogo : m.awayLogo;
-            const myScore = Number((isHome ? m.homeScore : m.awayScore) || 0);
-            const opScore = Number((isHome ? m.awayScore : m.homeScore) || 0);
-
-            // ── 팀 집계 ──
-            if (!teamStats[myTeam]) {
-                const teamData = masterTeams?.find((mt: any) => mt.name === myTeam);
-                teamStats[myTeam] = {
-                    name: myTeam,
-                    logo: getRealLogo(myTeam, myTeamLogo || teamData?.logo),
-                    tier: teamData?.tier || 'C',
-                    w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0,
-                };
-            }
-            const ts = teamStats[myTeam];
-            ts.gf += myScore; ts.ga += opScore;
-            if (myScore > opScore) { ts.w += 1; ts.pts += 3; }
-            else if (myScore < opScore) { ts.l += 1; }
-            else { ts.d += 1; ts.pts += 1; }
-
-            // ── 선수 집계 (이 매치에서 내 팀의 득점/어시스트) ──
-            const myScorersArr  = isHome ? (m.homeScorers || []) : (m.awayScorers || []);
-            const myAssistsArr  = isHome ? (m.homeAssists || []) : (m.awayAssists || []);
-
-            const processPlayer = (list: any[], type: 'goals' | 'assists') => {
-                if (!Array.isArray(list)) return;
-                list.forEach((s: any) => {
-                    const pName = typeof s === 'string' ? s : s.name;
-                    const count = typeof s === 'string' ? 1 : (s.count || 1);
-                    if (!pName) return;
-                    const key = `${pName}__${myTeam}`;
-                    if (!playerStats[key]) {
-                        playerStats[key] = { name: pName, team: myTeam, logo: getRealLogo(myTeam, myTeamLogo), goals: 0, assists: 0 };
-                    }
-                    playerStats[key][type] += count;
-                });
-            };
-            processPlayer(myScorersArr, 'goals');
-            processPlayer(myAssistsArr, 'assists');
-        });
-
-        const teamsArr = Object.values(teamStats).map((t: any) => {
-            const total = t.w + t.d + t.l;
-            return {
-                ...t,
-                gd: t.gf - t.ga,
-                winRate: total > 0 ? ((t.w / total) * 100).toFixed(1) : '0.0',
-            };
-        }).sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
-
-        const scorersArr = Object.values(playerStats)
-            .filter((p: any) => p.goals > 0)
-            .map((p: any) => ({ name: p.name, count: p.goals, team: p.team, logo: p.logo }))
-            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
-
-        const assistsArr = Object.values(playerStats)
-            .filter((p: any) => p.assists > 0)
-            .map((p: any) => ({ name: p.name, count: p.assists, team: p.team, logo: p.logo }))
-            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
-
-        return { topTeams: teamsArr, topScorers: scorersArr, topAssists: assistsArr };
-    }, [myMatches, masterTeams]);
+    // 🛠️ [v3.2 P0 픽스] topTeams/topScorers/topAssists/hasActiveSeason 은 컴포넌트 상단의 liveBestStats useMemo 에서 이미 계산됨
+    //   (React Hooks 규칙상 early return 이전에 위치해야 하므로 옮김)
 
     const availableTeams = masterTeams || []; 
     const uniqueRegions = Array.from(new Set(availableTeams.filter((t:any) => (t.category || 'CLUB') === editCategory).map((t:any) => t.region).filter(Boolean))).sort() as string[];
