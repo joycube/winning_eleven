@@ -24,6 +24,17 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
     const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
     const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
+    // 🛠️ [v3.3] 더보기/접기 — 5단위 +5/-5
+    const [bestTeamsVisible, setBestTeamsVisible] = useState<number>(5);
+    const [scorersVisible, setScorersVisible] = useState<number>(5);
+    const [assistsVisible, setAssistsVisible] = useState<number>(5);
+    // GOAL ↔ ASSIST 탭 전환 시 카운트 리셋
+    useEffect(() => {
+        setScorersVisible(5);
+        setAssistsVisible(5);
+        setExpandedPlayer(null);
+    }, [playerTab]);
+
     const [uidDict, setUidDict] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -146,20 +157,21 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             processPlayer(isHome ? (m.homeAssists || []) : (m.awayAssists || []), 'assists');
         });
 
+        // 🛠️ [v3.3] slice(0, 5) 제거 — 전체 데이터를 반환하고 렌더 시점에 visibleCount 로 자른다 (더보기/접기 패턴)
         const teamsArr = Object.values(teamStats).map((t: any) => {
             const total = t.w + t.d + t.l;
             return { ...t, gd: t.gf - t.ga, winRate: total > 0 ? ((t.w / total) * 100).toFixed(1) : '0.0' };
-        }).sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd).slice(0, 5);
+        }).sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd);
 
         const scorersArr = Object.values(playerStats)
             .filter((p: any) => p.goals > 0)
             .map((p: any) => ({ name: p.name, count: p.goals, team: p.team, logo: p.logo }))
-            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+            .sort((a: any, b: any) => b.count - a.count);
 
         const assistsArr = Object.values(playerStats)
             .filter((p: any) => p.assists > 0)
             .map((p: any) => ({ name: p.name, count: p.assists, team: p.team, logo: p.logo }))
-            .sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+            .sort((a: any, b: any) => b.count - a.count);
 
         return { topTeams: teamsArr, topScorers: scorersArr, topAssists: assistsArr, hasActiveSeason };
     }, [seasons, myIdentities, masterTeams]);
@@ -700,7 +712,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                                     </div>
                                 </div>
                                 
-                                {topTeams.map((team:any, idx:number) => {
+                                {topTeams.slice(0, bestTeamsVisible).map((team:any, idx:number) => {
                                     const isExpanded = expandedTeam === team.name;
                                     return (
                                         <React.Fragment key={idx}>
@@ -761,6 +773,28 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                                         </React.Fragment>
                                     );
                                 })}
+                                {/* 🛠️ [v3.3] MyBestTeam 더보기/접기 — 1단계 5팀 */}
+                                {topTeams.length > 5 && (
+                                    <div className="relative flex items-center justify-center py-2">
+                                        {topTeams.length > bestTeamsVisible && (
+                                            <button
+                                                onClick={() => setBestTeamsVisible(c => Math.min(c + 5, topTeams.length))}
+                                                className="bg-slate-900/80 border border-blue-500/40 hover:border-blue-400 text-blue-300 hover:text-white text-[10px] font-black italic tracking-widest uppercase px-4 py-1.5 rounded-full transition-all shadow-md active:scale-95"
+                                            >
+                                                ▾ 더보기 <span className="text-slate-500 ml-1">({topTeams.length - bestTeamsVisible}팀 더)</span>
+                                            </button>
+                                        )}
+                                        {bestTeamsVisible > 5 && (
+                                            <button
+                                                onClick={() => setBestTeamsVisible(c => Math.max(c - 5, 5))}
+                                                className="absolute right-1 text-[9px] font-black tracking-widest text-slate-400 hover:text-white bg-slate-900/60 hover:bg-slate-800 border border-slate-700 px-2 py-1 rounded-full transition-all active:scale-95"
+                                                title="5팀 줄이기"
+                                            >
+                                                ▴ 접기
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">진행된 경기 기록이 없습니다.</div>
@@ -797,7 +831,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                                     <div className="w-12 text-right pr-3">{playerTab === 'GOAL' ? 'GOAL' : 'AST'}</div>
                                 </div>
 
-                                {(playerTab === 'GOAL' ? topScorers : topAssists).map((p:any, idx:number) => {
+                                {(playerTab === 'GOAL' ? topScorers : topAssists).slice(0, playerTab === 'GOAL' ? scorersVisible : assistsVisible).map((p:any, idx:number) => {
                                     const isExpanded = expandedPlayer === p.name;
                                     const pTabStr = playerTab;
                                     return (
@@ -851,6 +885,37 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                                         </React.Fragment>
                                     );
                                 })}
+                                {/* 🛠️ [v3.3] Top Scorers / Top Assists 더보기·접기 — 1단계 5명 */}
+                                {(() => {
+                                    const fullList = playerTab === 'GOAL' ? topScorers : topAssists;
+                                    const currentVisible = playerTab === 'GOAL' ? scorersVisible : assistsVisible;
+                                    const setVisible = playerTab === 'GOAL' ? setScorersVisible : setAssistsVisible;
+                                    if (fullList.length <= 5) return null;
+                                    const colorClass = playerTab === 'GOAL'
+                                        ? 'border-yellow-500/40 hover:border-yellow-400 text-yellow-300'
+                                        : 'border-red-500/40 hover:border-red-400 text-red-300';
+                                    return (
+                                        <div className="relative flex items-center justify-center py-2">
+                                            {fullList.length > currentVisible && (
+                                                <button
+                                                    onClick={() => setVisible(c => Math.min(c + 5, fullList.length))}
+                                                    className={`bg-slate-900/80 border hover:text-white ${colorClass} text-[10px] font-black italic tracking-widest uppercase px-4 py-1.5 rounded-full transition-all shadow-md active:scale-95`}
+                                                >
+                                                    ▾ 더보기 <span className="text-slate-500 ml-1">({fullList.length - currentVisible}명 더)</span>
+                                                </button>
+                                            )}
+                                            {currentVisible > 5 && (
+                                                <button
+                                                    onClick={() => setVisible(c => Math.max(c - 5, 5))}
+                                                    className="absolute right-1 text-[9px] font-black tracking-widest text-slate-400 hover:text-white bg-slate-900/60 hover:bg-slate-800 border border-slate-700 px-2 py-1 rounded-full transition-all active:scale-95"
+                                                    title="5명 줄이기"
+                                                >
+                                                    ▴ 접기
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center py-10 text-center text-slate-500 text-xs font-bold italic">기록된 데이터가 없습니다.</div>
@@ -858,7 +923,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                     </div>
                 </div>
             </div>
-            
+
             <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-5 text-center shadow-inner mt-6 mb-4 w-full">
                 <p className="text-emerald-400 text-xs sm:text-sm font-bold leading-relaxed break-keep">
                     ✨ 구단주실 세팅이 완료되었습니다!<br/>
