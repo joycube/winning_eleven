@@ -62,10 +62,16 @@ export default function L_LockerRoomDashboard({
     const t = setTimeout(() => setForceUnskeleton(true), isWebContainerEnv ? 4000 : 30000);
     return () => clearTimeout(t);
   }, []);
-  // 기본 체크: undefined/null 일 때만 로딩 (빈 배열은 통과)
-  //   원본의 owners.length===0 / !historyData / !activeRankingData 체크는 의도적으로 제거
-  //   (이 체크들이 production 에서도 일시적으로 true 가 되어 스켈레톤이 길어졌던 원인)
-  const isDataLoading = !forceUnskeleton && (owners == null || posts == null);
+  // 🛠️ [v3] 스켈레톤 조건 보강
+  //   - 부모에서 owners/posts 가 항상 [] 로 시작 → 기존 == null 체크는 절대 true 안 됨 → 스켈레톤 아예 안 보였음
+  //   - 수정: 핵심 컬렉션 3종(owners, posts, historyData) 이 "모두" 비어있을 때만 로딩으로 판단
+  //   - 어느 하나라도 도착하면 즉시 해제 → 회귀 위험 없음
+  //   - forceUnskeleton timeout (4s/30s) 은 그대로 유지 — 최악의 경우 안전망
+  const isDataLoading = !forceUnskeleton && (
+      (!owners || owners.length === 0) &&
+      (!posts || posts.length === 0) &&
+      !historyData
+  );
 
   const activeOrLatestSeason = useMemo(() => {
       if (!seasons || seasons.length === 0) return null;

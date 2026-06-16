@@ -389,23 +389,25 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
       {/* 🔥 모든 자식에게 100% 동일한 computedTeamsData와 sortedTeams를 전달합니다 */}
       {rankingTab === 'STANDINGS' && (
-        <R_StandingsTab 
+        <R_StandingsTab
             currentSeason={currentSeason}
-            computedTeamsData={computedTeamsData} 
-            sortedTeams={sortedTeams} 
+            computedTeamsData={computedTeamsData}
+            sortedTeams={sortedTeams}
             masterTeams={masterTeams}
             owners={owners}
             knockoutStages={knockoutStages}
             getTeamExtendedInfo={getTeamExtendedInfo}
+            seasons={seasons}
         />
       )}
 
       {rankingTab === 'PLAYERS' && (
-        <R_PlayersTab 
-            currentSeason={currentSeason} 
+        <R_PlayersTab
+            currentSeason={currentSeason}
             activeRankingData={activeRankingData}
             isHybridSeason={isHybridSeason}
             owners={owners}
+            seasons={seasons}
         />
       )}
 

@@ -8,15 +8,19 @@ import { ChevronRight } from 'lucide-react';
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
 interface RPlayersTabProps {
-  currentSeason: any; 
+  currentSeason: any;
   activeRankingData: any; // 프롭스 구조 유지를 위해 남겨두지만, 실제 계산에서는 무시합니다.
   isHybridSeason: boolean;
   owners: Owner[];
+  seasons?: any[]; // 🛠️ [v3] TOTAL 탭용 — 전 시즌 누적 집계
 }
 
-export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
+type StageMode = 'TOTAL' | 'REGULAR' | 'PLAYOFF';
+
+export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners, seasons = [] }: RPlayersTabProps) {
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
-  const [rankPlayerStageMode, setRankPlayerStageMode] = useState<'REGULAR' | 'PLAYOFF'>('REGULAR');
+  // 🛠️ [v3] TOTAL 탭이 기본. TOTAL/REGULAR/PLAYOFF 세 모드 지원
+  const [rankPlayerStageMode, setRankPlayerStageMode] = useState<StageMode>('TOTAL');
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const resolveOwnerNickname = (ownerName: any, ownerUid?: string) => {
@@ -35,30 +39,36 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
     }
   };
 
-  // 🔥 핵심: 메인 랭킹 숫자와 아코디언 분포도를 currentSeason.rounds에서 '동시에 자체 계산'합니다.
-  const { rankedPlayers, distributionMap } = useMemo(() => {
+  // 🔥 핵심: 메인 랭킹 숫자와 아코디언 분포도를 currentSeason 또는 전 시즌(TOTAL) 에서 자체 계산
+  const { rankedPlayers, distributionMap, totalSourceSeasons } = useMemo(() => {
       const distMap: any = {};
-      const playerStats: any = {}; 
+      const playerStats: any = {};
 
-      // 🔥 [버그 픽스] 'ROUND' 키워드를 제거하고 'ROUND_OF' 및 상세 키워드로 변경하여 정규리그 오인 방지!
       const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
 
-      if (currentSeason?.rounds) {
-          currentSeason.rounds.forEach((r: any) => {
-              // 라운드 이름으로 PO 여부 1차 판별
+      // 🛠️ [v3] 모드별 시즌 소스 결정
+      //   TOTAL → seasons 전체
+      //   REGULAR/PLAYOFF → currentSeason 만
+      const sourceSeasons: any[] = rankPlayerStageMode === 'TOTAL'
+          ? (Array.isArray(seasons) ? seasons.filter(s => s?.rounds && s.rounds.length > 0) : [])
+          : (currentSeason ? [currentSeason] : []);
+
+      sourceSeasons.forEach((season: any) => {
+          const seasonIsHybrid = season?.type === 'CUP' || season?.type === 'LEAGUE_PLAYOFF' || season?.type === 'TOURNAMENT';
+
+          season?.rounds?.forEach((r: any) => {
               const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
 
               r.matches?.forEach((m: any) => {
                   if (m.status !== 'COMPLETED') return;
 
-                  // 매치 라벨이나 스테이지 이름으로 PO 여부 2차 판별
                   const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
                   const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
-                  // [필터링 로직] 사용자가 선택한 모드(정규/PO)에 맞지 않는 경기는 무시하여 스탯 분리
-                  if (isHybridSeason) {
-                      if (rankPlayerStageMode === 'REGULAR' && isPlayoffMatch) return; 
-                      if (rankPlayerStageMode === 'PLAYOFF' && !isPlayoffMatch) return; 
+                  // REGULAR / PLAYOFF 모드: hybrid 시즌에서만 분리. 일반 LEAGUE 시즌은 그대로 통과
+                  if (rankPlayerStageMode !== 'TOTAL' && seasonIsHybrid) {
+                      if (rankPlayerStageMode === 'REGULAR' && isPlayoffMatch) return;
+                      if (rankPlayerStageMode === 'PLAYOFF' && !isPlayoffMatch) return;
                   }
 
                   const processStats = (scorersOrAssists: any[], isHome: boolean, isGoal: boolean) => {
@@ -76,7 +86,6 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                           const pName = s.name;
                           const count = s.count || 1;
 
-                          // 1. 개인 전체 스탯(총 골/도움) 누적 -> 이 숫자가 메인 랭킹표에 찍힘
                           if (!playerStats[pName]) {
                               playerStats[pName] = {
                                   name: pName,
@@ -90,7 +99,6 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                           if (isGoal) playerStats[pName].goals += count;
                           else playerStats[pName].assists += count;
 
-                          // 2. 상대팀별 상세 분포도 누적 -> 이 숫자가 아코디언에 찍힘
                           if ((rankPlayerMode === 'GOAL' && isGoal) || (rankPlayerMode === 'ASSIST' && !isGoal)) {
                               if (!distMap[pName]) distMap[pName] = {};
                               if (!distMap[pName][opTeam]) {
@@ -101,29 +109,27 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                       });
                   };
 
-                  processStats(m.homeScorers || [], true, true);   
-                  processStats(m.awayScorers || [], false, true);  
-                  processStats(m.homeAssists || [], true, false);  
-                  processStats(m.awayAssists || [], false, false); 
+                  processStats(m.homeScorers || [], true, true);
+                  processStats(m.awayScorers || [], false, true);
+                  processStats(m.homeAssists || [], true, false);
+                  processStats(m.awayAssists || [], false, false);
               });
           });
-      }
+      });
 
-      // 3. 누적된 스탯을 바탕으로 정렬 (다득점->다도움 순)
       const sortedPlayers = Object.values(playerStats)
           .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
           .sort((a: any, b: any) => {
-              if (rankPlayerMode === 'GOAL') return b.goals - a.goals || b.assists - a.assists; 
-              return b.assists - a.assists || b.goals - a.goals; 
+              if (rankPlayerMode === 'GOAL') return b.goals - a.goals || b.assists - a.assists;
+              return b.assists - a.assists || b.goals - a.goals;
           });
 
-      // 4. 동률 순위(Rank) 계산
       const ranked: any[] = [];
       sortedPlayers.forEach((player: any, index: number) => {
           let rank = index + 1;
           if (index > 0) {
               const prev = ranked[index - 1];
-              const isTie = rankPlayerMode === 'GOAL' 
+              const isTie = rankPlayerMode === 'GOAL'
                   ? (player.goals === prev.goals && player.assists === prev.assists)
                   : (player.assists === prev.assists && player.goals === prev.goals);
               if (isTie) rank = prev.rank;
@@ -131,28 +137,46 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
           ranked.push({ ...player, rank });
       });
 
-      return { rankedPlayers: ranked, distributionMap: distMap };
+      return { rankedPlayers: ranked, distributionMap: distMap, totalSourceSeasons: sourceSeasons.length };
 
-  }, [currentSeason, rankPlayerMode, rankPlayerStageMode, isHybridSeason, owners]);
+  }, [currentSeason, rankPlayerMode, rankPlayerStageMode, seasons, owners]);
 
   return (
     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col animate-in fade-in">
       
-      {isHybridSeason && (
-        <div className="flex bg-[#0b0e14] p-2 sm:p-3 border-b border-slate-800 gap-2">
-            <button 
-                onClick={() => { setRankPlayerStageMode('REGULAR'); setExpandedPlayer(null); }} 
-                className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${rankPlayerStageMode === 'REGULAR' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
-            >
-                🚩 REGULAR (정규/조별)
-            </button>
-            <button 
-                onClick={() => { setRankPlayerStageMode('PLAYOFF'); setExpandedPlayer(null); }} 
-                className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${rankPlayerStageMode === 'PLAYOFF' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
-            >
-                🏆 PLAYOFF (토너먼트)
-            </button>
-        </div>
+      {/* 🛠️ [v3] 3탭 — TOTAL 항상 노출 + 디폴트, REGULAR/PLAYOFF 는 hybrid 시즌일 때만 활성 */}
+      <div className="flex bg-[#0b0e14] p-2 sm:p-3 border-b border-slate-800 gap-2">
+          <button
+              onClick={() => { setRankPlayerStageMode('TOTAL'); setExpandedPlayer(null); }}
+              className={`flex-1 py-2.5 rounded-lg text-[11px] sm:text-xs font-black italic transition-all ${rankPlayerStageMode === 'TOTAL' ? 'bg-violet-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
+          >
+              🌍 TOTAL
+          </button>
+          <button
+              onClick={() => { if (isHybridSeason) { setRankPlayerStageMode('REGULAR'); setExpandedPlayer(null); } }}
+              disabled={!isHybridSeason}
+              className={`flex-1 py-2.5 rounded-lg text-[11px] sm:text-xs font-black italic transition-all ${rankPlayerStageMode === 'REGULAR' ? 'bg-emerald-600 text-white shadow-lg' : isHybridSeason ? 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800' : 'bg-slate-900/50 text-slate-700 border border-slate-800/50 cursor-not-allowed'}`}
+              title={!isHybridSeason ? '리그+PO / 컵 시즌에서만 활성' : ''}
+          >
+              🚩 REGULAR
+          </button>
+          <button
+              onClick={() => { if (isHybridSeason) { setRankPlayerStageMode('PLAYOFF'); setExpandedPlayer(null); } }}
+              disabled={!isHybridSeason}
+              className={`flex-1 py-2.5 rounded-lg text-[11px] sm:text-xs font-black italic transition-all ${rankPlayerStageMode === 'PLAYOFF' ? 'bg-indigo-600 text-white shadow-lg' : isHybridSeason ? 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800' : 'bg-slate-900/50 text-slate-700 border border-slate-800/50 cursor-not-allowed'}`}
+              title={!isHybridSeason ? '리그+PO / 컵 시즌에서만 활성' : ''}
+          >
+              🏆 PLAYOFF
+          </button>
+      </div>
+
+      {/* 🛠️ [v3] TOTAL 모드일 때 컨텍스트 라벨 */}
+      {rankPlayerStageMode === 'TOTAL' && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#0a1322] border-b border-slate-800">
+              <span className="text-[8px] sm:text-[9px] font-black tracking-widest text-slate-500">CURRENT VIEW</span>
+              <span className="text-[9px] sm:text-[10px] font-black text-violet-400 italic bg-violet-950/50 border border-violet-900/50 px-2 py-[1px] rounded-full">🌍 ALL SEASONS</span>
+              <span className="text-[9px] sm:text-[10px] text-slate-500 italic">· 시즌 {totalSourceSeasons}개 누적</span>
+          </div>
       )}
 
       <div className="flex bg-slate-950 border-b border-slate-800">
