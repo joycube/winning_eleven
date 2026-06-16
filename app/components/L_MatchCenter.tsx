@@ -5,7 +5,7 @@ import { CalendarDays, MessageSquare, ChevronRight, Clock } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { calculateMatchSnapshot } from '../utils/predictor'; 
+import { calculateMatchSnapshot, deriveThreeWayFromLegacy } from '../utils/predictor';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -58,7 +58,8 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
         return masterTeams.find((t: any) => (t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase() === target);
     };
 
-    const getRealLogoLocal = (teamName: string, fallback: string) => (!teamName || teamName === 'TBD' || teamName === 'BYE') ? (fallback || FALLBACK_IMG) : (getTeamMasterInfo(teamName)?.logo || fallback || FALLBACK_IMG);
+    // 🛠️ TBD/BYE 는 매치카드와 동일한 방패 아이콘으로 통일
+    const getRealLogoLocal = (teamName: string, fallback: string) => (!teamName || teamName === 'TBD' || teamName === 'BYE') ? SAFE_TBD_LOGO : (getTeamMasterInfo(teamName)?.logo || fallback || FALLBACK_IMG);
 
     const processedRounds = useMemo(() => {
         if (!currentDashboardSeason || !currentDashboardSeason.rounds) return [];
@@ -237,27 +238,34 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
     const renderMatchRow = (m: any, isRecent: boolean) => {
         const homeMaster = getTeamMasterInfo(m.home);
         const awayMaster = getTeamMasterInfo(m.away);
-        let hRate = 50, aRate = 50;
-        
+        // 🛠️ [v3] 3-way 예측 (승/무/패)
+        let hRate = 50, dRate = 0, aRate = 50;
+
         if (!isRecent && m.home !== 'TBD' && m.away !== 'TBD' && m.home !== 'BYE' && m.away !== 'BYE') {
             const savedHome = Number(m.homePredictRate);
+            const savedDraw = Number(m.drawPredictRate);
             const savedAway = Number(m.awayPredictRate);
+            const hasLegacy = !isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0);
 
-            if (!isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0)) {
-                hRate = savedHome;
-                aRate = savedAway;
+            if (hasLegacy && !isNaN(savedDraw) && savedDraw > 0) {
+                // 신규 — 3-way 그대로
+                hRate = savedHome; dRate = savedDraw; aRate = savedAway;
+            } else if (hasLegacy) {
+                // 레거시 — 격차로 무승부 복원
+                const restored = deriveThreeWayFromLegacy(savedHome, savedAway);
+                hRate = restored.hRate; dRate = restored.dRate; aRate = restored.aRate;
             } else {
                 try {
                     const safeHistory = historyData || { allTimeStats: [] };
                     const predictionSnapshot = calculateMatchSnapshot(m.home, m.away, activeRankingData, safeHistory, masterTeams || []);
-                    
-                    if (predictionSnapshot) { 
-                        hRate = predictionSnapshot.homePredictRate || 50; 
-                        aRate = predictionSnapshot.awayPredictRate || 50; 
+                    if (predictionSnapshot) {
+                        hRate = predictionSnapshot.homePredictRate || 50;
+                        dRate = (predictionSnapshot as any).drawPredictRate || 0;
+                        aRate = predictionSnapshot.awayPredictRate || 50;
                     }
-                } catch (e) { 
+                } catch (e) {
                     console.warn("Prediction Engine Error:", e);
-                    hRate = 50; aRate = 50;
+                    hRate = 50; dRate = 0; aRate = 50;
                 }
             }
         }
@@ -306,11 +314,13 @@ export default function L_MatchCenter({ seasons, masterTeams, owners, isDataLoad
                     <div className="px-8 sm:px-12 pb-4 flex flex-col gap-1 w-full max-w-[320px] mx-auto opacity-80 pointer-events-none mt-[-5px]">
                         <div className="flex justify-between text-[8px] font-black px-1">
                             <span className="text-emerald-500">{hRate}%</span>
-                            <span className="text-slate-600 tracking-widest uppercase italic">WIN PROBABILITY</span>
+                            <span className="text-slate-500 tracking-tighter italic">무 {dRate}%</span>
                             <span className="text-blue-500">{aRate}%</span>
                         </div>
+                        {/* 🛠️ [v3] 승/무/패 3분할 바 — 합이 정확히 100% 라 빈 공간 없음 */}
                         <div className="h-1.5 w-full bg-slate-800 rounded-full flex overflow-hidden shadow-inner">
                             <div style={{ width: `${hRate}%` }} className="h-full bg-emerald-500" />
+                            <div style={{ width: `${dRate}%` }} className="h-full bg-slate-600" />
                             <div style={{ width: `${aRate}%` }} className="h-full bg-blue-500" />
                         </div>
                     </div>

@@ -1,9 +1,9 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect } from 'react';
-import { Match, MasterTeam, Owner, FALLBACK_IMG } from '../types'; 
-import { getPrediction } from '../utils/predictor'; 
+import React, { useState, useEffect, useMemo } from 'react';
+import { Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
+import { getPrediction, deriveThreeWayFromLegacy } from '../utils/predictor';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -43,16 +43,30 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   const isTbd = match.home === 'TBD' || match.away === 'TBD';
   const isCompleted = match.status === 'COMPLETED'; 
 
-  let prediction = { hRate: 50, aRate: 50 };
-  if (!isBye && !isTbd) {
+  // 🛠️ [v3 알고리즘 + 캐시] 3-way 예측 (hRate / dRate / aRate)
+  //   - 신규 매치: drawPredictRate 저장됨 → 그대로 사용
+  //   - 레거시 매치: 2-way만 저장 → deriveThreeWayFromLegacy 로 무승부 복원
+  //   - 저장 없음: live getPrediction
+  //   - useMemo: 동일 match/historyData/masterTeams 면 재계산 안 함 (다득점 카드 60개 환경 부담 ↓)
+  const prediction = useMemo<{ hRate: number; dRate: number; aRate: number }>(() => {
+      if (isBye || isTbd) return { hRate: 50, dRate: 0, aRate: 50 };
       const savedHome = Number(match.homePredictRate);
+      const savedDraw = Number(match.drawPredictRate);
       const savedAway = Number(match.awayPredictRate);
-      if (!isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0)) {
-          prediction = { hRate: savedHome, aRate: savedAway };
-      } else {
-          prediction = getPrediction(match.home, match.away, activeRankingData, historyData, masterTeams);
+      const hasLegacy = !isNaN(savedHome) && !isNaN(savedAway) && (savedHome > 0 || savedAway > 0);
+      if (hasLegacy && !isNaN(savedDraw) && savedDraw > 0) {
+          return { hRate: savedHome, dRate: savedDraw, aRate: savedAway };
       }
-  }
+      if (hasLegacy) {
+          return deriveThreeWayFromLegacy(savedHome, savedAway);
+      }
+      return getPrediction(match.home, match.away, activeRankingData, historyData, masterTeams);
+  }, [
+      isBye, isTbd,
+      match.home, match.away,
+      match.homePredictRate, match.drawPredictRate, match.awayPredictRate,
+      activeRankingData, historyData, masterTeams,
+  ]);
   const showGraph = !isBye && !isTbd;
 
   const getTeamMasterInfo = (teamName: string) => {
@@ -172,16 +186,16 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         {/* 중앙 2분할 매치 카드 영역 */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-stretch mb-4">
             
-            {/* 중앙 VS / 스코어 배지 */}
+            {/* 🛠️ [C-3 정제] 중앙 스코어/VS — 박스 테두리 제거, 점수만 큼직하게 떠 있는 형태 */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center justify-center pointer-events-none">
                 {isCompleted ? (
-                    <div className="bg-[#0B1120] px-3 py-1.5 rounded-lg border border-slate-700 shadow-xl flex items-center gap-2">
-                        <span className={`text-sm font-black italic tracking-tighter ${Number(match.homeScore) > Number(match.awayScore) ? 'text-emerald-400' : 'text-white'}`}>{match.homeScore}</span>
-                        <span className="text-[10px] text-slate-600 font-black mb-0.5">:</span>
-                        <span className={`text-sm font-black italic tracking-tighter ${Number(match.awayScore) > Number(match.homeScore) ? 'text-emerald-400' : 'text-white'}`}>{match.awayScore}</span>
+                    <div className="flex items-baseline gap-2 px-2.5 py-1 rounded-lg bg-[#0B1120]/85 backdrop-blur-sm">
+                        <span className={`text-base font-black italic tracking-tighter ${Number(match.homeScore) > Number(match.awayScore) ? 'text-emerald-400' : 'text-white/90'}`}>{match.homeScore}</span>
+                        <span className="text-[10px] text-slate-600 font-black">:</span>
+                        <span className={`text-base font-black italic tracking-tighter ${Number(match.awayScore) > Number(match.homeScore) ? 'text-emerald-400' : 'text-white/90'}`}>{match.awayScore}</span>
                     </div>
                 ) : (
-                    <div className="bg-[#0b0e14] px-2 py-1 rounded-md border border-slate-700 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
+                    <div className="bg-[#0b0e14]/90 backdrop-blur-sm px-2 py-1 rounded-md border border-slate-700/60 text-[9px] font-black text-slate-500 italic shadow-lg">VS</div>
                 )}
             </div>
 
@@ -189,53 +203,68 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             {renderTeamBox('away')}
         </div>
 
-        {/* 득점자 정보 표기 영역 */}
-        {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || match.youtubeUrl) && (
-            <div className="mb-4 pt-3 border-t border-slate-800/50">
+        {/* 🛠️ [C-3 정제] 득점/어시스트 — 영역 박스라인 제거, 한 섹션으로 통합, 어시스트 행 추가 */}
+        {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || (match as any).homeAssists?.length > 0 || (match as any).awayAssists?.length > 0 || match.youtubeUrl) && (
+            <div className="mb-3 pt-3 border-t border-slate-800/50 space-y-1">
+                {/* 득점자 행 */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
                     <div className="flex flex-col text-right w-full min-w-0 pr-2">
                         {(match.homeScorers || []).map((s:any, idx:number)=>(
-                            <div key={`h-${idx}`} className="text-[10px] text-slate-400 font-medium truncate w-full">
+                            <div key={`h-${idx}`} className="text-[10px] text-slate-300 font-medium truncate w-full">
                                 {s.name} ⚽ <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
                             </div>
                         ))}
                     </div>
                     <div className="flex flex-col items-center px-1 pt-1">
                       {match.youtubeUrl ? (
-                          <div className="bg-red-950/30 border border-red-900/40 p-1.5 rounded-full cursor-pointer hover:bg-red-900/40 transition-colors shadow-lg pointer-events-auto" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="Watch Highlight">
-                              <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3 hover:scale-110 transition-transform" alt="YT" />
+                          <div className="bg-red-600 p-1.5 rounded-full cursor-pointer hover:bg-red-500 transition-colors shadow-[0_0_10px_rgba(220,38,38,0.4)] pointer-events-auto" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="하이라이트 영상 보기">
+                              <svg width="10" height="10" viewBox="0 0 12 12" className="fill-white"><polygon points="3,2 3,10 10,6" /></svg>
                           </div>
                       ) : <div className="w-[1px] h-3 bg-slate-800"></div>}
                     </div>
                     <div className="flex flex-col text-left w-full min-w-0 pl-2">
                         {(match.awayScorers || []).map((s:any, idx:number)=>(
-                            <div key={`a-${idx}`} className="text-[10px] text-slate-400 font-medium truncate w-full">
+                            <div key={`a-${idx}`} className="text-[10px] text-slate-300 font-medium truncate w-full">
                                 ⚽ {s.name} <span className="text-slate-600 ml-0.5">{s.count > 1 && `x${s.count}`}</span>
                             </div>
                         ))}
                     </div>
                 </div>
+                {/* 어시스트 행 — 데이터 있을 때만 노출 */}
+                {(((match as any).homeAssists?.length > 0) || ((match as any).awayAssists?.length > 0)) && (
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 mt-1">
+                        <div className="flex flex-col text-right w-full min-w-0 pr-2">
+                            {((match as any).homeAssists || []).map((s:any, idx:number)=>(
+                                <div key={`ha-${idx}`} className="text-[9px] text-slate-500 italic truncate w-full">
+                                    {s.name} <span className="inline-block bg-red-600 text-white text-[8px] font-black px-1 rounded ml-0.5 not-italic">A</span> {s.count > 1 && <span className="text-slate-600">x{s.count}</span>}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="w-2"></div>
+                        <div className="flex flex-col text-left w-full min-w-0 pl-2">
+                            {((match as any).awayAssists || []).map((s:any, idx:number)=>(
+                                <div key={`aa-${idx}`} className="text-[9px] text-slate-500 italic truncate w-full">
+                                    <span className="inline-block bg-red-600 text-white text-[8px] font-black px-1 rounded mr-0.5 not-italic">A</span> {s.name} {s.count > 1 && <span className="text-slate-600">x{s.count}</span>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         )}
 
-        {/* 하단 예상 승률 그래프 영역 */}
+        {/* 🛠️ [C-3 정제] 3분할 예상승률 (승/무/패) */}
         {showGraph && (
             <div className="mt-auto space-y-1.5 border-t border-slate-800/50 pt-3">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[9px] font-black text-emerald-400">{prediction.hRate}%</span>
-                  <span className="text-[8px] font-bold text-slate-600 tracking-tighter uppercase italic">예상승률(%)</span>
+                  <span className="text-[8px] font-bold text-slate-500 tracking-tighter italic">무 {prediction.dRate}%</span>
                   <span className="text-[9px] font-black text-blue-400">{prediction.aRate}%</span>
                 </div>
                 <div className="relative h-2 bg-slate-900 rounded-full overflow-hidden flex border border-slate-800/50 shadow-inner">
-                    <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-out" />
-                    <div className="absolute top-0 bottom-0 z-20 flex items-center justify-center transition-all duration-1000 ease-out" style={{ left: isLoaded ? `${prediction.hRate}%` : '50%', transform: 'translateX(-50%)' }} >
-                        <div className="w-0.5 h-full bg-white/40 shadow-[0_0_8px_white] relative flex items-center justify-center">
-                            <div className="absolute w-3 h-3 bg-slate-950 border border-slate-700 rounded-full flex items-center justify-center shadow-lg">
-                                <span className="text-[6px] text-yellow-400 font-bold">⚡</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-gradient-to-l from-blue-600 to-blue-400 transition-all duration-1000 ease-out ml-auto" />
+                    <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-emerald-500 transition-all duration-1000 ease-out" />
+                    <div style={{ width: isLoaded ? `${prediction.dRate}%` : '0%' }} className="h-full bg-slate-600 transition-all duration-1000 ease-out" />
+                    <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-blue-500 transition-all duration-1000 ease-out" />
                 </div>
             </div>
         )}

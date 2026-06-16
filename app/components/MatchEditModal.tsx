@@ -6,7 +6,9 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Lock, MessageSquare, Edit3, Send, Youtube, Zap, Trash2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import StickerSelector from './StickerSelector'; 
+import StickerSelector from './StickerSelector';
+// 🛠️ [v3 알고리즘] 레거시 매치(2-way만 저장)에서 무승부 복원용
+import { deriveThreeWayFromLegacy } from '../utils/predictor';
 
 const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
 
@@ -54,11 +56,23 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
       return match.homeOwner === user.mappedOwnerId || match.awayOwner === user.mappedOwnerId || matchOwnerUids.includes(user.uid);
   }, [user, match]);
 
+  // 🛠️ [v3 알고리즘] 3-way 예측 표시 (homeRate / drawRate / awayRate)
   let rawHomeRate = match.homePredictRate !== undefined ? Number(match.homePredictRate) : 50;
+  let rawDrawRate = (match as any).drawPredictRate !== undefined ? Number((match as any).drawPredictRate) : 0;
   let rawAwayRate = match.awayPredictRate !== undefined ? Number(match.awayPredictRate) : 50;
-  if (rawHomeRate <= 1 && (rawHomeRate > 0 || rawAwayRate > 0)) { rawHomeRate *= 100; rawAwayRate *= 100; }
-  const homeRate = Math.round(rawHomeRate);
-  const awayRate = Math.round(rawAwayRate);
+  if (rawHomeRate <= 1 && (rawHomeRate > 0 || rawAwayRate > 0)) { rawHomeRate *= 100; rawDrawRate *= 100; rawAwayRate *= 100; }
+
+  let homeRate = Math.round(rawHomeRate);
+  let drawRate = Math.round(rawDrawRate);
+  let awayRate = Math.round(rawAwayRate);
+
+  // 레거시 매치 (drawPredictRate 없음) → 격차 기반 무승부 복원
+  if (drawRate === 0 && (homeRate > 0 || awayRate > 0)) {
+    const restored = deriveThreeWayFromLegacy(homeRate, awayRate);
+    homeRate = restored.hRate;
+    drawRate = restored.dRate;
+    awayRate = restored.aRate;
+  }
 
   useEffect(() => {
       if (isAwayBye) setManualWinner('HOME');
@@ -271,24 +285,18 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                   </div>
               )}
 
-              {/* Win Rate Bar */}
+              {/* 🛠️ [v3 알고리즘] 3분할 예상승률 바 (승/무/패) */}
               {!isByeMatch && (
                   <div className="mt-3.5 sm:mt-4 px-1 sm:px-8 w-full max-w-xl mx-auto">
                       <div className="flex justify-between items-center mb-1 font-black">
                           <span className="text-emerald-400 text-[9px] sm:text-[11px]">{homeRate}%</span>
-                          <span className="text-slate-500 tracking-widest text-[8px] italic">예상승률(%)</span>
+                          <span className="text-slate-500 tracking-tighter text-[8px] sm:text-[10px] italic">무 {drawRate}%</span>
                           <span className="text-blue-400 text-[9px] sm:text-[11px]">{awayRate}%</span>
                       </div>
                       <div className="w-full h-1.5 bg-slate-800 rounded-full flex overflow-hidden relative shadow-inner border border-slate-700/50">
                           <div style={{ width: `${homeRate}%` }} className="bg-emerald-500 h-full transition-all duration-1000"></div>
-                          <div style={{ width: `${awayRate}%` }} className="bg-blue-600 h-full transition-all duration-1000"></div>
-                          {/* 🔥 번개 마크가 가운데 고정되지 않고 승률(homeRate)을 따라 움직이도록 수정 */}
-                          <div 
-                              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-[12px] h-[12px] bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 z-10 leading-none pb-[1px] transition-all duration-1000"
-                              style={{ left: `${homeRate}%` }}
-                          >
-                              <Zap size={7} className="text-yellow-400 fill-yellow-400" />
-                          </div>
+                          <div style={{ width: `${drawRate}%` }} className="bg-slate-600 h-full transition-all duration-1000"></div>
+                          <div style={{ width: `${awayRate}%` }} className="bg-blue-500 h-full transition-all duration-1000"></div>
                       </div>
                   </div>
               )}
@@ -488,9 +496,22 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                                               </div>
                                           </div>
 
+                                          {/* 🛠️ [UI v3] HOME/AWAY 섹션 — 팀 식별자 헤더 + 반응형 (모바일 세로 / sm:가로) */}
                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                               <div className="bg-slate-950 p-2.5 sm:p-3 rounded-lg border border-slate-800">
-                                                  <h4 className="text-[10px] font-black text-white border-b border-slate-800 pb-1.5 mb-2.5 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> HOME 기록</h4>
+                                                  {/* 🛠️ 팀 식별자 헤더 — 로고 + HOME · 팀명 + 오너 */}
+                                                  <div className="border-b border-slate-800 pb-2 mb-2.5 flex items-center gap-2">
+                                                      <div className="w-6 h-6 rounded-full bg-white shrink-0 ring-1 ring-emerald-500/40 overflow-hidden flex items-center justify-center p-0.5">
+                                                          <img src={getSafeLogo(match.home, match.homeLogo)} alt={match.home} className="w-full h-full object-contain" />
+                                                      </div>
+                                                      <div className="min-w-0 flex-1">
+                                                          <div className="flex items-center gap-1.5">
+                                                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></div>
+                                                              <h4 className="text-[10px] font-black text-emerald-400 italic truncate">HOME · {match.home}</h4>
+                                                          </div>
+                                                          <p className="text-[8px] text-slate-500 truncate mt-0.5">{resolveOwnerInfo(match.homeOwner, (match as any).homeOwnerUid).nickname || '-'}</p>
+                                                      </div>
+                                                  </div>
                                                   <datalist id="homeTeamPlayers">{teamPlayers(match.home).map((name, i) => <option key={i} value={name} />)}</datalist>
                                                   <div className="space-y-3">
                                                       <RecordInput type="homeScorer" inputValue={recordInput.homeScorer} onInputChange={(t,f,v)=>setRecordInput(p=>({...p,[t]:{...(p as any)[t],[f]:v}}))} onAdd={()=>handleRecordAdd('homeScorer','homeScorers')} onRemove={(t,id)=>handleRecordRemove('homeScorers',id,true)} records={records.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" datalistId="homeTeamPlayers" />
@@ -498,7 +519,19 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                                                   </div>
                                               </div>
                                               <div className="bg-slate-950 p-2.5 sm:p-3 rounded-lg border border-slate-800">
-                                                  <h4 className="text-[10px] font-black text-white border-b border-slate-800 pb-1.5 mb-2.5 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> AWAY 기록</h4>
+                                                  {/* 🛠️ 팀 식별자 헤더 — 로고 + AWAY · 팀명 + 오너 */}
+                                                  <div className="border-b border-slate-800 pb-2 mb-2.5 flex items-center gap-2">
+                                                      <div className="w-6 h-6 rounded-full bg-white shrink-0 ring-1 ring-blue-500/40 overflow-hidden flex items-center justify-center p-0.5">
+                                                          <img src={getSafeLogo(match.away, match.awayLogo)} alt={match.away} className="w-full h-full object-contain" />
+                                                      </div>
+                                                      <div className="min-w-0 flex-1">
+                                                          <div className="flex items-center gap-1.5">
+                                                              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
+                                                              <h4 className="text-[10px] font-black text-blue-400 italic truncate">AWAY · {match.away}</h4>
+                                                          </div>
+                                                          <p className="text-[8px] text-slate-500 truncate mt-0.5">{resolveOwnerInfo(match.awayOwner, (match as any).awayOwnerUid).nickname || '-'}</p>
+                                                      </div>
+                                                  </div>
                                                   <datalist id="awayTeamPlayers">{teamPlayers(match.away).map((name, i) => <option key={i} value={name} />)}</datalist>
                                                   <div className="space-y-3">
                                                       <RecordInput type="awayScorer" inputValue={recordInput.awayScorer} onInputChange={(t,f,v)=>setRecordInput(p=>({...p,[t]:{...(p as any)[t],[f]:v}}))} onAdd={()=>handleRecordAdd('awayScorer','awayScorers')} onRemove={(t,id)=>handleRecordRemove('awayScorers',id,false)} records={records.awayScorers} label="⚽ Scorers" colorClass="text-blue-400" datalistId="awayTeamPlayers" />

@@ -34,16 +34,26 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
     if (vId) {
         const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
-        
+        // 🛠️ 태블릿/PC 레터박스 축소 — 썸네일 블러 배경 채움 + iframe 중앙 정렬
+        const thumbUrl = `https://img.youtube.com/vi/${vId}/maxresdefault.jpg`;
+
         return (
-            <div className="w-full h-full bg-black relative">
-                 <iframe 
-                    src={embedUrl} 
-                    className="w-full h-full object-cover pointer-events-none opacity-60" 
-                    allow="autoplay; encrypted-media; gyroscope; picture-in-picture" 
-                    title={b.description || 'Banner Video'} 
-                 />
-                 <div className="absolute inset-0 z-20" />
+            <div className="w-full h-full bg-black relative overflow-hidden">
+                {/* 1. 블러 처리된 썸네일 배경 — 레터박스 자리를 채움 */}
+                <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-cover bg-center scale-110 blur-2xl opacity-60"
+                    style={{ backgroundImage: `url(${thumbUrl})` }}
+                />
+                {/* 2. iframe — 16:9 비율 유지하면서 컨테이너에 cover 처리 (좌우 잘림 허용, 중앙은 보존) */}
+                <iframe
+                    src={embedUrl}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.78vh] min-w-full h-[56.25vw] min-h-full pointer-events-none opacity-90"
+                    allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
+                    title={b.description || 'Banner Video'}
+                />
+                {/* 3. 클릭 차단 + 약간의 다크 그라데이션 */}
+                <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/10 via-transparent to-black/30" />
             </div>
         );
     } else {

@@ -132,7 +132,8 @@ const renderCommentContent = (text: string) => {
 
 const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owners, setEditingCommentId, setEditCommentText, handleDeleteComment }: any) => {
     const isAuthor = authUser?.uid === comment.authorId || authUser?.uid === comment.authorUid;
-    const isLiked = comment.likes?.includes(authUser?.uid);
+    // 🚑 likes 가 number(카운트) 일 수도 있어 Array.isArray 가드
+    const isLiked = !!authUser?.uid && Array.isArray(comment.likes) && comment.likes.includes(authUser.uid);
     const matchedOwner = findOwnerByUidOrName(owners, comment.authorUid || comment.authorId, comment.authorName);
     const displayAuthorName = matchedOwner?.nickname || matchedOwner?.mappedOwnerId || matchedOwner?.displayName || comment.authorName;
     let profileImg = comment.authorPhoto;
@@ -319,11 +320,19 @@ export default function HighlightViewerModal({ activeVideo, onClose, authUser, o
         } catch (e) { console.error("댓글 좋아요 중 오류:", e); }
     };
 
+    // 🚑 video.likes 가 number 일 수도 있어 Array.isArray 가드 헬퍼
+    const _videoLikedByMe = (uid?: string | null): boolean => {
+        if (!uid) return false;
+        const likedBy = Array.isArray(activeVideo?.likedBy) ? activeVideo.likedBy : [];
+        const likes   = Array.isArray(activeVideo?.likes)   ? activeVideo.likes   : [];
+        return likedBy.includes(uid) || likes.includes(uid);
+    };
+
     const handleLikeVideo = async () => {
         if (!authUser) return alert("로그인 후 이용 가능합니다.");
         try {
             const docRef = doc(db, 'highlights', activeVideo.id);
-            const isLiked = activeVideo.likedBy?.includes(authUser.uid) || activeVideo.likes?.includes(authUser.uid);
+            const isLiked = _videoLikedByMe(authUser.uid);
             if (isLiked) await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
             else await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
         } catch (error) { console.error("비디오 좋아요 중 오류:", error); }
@@ -364,9 +373,9 @@ export default function HighlightViewerModal({ activeVideo, onClose, authUser, o
                                 </h2>
                             </div>
                             <div className="flex items-center gap-2 mt-2">
-                                <button onClick={handleLikeVideo} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-black transition-all ${activeVideo.likedBy?.includes(authUser?.uid) || activeVideo.likes?.includes(authUser?.uid) ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
-                                    <Heart size={12} fill={activeVideo.likedBy?.includes(authUser?.uid) || activeVideo.likes?.includes(authUser?.uid) ? "currentColor" : "none"} />
-                                    {Array.isArray(activeVideo.likes) ? activeVideo.likes.length : (typeof activeVideo.likes === 'number' ? activeVideo.likes : (activeVideo.likedBy?.length || 0))}
+                                <button onClick={handleLikeVideo} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-black transition-all ${_videoLikedByMe(authUser?.uid) ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
+                                    <Heart size={12} fill={_videoLikedByMe(authUser?.uid) ? "currentColor" : "none"} />
+                                    {Array.isArray(activeVideo.likes) ? activeVideo.likes.length : (typeof activeVideo.likes === 'number' ? activeVideo.likes : (Array.isArray(activeVideo.likedBy) ? activeVideo.likedBy.length : 0))}
                                 </button>
                                 <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-md text-[11px] font-black text-slate-400 shadow-inner">
                                     <Eye size={12}/> {activeVideo.views || 0}

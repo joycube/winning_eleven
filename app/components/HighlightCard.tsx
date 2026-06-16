@@ -25,7 +25,12 @@ export default function HighlightCard({ post, authUser, onClick, onLike }: any) 
     if (!post) return null;
 
     const videoUrl = getValidVideoUrl(post);
-    const isLiked = post.likedBy?.includes(authUser?.uid) || post.likes?.includes(authUser?.uid);
+    // 🚑 [긴급 픽스] post.likes 가 number(카운트) 일 수도 있어 .includes 직접 호출은 위험.
+    //   Array.isArray 가드로 안전하게 처리.
+    const likedByArr = Array.isArray(post.likedBy) ? post.likedBy : [];
+    const likesArr   = Array.isArray(post.likes)   ? post.likes   : [];
+    const myUid = authUser?.uid;
+    const isLiked = !!myUid && (likedByArr.includes(myUid) || likesArr.includes(myUid));
     const likesCount = Array.isArray(post.likes) ? post.likes.length : (typeof post.likes === 'number' ? post.likes : (post.likedBy?.length || 0));
 
     const hs = Number(post.homeScore || 0);

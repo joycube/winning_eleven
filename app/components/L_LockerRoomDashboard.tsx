@@ -113,12 +113,20 @@ export default function L_LockerRoomDashboard({
       window.location.href = `/?view=SCHEDULE&season=${targetSeasonId}&matchId=${m.id}`;
   };
 
+  // 🚑 [긴급 픽스] video.likes 가 number(카운트)인 경우 .includes 가 폭발하지 않도록 Array.isArray 가드
+  const videoLikedByMe = (video: any, uid?: string | null): boolean => {
+      if (!uid) return false;
+      const likedBy = Array.isArray(video?.likedBy) ? video.likedBy : [];
+      const likes   = Array.isArray(video?.likes)   ? video.likes   : [];
+      return likedBy.includes(uid) || likes.includes(uid);
+  };
+
   const handleLikeVideo = async (e: React.MouseEvent, video: any) => {
       e.stopPropagation();
       if (!authUser) return alert("로그인 후 이용 가능합니다.");
       try {
           const docRef = doc(db, 'highlights', video.id);
-          const isLiked = video.likedBy?.includes(authUser.uid) || video.likes?.includes(authUser.uid);
+          const isLiked = videoLikedByMe(video, authUser.uid);
           if (isLiked) await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
           else await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
       } catch (error) { console.error("비디오 좋아요 중 오류:", error); }
@@ -389,8 +397,9 @@ export default function L_LockerRoomDashboard({
                                                 <div className="flex items-center text-[11px] text-slate-500 font-bold mt-1.5 gap-2 italic">
                                                     <span>조회 {video.views || 0}</span>
                                                     <span className="text-slate-700 not-italic">•</span>
-                                                    <button onClick={(e) => handleLikeVideo(e, video)} className={`flex items-center gap-1 transition-colors hover:text-white ${video.likes?.includes(authUser?.uid) ? 'text-emerald-400' : ''}`}>
-                                                        <Heart size={11} className={video.likes?.includes(authUser?.uid) ? 'fill-emerald-400 text-emerald-400' : ''} /> {video.likes?.length || 0}
+                                                    {/* 🚑 videoLikedByMe 헬퍼로 number/배열 혼재 데이터 안전 처리 */}
+                                                    <button onClick={(e) => handleLikeVideo(e, video)} className={`flex items-center gap-1 transition-colors hover:text-white ${videoLikedByMe(video, authUser?.uid) ? 'text-emerald-400' : ''}`}>
+                                                        <Heart size={11} className={videoLikedByMe(video, authUser?.uid) ? 'fill-emerald-400 text-emerald-400' : ''} /> {Array.isArray(video.likes) ? video.likes.length : (typeof video.likes === 'number' ? video.likes : 0)}
                                                     </button>
                                                     <span className="text-slate-700 not-italic">•</span>
                                                     <span className="flex items-center gap-1"><MessageSquare size={11} /> {(video.comments || []).length}개</span>

@@ -21,7 +21,11 @@ const HighlightCard = ({ post, authUser, onClick, onLike }: any) => {
 
     const ytId = post.youtubeId || getYoutubeId(post.youtubeUrl);
     const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : FALLBACK_IMG;
-    const isLiked = post.likedBy?.includes(authUser?.uid) || post.likes?.includes(authUser?.uid);
+    // 🚑 post.likes 가 number 일 수도 있어 Array.isArray 가드
+    const isLiked = !!authUser?.uid && (
+        (Array.isArray(post.likedBy) && post.likedBy.includes(authUser.uid)) ||
+        (Array.isArray(post.likes) && post.likes.includes(authUser.uid))
+    );
 
     // 🚨 승무패 판별 로직
     const hScore = Number(post.homeScore || 0);
@@ -160,7 +164,10 @@ export default function L_HighlightsBoard({ highlights, owners, seasons, setView
         if (!authUser) return alert("로그인 후 이용 가능합니다.");
         try {
             const docRef = doc(db, 'highlights', video.id);
-            const isLiked = video.likedBy?.includes(authUser.uid) || video.likes?.includes(authUser.uid);
+            // 🚑 video.likes 가 number 일 수도 있어 Array.isArray 가드
+            const likedBy = Array.isArray(video?.likedBy) ? video.likedBy : [];
+            const likes   = Array.isArray(video?.likes)   ? video.likes   : [];
+            const isLiked = likedBy.includes(authUser.uid) || likes.includes(authUser.uid);
             if (isLiked) await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
             else await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
         } catch (error) { console.error(error); }

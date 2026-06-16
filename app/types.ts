@@ -30,8 +30,9 @@ export interface Match {
   homeAssists: any[];
   awayAssists: any[];
   
-  homePredictRate?: number; 
-  awayPredictRate?: number; 
+  homePredictRate?: number;
+  drawPredictRate?: number; // 🛠️ [v3 알고리즘] 무승부 예측 (신규 매치만 저장, 레거시는 deriveThreeWayFromLegacy 로 복원)
+  awayPredictRate?: number;
 
   nextMatchId?: string | null;
   loserMatchId?: string | null;

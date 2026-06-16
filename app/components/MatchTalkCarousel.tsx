@@ -5,6 +5,9 @@ import React, { useMemo } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { Season, Owner, MasterTeam, Match, FALLBACK_IMG } from '../types';
 
+// 🛠️ 매치카드 동일 방패 SVG — TBD/BYE 통일용
+const SAFE_TBD_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23475569'%3E%3Cpath d='M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z'/%3E%3C/svg%3E";
+
 const DEFAULT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
 
 const getTimestamp = (val: any) => {
@@ -243,7 +246,8 @@ export const MatchTalkCarousel = ({
                                 <div className="flex flex-col items-center min-w-0">
                                     <div className="relative w-12 h-12 shrink-0 mb-2">
                                         <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
-                                            <img src={match.homeLogo} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            {/* 🛠️ TBD/BYE 는 매치카드 동일 방패 아이콘 */}
+                                            <img src={(match.home === 'TBD' || match.home === 'BYE') ? SAFE_TBD_LOGO : (match.homeLogo || FALLBACK_IMG)} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                         </div>
                                         {match.home !== 'TBD' && renderTierOverlay(hMaster?.tier)}
                                     </div>
@@ -271,7 +275,8 @@ export const MatchTalkCarousel = ({
                                 <div className="flex flex-col items-center min-w-0">
                                     <div className="relative w-12 h-12 shrink-0 mb-2">
                                         <div className="w-full h-full bg-white rounded-full p-1.5 shadow-md flex items-center justify-center overflow-hidden">
-                                            <img src={match.awayLogo} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                            {/* 🛠️ TBD/BYE 는 매치카드 동일 방패 아이콘 */}
+                                            <img src={(match.away === 'TBD' || match.away === 'BYE') ? SAFE_TBD_LOGO : (match.awayLogo || FALLBACK_IMG)} className="w-[85%] h-[85%] object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                         </div>
                                         {match.away !== 'TBD' && renderTierOverlay(aMaster?.tier)}
                                     </div>

@@ -69,7 +69,10 @@ export default function R_HighlightsTab({ currentSeason, sortedTeams, owners }: 
         if (!authUser) return alert("로그인 후 이용 가능합니다.");
         try {
             const docRef = doc(db, 'highlights', video.id);
-            const isLiked = video.likedBy?.includes(authUser.uid) || video.likes?.includes(authUser.uid);
+            // 🚑 video.likes 가 number(카운트) 일 수도 있어 Array.isArray 가드
+            const likedBy = Array.isArray(video?.likedBy) ? video.likedBy : [];
+            const likes   = Array.isArray(video?.likes)   ? video.likes   : [];
+            const isLiked = likedBy.includes(authUser.uid) || likes.includes(authUser.uid);
             if (isLiked) await updateDoc(docRef, { likes: increment(-1), likedBy: arrayRemove(authUser.uid) });
             else await updateDoc(docRef, { likes: increment(1), likedBy: arrayUnion(authUser.uid) });
         } catch (error) { console.error(error); }
