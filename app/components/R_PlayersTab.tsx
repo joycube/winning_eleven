@@ -12,12 +12,13 @@ interface RPlayersTabProps {
   activeRankingData: any; // 프롭스 구조 유지를 위해 남겨두지만, 실제 계산에서는 무시합니다.
   isHybridSeason: boolean;
   owners: Owner[];
-  seasons?: any[]; // 🛠️ [v3] TOTAL 탭용 — 전 시즌 누적 집계
 }
 
+// 🛠️ [v3.1] TOTAL = 현재 시즌의 전 단계 (정규 + 토너먼트/PO 합산)
+//   REGULAR = 정규/조별만 / PLAYOFF = 토너먼트/PO 만
 type StageMode = 'TOTAL' | 'REGULAR' | 'PLAYOFF';
 
-export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners, seasons = [] }: RPlayersTabProps) {
+export default function R_PlayersTab({ currentSeason, activeRankingData, isHybridSeason, owners }: RPlayersTabProps) {
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   // 🛠️ [v3] TOTAL 탭이 기본. TOTAL/REGULAR/PLAYOFF 세 모드 지원
   const [rankPlayerStageMode, setRankPlayerStageMode] = useState<StageMode>('TOTAL');
@@ -39,24 +40,18 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
     }
   };
 
-  // 🔥 핵심: 메인 랭킹 숫자와 아코디언 분포도를 currentSeason 또는 전 시즌(TOTAL) 에서 자체 계산
-  const { rankedPlayers, distributionMap, totalSourceSeasons } = useMemo(() => {
+  // 🔥 핵심: 메인 랭킹 숫자와 아코디언 분포도를 currentSeason 에서 모드별로 자체 계산
+  //   TOTAL    → 현재 시즌의 모든 경기 (정규 + PO/토너 합산)
+  //   REGULAR  → 정규/조별 경기만
+  //   PLAYOFF  → PO/토너 경기만
+  const { rankedPlayers, distributionMap } = useMemo(() => {
       const distMap: any = {};
       const playerStats: any = {};
 
       const playoffKeywords = ['ROUND_OF', 'QUARTER', 'SEMI', 'FINAL', '결승', '4강', '8강', '16강', 'PO', '플레이오프', '토너먼트', '34', 'KNOCKOUT'];
 
-      // 🛠️ [v3] 모드별 시즌 소스 결정
-      //   TOTAL → seasons 전체
-      //   REGULAR/PLAYOFF → currentSeason 만
-      const sourceSeasons: any[] = rankPlayerStageMode === 'TOTAL'
-          ? (Array.isArray(seasons) ? seasons.filter(s => s?.rounds && s.rounds.length > 0) : [])
-          : (currentSeason ? [currentSeason] : []);
-
-      sourceSeasons.forEach((season: any) => {
-          const seasonIsHybrid = season?.type === 'CUP' || season?.type === 'LEAGUE_PLAYOFF' || season?.type === 'TOURNAMENT';
-
-          season?.rounds?.forEach((r: any) => {
+      if (currentSeason?.rounds) {
+          currentSeason.rounds.forEach((r: any) => {
               const isPlayoffRound = playoffKeywords.some(kw => (r.name || '').toUpperCase().includes(kw));
 
               r.matches?.forEach((m: any) => {
@@ -65,8 +60,8 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                   const matchStr = `${m.stage || ''} ${m.matchLabel || ''}`.toUpperCase();
                   const isPlayoffMatch = isPlayoffRound || playoffKeywords.some(kw => matchStr.includes(kw));
 
-                  // REGULAR / PLAYOFF 모드: hybrid 시즌에서만 분리. 일반 LEAGUE 시즌은 그대로 통과
-                  if (rankPlayerStageMode !== 'TOTAL' && seasonIsHybrid) {
+                  // REGULAR / PLAYOFF 모드: hybrid 시즌에서만 분리. TOTAL 은 무필터 (정규+PO 합산)
+                  if (rankPlayerStageMode !== 'TOTAL' && isHybridSeason) {
                       if (rankPlayerStageMode === 'REGULAR' && isPlayoffMatch) return;
                       if (rankPlayerStageMode === 'PLAYOFF' && !isPlayoffMatch) return;
                   }
@@ -115,7 +110,7 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
                   processStats(m.awayAssists || [], false, false);
               });
           });
-      });
+      }
 
       const sortedPlayers = Object.values(playerStats)
           .filter((p: any) => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
@@ -137,9 +132,9 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
           ranked.push({ ...player, rank });
       });
 
-      return { rankedPlayers: ranked, distributionMap: distMap, totalSourceSeasons: sourceSeasons.length };
+      return { rankedPlayers: ranked, distributionMap: distMap };
 
-  }, [currentSeason, rankPlayerMode, rankPlayerStageMode, seasons, owners]);
+  }, [currentSeason, rankPlayerMode, rankPlayerStageMode, isHybridSeason, owners]);
 
   return (
     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col animate-in fade-in">
@@ -170,12 +165,12 @@ export default function R_PlayersTab({ currentSeason, activeRankingData, isHybri
           </button>
       </div>
 
-      {/* 🛠️ [v3] TOTAL 모드일 때 컨텍스트 라벨 */}
-      {rankPlayerStageMode === 'TOTAL' && (
+      {/* 🛠️ [v3.1] TOTAL 모드 = 현재 시즌 정규+PO 합산 */}
+      {rankPlayerStageMode === 'TOTAL' && isHybridSeason && (
           <div className="flex items-center gap-2 px-3 py-2 bg-[#0a1322] border-b border-slate-800">
               <span className="text-[8px] sm:text-[9px] font-black tracking-widest text-slate-500">CURRENT VIEW</span>
-              <span className="text-[9px] sm:text-[10px] font-black text-violet-400 italic bg-violet-950/50 border border-violet-900/50 px-2 py-[1px] rounded-full">🌍 ALL SEASONS</span>
-              <span className="text-[9px] sm:text-[10px] text-slate-500 italic">· 시즌 {totalSourceSeasons}개 누적</span>
+              <span className="text-[9px] sm:text-[10px] font-black text-violet-400 italic bg-violet-950/50 border border-violet-900/50 px-2 py-[1px] rounded-full">🏁 SEASON ALL</span>
+              <span className="text-[9px] sm:text-[10px] text-slate-500 italic">· 정규 + 토너먼트/PO 합산</span>
           </div>
       )}
 

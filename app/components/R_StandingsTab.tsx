@@ -18,22 +18,21 @@ interface R_StandingsTabProps {
   owners: Owner[];
   knockoutStages?: any;
   getTeamExtendedInfo: (teamIdentifier: string) => any;
-  seasons?: any[]; // 🛠️ [v3] 전 시즌 스탠딩 집계용
 }
 
 // 🛠️ [v3] Load More 단계 — 한 번에 6개씩 추가 노출
 const PAGE_SIZE = 6;
 
-export default function R_StandingsTab({ currentSeason, computedTeamsData, sortedTeams, masterTeams, owners, knockoutStages, getTeamExtendedInfo, seasons = [] }: R_StandingsTabProps) {
+export default function R_StandingsTab({ currentSeason, computedTeamsData, sortedTeams, masterTeams, owners, knockoutStages, getTeamExtendedInfo }: R_StandingsTabProps) {
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('A');
   const [expandedGroupTeam, setExpandedGroupTeam] = useState<string | null>(null);
   const [expandedTotalTeam, setExpandedTotalTeam] = useState<string | null>(null);
-  const [expandedAllSeasonTeam, setExpandedAllSeasonTeam] = useState<string | null>(null);
+  const [expandedFullSeasonTeam, setExpandedFullSeasonTeam] = useState<string | null>(null);
   // 🛠️ [UI 픽스 v2] Season 탭의 BRACKET 접기/펼치기 토글 (TOURNAMENT / LEAGUE_PLAYOFF / CUP 공유)
   const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
-  // 🛠️ [v3] Load More — 리그·전 시즌 스탠딩에 각각 적용 (기본 6, +6/click)
+  // 🛠️ [v3.1] Load More — 리그·풀시즌 스탠딩에 각각 적용 (기본 6, +6/click)
   const [leagueVisibleCount, setLeagueVisibleCount] = useState<number>(PAGE_SIZE);
-  const [allSeasonVisibleCount, setAllSeasonVisibleCount] = useState<number>(PAGE_SIZE);
+  const [fullSeasonVisibleCount, setFullSeasonVisibleCount] = useState<number>(PAGE_SIZE);
 
   // 🔥 [핵심 픽스] 스탠딩 탭에도 똑똑한 뇌(스마트 파서)를 완벽하게 이식합니다!
   const internalKnockoutStages = useMemo(() => {
@@ -412,45 +411,54 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
     if (sortedGroupKeys.length > 0 && !sortedGroupKeys.includes(selectedGroupTab)) setSelectedGroupTab(sortedGroupKeys[0]);
   }, [sortedGroupKeys, selectedGroupTab]);
 
-  // 🛠️ [v3] 전 시즌 스탠딩 — seasons[] 전체 매치를 팀별로 누적 (리그 + 토너먼트/PO 모두 포함)
-  const allSeasonStandings = useMemo(() => {
+  // 🛠️ [v3.1] Full Season Standing — "현재 시즌의 전 경기" (정규 + 토너먼트/PO 합산)
+  //   기존 sortedTeams 는 LEAGUE_PLAYOFF/CUP 에서 PO 매치를 제외해서 표시 (Regular League Standing)
+  //   이 섹션은 시즌 안의 모든 매치 (PO 포함) 를 다 합산한 풀시즌 종합 순위
+  //   hybrid 시즌 (LEAGUE_PLAYOFF / CUP / TOURNAMENT) 에서만 보여줌 — 일반 LEAGUE 는 sortedTeams 와 동일하므로 중복 노출 불필요
+  const fullSeasonStandings = useMemo(() => {
+    if (!currentSeason?.rounds) return [];
+    const isHybrid = ['LEAGUE_PLAYOFF', 'CUP', 'TOURNAMENT'].includes(currentSeason?.type);
+    if (!isHybrid) return [];
+
     const teamStats: Record<string, any> = {};
     const normalize = (s: string) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, '');
 
-    (seasons || []).forEach((season: any) => {
-        season?.rounds?.forEach((r: any) => {
-            r.matches?.forEach((m: any) => {
-                if (m.status !== 'COMPLETED') return;
-                if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
+    currentSeason.rounds.forEach((r: any) => {
+        r.matches?.forEach((m: any) => {
+            if (m.status !== 'COMPLETED') return;
+            if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
 
-                const hKey = normalize(m.home);
-                const aKey = normalize(m.away);
-                const hScore = Number(m.homeScore || 0);
-                const aScore = Number(m.awayScore || 0);
+            const hKey = normalize(m.home);
+            const aKey = normalize(m.away);
+            const hScore = Number(m.homeScore || 0);
+            const aScore = Number(m.awayScore || 0);
 
-                const ensure = (key: string, name: string, logo: string) => {
-                    if (!teamStats[key]) {
-                        teamStats[key] = { id: key, name, logo, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 };
-                    }
-                };
-                ensure(hKey, m.home, m.homeLogo);
-                ensure(aKey, m.away, m.awayLogo);
+            const ensure = (key: string, name: string, logo: string) => {
+                if (!teamStats[key]) {
+                    // computedTeamsData 의 기존 team 정보(id, logo 등) 참조해서 보존
+                    const existing = computedTeamsData.find((t: any) => normalize(t.name || t.teamName) === key);
+                    teamStats[key] = existing
+                        ? { ...existing, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 }
+                        : { id: key, name, logo, win: 0, draw: 0, loss: 0, gf: 0, ga: 0, gd: 0, points: 0, played: 0 };
+                }
+            };
+            ensure(hKey, m.home, m.homeLogo);
+            ensure(aKey, m.away, m.awayLogo);
 
-                teamStats[hKey].played++;
-                teamStats[aKey].played++;
-                teamStats[hKey].gf += hScore; teamStats[hKey].ga += aScore;
-                teamStats[aKey].gf += aScore; teamStats[aKey].ga += hScore;
+            teamStats[hKey].played++;
+            teamStats[aKey].played++;
+            teamStats[hKey].gf += hScore; teamStats[hKey].ga += aScore;
+            teamStats[aKey].gf += aScore; teamStats[aKey].ga += hScore;
 
-                if (hScore > aScore) { teamStats[hKey].win++; teamStats[aKey].loss++; teamStats[hKey].points += 3; }
-                else if (aScore > hScore) { teamStats[aKey].win++; teamStats[hKey].loss++; teamStats[aKey].points += 3; }
-                else { teamStats[hKey].draw++; teamStats[aKey].draw++; teamStats[hKey].points++; teamStats[aKey].points++; }
-            });
+            if (hScore > aScore) { teamStats[hKey].win++; teamStats[aKey].loss++; teamStats[hKey].points += 3; }
+            else if (aScore > hScore) { teamStats[aKey].win++; teamStats[hKey].loss++; teamStats[aKey].points += 3; }
+            else { teamStats[hKey].draw++; teamStats[aKey].draw++; teamStats[hKey].points++; teamStats[aKey].points++; }
         });
     });
 
     Object.values(teamStats).forEach((t: any) => { t.gd = t.gf - t.ga; });
     return getRankedTeams(Object.values(teamStats));
-  }, [seasons]);
+  }, [currentSeason, computedTeamsData]);
 
   return (
     <div className="space-y-12 fade-in">
@@ -641,14 +649,16 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
             </div>
         </div>
 
-        {/* 🛠️ [v3] 전 시즌 스탠딩 — 리그·토너먼트·플레이오프 전부 합산 */}
-        {allSeasonStandings.length > 0 && (
+        {/* 🛠️ [v3.1] 풀시즌 스탠딩 — 현재 시즌의 정규 + 토너먼트/PO 모든 경기 합산
+            (hybrid 시즌 LEAGUE_PLAYOFF / CUP / TOURNAMENT 에서만 노출) */}
+        {fullSeasonStandings.length > 0 && (
             <div className="space-y-4">
                 <div className="flex items-center gap-3 px-2">
                     <div className="w-1.5 h-6 bg-violet-500 rounded-full shadow-[0_0_10px_#8b5cf6]"></div>
-                    <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">All-Season Standing</h3>
-                    <span className="text-[10px] font-black text-violet-400 italic bg-violet-950/50 border border-violet-900/50 px-2 py-[1px] rounded-full">🌍 ALL TIME</span>
+                    <h3 className="text-xl font-black italic text-white uppercase tracking-tighter">Full Season Standing</h3>
+                    <span className="text-[10px] font-black text-violet-400 italic bg-violet-950/50 border border-violet-900/50 px-2 py-[1px] rounded-full">🏁 SEASON ALL</span>
                 </div>
+                <p className="text-[10px] text-slate-500 italic px-2 -mt-2">정규 + 토너먼트/PO 매치 전체를 합산한 시즌 종합 순위</p>
                 <div className="bg-[#0f172a] rounded-xl border border-slate-800 shadow-2xl">
                     <table className="w-full text-left text-xs border-collapse">
                         <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase">
@@ -660,33 +670,34 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
                             </tr>
                         </thead>
                         <tbody>
-                            {allSeasonStandings.slice(0, allSeasonVisibleCount).map((t: any) => {
-                                const isExpanded = expandedAllSeasonTeam === t.name;
+                            {fullSeasonStandings.slice(0, fullSeasonVisibleCount).map((t: any) => {
+                                const isExpanded = expandedFullSeasonTeam === t.name;
+                                const teamMatches = isExpanded ? getTeamMatches(t.name) : [];
                                 return (
                                     <React.Fragment key={t.id}>
                                         <tr className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${isExpanded ? 'bg-slate-900/40' : ''}`}>
                                             <td className={`py-4 pl-4 pr-1 text-center font-bold ${t.rank === 1 ? 'text-yellow-400' : t.rank === 2 ? 'text-slate-300' : t.rank === 3 ? 'text-orange-400' : 'text-slate-600'}`}>{t.rank}</td>
-                                            <td className="py-4 pl-1 pr-4 w-[40%]">{renderBroadcastTeamCell(t, isExpanded, () => setExpandedAllSeasonTeam(isExpanded ? null : t.name))}</td>
+                                            <td className="py-4 pl-1 pr-4 w-[40%]">{renderBroadcastTeamCell(t, isExpanded, () => setExpandedFullSeasonTeam(isExpanded ? null : t.name))}</td>
                                             <td className="p-2 text-center text-white">{t.win}</td>
                                             <td className="p-2 text-center text-slate-500">{t.draw}</td>
                                             <td className="p-2 text-center text-slate-500">{t.loss}</td>
                                             <td className="p-2 text-center text-slate-400 font-bold">{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
                                             <td className="p-2 text-center font-black text-violet-400 text-sm">{t.points}</td>
                                         </tr>
+                                        {isExpanded && renderExpandedMatchRow(teamMatches, t.name)}
                                     </React.Fragment>
                                 );
                             })}
                         </tbody>
                     </table>
-                    {/* 🛠️ [v3] Load More — 전 시즌 스탠딩 */}
-                    {allSeasonStandings.length > allSeasonVisibleCount && (
+                    {fullSeasonStandings.length > fullSeasonVisibleCount && (
                         <div className="flex justify-center py-3 border-t border-slate-800/50 bg-[#0a1322]">
                             <button
-                                onClick={() => setAllSeasonVisibleCount(c => c + PAGE_SIZE)}
+                                onClick={() => setFullSeasonVisibleCount(c => c + PAGE_SIZE)}
                                 className="bg-slate-900 hover:bg-violet-900/30 border border-violet-500/40 hover:border-violet-400 text-violet-300 hover:text-white text-[11px] font-black italic tracking-widest uppercase px-5 py-2 rounded-full transition-all shadow-lg shadow-violet-900/20 active:scale-95 flex items-center gap-2"
                             >
                                 <span>▾ 더보기</span>
-                                <span className="text-slate-500 text-[9px] tracking-normal">({allSeasonStandings.length - allSeasonVisibleCount}팀 더)</span>
+                                <span className="text-slate-500 text-[9px] tracking-normal">({fullSeasonStandings.length - fullSeasonVisibleCount}팀 더)</span>
                             </button>
                         </div>
                     )}

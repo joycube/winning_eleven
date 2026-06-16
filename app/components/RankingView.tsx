@@ -397,7 +397,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             owners={owners}
             knockoutStages={knockoutStages}
             getTeamExtendedInfo={getTeamExtendedInfo}
-            seasons={seasons}
         />
       )}
 
@@ -407,7 +406,6 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
             activeRankingData={activeRankingData}
             isHybridSeason={isHybridSeason}
             owners={owners}
-            seasons={seasons}
         />
       )}
 
