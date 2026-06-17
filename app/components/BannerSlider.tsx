@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect, useMemo } from 'react';
-import Image from 'next/image'; // 🔥 [추가] Next.js 강력한 이미지 최적화 컴포넌트 임포트
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Image from 'next/image';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Banner } from '../types';
 
 interface BannerSliderProps {
@@ -19,18 +20,137 @@ const getYouTubeId = (url: string | undefined) => {
 export const getYouTubeThumbnail = (url: string) => {
     const vId = getYouTubeId(url);
     if (vId) return `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
-    return url; 
+    return url;
 };
 
+// 🛠️ [v3.4] 노출 시간
+const IMAGE_DURATION_MS = 5000;   // 이미지 5초
+const VIDEO_DURATION_MS = 20000;  // 영상 최소 20초
+
 export const BannerSlider = ({ banners }: BannerSliderProps) => {
-  const [bannerIdx, setBannerIdx] = useState<number>(0); 
+  const [bannerIdx, setBannerIdx] = useState<number>(0);
   const [isBannerInitialized, setIsBannerInitialized] = useState(false);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+  // 🛠️ [v3.5] 로드 실패 누적 — 한 번 깨진 배너는 풀에서 영구 제외
+  const [failedSet, setFailedSet] = useState<Set<number>>(new Set());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const renderBannerContent = (b: Banner) => {
+  const sortedBannersDisplay = useMemo(() => {
+      if (!banners) return [];
+      return [...banners];
+  }, [banners]);
+
+  // 🛠️ [v3.4] 배너 타입별 인덱스 풀 (실패한 배너 제외)
+  const { imageIndices, videoIndices } = useMemo(() => {
+      const imgs: number[] = [];
+      const vids: number[] = [];
+      sortedBannersDisplay.forEach((b, i) => {
+          if (failedSet.has(i)) return;
+          if (getYouTubeId(b.url)) vids.push(i);
+          else imgs.push(i);
+      });
+      return { imageIndices: imgs, videoIndices: vids };
+  }, [sortedBannersDisplay, failedSet]);
+
+  // 🛠️ [v3.4] 다음 인덱스 선택 — 현재 타입과 반대 풀에서 랜덤
+  //   예외: 반대 풀이 비어있으면 같은 풀에서 랜덤 (안전 폴백)
+  //   실패한 배너는 imageIndices/videoIndices 단계에서 이미 제외됨
+  const pickNextIdx = useCallback((fromIdx: number, fallbackToOpposite = true): number => {
+      if (sortedBannersDisplay.length === 0) return 0;
+      if (sortedBannersDisplay.length === 1) return 0;
+
+      const currentIsVideo = !!getYouTubeId(sortedBannersDisplay[fromIdx]?.url);
+      const targetPool = currentIsVideo ? imageIndices : videoIndices;
+      const fallbackPool = currentIsVideo ? videoIndices : imageIndices;
+
+      const pool = targetPool.length > 0 ? targetPool : (fallbackToOpposite ? fallbackPool : []);
+      if (pool.length === 0) return fromIdx;
+
+      if (pool.length === 1) return pool[0] === fromIdx ? fromIdx : pool[0];
+      let next = pool[Math.floor(Math.random() * pool.length)];
+      let guard = 0;
+      while (next === fromIdx && guard < 10) {
+          next = pool[Math.floor(Math.random() * pool.length)];
+          guard++;
+      }
+      return next;
+  }, [sortedBannersDisplay, imageIndices, videoIndices]);
+
+  // 🛠️ [v3.5] 로드 실패 핸들러 — failedSet 에 추가 + 현재 노출 중이면 즉시 다음으로
+  const handleBannerError = useCallback((failedIdx: number) => {
+      setFailedSet(prev => {
+          if (prev.has(failedIdx)) return prev;
+          const next = new Set(prev);
+          next.add(failedIdx);
+          return next;
+      });
+      console.warn(`[BannerSlider] 배너 #${failedIdx} 로드 실패 — 다음으로 자동 스킵`);
+      // 현재 보고 있는 배너가 실패한 경우 즉시 다음으로 (타이머 대기 안 함)
+      setBannerIdx(prev => prev === failedIdx ? pickNextIdx(prev) : prev);
+      if (timerRef.current) clearTimeout(timerRef.current);
+  }, [pickNextIdx]);
+
+  const goNext = useCallback(() => {
+      setBannerIdx(prev => pickNextIdx(prev));
+  }, [pickNextIdx]);
+
+  const goPrev = useCallback(() => {
+      // 이전도 같은 규칙 (교차) — 진정한 history 가 아니라 "이전 타입에서 새 랜덤" 의미
+      setBannerIdx(prev => pickNextIdx(prev));
+  }, [pickNextIdx]);
+
+  // 🛠️ [v3.4] 초기 진입 — 무조건 이미지 풀에서 랜덤
+  //   이미지가 0개면 영상 풀에서 랜덤 (안전 폴백)
+  useEffect(() => {
+      if (sortedBannersDisplay.length === 0 || isBannerInitialized) return;
+
+      const pool = imageIndices.length > 0 ? imageIndices : videoIndices;
+      if (pool.length === 0) {
+          setBannerIdx(0);
+      } else {
+          const startIdx = pool[Math.floor(Math.random() * pool.length)];
+          setBannerIdx(startIdx);
+      }
+      setIsBannerInitialized(true);
+  }, [sortedBannersDisplay, imageIndices, videoIndices, isBannerInitialized]);
+
+  // 🛠️ [v3.4] 자동 전환 타이머
+  useEffect(() => {
+      if (!isBannerInitialized || sortedBannersDisplay.length < 2) return;
+      const currentBanner = sortedBannersDisplay[bannerIdx];
+      if (!currentBanner) return;
+      const isVideo = !!getYouTubeId(currentBanner.url);
+      const delay = isVideo ? VIDEO_DURATION_MS : IMAGE_DURATION_MS;
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(goNext, delay);
+
+      return () => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+      };
+  }, [bannerIdx, isBannerInitialized, sortedBannersDisplay, goNext]);
+
+  // 수동 네비게이션 (꺽쇠 / 스와이프) — 타이머 리셋
+  const handleNavigate = useCallback((dir: 'prev' | 'next') => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (dir === 'next') goNext();
+      else goPrev();
+  }, [goNext, goPrev]);
+
+  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
+  const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
+  const handleTouchEnd = () => {
+      if (!touchStart || !touchEnd) return;
+      const dist = touchStart - touchEnd;
+      if (dist > 50) handleNavigate('next');
+      if (dist < -50) handleNavigate('prev');
+      setTouchStart(0); setTouchEnd(0);
+  };
+
+  const renderBannerContent = (b: Banner, idx: number) => {
     const url = b.url || '';
-    const vId = getYouTubeId(url); 
+    const vId = getYouTubeId(url);
 
     if (vId) {
         const embedUrl = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}&playsinline=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`;
@@ -38,13 +158,11 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
         return (
             <div className="w-full h-full bg-black relative overflow-hidden">
-                {/* 1. 블러 썸네일 배경 — 데스크탑 레터박스 영역을 채움 */}
                 <div
                     aria-hidden="true"
                     className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
                     style={{ backgroundImage: `url(${thumbUrl})` }}
                 />
-                {/* 2. iframe — 모바일은 가로 풀 (위아래 살짝 잘림), 데스크탑은 16:9 비율 유지 중앙 정렬 */}
                 <div className="absolute inset-0 flex items-center justify-center">
                     <iframe
                         src={embedUrl}
@@ -54,21 +172,25 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
                         title={b.description || 'Banner Video'}
                     />
                 </div>
-                {/* 3. 클릭 차단 + 살짝 다크 그라데이션 (상단 공지 가독성용) */}
                 <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/30 via-transparent to-black/30" />
+                {/* 🛠️ [v3.5] 비디오 썸네일 사전 검증 — 썸네일조차 못 불러오는 영상이면 영상도 안 뜸 → 실패 처리 */}
+                <img
+                    src={thumbUrl}
+                    alt=""
+                    aria-hidden
+                    style={{ display: 'none' }}
+                    onError={() => handleBannerError(idx)}
+                />
             </div>
         );
     } else {
-        // 🛠️ 모바일은 object-cover (가로 가득, 위아래 살짝 잘림), sm 이상은 object-contain + 블러 BG
         return (
             <div className="w-full h-full bg-black relative overflow-hidden">
-                {/* 1. 블러 처리된 동일 이미지 배경 */}
                 <div
                     aria-hidden="true"
                     className="absolute inset-0 bg-cover bg-center scale-125 blur-2xl opacity-70"
                     style={{ backgroundImage: `url(${url})` }}
                 />
-                {/* 2. 본 이미지 — 모바일 cover / 데스크탑 contain */}
                 <Image
                     src={url}
                     alt={b.description || 'Banner'}
@@ -76,79 +198,91 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
                     priority
                     sizes="(max-width: 768px) 100vw, 1200px"
                     className="object-cover sm:object-contain"
+                    onError={() => handleBannerError(idx)}
+                    unoptimized={url.startsWith('data:') || url.startsWith('blob:')}
                 />
-                {/* 3. 살짝 다크 그라데이션 (상단 공지 가독성용) */}
                 <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
             </div>
         );
     }
   };
 
-  const sortedBannersDisplay = useMemo(() => {
-      if (!banners) return [];
-      return [...banners];
-  }, [banners]);
-
-  useEffect(() => {
-    if (!sortedBannersDisplay || sortedBannersDisplay.length === 0) return;
-
-    if (!isBannerInitialized) {
-        const videoIndices = sortedBannersDisplay.map((b, i) => {
-            return getYouTubeId(b.url) ? i : -1;
-        }).filter(i => i !== -1);
-
-        if (videoIndices.length > 0) {
-            const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
-            setBannerIdx(randomVideoIdx);
-        } else {
-            setBannerIdx(Math.floor(Math.random() * sortedBannersDisplay.length));
-        }
-        setIsBannerInitialized(true);
-        return;
-    }
-
-    const currentBanner = sortedBannersDisplay[bannerIdx];
-    if (!currentBanner) return;
-
-    const isVideo = !!getYouTubeId(currentBanner.url);
-    const delay = isVideo ? 15000 : 5000; 
-
-    const t = setTimeout(() => {
-        let nextIdx = Math.floor(Math.random() * sortedBannersDisplay.length);
-        if (sortedBannersDisplay.length > 1 && nextIdx === bannerIdx) {
-            nextIdx = (nextIdx + 1) % sortedBannersDisplay.length;
-        }
-        setBannerIdx(nextIdx);
-    }, delay);
-
-    return () => clearTimeout(t);
-  }, [sortedBannersDisplay, bannerIdx, isBannerInitialized]);
-
-  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
-  const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-  const handleTouchEnd = () => { 
-    if (!touchStart || !touchEnd) return; 
-    const dist = touchStart - touchEnd; 
-    if (dist > 50) setBannerIdx((p) => (p + 1) % sortedBannersDisplay.length); 
-    if (dist < -50) setBannerIdx((p) => (p - 1 + sortedBannersDisplay.length) % sortedBannersDisplay.length); 
-    setTouchStart(0); setTouchEnd(0); 
-  };
+  // 🛠️ [v3.4] 인디케이터용 — 점은 최대 8개 노출 (그 이상은 카운터만)
+  const MAX_DOTS = 8;
+  const totalBanners = sortedBannersDisplay.length;
 
   return (
-    <div 
-        className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" 
-        onTouchStart={handleTouchStart} 
-        onTouchMove={handleTouchMove} 
+    <div
+        className="group w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
     >
-        {sortedBannersDisplay.length > 0 ? sortedBannersDisplay.map((b, i) => (
+        {totalBanners > 0 ? sortedBannersDisplay.map((b, i) => (
             <div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === bannerIdx ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
-                {renderBannerContent(b)}
+                {!failedSet.has(i) && renderBannerContent(b, i)}
             </div>
         )) : null}
-        
+
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent z-10 pointer-events-none" />
-        
+
+        {/* 🛠️ [v3.4] 좌우 꺽쇠 — 모바일 상시 / 데스크탑 hover 시에만 (sm: 이상 group-hover) */}
+        {totalBanners > 1 && (
+            <>
+                <button
+                    onClick={() => handleNavigate('prev')}
+                    aria-label="이전 배너"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/55 hover:bg-black/85 border border-slate-600/50 hover:border-slate-400 backdrop-blur-sm flex items-center justify-center text-white transition-all active:scale-95 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                    <ChevronLeft size={18} strokeWidth={2.5} />
+                </button>
+                <button
+                    onClick={() => handleNavigate('next')}
+                    aria-label="다음 배너"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/55 hover:bg-black/85 border border-slate-600/50 hover:border-slate-400 backdrop-blur-sm flex items-center justify-center text-white transition-all active:scale-95 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                    <ChevronRight size={18} strokeWidth={2.5} />
+                </button>
+            </>
+        )}
+
+        {/* 🛠️ [v3.4] 하단 인디케이터 — 점 + 카운터 */}
+        {totalBanners > 1 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 bg-black/45 backdrop-blur-sm rounded-full px-3 py-1.5 border border-slate-700/50">
+                {totalBanners <= MAX_DOTS ? (
+                    <div className="flex items-center gap-1.5">
+                        {sortedBannersDisplay.map((_, i) => (
+                            <span
+                                key={i}
+                                className={`block transition-all rounded-full ${
+                                    i === bannerIdx
+                                        ? 'w-4 h-1.5 bg-white'
+                                        : 'w-1.5 h-1.5 bg-slate-500'
+                                }`}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1.5">
+                        {Array.from({ length: MAX_DOTS }).map((_, i) => {
+                            const isActive = Math.floor((bannerIdx / totalBanners) * MAX_DOTS) === i;
+                            return (
+                                <span
+                                    key={i}
+                                    className={`block transition-all rounded-full ${
+                                        isActive ? 'w-4 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-slate-500'
+                                    }`}
+                                />
+                            );
+                        })}
+                    </div>
+                )}
+                <span className="text-[10px] font-bold text-slate-300 tabular-nums">
+                    {bannerIdx + 1} / {totalBanners}
+                </span>
+            </div>
+        )}
+
         {sortedBannersDisplay[bannerIdx] && (
             <div className="absolute bottom-12 left-6 z-20">
                 <p className="text-white text-xs font-bold bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-slate-700/50">
