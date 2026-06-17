@@ -35,6 +35,10 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
   // 🛠️ [v3.5] 로드 실패 누적 — 한 번 깨진 배너는 풀에서 영구 제외
   const [failedSet, setFailedSet] = useState<Set<number>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 🛠️ [v3.6] 셔플 사이클용 — 타입별 "이미 본 인덱스" 기억
+  //   해당 타입의 모든 배너를 한 사이클에 한 번씩 노출 후에만 다시 풀로 복귀
+  const seenImagesRef = useRef<Set<number>>(new Set());
+  const seenVideosRef = useRef<Set<number>>(new Set());
 
   const sortedBannersDisplay = useMemo(() => {
       if (!banners) return [];
@@ -53,27 +57,45 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
       return { imageIndices: imgs, videoIndices: vids };
   }, [sortedBannersDisplay, failedSet]);
 
-  // 🛠️ [v3.4] 다음 인덱스 선택 — 현재 타입과 반대 풀에서 랜덤
-  //   예외: 반대 풀이 비어있으면 같은 풀에서 랜덤 (안전 폴백)
-  //   실패한 배너는 imageIndices/videoIndices 단계에서 이미 제외됨
-  const pickNextIdx = useCallback((fromIdx: number, fallbackToOpposite = true): number => {
+  // 🛠️ [v3.6] 다음 인덱스 선택 — 교차 + 셔플 사이클
+  //   1) 우선 반대 타입 풀에서 픽 (이미지↔영상 교차 보장)
+  //   2) 같은 타입 안에서는 "이미 본 인덱스" 를 제외한 미경험 풀에서 랜덤
+  //   3) 해당 타입 모두 한 번씩 본 뒤에만 seen 셋 리셋 → 처음부터 다시
+  //   4) 반대 타입이 0개일 때만 같은 타입으로 폴백 (안전망)
+  const pickNextIdx = useCallback((fromIdx: number): number => {
       if (sortedBannersDisplay.length === 0) return 0;
       if (sortedBannersDisplay.length === 1) return 0;
 
       const currentIsVideo = !!getYouTubeId(sortedBannersDisplay[fromIdx]?.url);
       const targetPool = currentIsVideo ? imageIndices : videoIndices;
       const fallbackPool = currentIsVideo ? videoIndices : imageIndices;
+      const targetSeen = currentIsVideo ? seenImagesRef : seenVideosRef;
+      const fallbackSeen = currentIsVideo ? seenVideosRef : seenImagesRef;
 
-      const pool = targetPool.length > 0 ? targetPool : (fallbackToOpposite ? fallbackPool : []);
-      if (pool.length === 0) return fromIdx;
-
-      if (pool.length === 1) return pool[0] === fromIdx ? fromIdx : pool[0];
-      let next = pool[Math.floor(Math.random() * pool.length)];
-      let guard = 0;
-      while (next === fromIdx && guard < 10) {
-          next = pool[Math.floor(Math.random() * pool.length)];
-          guard++;
+      // 1) 반대 타입에서 미경험 항목으로 픽 (교차 + 셔플)
+      if (targetPool.length > 0) {
+          let unseen = targetPool.filter(i => !targetSeen.current.has(i));
+          if (unseen.length === 0) {
+              // 해당 타입 모두 봤음 → 사이클 리셋, fromIdx 만 제외해서 즉시 같은 게 다시 안 뜨게
+              targetSeen.current.clear();
+              unseen = targetPool.filter(i => i !== fromIdx);
+              if (unseen.length === 0) unseen = targetPool;
+          }
+          const next = unseen[Math.floor(Math.random() * unseen.length)];
+          targetSeen.current.add(next);
+          return next;
       }
+
+      // 2) 반대 타입이 비어 있을 때만 같은 타입으로 폴백 (예: 영상 0개)
+      if (fallbackPool.length === 0) return fromIdx;
+      let unseen = fallbackPool.filter(i => !fallbackSeen.current.has(i) && i !== fromIdx);
+      if (unseen.length === 0) {
+          fallbackSeen.current.clear();
+          unseen = fallbackPool.filter(i => i !== fromIdx);
+          if (unseen.length === 0) unseen = fallbackPool;
+      }
+      const next = unseen[Math.floor(Math.random() * unseen.length)];
+      fallbackSeen.current.add(next);
       return next;
   }, [sortedBannersDisplay, imageIndices, videoIndices]);
 
@@ -102,15 +124,18 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
   // 🛠️ [v3.4] 초기 진입 — 무조건 이미지 풀에서 랜덤
   //   이미지가 0개면 영상 풀에서 랜덤 (안전 폴백)
+  //   v3.6: 시작 인덱스를 seen 셋에 등록 → 사이클 처음부터 정상 동작
   useEffect(() => {
       if (sortedBannersDisplay.length === 0 || isBannerInitialized) return;
 
-      const pool = imageIndices.length > 0 ? imageIndices : videoIndices;
+      const useImagePool = imageIndices.length > 0;
+      const pool = useImagePool ? imageIndices : videoIndices;
       if (pool.length === 0) {
           setBannerIdx(0);
       } else {
           const startIdx = pool[Math.floor(Math.random() * pool.length)];
           setBannerIdx(startIdx);
+          (useImagePool ? seenImagesRef : seenVideosRef).current.add(startIdx);
       }
       setIsBannerInitialized(true);
   }, [sortedBannersDisplay, imageIndices, videoIndices, isBannerInitialized]);
