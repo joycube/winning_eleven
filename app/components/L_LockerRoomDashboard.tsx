@@ -79,12 +79,32 @@ export default function L_LockerRoomDashboard({
       return active || [...seasons].sort((a: any, b: any) => b.id - a.id)[0];
   }, [seasons]);
 
+  // 🛠️ [v3.7] Firestore SDK 10.x "INTERNAL ASSERTION FAILED" 가드
+  //   - error 콜백 추가 — assertion 발생 시 SDK 가 자동으로 listener 재구독 시도하다 무한루프 방지
+  //   - cancelled 플래그 — StrictMode 이중 마운트 / hot reload 시 안전 정리
+  //   - try/catch — unsubscribe 자체가 던지는 경우도 흡수
   useEffect(() => {
-      const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(100));
-      const unsubscribe = onSnapshot(q, (snap) => {
-          setMatchCommentsData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-      return () => unsubscribe();
+      let cancelled = false;
+      let unsubscribe: (() => void) | null = null;
+      try {
+          const q = query(collection(db, 'match_comments'), orderBy('createdAt', 'desc'), limit(100));
+          unsubscribe = onSnapshot(
+              q,
+              (snap) => {
+                  if (cancelled) return;
+                  setMatchCommentsData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+              },
+              (err) => {
+                  console.warn('[match_comments] onSnapshot error:', err?.code, err?.message);
+              }
+          );
+      } catch (e) {
+          console.warn('[match_comments] subscribe failed:', e);
+      }
+      return () => {
+          cancelled = true;
+          try { unsubscribe && unsubscribe(); } catch { /* SDK internal — 무시 */ }
+      };
   }, []);
 
   const allHotPosts = useMemo(() => {
