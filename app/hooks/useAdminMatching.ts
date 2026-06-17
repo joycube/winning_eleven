@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { updateDoc, doc, collection, writeBatch } from 'firebase/firestore';
+import { updateDoc, doc, collection, writeBatch, query, where, getDocs } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, Match, FALLBACK_IMG } from '../types';
 import { generateRoundsLogic } from '../utils/scheduler';
 import { getSortedLeagues, getSortedTeamsLogic } from '../utils/helpers';
@@ -234,9 +234,18 @@ export const useAdminMatching = (
             if (!ownerIds || ownerIds.length === 0 || !totalPrize) return;
             const entryFee = Math.floor(totalPrize / ownerIds.length);
             if (entryFee <= 0) return;
+            // 🛠️ [Finance v4 / P2] dedup 가드 — 해당 시즌에 이미 참가비 EXPENSE 가 있으면 재기록 안 함
+            //   재매칭(generate-regen) 시 참가비 중복 차감 방지
+            const ledgerRef = collection(db, 'finance_ledger');
+            const dedupQ = query(ledgerRef, where('seasonId', '==', String(seasonId)), where('type', '==', 'EXPENSE'));
+            const existing = await getDocs(dedupQ);
+            if (!existing.empty) {
+                console.warn(`[Finance] 시즌 ${seasonId} 의 참가비 EXPENSE 가 이미 ${existing.size}건 존재 — 중복 기록 방지로 스킵`);
+                return;
+            }
             const batch = writeBatch(db);
             ownerIds.forEach(id => {
-                batch.set(doc(collection(db, 'finance_ledger')), {
+                batch.set(doc(ledgerRef), {
                     seasonId: String(seasonId), ownerId: String(id), type: 'EXPENSE', amount: entryFee,
                     title: `${seasonName} 참가비 🎫`, createdAt: new Date().toISOString()
                 });

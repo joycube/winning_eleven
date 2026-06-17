@@ -5,6 +5,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { FALLBACK_IMG, Owner, Season } from '../types';
+// 🛠️ [Finance v4 / P0] ledger ↔ owner 통합 매칭
+import { isLedgerOfOwner, resolveOwnerByLedger } from '../utils/financeMatching';
 
 declare module 'react' {
   interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
@@ -141,11 +143,8 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             if (teamWins[teamName].wins > bestTeam.wins) bestTeam = { name: teamName, logo: teamWins[teamName].logo, wins: teamWins[teamName].wins };
         });
 
-        const ownerLedgers = dbLedgers.filter(l => 
-            String(l.ownerId) === String(owner.id) || 
-            (owner.uid && String(l.ownerId) === owner.uid) ||
-            (l.ownerUid && l.ownerUid === owner.uid)
-        );
+        // 🛠️ [Finance v4 / P0] 7가지 표기형 모두 매칭 (UID/Owner.id/docId/nickname/legacyName/legacyNames/mappedOwnerId)
+        const ownerLedgers = dbLedgers.filter(l => isLedgerOfOwner(l, owner));
         const revenues = ownerLedgers.filter(l => l.type === 'REVENUE');
         const expenses = ownerLedgers.filter(l => l.type === 'EXPENSE');
         
@@ -177,10 +176,8 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   const computedFinanceDetails = useMemo(() => {
     const details: Record<string, any> = {};
     owners.forEach(owner => {
-        const ownerLedgers = dbLedgers.filter(l => 
-            String(l.ownerId) === String(owner.id) || 
-            (owner.uid && String(l.ownerId) === owner.uid)
-        );
+        // 🛠️ [Finance v4 / P0] 통합 매칭
+        const ownerLedgers = dbLedgers.filter(l => isLedgerOfOwner(l, owner));
         details[String(owner.id)] = {
             revenues: ownerLedgers.filter(l => l.type === 'REVENUE').map(l => ({ 
                 ...l, season: seasons.find(s => String(s.id) === l.seasonId)?.name || '기타', date: formatDate(l.createdAt)
@@ -193,21 +190,31 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     return details;
   }, [owners, dbLedgers, seasons]);
 
+  // 🛠️ [Finance v4 / P1] 매칭 실패한 ledger(고아) 를 시즌별로 누적 → UI 노출
+  const [orphansBySeason, setOrphansBySeason] = useState<Record<string, any[]>>({});
+
   const computedSettlements = useMemo(() => {
     const txs: any[] = [];
     const seasonIds = Array.from(new Set(dbLedgers.map(l => String(l.seasonId))));
+    const orphansAccum: Record<string, any[]> = {};
 
     seasonIds.forEach(sId => {
         const sLedgers = dbLedgers.filter(l => String(l.seasonId) === sId);
         const balances: Record<string, number> = {};
         owners.forEach(o => { balances[String(o.id)] = 0; });
-        
+
         sLedgers.forEach(l => {
-            const targetOwner = owners.find(o => String(o.id) === String(l.ownerId) || (o.uid && o.uid === String(l.ownerId)));
+            // 🛠️ [Finance v4 / P0] 통합 매칭으로 owner 찾기
+            const targetOwner = resolveOwnerByLedger(l, owners);
             if (targetOwner) {
                 const key = String(targetOwner.id);
                 if (l.type === 'REVENUE') balances[key] += Number(l.amount);
                 if (l.type === 'EXPENSE') balances[key] -= Number(l.amount);
+            } else {
+                // 🛠️ [Finance v4 / P1] 매칭 실패 — 고아 ledger 로 기록
+                if (!orphansAccum[sId]) orphansAccum[sId] = [];
+                orphansAccum[sId].push(l);
+                console.warn(`[Finance] 시즌 ${sId} 의 ledger 가 owner 와 매칭 안 됨:`, l.ownerId, l.title, l.amount);
             }
         });
 
@@ -228,6 +235,17 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             if (creditor.balance <= 0.5) cIdx++; if (debtor.balance >= -0.5) dIdx++;
         }
     });
+    // 🛠️ [Finance v4 / P1] 고아 ledger 집계 결과를 외부 state 로 푸시 (UI 노출용)
+    //   useEffect 로 별도 분리하지 않고 inline 호출 — orphansAccum 은 매번 새로 만들어지므로 setState 1회만 트리거
+    if (typeof window !== 'undefined') {
+      // 함수형 setState 로 직전 값과 비교해서 동일하면 set 안 함 (무한 렌더 방지)
+      queueMicrotask(() => setOrphansBySeason(prev => {
+        const prevKey = JSON.stringify(Object.keys(prev).sort());
+        const newKey = JSON.stringify(Object.keys(orphansAccum).sort());
+        if (prevKey === newKey && JSON.stringify(prev) === JSON.stringify(orphansAccum)) return prev;
+        return orphansAccum;
+      }));
+    }
     return txs;
   }, [dbLedgers, owners]);
 
@@ -238,10 +256,8 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     const selOwner = owners.find(o => String(o.id) === selectedOwnerId);
 
     if (targetOwnerId === 'ALL') {
-        dbLedgers.filter(l => 
-            String(l.ownerId) === selectedOwnerId || 
-            (selOwner?.uid && String(l.ownerId) === selOwner.uid)
-        ).forEach(l => {
+        // 🛠️ [Finance v4 / P0] 통합 매칭
+        dbLedgers.filter(l => isLedgerOfOwner(l, selOwner || null)).forEach(l => {
             const sName = seasons.find(s => String(s.id) === l.seasonId)?.name || '기타';
             if (!groups[sName]) groups[sName] = { rev: [], exp: [], p2pRx: [], p2pTx: [], sumRev: 0, sumExp: 0, sumRx: 0, sumTx: 0 };
             
@@ -294,6 +310,25 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
       });
       return total;
   }, [settlementViewData, targetOwnerId]);
+
+  // 🛠️ [Finance v4 / P3] 시즌별 Zero-sum 검증 — 수입 합 vs 지출 합 차이
+  //   P2P 정산은 sum(REVENUE) === sum(EXPENSE) 가 전제. 차이 있으면 누군가 미수금 발생
+  const seasonBalanceCheck = useMemo(() => {
+    const map: Record<string, { totalRev: number; totalExp: number; diff: number; seasonName: string }> = {};
+    const seasonIds = Array.from(new Set(dbLedgers.map(l => String(l.seasonId))));
+    seasonIds.forEach(sId => {
+        const sLedgers = dbLedgers.filter(l => String(l.seasonId) === sId);
+        const totalRev = sLedgers.filter(l => l.type === 'REVENUE').reduce((s, l) => s + Number(l.amount || 0), 0);
+        const totalExp = sLedgers.filter(l => l.type === 'EXPENSE').reduce((s, l) => s + Number(l.amount || 0), 0);
+        const seasonName = seasons.find(s => String(s.id) === sId)?.name || '기타';
+        map[sId] = { totalRev, totalExp, diff: totalRev - totalExp, seasonName };
+    });
+    return map;
+  }, [dbLedgers, seasons]);
+
+  const seasonBalanceWarnings = useMemo(() => {
+    return Object.entries(seasonBalanceCheck).filter(([, v]) => Math.abs(v.diff) > 0.5);
+  }, [seasonBalanceCheck]);
 
   const rankedOwners = useMemo(() => [...computedOwners].sort((a, b) => b.netProfit - a.netProfit), [computedOwners]);
   const activeOwner = computedOwners.find(o => o.id === selectedOwnerId);
@@ -458,6 +493,62 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
       {/* [탭 2] 정산소 (SETTLEMENT) */}
       {activeTab === 'SETTLEMENT' && activeOwner && (
         <div className="space-y-4 animate-in slide-in-from-right-4">
+
+          {/* 🛠️ [Finance v4 / P3] 정합성 경고 카드 — ADMIN 만 노출 */}
+          {user?.role === 'ADMIN' && (seasonBalanceWarnings.length > 0 || Object.keys(orphansBySeason).length > 0) && (
+            <div className="bg-red-950/30 border border-red-900/60 rounded-2xl p-4 shadow-inner space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚠️</span>
+                <h4 className="text-sm font-black italic text-red-300 uppercase tracking-widest">정산 정합성 경고 (관리자만 노출)</h4>
+              </div>
+
+              {seasonBalanceWarnings.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-red-400 mb-2 tracking-wider uppercase">시즌별 수입 vs 지출 불일치</p>
+                  <div className="space-y-1">
+                    {seasonBalanceWarnings.map(([sId, v]) => (
+                      <div key={sId} className="flex items-center justify-between text-[11px] bg-red-950/40 border border-red-900/40 rounded px-2 py-1.5">
+                        <span className="font-bold text-white truncate flex-1 italic">{v.seasonName}</span>
+                        <span className="text-emerald-400 font-mono shrink-0">+{v.totalRev.toLocaleString()}</span>
+                        <span className="text-slate-500 mx-1">/</span>
+                        <span className="text-red-400 font-mono shrink-0">-{v.totalExp.toLocaleString()}</span>
+                        <span className="text-yellow-400 font-black ml-2 shrink-0">차이 {v.diff > 0 ? '+' : ''}{v.diff.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-slate-500 italic mt-1.5">수입과 지출 합이 다르면 P2P 정산이 불완전합니다. 한쪽 항목이 누락됐을 가능성</p>
+                </div>
+              )}
+
+              {Object.keys(orphansBySeason).length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-red-400 mb-2 tracking-wider uppercase">고아 ledger — owner 와 매칭 안 됨</p>
+                  <div className="space-y-1">
+                    {Object.entries(orphansBySeason).map(([sId, list]) => {
+                      const sName = seasons.find(s => String(s.id) === sId)?.name || '기타';
+                      return (
+                        <div key={sId} className="bg-red-950/40 border border-red-900/40 rounded px-2 py-1.5 text-[10px]">
+                          <div className="font-bold text-white italic">{sName} — {list.length}건</div>
+                          {list.slice(0, 3).map((l: any, i: number) => (
+                            <div key={i} className="text-slate-400 text-[10px] mt-0.5 truncate font-mono">
+                              <span className="text-yellow-400">ownerId:</span> {String(l.ownerId).slice(0, 20)}{String(l.ownerId).length > 20 ? '…' : ''}
+                              <span className="text-slate-500 mx-1">·</span>
+                              <span>{l.title}</span>
+                              <span className="text-slate-500 mx-1">·</span>
+                              <span className="text-emerald-400">{Number(l.amount).toLocaleString()}원</span>
+                            </div>
+                          ))}
+                          {list.length > 3 && <div className="text-slate-500 italic mt-0.5">… 외 {list.length - 3}건</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[9px] text-slate-500 italic mt-1.5">레거시 닉네임/UID 가 현재 owners 명단과 매칭 안 되는 경우. 명부 관리에서 legacyNames 추가하면 해결</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
             <h3 className="text-lg font-black italic text-white uppercase border-l-4 border-emerald-500 pl-2">Settlement Ledger</h3>
             <div className="flex w-full md:w-auto gap-2">
