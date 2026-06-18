@@ -64,7 +64,8 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
     const authorInfo = latestComment ? resolveOwnerInfo(owners, (latestComment.authorName || latestComment.ownerName) || '', latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
-        <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
+        // 🛠️ [호버/연결 픽스] wrapper rounded-3xl 과 라운드 일치 + -mt-4 pt-5 로 카드 바닥과 자연스럽게 흡수
+        <div onClick={onClick} className="relative -mt-4 pt-5 pb-3 px-4 bg-[#0a1020] rounded-b-3xl shadow-[inset_0_8px_12px_-8px_rgba(0,0,0,0.4)] flex items-center gap-2 cursor-pointer hover:bg-[#0d1428] transition-colors z-0">
             {authorInfo ? (
                 <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
             ) : (
@@ -478,9 +479,9 @@ export const CupSchedule = ({
                                                 const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                                 
                                                 return (
-                                                    <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
+                                                    <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
                                                         {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl (MatchCard 내부와 정렬), emerald 호버 강조 */}
-                                                        <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
+                                                        <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                             {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -517,9 +518,9 @@ export const CupSchedule = ({
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                         
                                         return (
-                                            <div key={m.id || `${section.id}-${mIdx}`} ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }} className={`flex flex-col mb-2 transition-all ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : ''}`}>
-                                                {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl, emerald 호버 강조 */}
-                                                <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
+                                            <div key={m.id || `${section.id}-${mIdx}`} ref={(el) => { if (m.id && !isPlaceholder) matchRefs.current[m.id] = el; }} className={`group/cell flex flex-col mb-2 transition-all duration-300 ${isPlaceholder ? 'opacity-60 grayscale-[50%] pointer-events-none' : 'hover:-translate-y-0.5'}`}>
+                                                {/* 🛠️ [호버 픽스] wrapper border 제거 → 단일 라인, 호버는 group/cell 의 glow shadow */}
+                                                <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                     <MatchCard match={safeMatch} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
@@ -549,9 +550,9 @@ export const CupSchedule = ({
                                         const safeMatch = { ...m, homeLogo: m.homeLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.homeLogo, awayLogo: m.awayLogo?.includes('uefa.com') ? SAFE_TBD_LOGO : m.awayLogo, homeOwner: translatedHomeOwner, awayOwner: translatedAwayOwner, matchLabel: customMatchLabel };
                                         
                                         return (
-                                            <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl, emerald 호버 강조 */}
-                                                <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
+                                            <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
+                                                {/* 🛠️ [호버 픽스] wrapper border 제거 → 단일 라인 */}
+                                                <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                     <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
                                                     <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>

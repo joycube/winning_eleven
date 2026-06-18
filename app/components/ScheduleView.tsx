@@ -71,13 +71,14 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
     const authorInfo = latestComment ? resolveOwnerInfo(owners, (latestComment.authorName || latestComment.ownerName) || '', latestComment.authorUid || latestComment.ownerUid) : null;
 
     return (
-        <div onClick={onClick} className="bg-slate-800/60 px-4 py-3 rounded-b-xl border-t border-slate-700/50 flex items-center gap-2 cursor-pointer hover:bg-slate-700/80 transition-colors z-0 -mt-2">
+        // 🛠️ [호버/연결 픽스] wrapper의 rounded-3xl 과 라운드 일치 + -mt-4 pt-5 로 카드 바닥과 자연스럽게 흡수
+        <div onClick={onClick} className="relative -mt-4 pt-5 pb-3 px-4 bg-[#0a1020] rounded-b-3xl shadow-[inset_0_8px_12px_-8px_rgba(0,0,0,0.4)] flex items-center gap-2 cursor-pointer hover:bg-[#0d1428] transition-colors z-0">
             {authorInfo ? (
                 <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
             ) : (
                 <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
             )}
-            
+
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
                 {authorInfo ? authorInfo.nickname : ''}
             </div>
@@ -672,9 +673,9 @@ export const ScheduleView = ({
                                                     };
 
                                                     return (
-                                                        <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                            {/* 🛠️ [UI 픽스] rounded-xl → rounded-3xl (MatchCard 내부와 정렬), emerald 호버 강조 */}
-                                                            <div className="group/wrap relative rounded-3xl bg-[#0f172a] shadow-lg border border-slate-800/60 hover:border-emerald-500/50 hover:shadow-[0_8px_30px_rgba(16,185,129,0.15)] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200 z-10">
+                                                        // 🛠️ [호버 픽스] wrapper border 제거 → MatchCard 단일 라인만 노출, 호버는 glow shadow + lift 로만 표현
+                                                        <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
+                                                            <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                                 <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
@@ -765,8 +766,9 @@ export const ScheduleView = ({
                                                 };
 
                                                 return (
-                                                    <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="flex flex-col mb-2">
-                                                        <div className="relative rounded-xl overflow-hidden bg-[#0f172a] shadow-lg border border-transparent transition-colors hover:border-slate-600 z-10">
+                                                    // 🛠️ [호버 픽스] wrapper border 제거 + rounded-3xl 통일 → 단일 라인, 호버는 glow shadow + lift
+                                                    <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
+                                                        <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
                                                             <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
