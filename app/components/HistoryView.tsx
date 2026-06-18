@@ -18,6 +18,8 @@ const getTodayFormatted = () => {
 interface HistoryViewProps {
   historyData: any;
   owners?: Owner[];
+  // 🛠️ [Finance v4 / 옵션1 정제] 진행 중 시즌의 W/D/L/PTS 합산용
+  seasons?: any[];
 }
 
 // 🛠️ [HoF 더보기 패치] 초기 노출 개수와 클릭당 증가량, 최대 노출 개수
@@ -25,9 +27,10 @@ const INITIAL_VISIBLE = 20;
 const STEP = 20;
 const MAX_VISIBLE = 100;
 
-export const HistoryView = ({ owners = [] }: HistoryViewProps) => {
+export const HistoryView = ({ owners = [], seasons = [] }: HistoryViewProps) => {
   // 🔥 [FM 정석] 무거운 계산 없이 가벼워진 훅에서 이미 완성된 통계를 바로 가져옵니다.
-  const { historyData, isHistoryLoading } = useHistoryRecords(owners);
+  //   🛠️ [Finance v4 / 옵션1 정제] seasons 전달 → 진행 중 시즌의 W/D/L/PTS 도 합산
+  const { historyData, isHistoryLoading } = useHistoryRecords(owners, seasons);
 
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');

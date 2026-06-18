@@ -330,7 +330,30 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     return Object.entries(seasonBalanceCheck).filter(([, v]) => Math.abs(v.diff) > 0.5);
   }, [seasonBalanceCheck]);
 
-  const rankedOwners = useMemo(() => [...computedOwners].sort((a, b) => b.netProfit - a.netProfit), [computedOwners]);
+  // 🛠️ [Finance v4 / 옵션1 정제] 명예의 전당 정렬은 점수 기준
+  //   PTS = W*3 + D (마감 + 진행 시즌 모두 반영된 W/D/L)
+  //   동점 시: golds (finance_ledger 의 "우승/1위" REVENUE 카운트) → win 순
+  const computedOwnersWithPts = useMemo(() => {
+    return computedOwners.map((o: any) => {
+      // 골드 카운트: 해당 owner 의 REVENUE 중 "우승/1위/champion" 포함 (단, 준우승 제외)
+      const ownerObj = owners.find(ow => String(ow.id) === String(o.id));
+      const ledgers = dbLedgers.filter(l => isLedgerOfOwner(l, ownerObj || null) && l.type === 'REVENUE');
+      const golds = ledgers.filter((l: any) => {
+        const t = String(l?.title || '');
+        if (t.includes('준우승') || t.includes('2위') || t.includes('3위')) return false;
+        return t.includes('우승') || t.includes('1위') || t.toLowerCase().includes('champion');
+      }).length;
+      return {
+        ...o,
+        pts: (o.win || 0) * 3 + (o.draw || 0),
+        golds,
+      };
+    });
+  }, [computedOwners, dbLedgers, owners]);
+
+  const rankedOwners = useMemo(() => [...computedOwnersWithPts].sort((a, b) =>
+    b.pts - a.pts || b.golds - a.golds || b.win - a.win
+  ), [computedOwnersWithPts]);
   const activeOwner = computedOwners.find(o => o.id === selectedOwnerId);
   const rawOwnerDetails = computedFinanceDetails[selectedOwnerId] || { revenues: [], expenses: [] };
 
@@ -372,20 +395,22 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Financial Statement & Settlement</span>
           </div>
         </div>
+        {/* 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 재무제표/정산소 탭 자체 미노출
+            로그인 시에만 3탭, 비로그인은 명예의 전당 단독 */}
         <div className="flex gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
           {[
-            { id: 'STATEMENT', label: '재무제표', disabled: !user },
-            { id: 'SETTLEMENT', label: '정산소', disabled: !user }, 
-            { id: 'HALL_OF_FAME', label: '명예의 전당', disabled: false }
+            ...(user ? [
+              { id: 'STATEMENT', label: '재무제표' },
+              { id: 'SETTLEMENT', label: '정산소' },
+            ] : []),
+            { id: 'HALL_OF_FAME', label: '명예의 전당' }
           ].map(tab => (
-            <button 
-              key={tab.id} 
-              disabled={tab.disabled}
-              onClick={() => setActiveTab(tab.id as any)} 
-              className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : tab.disabled ? 'text-slate-700 cursor-not-allowed opacity-30' : 'text-slate-500 hover:text-slate-300'}`}
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'text-slate-500 hover:text-slate-300'}`}
             >
               {tab.label}
-              {tab.disabled && <span className="block text-[8px] font-normal not-italic mt-0.5">🔒 로그인 필요</span>}
             </button>
           ))}
         </div>
@@ -717,9 +742,14 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
                   <h2 className="text-3xl font-black text-white mb-6 tracking-tighter italic uppercase leading-none">{champ.nickname}</h2>
                   
                   <div className="grid grid-cols-3 w-full max-w-lg mx-auto gap-2">
+                    {/* 🛠️ [Finance v4 / 옵션1 정제] PROFIT — 비로그인 시 자물쇠 */}
                     <div className="bg-[#0f172a]/80 p-2 sm:p-3 rounded-xl border border-yellow-500/20 flex flex-col items-center justify-center">
                       <span className="block text-[8px] sm:text-[9px] text-yellow-500 font-black mb-1 uppercase tracking-widest">Profit</span>
-                      <span className="text-[10px] sm:text-xs font-black text-white italic truncate">{champ.netProfit > 0 ? '+' : ''}₩{champ.netProfit.toLocaleString()}</span>
+                      {user ? (
+                        <span className="text-[10px] sm:text-xs font-black text-white italic truncate">{champ.netProfit > 0 ? '+' : ''}₩{champ.netProfit.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-[10px] sm:text-xs font-black text-slate-500 italic flex items-center gap-1">🔒 로그인</span>
+                      )}
                     </div>
                     <div className="bg-[#0f172a]/80 p-2 sm:p-3 rounded-xl border border-slate-800 flex flex-col items-center justify-center">
                       <span className="block text-[8px] sm:text-[9px] text-slate-500 font-black mb-1 uppercase tracking-widest">Record</span>
@@ -767,8 +797,11 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
                       <span className="text-white">{o.win}</span>W <span className="text-slate-600">/</span> {o.draw}D <span className="text-slate-600">/</span> <span className="text-red-400/80">{o.loss}L</span>
                     </td>
                     <td className="p-3 text-center text-yellow-500 font-black text-sm">{o.trophies > 0 ? o.trophies : '-'}</td>
-                    <td className={`p-3 text-right font-black text-[11px] tracking-tighter ${o.netProfit > 0 ? 'text-emerald-400' : o.netProfit < 0 ? 'text-red-500' : 'text-slate-500'}`}>
-                      {o.netProfit > 0 ? '+' : ''}{o.netProfit.toLocaleString()}
+                    {/* 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 PROFIT 자물쇠 */}
+                    <td className={`p-3 text-right font-black text-[11px] tracking-tighter ${!user ? 'text-slate-600' : o.netProfit > 0 ? 'text-emerald-400' : o.netProfit < 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                      {user
+                        ? (o.netProfit > 0 ? '+' : '') + o.netProfit.toLocaleString()
+                        : '🔒'}
                     </td>
                   </tr>
                 ))}
