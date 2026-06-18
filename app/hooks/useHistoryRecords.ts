@@ -220,19 +220,58 @@ export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
             });
         });
 
-        // 🛠️ [Finance v4 / 옵션1] 메달·상금 집계 — finance_ledger 단일 진실
-        //   마감된 시즌의 REVENUE 항목만 인정.
-        //   gold: 우승/1위 (단, 준우승은 우선 silver 로 매칭)
-        //   silver: 준우승/2위
-        //   bronze: 3위
-        //   prize: REVENUE 합산 (실제 상금)
-        //   owners 매핑은 resolveOwnerByLedger 로 7가지 표기형 모두 시도
+        // 🛠️ [Finance v4 / 옵션1 + 폴백] 메달·상금 집계
+        //   1차: finance_ledger 의 REVENUE 항목 (정확 — 실제 상금 amount, 모든 상별)
+        //   폴백: finance_ledger 가 비어있으면 (비로그인 권한 거부 또는 데이터 없음)
+        //         → history_records.teams[0/1/2] 인덱스 기반으로 산출 (기존 방식, 메달만 표시)
+        //   목적: 비로그인 사용자에게도 명예의 전당의 메달이 보이도록 가시성 보장
+        const revenueLedgers = rawLedgers.filter((l: any) => l?.type === 'REVENUE');
+        const useLedger = revenueLedgers.length > 0;
+
+        if (typeof window !== 'undefined') {
+            console.info(`[useHistoryRecords] finance_ledger: ${rawLedgers.length}건 (REVENUE ${revenueLedgers.length}). owners: ${owners.length}명. 메달 산출 방식: ${useLedger ? 'ledger (정확)' : 'history_records.teams 폴백 (비로그인 또는 ledger 없음)'}`);
+        }
+
+        const unmatchedSamples: any[] = [];
+
+        if (!useLedger) {
+            // 🛠️ 폴백: 기존 방식 — history_records.teams[0/1/2] 로 메달 부여
+            //   비로그인 시 finance_ledger 권한 거부되더라도 명예의 전당이 비어보이지 않게
+            rawDocs.forEach((data: any) => {
+                let teamsArray: any[] = [];
+                if (data.teams && Array.isArray(data.teams)) {
+                    teamsArray = data.teams;
+                } else {
+                    const numericKeys = Object.keys(data).filter(k => !isNaN(Number(k))).sort((a, b) => Number(a) - Number(b));
+                    teamsArray = numericKeys.map(k => data[k]);
+                }
+                teamsArray.forEach((t: any, index: number) => {
+                    if (!t || !t.name || t.name === 'BYE' || t.name === 'TBD') return;
+                    if (index > 2) return;
+                    const oId = getTrueUid(t.ownerId || t.ownerUid, t.owner || t.legacyName);
+                    if (!oId || oId === '-' || oId === 'CPU') return;
+                    if (!ownerMap.has(oId)) {
+                        ownerMap.set(oId, { id: oId, name: t.owner || '', win: 0, draw: 0, loss: 0, pts: 0, golds: 0, silvers: 0, bronzes: 0, prize: 0 });
+                    }
+                    const s = ownerMap.get(oId);
+                    if (index === 0) { s.golds = (s.golds || 0) + 1; s.prize = (s.prize || 0) + 50000; }
+                    else if (index === 1) { s.silvers = (s.silvers || 0) + 1; s.prize = (s.prize || 0) + 30000; }
+                    else if (index === 2) { s.bronzes = (s.bronzes || 0) + 1; s.prize = (s.prize || 0) + 10000; }
+                });
+            });
+        }
+
+        // 1차: finance_ledger 가 있을 때 — 정확한 메달/상금 산출
         rawLedgers.forEach((l: any) => {
             if (l?.type !== 'REVENUE') return;
             const title = String(l?.title || '');
             const amount = Number(l?.amount || 0);
             // owner 매칭
             const matched = resolveOwnerByLedger(l, owners);
+            // owner 명단에 없으면 unmatched 누적 (진단용)
+            if (!matched && unmatchedSamples.length < 3) {
+                unmatchedSamples.push({ ownerId: l.ownerId, ownerUid: l.ownerUid, title: l.title, amount: l.amount });
+            }
             // owner 명단에 없으면 기존 ownerMap 에 정착시키지 못함 → 식별자라도 사용
             const oid = matched
                 ? (matched.uid || matched.docId || String(matched.id))
@@ -258,6 +297,12 @@ export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
             }
             // 그 외 키워드(득점왕/도움왕/최우수 등)는 메달엔 안 포함 — prize 합산에만 반영
         });
+
+        // 🛠️ [v4 진단] unmatched ledger 요약 — 매칭 실패한 ledger 가 있으면 명단 미스 문제
+        if (typeof window !== 'undefined' && unmatchedSamples.length > 0) {
+            console.warn(`[useHistoryRecords] owner 매칭 실패한 ledger 발견 (샘플 ${unmatchedSamples.length}건):`, unmatchedSamples);
+            console.warn('   → 명부의 legacyNames 추가, 또는 ledger.ownerId 정규화 필요');
+        }
 
         const sortedOwners = Array.from(ownerMap.values()).sort((a, b) => b.pts - a.pts || b.golds - a.golds || b.win - a.win);
         const sortedTeams = Array.from(teamMap.values()).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);

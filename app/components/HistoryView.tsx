@@ -20,6 +20,8 @@ interface HistoryViewProps {
   owners?: Owner[];
   // 🛠️ [Finance v4 / 옵션1 정제] 진행 중 시즌의 W/D/L/PTS 합산용
   seasons?: any[];
+  // 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 PRIZE 컬럼 자물쇠 처리용
+  user?: any;
 }
 
 // 🛠️ [HoF 더보기 패치] 초기 노출 개수와 클릭당 증가량, 최대 노출 개수
@@ -27,7 +29,7 @@ const INITIAL_VISIBLE = 20;
 const STEP = 20;
 const MAX_VISIBLE = 100;
 
-export const HistoryView = ({ owners = [], seasons = [] }: HistoryViewProps) => {
+export const HistoryView = ({ owners = [], seasons = [], user = null }: HistoryViewProps) => {
   // 🔥 [FM 정석] 무거운 계산 없이 가벼워진 훅에서 이미 완성된 통계를 바로 가져옵니다.
   //   🛠️ [Finance v4 / 옵션1 정제] seasons 전달 → 진행 중 시즌의 W/D/L/PTS 도 합산
   const { historyData, isHistoryLoading } = useHistoryRecords(owners, seasons);
@@ -241,8 +243,9 @@ export const HistoryView = ({ owners = [], seasons = [] }: HistoryViewProps) => 
                                                 <img src={displayPhoto} className="w-full h-full object-cover" alt="" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                             </div>
                                         </div>
+                                        {/* 🛠️ [HoF UI] ALL-TIME LEGEND 한 줄 정렬 — whitespace-nowrap */}
                                         <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
-                                            <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase">All-Time Legend</span>
+                                            <span className="bg-gradient-to-r from-slate-900 to-slate-800 text-emerald-400 text-[10px] font-black px-4 py-1 rounded-full border border-emerald-500/50 shadow-lg tracking-widest uppercase whitespace-nowrap">All-Time Legend</span>
                                         </div>
                                     </div>
 
@@ -271,9 +274,14 @@ export const HistoryView = ({ owners = [], seasons = [] }: HistoryViewProps) => 
                                                 </div>
                                             </div>
 
+                                            {/* 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 TOTAL PRIZE 자물쇠 */}
                                             <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 rounded-lg py-2 border border-emerald-500/30 flex flex-col items-center justify-center w-full">
                                                 <span className="text-[9px] text-emerald-400 block font-black mb-0.5 uppercase">TOTAL PRIZE</span>
-                                                <span className="text-base font-bold text-white leading-none">₩ {(legend.prize || 0).toLocaleString()}</span>
+                                                {user ? (
+                                                    <span className="text-base font-bold text-white leading-none">₩ {(legend.prize || 0).toLocaleString()}</span>
+                                                ) : (
+                                                    <span className="text-base font-bold text-slate-500 leading-none flex items-center gap-1.5">🔒 <span className="text-xs">로그인 필요</span></span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -344,7 +352,10 @@ export const HistoryView = ({ owners = [], seasons = [] }: HistoryViewProps) => 
                                                     {(o.golds||0)+(o.silvers||0)+(o.bronzes||0)===0 && <span className="text-slate-700">-</span>}
                                                 </div>
                                             </td>
-                                            <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap uppercase">₩ {(o.prize||0).toLocaleString()}</td>
+                                            {/* 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 PRIZE 자물쇠 */}
+                                            <td className="px-2 py-3 text-right text-slate-300 font-bold text-xs whitespace-nowrap uppercase">
+                                                {user ? <>₩ {(o.prize||0).toLocaleString()}</> : <span className="text-slate-600">🔒</span>}
+                                            </td>
                                         </tr>
                                     );
                                 })}

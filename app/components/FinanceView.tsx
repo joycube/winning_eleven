@@ -7,6 +7,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { FALLBACK_IMG, Owner, Season } from '../types';
 // 🛠️ [Finance v4 / P0] ledger ↔ owner 통합 매칭
 import { isLedgerOfOwner, resolveOwnerByLedger } from '../utils/financeMatching';
+// 🛠️ [Finance v4 / 옵션1 폴백] 비로그인 시 finance_ledger 권한 거부 → history_records 로 트로피 폴백
+import { useHistoryRecords } from '../hooks/useHistoryRecords';
 
 declare module 'react' {
   interface StyleHTMLAttributes<T> extends React.HTMLAttributes<T> {
@@ -103,6 +105,11 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
     fetchFinanceData();
   }, [seasons]);
 
+  // 🛠️ [Finance v4 / 옵션1 폴백] useHistoryRecords 호출 → 비로그인 트로피 폴백용
+  //   useHistoryRecords 가 finance_ledger 실패 시 history_records.teams[0/1/2] 로 폴백
+  //   여기서 그 메달 카운트(golds + silvers + bronzes) 를 가져와 활용
+  const { historyData: hofData } = useHistoryRecords(owners, seasons);
+
   const computedOwners = useMemo(() => {
     return owners.map(owner => {
         let win = 0, draw = 0, loss = 0;
@@ -152,17 +159,35 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
         const totalExpense = expenses.reduce((sum, item) => sum + Number(item.amount), 0);
         const netProfit = totalRevenue - totalExpense;
 
-        const trophies = revenues.filter(r => 
-            r.title.includes('우승') || r.title.includes('준우승') || r.title.includes('3위') || 
+        // 🛠️ [Finance v4 / 옵션1 폴백] 트로피 카운트
+        //   1차: dbLedgers REVENUE 의 우승/준우승/3위/득점왕/도움왕/최우수 카운트 (로그인 시 정확)
+        //   폴백: ledger 가 비어있으면 (비로그인 권한 거부) → useHistoryRecords 의 메달 합산 사용
+        const ledgerTrophies = revenues.filter(r =>
+            r.title.includes('우승') || r.title.includes('준우승') || r.title.includes('3위') ||
             r.title.includes('득점왕') || r.title.includes('도움왕') || r.title.includes('최우수')
         ).length;
+
+        let trophies = ledgerTrophies;
+        if (trophies === 0) {
+            // 폴백: useHistoryRecords 가 산출한 메달 카운트로 대체
+            const hofOwner = (hofData?.owners || []).find((o: any) =>
+                String(o.id) === String(owner.id) ||
+                o.id === (owner as any).uid ||
+                o.id === (owner as any).docId ||
+                o.name === owner.nickname ||
+                o.name === (owner as any).legacyName
+            );
+            if (hofOwner) {
+                trophies = (hofOwner.golds || 0) + (hofOwner.silvers || 0) + (hofOwner.bronzes || 0);
+            }
+        }
 
         return {
             id: String(owner.id), nickname: owner.nickname, photo: owner.photo || FALLBACK_IMG,
             trophies, win, draw, loss, bestTeam, totalRevenue, totalExpense, netProfit
         };
     });
-  }, [owners, seasons, dbLedgers, resolveOwnerNickname]);
+  }, [owners, seasons, dbLedgers, resolveOwnerNickname, hofData]);
 
   const formatDate = (isoString: string) => {
     if (!isoString) return '-';
@@ -395,22 +420,32 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Financial Statement & Settlement</span>
           </div>
         </div>
-        {/* 🛠️ [Finance v4 / 옵션1 정제] 비로그인 시 재무제표/정산소 탭 자체 미노출
-            로그인 시에만 3탭, 비로그인은 명예의 전당 단독 */}
+        {/* 🛠️ [Finance v4 / 옵션1 정제 v2] 재무제표/정산소 탭은 항상 노출,
+            비로그인 시 자물쇠 + 클릭 비활성 */}
         <div className="flex gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
           {[
-            ...(user ? [
-              { id: 'STATEMENT', label: '재무제표' },
-              { id: 'SETTLEMENT', label: '정산소' },
-            ] : []),
-            { id: 'HALL_OF_FAME', label: '명예의 전당' }
+            { id: 'STATEMENT', label: '재무제표', disabled: !user },
+            { id: 'SETTLEMENT', label: '정산소', disabled: !user },
+            { id: 'HALL_OF_FAME', label: '명예의 전당', disabled: false }
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'text-slate-500 hover:text-slate-300'}`}
+              disabled={tab.disabled}
+              onClick={() => { if (!tab.disabled) setActiveTab(tab.id as any); }}
+              aria-disabled={tab.disabled}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-black italic transition-all ${
+                activeTab === tab.id
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
+                  : tab.disabled
+                    ? 'text-slate-700 cursor-not-allowed opacity-50'
+                    : 'text-slate-500 hover:text-slate-300'
+              }`}
             >
-              {tab.label}
+              <span className="flex items-center justify-center gap-1">
+                {tab.disabled && <span className="text-[10px]">🔒</span>}
+                {tab.label}
+              </span>
+              {tab.disabled && <span className="block text-[8px] font-normal not-italic mt-0.5 opacity-70">로그인 필요</span>}
             </button>
           ))}
         </div>

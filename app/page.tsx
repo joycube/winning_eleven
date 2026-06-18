@@ -320,7 +320,7 @@ export default function FootballLeagueApp() {
 
         {/* 🔥 [핵심 픽스] HistoryView 에만 오차율 0%의 perfectHistoryData 주입 */}
         {/* 🛠️ [Finance v4 / 옵션1 정제] seasons 전달 → 진행 중 시즌 W/D/L/PTS 합산 */}
-        {currentView === 'HISTORY' && <HistoryView historyData={perfectHistoryData} owners={owners} seasons={seasons} />}
+        {currentView === 'HISTORY' && <HistoryView historyData={perfectHistoryData} owners={owners} seasons={seasons} user={authUser} />}
 
         {currentView === 'FINANCE' && (
           <FinanceView owners={owners} seasons={seasons} user={authUser as any} />
