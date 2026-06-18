@@ -114,6 +114,8 @@ export const ScheduleView = ({
   const [localOwners, setLocalOwners] = useState<Owner[]>([]);
   // 🛠️ [UI 픽스] Tournament Bracket 접기/펼치기 토글
   const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
+  // 🛠️ [Schedule 탭 정리] 라운드/PO/ALL — 디폴트는 useEffect 에서 진행 중 라운드 자동 선택
+  const [roundTab, setRoundTab] = useState<string>('');
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   // 🛠️ [LiveFeed 픽스] 부모 prop 이 비어있지 않으면 그걸 우선 사용 (uid 매핑 포함된 enriched 데이터)
@@ -535,7 +537,106 @@ export const ScheduleView = ({
 
                 <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-4"><div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></div><h3 className="text-xl font-black italic text-white uppercase tracking-tighter">MATCH SCHEDULE</h3></div>
+
+                    {/* 🛠️ [Schedule 탭 정리] 라운드/PO/전체 탭 바 */}
+                    {(() => {
+                        // 정규 vs PO 라운드 분류
+                        const isPoRound = (r: any) => (r.matches || []).every((m: any) => {
+                            const s = (m.stage || '').toUpperCase();
+                            const l = (m.matchLabel || '').toUpperCase();
+                            return s.includes('ROUND_OF_8') || s.includes('SEMI') || s.includes('FINAL') || s.includes('3RD') || s.includes('34') ||
+                                   l.includes('PO') || l.includes('결승') || l.includes('4강') || l.includes('8강') || l.includes('3·4');
+                        });
+                        const regularRounds = displayRounds.filter((r: any) => !isPoRound(r));
+                        const poRounds = displayRounds.filter((r: any) => isPoRound(r));
+
+                        const roundStats = (r: any) => {
+                            const total = (r.matches || []).filter((m: any) => m.home !== 'BYE' && m.away !== 'BYE').length;
+                            const done = (r.matches || []).filter((m: any) => m.status === 'COMPLETED').length;
+                            return { total, done };
+                        };
+
+                        // 디폴트 탭 — 진행 중 라운드 우선
+                        if (!roundTab && regularRounds.length > 0) {
+                            const activeIdx = regularRounds.findIndex((r: any) => {
+                                const s = roundStats(r);
+                                return s.done < s.total;
+                            });
+                            const defaultIdx = activeIdx >= 0 ? activeIdx : 0;
+                            setTimeout(() => setRoundTab(`R${defaultIdx}`), 0);
+                        }
+
+                        return (
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 px-1 mb-4">
+                                {/* 🛠️ [Schedule 탭 순서] 전체 → PO → 라운드들 */}
+                                <button
+                                    onClick={() => setRoundTab('ALL')}
+                                    className={`shrink-0 min-w-[64px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                                        roundTab === 'ALL' ? 'bg-rose-700 text-white border-rose-500 shadow-lg' : 'bg-slate-900 text-rose-400 border-rose-900/40 hover:border-rose-700'
+                                    }`}
+                                >
+                                    <span className="block leading-tight">전체</span>
+                                </button>
+                                {poRounds.length > 0 && (() => {
+                                    const isSel = roundTab === 'PO';
+                                    const poTotal = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).total, 0);
+                                    const poDone = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).done, 0);
+                                    return (
+                                        <button
+                                            onClick={() => setRoundTab('PO')}
+                                            className={`shrink-0 min-w-[100px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                                                isSel ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg' : 'bg-slate-900 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
+                                            }`}
+                                        >
+                                            <span className="block leading-tight">🏆 PO</span>
+                                            <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{poDone}/{poTotal}경기</span>
+                                        </button>
+                                    );
+                                })()}
+                                {regularRounds.length > 0 && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
+                                {regularRounds.map((r: any, idx: number) => {
+                                    const tabKey = `R${idx}`;
+                                    const isSel = roundTab === tabKey;
+                                    const s = roundStats(r);
+                                    const status = s.total === 0 ? '예정' : s.done === s.total ? '✓ 완료' : s.done > 0 ? '진행 중' : '예정';
+                                    const statusColor = s.done === s.total && s.total > 0 ? 'text-emerald-400' : s.done > 0 ? 'text-yellow-400' : 'text-slate-500';
+                                    return (
+                                        <button
+                                            key={tabKey}
+                                            onClick={() => setRoundTab(tabKey)}
+                                            className={`shrink-0 min-w-[68px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                                                isSel ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
+                                            }`}
+                                        >
+                                            <span className="block leading-tight">{idx + 1}R</span>
+                                            <span className={`block text-[8px] font-normal not-italic mt-0.5 ${isSel ? 'text-white opacity-90' : statusColor}`}>{status}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
+
                     {displayRounds.map((r: any, rIdx: number) => {
+                        // 🛠️ [Schedule 탭 정리] 선택된 탭에 따른 라운드 필터링
+                        const isPoRound = (rr: any) => (rr.matches || []).every((m: any) => {
+                            const s = (m.stage || '').toUpperCase();
+                            const l = (m.matchLabel || '').toUpperCase();
+                            return s.includes('ROUND_OF_8') || s.includes('SEMI') || s.includes('FINAL') || s.includes('3RD') || s.includes('34') ||
+                                   l.includes('PO') || l.includes('결승') || l.includes('4강') || l.includes('8강') || l.includes('3·4');
+                        });
+                        const regularRoundsLocal = displayRounds.filter((rr: any) => !isPoRound(rr));
+                        const currentRegularIdx = regularRoundsLocal.indexOf(r);
+
+                        if (roundTab !== 'ALL' && roundTab !== '') {
+                            if (roundTab === 'PO') {
+                                if (!isPoRound(r)) return null;
+                            } else if (roundTab.startsWith('R')) {
+                                const wantedIdx = parseInt(roundTab.slice(1), 10);
+                                if (currentRegularIdx !== wantedIdx) return null;
+                            }
+                        }
+
                         const uniqueStages = Array.from(new Set(r.matches.map((m: any) => m.stage)));
                         const totalMatchesInRound = r.matches.length;
                         return (

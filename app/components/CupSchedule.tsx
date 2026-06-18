@@ -103,6 +103,9 @@ export const CupSchedule = ({
   const matchRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   // 🛠️ [UI 픽스] Tournament Bracket 접기/펼치기 토글
   const [bracketExpanded, setBracketExpanded] = useState<boolean>(false);
+  // 🛠️ [Schedule 탭 정리] 그룹/KNOCKOUT/ALL 중 선택된 탭
+  //   기본값: 진행 중 그룹 자동 선택 (없으면 첫 번째 그룹)
+  const [scheduleTab, setScheduleTab] = useState<string>('');
   const normalize = (str: string) => str ? str.toString().trim().toLowerCase() : "";
 
   const getActiveOwner = (matchOwner: string, matchOwnerUid: string | undefined, teamName: string) => {
@@ -361,6 +364,93 @@ export const CupSchedule = ({
             </div>
         )}
 
+        {/* 🛠️ [Schedule 탭 정리] 그룹/KNOCKOUT 탭 바 — displayStages 모드일 때만 노출 */}
+        {displayStages && (() => {
+          // 전체 그룹 수집
+          const allGroups = new Set<string>();
+          currentSeason?.rounds?.forEach((r: any) => {
+            (r.matches || []).forEach((m: any) => {
+              if ((m.stage || '').toUpperCase().includes('GROUP') || (m.stage || '').includes('조별')) {
+                if (m.group) allGroups.add(m.group);
+              }
+            });
+          });
+          const sortedGroups = Array.from(allGroups).sort();
+
+          // 그룹별 경기 수 + 완료 수
+          const groupStats: Record<string, { total: number; done: number }> = {};
+          sortedGroups.forEach(g => { groupStats[g] = { total: 0, done: 0 }; });
+          currentSeason?.rounds?.forEach((r: any) => {
+            (r.matches || []).forEach((m: any) => {
+              if (m.group && groupStats[m.group]) {
+                groupStats[m.group].total++;
+                if (m.status === 'COMPLETED' || (m.homeScore !== '' && m.awayScore !== '')) groupStats[m.group].done++;
+              }
+            });
+          });
+
+          // KNOCKOUT 통계
+          const koMatches: any[] = [];
+          if (displayStages?.roundOf8) koMatches.push(...displayStages.roundOf8);
+          if (displayStages?.roundOf4) koMatches.push(...displayStages.roundOf4);
+          if (displayStages?.thirdPlace) koMatches.push(...displayStages.thirdPlace);
+          if (displayStages?.final) koMatches.push(...displayStages.final);
+          const realKo = koMatches.filter((m: any) => m.id && !m.id.startsWith('v-'));
+          const koTotal = realKo.length;
+          const koDone = realKo.filter((m: any) => m.status === 'COMPLETED').length;
+
+          // 첫 진입 시 디폴트 탭 — 진행 중 그룹 우선, 없으면 첫 그룹
+          if (!scheduleTab) {
+            const activeGroup = sortedGroups.find(g => groupStats[g].done < groupStats[g].total);
+            const defaultTab = activeGroup || sortedGroups[0] || 'KO';
+            // 다음 렌더에 set (현 렌더 내 set 방지)
+            setTimeout(() => setScheduleTab(defaultTab), 0);
+          }
+
+          return (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 pt-1 px-1 mb-6">
+              {/* 🛠️ [Schedule 탭 순서] 전체 → KNOCKOUT → 그룹들 */}
+              <button
+                onClick={() => setScheduleTab('ALL')}
+                className={`shrink-0 min-w-[72px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                  scheduleTab === 'ALL' ? 'bg-rose-700 text-white border-rose-500 shadow-lg' : 'bg-slate-900 text-rose-400 border-rose-900/40 hover:border-rose-700'
+                }`}
+              >
+                <span className="block leading-tight">전체</span>
+                <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{(Object.values(groupStats).reduce((s, v) => s + v.total, 0)) + koTotal}경기</span>
+              </button>
+              {koTotal > 0 && (
+                <button
+                  onClick={() => setScheduleTab('KO')}
+                  className={`shrink-0 min-w-[110px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                    scheduleTab === 'KO' ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg' : 'bg-slate-900 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
+                  }`}
+                >
+                  <span className="block leading-tight">🏆 KNOCKOUT</span>
+                  <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{koDone}/{koTotal}경기</span>
+                </button>
+              )}
+              {sortedGroups.length > 0 && (koTotal > 0 || true) && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
+              {sortedGroups.map(g => {
+                const isSelected = scheduleTab === g;
+                const stat = groupStats[g];
+                return (
+                  <button
+                    key={`tab-grp-${g}`}
+                    onClick={() => setScheduleTab(g)}
+                    className={`shrink-0 min-w-[78px] sm:min-w-[92px] py-2 rounded-lg text-xs font-black italic transition-all border ${
+                      isSelected ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="block leading-tight">{g}조</span>
+                    <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{stat.done}/{stat.total}경기</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         <div className="space-y-12 max-w-[1500px] mx-auto overflow-hidden px-1">
             {displayStages ? (
                 <>
@@ -368,9 +458,14 @@ export const CupSchedule = ({
                         const groupMatches = r.matches.filter(m => m.stage.toUpperCase().includes('GROUP') || m.stage.includes('조별'));
                         if (groupMatches.length === 0) return null;
                         const uniqueGroups = Array.from(new Set(groupMatches.map(m => m.group))).sort();
+                        // 🛠️ [Schedule 탭 정리] 선택된 탭에 따라 그룹 필터링 (KO 또는 다른 그룹 선택 시 그룹 섹션 통째 숨김)
+                        const filteredGroups = scheduleTab === 'ALL' || scheduleTab === '' ? uniqueGroups
+                            : scheduleTab === 'KO' ? []
+                            : uniqueGroups.filter(g => g === scheduleTab);
+                        if (filteredGroups.length === 0) return null;
                         return (
                             <React.Fragment key={`group-stage-${rIdx}`}>
-                                {uniqueGroups.map(gName => (
+                                {filteredGroups.map(gName => (
                                     <div key={`group-${rIdx}-${gName}`} className="space-y-6">
                                         <div className="flex items-center gap-2 pl-2 border-l-4 border-emerald-500"><h3 className="text-lg font-black italic text-white uppercase tracking-tight">GROUP {gName}</h3></div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
@@ -401,11 +496,12 @@ export const CupSchedule = ({
                         );
                     })}
 
-                    {[ 
-                        { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' }, 
-                        { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' }, 
+                    {/* 🛠️ [Schedule 탭 정리] KO 섹션 — KO 또는 ALL 탭일 때만 노출 */}
+                    {(scheduleTab === 'KO' || scheduleTab === 'ALL' || scheduleTab === '') && [
+                        { title: 'Quarter-Finals (8강)', matches: displayStages.roundOf8, id: 'qf' },
+                        { title: 'Semi-Finals (4강)', matches: displayStages.roundOf4, id: 'sf' },
                         { title: '🥉 3rd Place Match (3·4위전)', matches: displayStages.thirdPlace, id: 'tp' },
-                        { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' } 
+                        { title: '🏆 Grand Final (결승전)', matches: displayStages.final, id: 'fn' }
                     ].map((section) => (
                         section.matches && (
                             <div key={section.id} className="space-y-6">
