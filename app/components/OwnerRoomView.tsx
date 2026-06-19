@@ -53,7 +53,10 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         fetchHistoryDict();
     }, []);
 
-    const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners);
+    // 🛠️ [통산 통계 픽스] seasons 전달 — useHistoryRecords 가 옵션1 정제 패치로 W/D/L/PTS 를
+    //   seasons 라이브 데이터 기반으로 산출하도록 바뀌었음. seasons 미전달 시 모두 0 으로 노출됨.
+    //   누적 상금은 finance_ledger 에서 계산되어 정상 노출되지만 W/D/L 은 이 경로 의존.
+    const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners, seasons);
 
     const myOwnerData = owners?.find((o:any) => o.uid === user?.uid || (user?.mappedOwnerId && o.nickname === user?.mappedOwnerId));
     const currentNick = myOwnerData?.nickname || user?.mappedOwnerId;
