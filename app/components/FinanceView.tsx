@@ -114,10 +114,24 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
 
   const computedOwners = useMemo(() => {
     return owners.map(owner => {
-        let win = 0, draw = 0, loss = 0;
+        // 🛠️ [통일] W/D/L 은 useHistoryRecords 단일 소스로 통일 (Hall of Fame 과 동일)
+        //   기존: FinanceView 자체 매칭 로직 (resolveOwnerNickname 닉네임 정확매칭)
+        //   변경: hofData.owners[] 에서 직접 가져옴 — useHistoryRecords 의 7중 식별자 매칭 + masterTeams 폴백 활용
+        //   효과: 베컴/이준영처럼 다중 식별자 가진 오너의 W/D/L 이 Hall of Fame 과 정확히 일치
+        const hofOwnerForStats = (hofData?.owners || []).find((o: any) =>
+            String(o.id) === String(owner.id) ||
+            o.id === (owner as any).uid ||
+            o.id === (owner as any).docId ||
+            o.name === owner.nickname ||
+            o.name === (owner as any).legacyName ||
+            (Array.isArray((owner as any).legacyNames) && (owner as any).legacyNames.includes(o.name))
+        );
+        const win = hofOwnerForStats?.win || 0;
+        const draw = hofOwnerForStats?.draw || 0;
+        const loss = hofOwnerForStats?.loss || 0;
+
+        // bestTeam 만 별도 계산 (어느 팀에서 가장 많이 이겼는지 — Finance 만 사용)
         const teamWins: Record<string, { logo: string, wins: number }> = {};
-        
-        // 현재 오너의 번역된 닉네임 (ex: JK -> 루키가문다)
         const currentOwnerResolvedNick = owner.nickname;
 
         seasons.forEach(s => {
@@ -125,22 +139,14 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
                 r.matches?.forEach(m => {
                     if (m.status === 'COMPLETED' && m.homeScore !== '' && m.awayScore !== '') {
                         const hScore = Number(m.homeScore); const aScore = Number(m.awayScore);
-                        
-                        // 🔥 [핵심 수술 포인트] 경기 기록 상의 과거 닉네임을 최신 닉네임으로 번역하여 비교!
                         const resolvedHomeNick = resolveOwnerNickname(m.homeOwner, m.homeOwnerUid);
                         const resolvedAwayNick = resolveOwnerNickname(m.awayOwner, m.awayOwnerUid);
-
                         const isHome = resolvedHomeNick === currentOwnerResolvedNick;
                         const isAway = resolvedAwayNick === currentOwnerResolvedNick;
-
-                        if (isHome) {
-                            if (hScore > aScore) { win++; teamWins[m.home] = { logo: m.homeLogo, wins: (teamWins[m.home]?.wins || 0) + 1 }; }
-                            else if (hScore === aScore) draw++;
-                            else loss++;
-                        } else if (isAway) {
-                            if (aScore > hScore) { win++; teamWins[m.away] = { logo: m.awayLogo, wins: (teamWins[m.away]?.wins || 0) + 1 }; }
-                            else if (hScore === aScore) draw++;
-                            else loss++;
+                        if (isHome && hScore > aScore) {
+                            teamWins[m.home] = { logo: m.homeLogo, wins: (teamWins[m.home]?.wins || 0) + 1 };
+                        } else if (isAway && aScore > hScore) {
+                            teamWins[m.away] = { logo: m.awayLogo, wins: (teamWins[m.away]?.wins || 0) + 1 };
                         }
                     }
                 });
