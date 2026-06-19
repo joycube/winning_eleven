@@ -245,8 +245,34 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
             aggUpdate = { aggWinner: manualWinner === 'HOME' ? effectiveMatch.home : effectiveMatch.away };
           }
 
+          // 🛠️ [핵심 픽스] 진짜 placeholder ID(ko_3rd_0 등)로 저장 시 home/away/owner 가 TBD 면
+          //    effectiveMatch (CupSchedule 의 syncLoser 가 채워준 화면용 값) 로 교체.
+          //    배경: 3·4위전 슬롯은 AdminCupSetup 에서 placeholder 로 미리 생성되고
+          //          nextMatchId 가 null 이라 winner propagation 으로도 채워지지 않음.
+          //          저장 시점에 ...m (DB의 TBD) 만 펼쳐서 score 만 덮어쓰면 home/owner 가 평생 TBD 유지.
+          const isInvalidTeam = (v: any) =>
+            !v || ['', '-', 'TBD', 'BYE'].includes(String(v).trim().toUpperCase());
+          const homeNeedsFix = isInvalidTeam(m.home) && !isInvalidTeam(effectiveMatch.home);
+          const awayNeedsFix = isInvalidTeam(m.away) && !isInvalidTeam(effectiveMatch.away);
+          const teamFix = {
+            ...(homeNeedsFix ? {
+              home: effectiveMatch.home,
+              homeLogo: effectiveMatch.homeLogo,
+              homeOwner: effectiveMatch.homeOwner,
+              homeOwnerUid: effectiveMatch.homeOwnerUid,
+            } : {}),
+            ...(awayNeedsFix ? {
+              away: effectiveMatch.away,
+              awayLogo: effectiveMatch.awayLogo,
+              awayOwner: effectiveMatch.awayOwner,
+              awayOwnerUid: effectiveMatch.awayOwnerUid,
+            } : {}),
+          };
+
           return {
-            ...m, homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+            ...m,
+            ...teamFix,
+            homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
             ...safeRecords,
             homePredictRate: predictionSnapshot.homePredictRate,
             awayPredictRate: predictionSnapshot.awayPredictRate,
@@ -326,10 +352,10 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
       }
 
       // 🛠️ [옵션A-1] CUP — 3·4위전 패자 자동 채움 (인라인)
-      //   semi-final 두 매치가 모두 COMPLETED 되었을 때만 동작.
+      //   semi-final 두 매치가 모두 COMPLETED 되었을 때 동작.
       //   resolveVirtualMatchTeams('v-3rd', ...) 가 semi 패자 추론을 담당.
-      //   stage 가 3RD_PLACE / THIRD / 34 거나 id 가 v-3rd 인 매치를 찾아 home/away 채움.
-      //   이미 점수 입력된(COMPLETED) 3·4위전은 보존.
+      //   home/away 가 TBD 면 status 무관하게 보정 (score 만 박힌 broken 데이터도 복구).
+      //   score/status 등 다른 필드는 절대 건드리지 않음 — home/away/owner 만 보정.
       try {
         const r3 = resolveVirtualMatchTeams('v-3rd', newRounds);
         if (r3) {
@@ -343,11 +369,14 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
           newRounds = newRounds.map((rr: any) => ({
             ...rr,
             matches: (rr.matches || []).map((mm: any) => {
-              if (!is3rd(mm) || mm.status === 'COMPLETED') return mm;
+              if (!is3rd(mm)) return mm;
+              const needH = isTbd(mm.home);
+              const needA = isTbd(mm.away);
+              if (!needH && !needA) return mm; // 이미 정상 → 보존
               return {
                 ...mm,
-                ...(isTbd(mm.home) ? { home: r3.home.name, homeLogo: r3.home.logo, homeOwner: r3.home.owner, homeOwnerUid: r3.home.ownerUid } : {}),
-                ...(isTbd(mm.away) ? { away: r3.away.name, awayLogo: r3.away.logo, awayOwner: r3.away.owner, awayOwnerUid: r3.away.ownerUid } : {}),
+                ...(needH ? { home: r3.home.name, homeLogo: r3.home.logo, homeOwner: r3.home.owner, homeOwnerUid: r3.home.ownerUid } : {}),
+                ...(needA ? { away: r3.away.name, awayLogo: r3.away.logo, awayOwner: r3.away.owner, awayOwnerUid: r3.away.ownerUid } : {}),
               };
             }),
           }));

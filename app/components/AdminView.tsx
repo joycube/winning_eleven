@@ -149,13 +149,16 @@ export const AdminView = ({
                 });
 
                 // 3·4위전 패자 propagation — 인라인 처리 (resolveVirtualMatchTeams 만 활용)
+                //   🛠️ [핵심] COMPLETED 상태여도 home/away 가 TBD 면 보정 (기존 broken 데이터 복구)
+                //   semi 점수만 채우고 3·4위전은 placeholder 그대로 score 만 박힌 케이스가 흔함
                 const r3 = resolveVirtualMatchTeams('v-3rd', newRounds);
                 if (r3) {
                     let touched3rd = false;
                     newRounds = newRounds.map((rr: any) => ({
                         ...rr,
                         matches: (rr.matches || []).map((mm: any) => {
-                            if (!is3rdMatch(mm) || mm.status === 'COMPLETED') return mm;
+                            if (!is3rdMatch(mm)) return mm;
+                            // home/away 가 TBD 면 status 무관하게 보정 (score 만 박힌 broken 데이터 복구)
                             const needH = isInvalid(mm.home);
                             const needA = isInvalid(mm.away);
                             if (!needH && !needA) return mm;
@@ -170,7 +173,7 @@ export const AdminView = ({
                     if (touched3rd) {
                         fixed3rdPlace += 1;
                         seasonChanged = true;
-                        details.push(`  [${sData.name || sData.id}] 3·4위전 자동 채움`);
+                        details.push(`  [${sData.name || sData.id}] 3·4위전 자동 채움 (home/away 보정)`);
                     }
                 }
 
