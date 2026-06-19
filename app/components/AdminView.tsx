@@ -207,6 +207,189 @@ export const AdminView = ({
         }
     };
 
+    // 🛠️ [옵션C] 정합성 점검 도구
+    //   목적: 모든 시즌/매치 스캔하여 데이터 이슈 카테고리별 카운트 + 콘솔 상세 출력.
+    //   픽스는 하지 않고 진단만 — 실제 보정은 기존 마이그레이션 도구 사용.
+    //   카테고리:
+    //     1) tbdHome / tbdAway          — COMPLETED 인데 home/away 가 TBD
+    //     2) tbdHomeOwner / tbdAwayOwner — COMPLETED 인데 owner 누락
+    //     3) missingScore                — COMPLETED 인데 점수 비어있음
+    //     4) zeroSumNoScorers            — 0:0 + 득점자 없음 (의심 케이스)
+    //     5) scoreNoCompleted            — 점수 있는데 status != COMPLETED (저장 중 끊긴 흔적)
+    //     6) byeWithScore                — BYE 인데 점수 있음
+    //     7) scorerOwnerMismatch         — 득점자 ownerUid 가 팀 owner 와 불일치
+    //     8) unknownTeam                 — masterTeams 에 없는 팀명
+    //     9) duplicateMatchIds           — 같은 시즌 내 중복 matchId
+    const handleRunIntegrityAudit = async () => {
+        if (!confirm("🔍 모든 시즌의 매치 데이터를 스캔하여 정합성 이슈를 점검합니다.\n\n• 보정은 하지 않고 진단만 수행\n• 결과는 콘솔(F12)에 표로 출력\n• 시간 약 5~10초\n\n진행하시겠습니까?")) return;
+
+        try {
+            const seasonsSnap = await getDocs(collection(db, 'seasons'));
+
+            const issues: Record<string, any[]> = {
+                tbdHome: [], tbdAway: [], tbdHomeOwner: [], tbdAwayOwner: [],
+                missingScore: [], zeroSumNoScorers: [], scoreNoCompleted: [],
+                byeWithScore: [], scorerOwnerMismatch: [], unknownTeam: [],
+                duplicateMatchIds: [],
+            };
+
+            const labelMap: Record<string, string> = {
+                tbdHome: '🔴 COMPLETED인데 home=TBD',
+                tbdAway: '🔴 COMPLETED인데 away=TBD',
+                tbdHomeOwner: '🔴 COMPLETED인데 homeOwner 누락',
+                tbdAwayOwner: '🔴 COMPLETED인데 awayOwner 누락',
+                missingScore: '🟠 COMPLETED인데 점수 누락',
+                zeroSumNoScorers: '🟡 0:0 + 득점자 없음 (의심)',
+                scoreNoCompleted: '🟠 점수 있는데 status != COMPLETED',
+                byeWithScore: '🟡 BYE 매치인데 점수 있음',
+                scorerOwnerMismatch: '🟡 득점자 ownerUid가 팀 owner와 불일치',
+                unknownTeam: '🟡 masterTeams에 없는 팀명',
+                duplicateMatchIds: '🔴 시즌 내 중복 matchId',
+            };
+
+            const isInvalid = (v: any) =>
+                !v || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(v).trim().toUpperCase());
+            const cleanName = (v: any) => String(v || '').replace(/\s+/g, '').toLowerCase();
+            const masterTeamSet = new Set(
+                (masterTeams || [])
+                    .map((t: any) => cleanName(t?.name || t?.teamName))
+                    .filter(Boolean)
+            );
+
+            let totalMatches = 0;
+            let scannedSeasons = 0;
+
+            seasonsSnap.docs.forEach(docSnap => {
+                const sData = docSnap.data() as any;
+                if (!sData?.rounds || !Array.isArray(sData.rounds)) return;
+                scannedSeasons += 1;
+
+                const seasonId = sData.id || docSnap.id;
+                const seasonName = sData.name || `시즌${seasonId}`;
+                const seenIds = new Set<string>();
+
+                sData.rounds.forEach((r: any, rIdx: number) => {
+                    (r?.matches || []).forEach((m: any, mIdx: number) => {
+                        if (!m) return;
+                        totalMatches += 1;
+                        const ref = {
+                            season: seasonName,
+                            seasonId,
+                            round: rIdx,
+                            matchIdx: mIdx,
+                            id: m.id || '',
+                            label: m.matchLabel || m.stage || '',
+                            home: m.home,
+                            away: m.away,
+                            score: `${m.homeScore ?? ''}:${m.awayScore ?? ''}`,
+                            status: m.status,
+                        };
+
+                        // 중복 matchId
+                        if (m.id) {
+                            if (seenIds.has(m.id)) issues.duplicateMatchIds.push(ref);
+                            seenIds.add(m.id);
+                        }
+
+                        const isCompleted = m.status === 'COMPLETED';
+                        const isBye = m.status === 'BYE' || m.home === 'BYE' || m.away === 'BYE';
+                        const homeScoreNum = Number(m.homeScore || 0);
+                        const awayScoreNum = Number(m.awayScore || 0);
+                        const hasScore = m.homeScore !== '' && m.homeScore !== undefined && m.homeScore !== null
+                                      && m.awayScore !== '' && m.awayScore !== undefined && m.awayScore !== null;
+
+                        // BYE 매치인데 점수 있음
+                        if (isBye && (homeScoreNum > 0 || awayScoreNum > 0)) {
+                            issues.byeWithScore.push(ref);
+                        }
+                        if (isBye) return; // 나머지 검증은 BYE 제외
+
+                        // COMPLETED 검증
+                        if (isCompleted) {
+                            if (isInvalid(m.home)) issues.tbdHome.push(ref);
+                            if (isInvalid(m.away)) issues.tbdAway.push(ref);
+                            if (isInvalid(m.homeOwner) || !m.homeOwnerUid) issues.tbdHomeOwner.push(ref);
+                            if (isInvalid(m.awayOwner) || !m.awayOwnerUid) issues.tbdAwayOwner.push(ref);
+                            if (!hasScore) issues.missingScore.push(ref);
+
+                            // 0:0 + 득점자 없음
+                            const hScorers = m.homeScorers?.length || 0;
+                            const aScorers = m.awayScorers?.length || 0;
+                            if (homeScoreNum === 0 && awayScoreNum === 0 && hScorers === 0 && aScorers === 0) {
+                                issues.zeroSumNoScorers.push(ref);
+                            }
+
+                            // 득점자 owner 불일치
+                            (m.homeScorers || []).forEach((s: any) => {
+                                if (s?.ownerUid && m.homeOwnerUid && s.ownerUid !== m.homeOwnerUid) {
+                                    issues.scorerOwnerMismatch.push({
+                                        ...ref, side: 'home', scorer: s.name,
+                                        scorerUid: s.ownerUid, teamUid: m.homeOwnerUid,
+                                    });
+                                }
+                            });
+                            (m.awayScorers || []).forEach((s: any) => {
+                                if (s?.ownerUid && m.awayOwnerUid && s.ownerUid !== m.awayOwnerUid) {
+                                    issues.scorerOwnerMismatch.push({
+                                        ...ref, side: 'away', scorer: s.name,
+                                        scorerUid: s.ownerUid, teamUid: m.awayOwnerUid,
+                                    });
+                                }
+                            });
+
+                            // masterTeams 에 없는 팀명
+                            if (!isInvalid(m.home) && !masterTeamSet.has(cleanName(m.home))) {
+                                issues.unknownTeam.push({ ...ref, team: m.home });
+                            }
+                            if (!isInvalid(m.away) && !masterTeamSet.has(cleanName(m.away))) {
+                                issues.unknownTeam.push({ ...ref, team: m.away });
+                            }
+                        }
+
+                        // 점수 있는데 COMPLETED 아님
+                        if (!isCompleted && hasScore && (homeScoreNum > 0 || awayScoreNum > 0)) {
+                            issues.scoreNoCompleted.push(ref);
+                        }
+                    });
+                });
+            });
+
+            // 결과 콘솔 출력
+            console.group('===== 🔍 정합성 점검 결과 =====');
+            console.info(`스캔된 시즌: ${scannedSeasons}건 / 매치: ${totalMatches}건`);
+            Object.entries(issues).forEach(([key, list]) => {
+                if (list.length > 0) {
+                    console.group(`${labelMap[key] || key} (${list.length}건)`);
+                    console.table(list);
+                    console.groupEnd();
+                }
+            });
+            console.groupEnd();
+
+            const totalIssues = Object.values(issues).reduce((sum, list) => sum + list.length, 0);
+
+            if (totalIssues === 0) {
+                alert(`✅ 정합성 점검 통과!\n\n• 스캔 시즌: ${scannedSeasons}건\n• 스캔 매치: ${totalMatches}건\n• 이슈: 0건\n\n모든 데이터가 정상입니다.`);
+                return;
+            }
+
+            // 요약 알림
+            const summary = Object.entries(issues)
+                .filter(([_, list]) => list.length > 0)
+                .map(([key, list]) => `  ${labelMap[key] || key}: ${list.length}건`)
+                .join('\n');
+
+            const suggestion = (issues.tbdHome.length > 0 || issues.tbdAway.length > 0 || issues.tbdHomeOwner.length > 0 || issues.tbdAwayOwner.length > 0)
+                ? '\n\n💡 빨간색 이슈는 "매치 OWNER 복구" 마이그레이션으로 일괄 보정 가능.'
+                : '';
+
+            alert(`⚠️ 정합성 이슈 ${totalIssues}건 발견\n\n${summary}\n\n자세한 내역은 콘솔(F12)에서 카테고리별 표로 확인하세요.${suggestion}`);
+        } catch (error: any) {
+            console.error('🚨 정합성 점검 에러:', error);
+            alert(`🚨 점검 에러: ${error?.message || error}`);
+        }
+    };
+
     // 🔥 [핵심 픽스] 과거 시즌의 누락된 PO 데이터를 일괄 복구하는 강력한 마이그레이션 스크립트!
     // 🛠️ [HoF 픽스 v3] 선수 키에 teamName 포함 — 같은 선수가 클럽/국대로 뛰면 별도 entry로 분리 + 명시적 owners 배열
     const handleRunMigration = async () => {
@@ -627,6 +810,8 @@ export const AdminView = ({
                                 <SystemCard title="장부 일괄 복구" subtitle="DB Migration" icon={<DatabaseBackup size={32}/>} color="from-red-600 to-rose-900" onClick={handleRunMigration} />
                                 {/* 🛠️ [옵션A-4] 매치 owner 일괄 복구 — 3·4위전 자동 채움 + masterTeams 폴백 */}
                                 <SystemCard title="매치 OWNER 복구" subtitle="Match Owner Repair" icon={<DatabaseBackup size={32}/>} color="from-yellow-600 to-orange-900" onClick={handleRunOwnerMigration} />
+                                {/* 🛠️ [옵션C] 정합성 점검 — 모든 시즌 매치 데이터 스캔 + 카테고리별 이슈 리포트 */}
+                                <SystemCard title="정합성 점검" subtitle="Integrity Audit" icon={<DatabaseBackup size={32}/>} color="from-cyan-600 to-blue-900" onClick={handleRunIntegrityAudit} />
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in slide-in-from-right-4 w-full">
