@@ -117,11 +117,15 @@ export const resolveVirtualMatchTeams = (
   // 모든 라운드의 매치 평탄화
   const allMatches: any[] = rounds.flatMap((r: any) => r?.matches || []);
 
-  // SEMI_FINAL stage 인 완료된 매치만
-  const semis = allMatches.filter(
-    (m: any) =>
-      String(m?.stage || '').toUpperCase() === 'SEMI_FINAL' && m?.status === 'COMPLETED'
-  );
+  // 🛠️ [버그 픽스] semi 매치 식별 — useKnockoutStages 는 placeholder 를 'ROUND_OF_4' 로 생성하고
+  //   다른 곳은 'SEMI_FINAL' 로 표기하는 등 데이터에 두 형태 혼재.
+  //   stage 에 SEMI / ROUND_OF_4 둘 중 하나라도 포함되면 semi 로 인식.
+  //   기존 정확매칭("SEMI_FINAL")만 했을 땐 v-3rd/v-final 추론이 모두 실패 → 3·4위전 자동 채움 미동작.
+  const semis = allMatches.filter((m: any) => {
+    if (m?.status !== 'COMPLETED') return false;
+    const st = String(m?.stage || '').toUpperCase();
+    return st.includes('SEMI') || st.includes('ROUND_OF_4');
+  });
 
   if (semis.length < 2) return null; // 진출 결정 불가
 
