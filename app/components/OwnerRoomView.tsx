@@ -56,7 +56,8 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
     // 🛠️ [통산 통계 픽스] seasons 전달 — useHistoryRecords 가 옵션1 정제 패치로 W/D/L/PTS 를
     //   seasons 라이브 데이터 기반으로 산출하도록 바뀌었음. seasons 미전달 시 모두 0 으로 노출됨.
     //   누적 상금은 finance_ledger 에서 계산되어 정상 노출되지만 W/D/L 은 이 경로 의존.
-    const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners, seasons);
+    //   🛠️ [옵션A-3] masterTeams 전달 → owner TBD/빈값 매치도 팀명으로 폴백 매칭
+    const { historyData: mergedHistory, isHistoryLoading } = useHistoryRecords(owners, seasons, masterTeams);
 
     const myOwnerData = owners?.find((o:any) => o.uid === user?.uid || (user?.mappedOwnerId && o.nickname === user?.mappedOwnerId));
     const currentNick = myOwnerData?.nickname || user?.mappedOwnerId;
@@ -73,6 +74,24 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         ].filter(Boolean));
         return Array.from(ids);
     }, [user, myOwnerData]);
+
+    // 🛠️ [집계 강화] 내가 소유한 팀명 목록을 masterTeams 에서 미리 계산.
+    //   배경: match.homeOwner/awayOwner 가 TBD 거나 미설정인 경우(예: 3·4위전 가상매치 저장 케이스)
+    //         owner 필드로 매칭하지 못해 매치가 통째로 누락됨
+    //   대책: masterTeams 에서 ownerUid/ownerName 이 내 식별자 중 하나라도 매칭되는 팀명을 모음
+    //         이후 매치 home/away 팀명이 이 set 에 있으면 무조건 내 매치로 인식 → owner 필드 의존 X
+    const myTeamNames = useMemo(() => {
+        const names = new Set<string>();
+        (masterTeams || []).forEach((t: any) => {
+            const tName = String(t?.name || t?.teamName || '').trim();
+            if (!tName) return;
+            const ownerUid = t?.ownerUid ? String(t.ownerUid) : '';
+            const ownerName = t?.ownerName ? String(t.ownerName).trim() : '';
+            const isMine = (ownerUid && myIdentities.includes(ownerUid)) || (ownerName && myIdentities.includes(ownerName));
+            if (isMine) names.add(tName.toLowerCase());
+        });
+        return names;
+    }, [masterTeams, myIdentities]);
 
     // 🛠️ [v3.2 P0 픽스] 라이브 베스트 통계 — early return 이전에 배치 (React Hooks 규칙 준수)
     //   seasons (진행 중 + 종료 시즌) 의 모든 완료 매치를 직접 순회해서 팀/선수 누적
@@ -120,8 +139,12 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             // 🛠️ [집계 픽스 v2] owner 미정 시 masterTeams 폴백 적용
             const hResolved = resolveOwnerOfTeam(m.homeOwner, m.homeOwnerUid, m.home);
             const aResolved = resolveOwnerOfTeam(m.awayOwner, m.awayOwnerUid, m.away);
-            const amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
-            const amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
+            // 🛠️ [집계 강화] 1차 — owner 필드 기반 매칭
+            let amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
+            let amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
+            // 🛠️ [집계 강화] 2차 — 팀명 기반 폴백 매칭 (owner 가 TBD 거나 누락된 케이스 대응, 예: 3·4위전 가상매치)
+            if (!amIHome && m.home && myTeamNames.has(String(m.home).trim().toLowerCase())) amIHome = true;
+            if (!amIAway && m.away && myTeamNames.has(String(m.away).trim().toLowerCase())) amIAway = true;
             const isMyMatch = amIHome || amIAway;
             const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
             if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
@@ -208,7 +231,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             .sort((a: any, b: any) => b.count - a.count);
 
         return { topTeams: teamsArr, topScorers: scorersArr, topAssists: assistsArr, hasActiveSeason };
-    }, [seasons, myIdentities, masterTeams]);
+    }, [seasons, myIdentities, masterTeams, myTeamNames]);
 
     const { topTeams, topScorers, topAssists, hasActiveSeason } = liveBestStats;
 
@@ -322,8 +345,11 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             // 🛠️ [집계 픽스 v2] masterTeams 폴백 적용
             const hResolved = resolveOwnerOfTeam(m.homeOwner, m.homeOwnerUid, m.home);
             const aResolved = resolveOwnerOfTeam(m.awayOwner, m.awayOwnerUid, m.away);
-            const amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
-            const amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
+            let amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
+            let amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
+            // 🛠️ [집계 강화] 팀명 기반 폴백 — owner 가 TBD 거나 누락된 케이스(예: 3·4위전 가상매치) 대응
+            if (!amIHome && m.home && myTeamNames.has(String(m.home).trim().toLowerCase())) amIHome = true;
+            if (!amIAway && m.away && myTeamNames.has(String(m.away).trim().toLowerCase())) amIAway = true;
 
             const isMyMatch = amIHome || amIAway;
             const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
