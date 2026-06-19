@@ -211,6 +211,105 @@ export const AdminView = ({
                     }
                 }
 
+                // 🛠️ LEAGUE_PLAYOFF SEMI_FINAL/FINAL placeholder home/away 보정
+                //   배경: ROUND_OF_4 결과 입력 후 SEMI_FINAL/FINAL 자동 채움이 무동작 OR 누락된 케이스
+                //         (점수만 입력되고 home/away는 TBD 그대로 남은 broken 데이터)
+                //   동작: ROUND_OF_4 합산 winner → SEMI_FINAL.home/away 채움
+                //         SEMI_FINAL 합산 winner → FINAL.away 채움
+                //         COMPLETED 매치라도 home/away가 TBD면 보정 (score/status 보존)
+                //   시즌 타입 무관 — id 패턴(po_*)만 확인
+                const hasLeaguePOMatches = newRounds.some((r: any) =>
+                    (r?.matches || []).some((m: any) => /^po_/.test(String(m?.id || '')))
+                );
+                if (sData.type === 'LEAGUE_PLAYOFF' || hasLeaguePOMatches) {
+                    const sIdStr = String(sData.id || docSnap.id);
+
+                    // 합산 winner 계산 (양다리 leg1 + leg2)
+                    const computeAggWinner = (leg1: any, leg2: any) => {
+                        if (!leg1 || !leg2) return null;
+                        if (leg1.status !== 'COMPLETED' || leg2.status !== 'COMPLETED') return null;
+                        // 수동 승자 우선
+                        const aggW = leg2.aggWinner || leg1.aggWinner;
+                        if (aggW && !isInvalid(aggW)) {
+                            if (aggW === leg1.home) return { name: leg1.home, logo: leg1.homeLogo, owner: leg1.homeOwner, ownerUid: leg1.homeOwnerUid };
+                            if (aggW === leg1.away) return { name: leg1.away, logo: leg1.awayLogo, owner: leg1.awayOwner, ownerUid: leg1.awayOwnerUid };
+                        }
+                        // 합산: A_total = leg1.home + leg2.away
+                        const A = Number(leg1.homeScore || 0) + Number(leg2.awayScore || 0);
+                        const B = Number(leg1.awayScore || 0) + Number(leg2.homeScore || 0);
+                        if (A > B) return { name: leg1.home, logo: leg1.homeLogo, owner: leg1.homeOwner, ownerUid: leg1.homeOwnerUid };
+                        if (B > A) return { name: leg1.away, logo: leg1.awayLogo, owner: leg1.awayOwner, ownerUid: leg1.awayOwnerUid };
+                        return null;
+                    };
+
+                    const allMatches: any[] = newRounds.flatMap((r: any) => r?.matches || []);
+                    const findById = (id: string) => allMatches.find((m: any) => m?.id === id);
+
+                    // tie1: ROUND_OF_4 양다리 (po_{sId}_4_1_1, po_{sId}_4_1_2)
+                    const tie1Winner = computeAggWinner(findById(`po_${sIdStr}_4_1_1`), findById(`po_${sIdStr}_4_1_2`));
+                    // tie2: ROUND_OF_4 양다리 (po_{sId}_4_2_1, po_{sId}_4_2_2)
+                    const tie2Winner = computeAggWinner(findById(`po_${sIdStr}_4_2_1`), findById(`po_${sIdStr}_4_2_2`));
+                    // semi: SEMI_FINAL 양다리 → semi winner → FINAL.away
+                    const semiWinner = computeAggWinner(findById(`po_${sIdStr}_fin_1`), findById(`po_${sIdStr}_fin_2`));
+
+                    let touchedPO = 0;
+                    newRounds = newRounds.map((rr: any) => ({
+                        ...rr,
+                        matches: (rr.matches || []).map((mm: any) => {
+                            if (!mm?.id) return mm;
+
+                            // SEMI_FINAL leg1 (po_fin_1) — home: tie1 winner / away: tie2 winner
+                            if (mm.id === `po_${sIdStr}_fin_1`) {
+                                let patch: any = {};
+                                if (isInvalid(mm.home) && tie1Winner) {
+                                    patch = { ...patch, home: tie1Winner.name, homeLogo: tie1Winner.logo, homeOwner: tie1Winner.owner, homeOwnerUid: tie1Winner.ownerUid };
+                                }
+                                if (isInvalid(mm.away) && tie2Winner) {
+                                    patch = { ...patch, away: tie2Winner.name, awayLogo: tie2Winner.logo, awayOwner: tie2Winner.owner, awayOwnerUid: tie2Winner.ownerUid };
+                                }
+                                if (Object.keys(patch).length > 0) {
+                                    touchedPO += 1;
+                                    return { ...mm, ...patch };
+                                }
+                            }
+                            // SEMI_FINAL leg2 (po_fin_2) — home: tie2 winner / away: tie1 winner (홈/원정 바뀜)
+                            if (mm.id === `po_${sIdStr}_fin_2`) {
+                                let patch: any = {};
+                                if (isInvalid(mm.home) && tie2Winner) {
+                                    patch = { ...patch, home: tie2Winner.name, homeLogo: tie2Winner.logo, homeOwner: tie2Winner.owner, homeOwnerUid: tie2Winner.ownerUid };
+                                }
+                                if (isInvalid(mm.away) && tie1Winner) {
+                                    patch = { ...patch, away: tie1Winner.name, awayLogo: tie1Winner.logo, awayOwner: tie1Winner.owner, awayOwnerUid: tie1Winner.ownerUid };
+                                }
+                                if (Object.keys(patch).length > 0) {
+                                    touchedPO += 1;
+                                    return { ...mm, ...patch };
+                                }
+                            }
+                            // FINAL (po_grand_fin_1) — away: SEMI 합산 winner
+                            if (mm.id === `po_${sIdStr}_grand_fin_1`) {
+                                if (isInvalid(mm.away) && semiWinner) {
+                                    touchedPO += 1;
+                                    return {
+                                        ...mm,
+                                        away: semiWinner.name,
+                                        awayLogo: semiWinner.logo,
+                                        awayOwner: semiWinner.owner,
+                                        awayOwnerUid: semiWinner.ownerUid,
+                                    };
+                                }
+                            }
+                            return mm;
+                        }),
+                    }));
+
+                    if (touchedPO > 0) {
+                        fixed3rdPlace += touchedPO; // 카운트 통합 (이름은 3rd지만 PO 매치도 포함)
+                        seasonChanged = true;
+                        details.push(`  [${sData.name || sData.id}] LEAGUE_PLAYOFF SEMI/FINAL ${touchedPO}건 보정`);
+                    }
+                }
+
                 if (seasonChanged) {
                     touchedSeasons += 1;
                     batch.update(doc(db, 'seasons', docSnap.id), { rounds: newRounds });
@@ -218,8 +317,8 @@ export const AdminView = ({
             });
 
             console.info('[옵션A-4 마이그레이션 결과]');
-            console.info(`  보정된 매치: ${fixedMatches}건`);
-            console.info(`  3·4위전 자동 채움: ${fixed3rdPlace}건`);
+            console.info(`  owner 보정 매치: ${fixedMatches}건`);
+            console.info(`  3·4위전 + LEAGUE_PLAYOFF 자동 채움: ${fixed3rdPlace}건`);
             console.info(`  영향받은 시즌: ${touchedSeasons}건`);
             details.forEach(d => console.info(d));
 
@@ -228,13 +327,13 @@ export const AdminView = ({
                 return;
             }
 
-            if (!confirm(`📊 마이그레이션 미리보기\n\n• owner 보정 매치: ${fixedMatches}건\n• 3·4위전 자동 채움: ${fixed3rdPlace}건\n• 영향 시즌: ${touchedSeasons}건\n\n상세 내역은 콘솔에 출력되었습니다.\n\n실제 저장하시겠습니까?`)) {
+            if (!confirm(`📊 마이그레이션 미리보기\n\n• owner 보정 매치: ${fixedMatches}건\n• 3·4위전 + PO SEMI/FINAL 자동 채움: ${fixed3rdPlace}건\n• 영향 시즌: ${touchedSeasons}건\n\n상세 내역은 콘솔에 출력되었습니다.\n\n실제 저장하시겠습니까?`)) {
                 alert('취소되었습니다. 저장 안됨.');
                 return;
             }
 
             await batch.commit();
-            alert(`✅ 매치 owner 마이그레이션 완료!\n• 보정 매치: ${fixedMatches}건\n• 3·4위전: ${fixed3rdPlace}건\n• 시즌: ${touchedSeasons}건`);
+            alert(`✅ 매치 owner 마이그레이션 완료!\n• 보정 매치: ${fixedMatches}건\n• PO 자동 채움: ${fixed3rdPlace}건\n• 시즌: ${touchedSeasons}건`);
         } catch (error: any) {
             console.error('🚨 owner 마이그레이션 에러:', error);
             alert(`🚨 마이그레이션 에러: ${error?.message || error}`);
@@ -315,8 +414,14 @@ export const AdminView = ({
                             label: m.matchLabel || m.stage || '',
                             home: m.home,
                             away: m.away,
+                            // 🛠️ [진단 강화] owner 필드까지 노출 — 어디가 비어있는지 한눈에 보이게
+                            homeOwner: m.homeOwner ?? '',
+                            homeOwnerUid: m.homeOwnerUid ?? '',
+                            awayOwner: m.awayOwner ?? '',
+                            awayOwnerUid: m.awayOwnerUid ?? '',
                             score: `${m.homeScore ?? ''}:${m.awayScore ?? ''}`,
                             status: m.status,
+                            stage: m.stage ?? '',
                         };
 
                         // 중복 matchId
