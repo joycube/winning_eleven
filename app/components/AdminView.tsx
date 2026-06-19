@@ -233,20 +233,23 @@ export const AdminView = ({
 
                 if (hasLeaguePOStructure) {
                     // 합산 winner 계산 (양다리 leg1 + leg2)
+                    //   🛠️ [Firestore 안전] 모든 필드에 ?? '' 디폴트 — undefined 가 batch.update() 에 들어가면 거부됨
                     const computeAggWinner = (leg1: any, leg2: any) => {
                         if (!leg1 || !leg2) return null;
                         if (leg1.status !== 'COMPLETED' || leg2.status !== 'COMPLETED') return null;
+                        const homeSlot = { name: leg1.home ?? '', logo: leg1.homeLogo ?? '', owner: leg1.homeOwner ?? '', ownerUid: leg1.homeOwnerUid ?? '' };
+                        const awaySlot = { name: leg1.away ?? '', logo: leg1.awayLogo ?? '', owner: leg1.awayOwner ?? '', ownerUid: leg1.awayOwnerUid ?? '' };
                         // 수동 승자 우선
                         const aggW = leg2.aggWinner || leg1.aggWinner;
                         if (aggW && !isInvalid(aggW)) {
-                            if (aggW === leg1.home) return { name: leg1.home, logo: leg1.homeLogo, owner: leg1.homeOwner, ownerUid: leg1.homeOwnerUid };
-                            if (aggW === leg1.away) return { name: leg1.away, logo: leg1.awayLogo, owner: leg1.awayOwner, ownerUid: leg1.awayOwnerUid };
+                            if (aggW === leg1.home) return homeSlot;
+                            if (aggW === leg1.away) return awaySlot;
                         }
                         // 합산: A_total = leg1.home + leg2.away
                         const A = Number(leg1.homeScore || 0) + Number(leg2.awayScore || 0);
                         const B = Number(leg1.awayScore || 0) + Number(leg2.homeScore || 0);
-                        if (A > B) return { name: leg1.home, logo: leg1.homeLogo, owner: leg1.homeOwner, ownerUid: leg1.homeOwnerUid };
-                        if (B > A) return { name: leg1.away, logo: leg1.awayLogo, owner: leg1.awayOwner, ownerUid: leg1.awayOwnerUid };
+                        if (A > B) return homeSlot;
+                        if (B > A) return awaySlot;
                         return null;
                     };
 
