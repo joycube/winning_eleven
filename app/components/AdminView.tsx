@@ -211,19 +211,27 @@ export const AdminView = ({
                     }
                 }
 
-                // 🛠️ LEAGUE_PLAYOFF SEMI_FINAL/FINAL placeholder home/away 보정
-                //   배경: ROUND_OF_4 결과 입력 후 SEMI_FINAL/FINAL 자동 채움이 무동작 OR 누락된 케이스
-                //         (점수만 입력되고 home/away는 TBD 그대로 남은 broken 데이터)
-                //   동작: ROUND_OF_4 합산 winner → SEMI_FINAL.home/away 채움
-                //         SEMI_FINAL 합산 winner → FINAL.away 채움
-                //         COMPLETED 매치라도 home/away가 TBD면 보정 (score/status 보존)
-                //   시즌 타입 무관 — id 패턴(po_*)만 확인
-                const hasLeaguePOMatches = newRounds.some((r: any) =>
-                    (r?.matches || []).some((m: any) => /^po_/.test(String(m?.id || '')))
+                // 🛠️ LEAGUE_PLAYOFF SEMI_FINAL/FINAL placeholder home/away 보정 (v2 — stage+label 기반)
+                //   배경: ID 포맷이 시즌마다 다름 (po_fin_1 vs po_{sId}_fin_1) — ID 패턴 매칭 불안정
+                //   해결: stage 와 matchLabel 로 매치 식별 (ID 무관)
+                //         ROUND_OF_4 4개 + SEMI_FINAL 2개 + FINAL 1개 구조 발견 시 작동
+                const allMatchesForPO: any[] = newRounds.flatMap((r: any) => r?.matches || []);
+                const round4Matches = allMatchesForPO.filter((m: any) =>
+                    String(m?.stage || '').toUpperCase() === 'ROUND_OF_4'
                 );
-                if (sData.type === 'LEAGUE_PLAYOFF' || hasLeaguePOMatches) {
-                    const sIdStr = String(sData.id || docSnap.id);
+                const semiMatches = allMatchesForPO.filter((m: any) =>
+                    String(m?.stage || '').toUpperCase() === 'SEMI_FINAL'
+                );
+                const finalMatches = allMatchesForPO.filter((m: any) =>
+                    String(m?.stage || '').toUpperCase() === 'FINAL'
+                );
 
+                const hasLeaguePOStructure =
+                    round4Matches.length === 4 &&
+                    semiMatches.length === 2 &&
+                    finalMatches.length >= 1;
+
+                if (hasLeaguePOStructure) {
                     // 합산 winner 계산 (양다리 leg1 + leg2)
                     const computeAggWinner = (leg1: any, leg2: any) => {
                         if (!leg1 || !leg2) return null;
@@ -242,52 +250,55 @@ export const AdminView = ({
                         return null;
                     };
 
-                    const allMatches: any[] = newRounds.flatMap((r: any) => r?.matches || []);
-                    const findById = (id: string) => allMatches.find((m: any) => m?.id === id);
+                    // tie/leg 식별 — matchLabel 의 "N경기" + "N차전" 으로
+                    const findTieLeg = (matches: any[], tieNum: string, legNum: string) =>
+                        matches.find((m: any) => {
+                            const label = String(m?.matchLabel || '');
+                            return label.includes(`${tieNum}경기`) && label.includes(`${legNum}차전`);
+                        });
 
-                    // tie1: ROUND_OF_4 양다리 (po_{sId}_4_1_1, po_{sId}_4_1_2)
-                    const tie1Winner = computeAggWinner(findById(`po_${sIdStr}_4_1_1`), findById(`po_${sIdStr}_4_1_2`));
-                    // tie2: ROUND_OF_4 양다리 (po_{sId}_4_2_1, po_{sId}_4_2_2)
-                    const tie2Winner = computeAggWinner(findById(`po_${sIdStr}_4_2_1`), findById(`po_${sIdStr}_4_2_2`));
-                    // semi: SEMI_FINAL 양다리 → semi winner → FINAL.away
-                    const semiWinner = computeAggWinner(findById(`po_${sIdStr}_fin_1`), findById(`po_${sIdStr}_fin_2`));
+                    const tie1leg1 = findTieLeg(round4Matches, '1', '1');
+                    const tie1leg2 = findTieLeg(round4Matches, '1', '2');
+                    const tie2leg1 = findTieLeg(round4Matches, '2', '1');
+                    const tie2leg2 = findTieLeg(round4Matches, '2', '2');
+
+                    // SEMI_FINAL leg 식별 (matchLabel 의 "N차전")
+                    const semi1 = semiMatches.find((m: any) => String(m?.matchLabel || '').includes('1차전'));
+                    const semi2 = semiMatches.find((m: any) => String(m?.matchLabel || '').includes('2차전'));
+
+                    const tie1Winner = computeAggWinner(tie1leg1, tie1leg2);
+                    const tie2Winner = computeAggWinner(tie2leg1, tie2leg2);
+                    const semiWinner = computeAggWinner(semi1, semi2);
 
                     let touchedPO = 0;
                     newRounds = newRounds.map((rr: any) => ({
                         ...rr,
                         matches: (rr.matches || []).map((mm: any) => {
-                            if (!mm?.id) return mm;
+                            if (!mm) return mm;
+                            const st = String(mm.stage || '').toUpperCase();
+                            const label = String(mm.matchLabel || '');
 
-                            // SEMI_FINAL leg1 (po_fin_1) — home: tie1 winner / away: tie2 winner
-                            if (mm.id === `po_${sIdStr}_fin_1`) {
+                            // SEMI_FINAL — leg1: home=tie1 winner, away=tie2 winner / leg2: 교차
+                            if (st === 'SEMI_FINAL') {
+                                const isLeg1 = label.includes('1차전');
+                                const isLeg2 = label.includes('2차전');
+                                if (!isLeg1 && !isLeg2) return mm;
+
                                 let patch: any = {};
-                                if (isInvalid(mm.home) && tie1Winner) {
-                                    patch = { ...patch, home: tie1Winner.name, homeLogo: tie1Winner.logo, homeOwner: tie1Winner.owner, homeOwnerUid: tie1Winner.ownerUid };
-                                }
-                                if (isInvalid(mm.away) && tie2Winner) {
-                                    patch = { ...patch, away: tie2Winner.name, awayLogo: tie2Winner.logo, awayOwner: tie2Winner.owner, awayOwnerUid: tie2Winner.ownerUid };
+                                if (isLeg1) {
+                                    if (isInvalid(mm.home) && tie1Winner) patch = { ...patch, home: tie1Winner.name, homeLogo: tie1Winner.logo, homeOwner: tie1Winner.owner, homeOwnerUid: tie1Winner.ownerUid };
+                                    if (isInvalid(mm.away) && tie2Winner) patch = { ...patch, away: tie2Winner.name, awayLogo: tie2Winner.logo, awayOwner: tie2Winner.owner, awayOwnerUid: tie2Winner.ownerUid };
+                                } else if (isLeg2) {
+                                    if (isInvalid(mm.home) && tie2Winner) patch = { ...patch, home: tie2Winner.name, homeLogo: tie2Winner.logo, homeOwner: tie2Winner.owner, homeOwnerUid: tie2Winner.ownerUid };
+                                    if (isInvalid(mm.away) && tie1Winner) patch = { ...patch, away: tie1Winner.name, awayLogo: tie1Winner.logo, awayOwner: tie1Winner.owner, awayOwnerUid: tie1Winner.ownerUid };
                                 }
                                 if (Object.keys(patch).length > 0) {
                                     touchedPO += 1;
                                     return { ...mm, ...patch };
                                 }
                             }
-                            // SEMI_FINAL leg2 (po_fin_2) — home: tie2 winner / away: tie1 winner (홈/원정 바뀜)
-                            if (mm.id === `po_${sIdStr}_fin_2`) {
-                                let patch: any = {};
-                                if (isInvalid(mm.home) && tie2Winner) {
-                                    patch = { ...patch, home: tie2Winner.name, homeLogo: tie2Winner.logo, homeOwner: tie2Winner.owner, homeOwnerUid: tie2Winner.ownerUid };
-                                }
-                                if (isInvalid(mm.away) && tie1Winner) {
-                                    patch = { ...patch, away: tie1Winner.name, awayLogo: tie1Winner.logo, awayOwner: tie1Winner.owner, awayOwnerUid: tie1Winner.ownerUid };
-                                }
-                                if (Object.keys(patch).length > 0) {
-                                    touchedPO += 1;
-                                    return { ...mm, ...patch };
-                                }
-                            }
-                            // FINAL (po_grand_fin_1) — away: SEMI 합산 winner
-                            if (mm.id === `po_${sIdStr}_grand_fin_1`) {
+                            // FINAL — away: SEMI 합산 winner (home 은 정규리그 1위로 이미 채워짐)
+                            if (st === 'FINAL') {
                                 if (isInvalid(mm.away) && semiWinner) {
                                     touchedPO += 1;
                                     return {
@@ -304,9 +315,9 @@ export const AdminView = ({
                     }));
 
                     if (touchedPO > 0) {
-                        fixed3rdPlace += touchedPO; // 카운트 통합 (이름은 3rd지만 PO 매치도 포함)
+                        fixed3rdPlace += touchedPO;
                         seasonChanged = true;
-                        details.push(`  [${sData.name || sData.id}] LEAGUE_PLAYOFF SEMI/FINAL ${touchedPO}건 보정`);
+                        details.push(`  [${sData.name || sData.id}] LEAGUE_PLAYOFF SEMI/FINAL ${touchedPO}건 보정 (stage+label 기반)`);
                     }
                 }
 
