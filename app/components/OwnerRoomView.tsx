@@ -95,19 +95,40 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
             return status === 'ACTIVE' || status === 'IN_PROGRESS' || status === 'OPEN' || (!status && s?.rounds && s.rounds.length > 0);
         });
 
+        // 🛠️ [집계 픽스 v2] 매치의 homeOwner/awayOwner 가 TBD 거나 비어있어도 masterTeams 의 팀-오너 매핑으로 폴백
+        //   문제 사례: 3·4위전 자리는 useKnockoutStages 의 syncLoser 가 화면에만 채워주고
+        //              실제 DB 매치 데이터의 homeOwner/awayOwner 는 TBD 인 채로 저장됨
+        //              → 베컴이 PSG vs NAPOLI (3·4위전, 6:1) 를 입력해도 OwnerRoom 통계에서 누락됨
+        //   대책: 매치카드/스케줄과 동일한 getActiveOwner 패턴으로 owner 미정 시 masterTeams[teamName].ownerName/ownerUid 로 보정
+        const resolveOwnerOfTeam = (rawOwner: any, rawOwnerUid: any, teamName: string): { owner: string; uid: any } => {
+            const invalid = !rawOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(rawOwner).trim().toUpperCase());
+            if (!invalid) return { owner: rawOwner, uid: rawOwnerUid };
+            const clean = (teamName || '').replace(/\s+/g, '').toLowerCase();
+            const master: any = masterTeams?.find((t: any) => ((t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase()) === clean);
+            const mOwner = master?.ownerName;
+            if (mOwner && !['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(mOwner).trim().toUpperCase())) {
+                return { owner: mOwner, uid: master?.ownerUid || rawOwnerUid };
+            }
+            return { owner: rawOwner, uid: rawOwnerUid };
+        };
+
         // 매치 수집 (getMyMatches 와 동일 로직 — 인라인)
         const matches: any[] = [];
         const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
         const addMatch = (m: any) => {
             if (!m) return;
-            const amIHome = myIdentities.includes(String(m.homeOwnerUid)) || myIdentities.includes(String(m.homeOwner));
-            const amIAway = myIdentities.includes(String(m.awayOwnerUid)) || myIdentities.includes(String(m.awayOwner));
+            // 🛠️ [집계 픽스 v2] owner 미정 시 masterTeams 폴백 적용
+            const hResolved = resolveOwnerOfTeam(m.homeOwner, m.homeOwnerUid, m.home);
+            const aResolved = resolveOwnerOfTeam(m.awayOwner, m.awayOwnerUid, m.away);
+            const amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
+            const amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
             const isMyMatch = amIHome || amIAway;
             const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
             if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
                 const matchKey = `${m.home}_${m.away}_${m.homeScore}_${m.awayScore}_${m.stage || ''}`;
                 if (!matches.find((ext: any) => ext._key === matchKey)) {
-                    matches.push({ ...m, amIHome, _key: matchKey });
+                    // 🛠️ [집계 픽스 v2] amIAway 도 함께 보관 — 같은 오너가 양 팀을 소유한 경우(예: 베컴의 PSG vs NAPOLI) 양쪽 집계
+                    matches.push({ ...m, amIHome, amIAway, _key: matchKey });
                 }
             }
         };
@@ -121,43 +142,53 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         const teamStats: Record<string, any> = {};
         const playerStats: Record<string, any> = {};
         matches.forEach((m: any) => {
-            const isHome = m.amIHome;
-            const myTeam = isHome ? m.home : m.away;
-            if (!myTeam || myTeam === 'TBD' || myTeam === 'BYE') return;
-            const myTeamLogo = isHome ? m.homeLogo : m.awayLogo;
-            const myScore = Number((isHome ? m.homeScore : m.awayScore) || 0);
-            const opScore = Number((isHome ? m.awayScore : m.homeScore) || 0);
+            // 🛠️ [집계 픽스 v2] 양쪽 다 내 소유면 양쪽 다 합산 (PSG +1W, NAPOLI +1L)
+            const sides: { myTeam: string; myLogo: string; myScore: number; opScore: number; scorers: any[]; assists: any[] }[] = [];
+            if (m.amIHome) sides.push({
+                myTeam: m.home, myLogo: m.homeLogo,
+                myScore: Number(m.homeScore || 0), opScore: Number(m.awayScore || 0),
+                scorers: m.homeScorers || [], assists: m.homeAssists || []
+            });
+            if (m.amIAway) sides.push({
+                myTeam: m.away, myLogo: m.awayLogo,
+                myScore: Number(m.awayScore || 0), opScore: Number(m.homeScore || 0),
+                scorers: m.awayScorers || [], assists: m.awayAssists || []
+            });
 
-            if (!teamStats[myTeam]) {
-                const teamData = masterTeams?.find((mt: any) => mt.name === myTeam);
-                teamStats[myTeam] = {
-                    name: myTeam,
-                    logo: localGetLogo(myTeam, myTeamLogo || teamData?.logo),
-                    tier: teamData?.tier || 'C',
-                    w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0,
+            sides.forEach(side => {
+                if (!side.myTeam || side.myTeam === 'TBD' || side.myTeam === 'BYE') return;
+
+                if (!teamStats[side.myTeam]) {
+                    const teamData = masterTeams?.find((mt: any) => mt.name === side.myTeam);
+                    teamStats[side.myTeam] = {
+                        name: side.myTeam,
+                        logo: localGetLogo(side.myTeam, side.myLogo || teamData?.logo),
+                        tier: teamData?.tier || 'C',
+                        w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0,
+                    };
+                }
+                const ts = teamStats[side.myTeam];
+                ts.gf += side.myScore; ts.ga += side.opScore;
+                if (side.myScore > side.opScore) { ts.w += 1; ts.pts += 3; }
+                else if (side.myScore < side.opScore) { ts.l += 1; }
+                else { ts.d += 1; ts.pts += 1; }
+
+                const processPlayer = (list: any[], type: 'goals' | 'assists') => {
+                    if (!Array.isArray(list)) return;
+                    list.forEach((s: any) => {
+                        const pName = typeof s === 'string' ? s : s.name;
+                        const count = typeof s === 'string' ? 1 : (s.count || 1);
+                        if (!pName) return;
+                        const key = `${pName}__${side.myTeam}`;
+                        if (!playerStats[key]) {
+                            playerStats[key] = { name: pName, team: side.myTeam, logo: localGetLogo(side.myTeam, side.myLogo), goals: 0, assists: 0 };
+                        }
+                        playerStats[key][type] += count;
+                    });
                 };
-            }
-            const ts = teamStats[myTeam];
-            ts.gf += myScore; ts.ga += opScore;
-            if (myScore > opScore) { ts.w += 1; ts.pts += 3; }
-            else if (myScore < opScore) { ts.l += 1; }
-            else { ts.d += 1; ts.pts += 1; }
-
-            const processPlayer = (list: any[], type: 'goals' | 'assists') => {
-                if (!Array.isArray(list)) return;
-                list.forEach((s: any) => {
-                    const pName = typeof s === 'string' ? s : s.name;
-                    const count = typeof s === 'string' ? 1 : (s.count || 1);
-                    if (!pName) return;
-                    const key = `${pName}__${myTeam}`;
-                    if (!playerStats[key]) {
-                        playerStats[key] = { name: pName, team: myTeam, logo: localGetLogo(myTeam, myTeamLogo), goals: 0, assists: 0 };
-                    }
-                    playerStats[key][type] += count;
-                });
-            };
-            processPlayer(isHome ? (m.homeScorers || []) : (m.awayScorers || []), 'goals');
-            processPlayer(isHome ? (m.homeAssists || []) : (m.awayAssists || []), 'assists');
+                processPlayer(side.scorers, 'goals');
+                processPlayer(side.assists, 'assists');
+            });
         });
 
         // 🛠️ [v3.3] slice(0, 5) 제거 — 전체 데이터를 반환하고 렌더 시점에 visibleCount 로 자른다 (더보기/접기 패턴)
@@ -273,19 +304,36 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         let ownerMatches: any[] = [];
         const sortedSeasons = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
 
+        // 🛠️ [집계 픽스 v2] owner 미정 시 masterTeams 폴백
+        const resolveOwnerOfTeam = (rawOwner: any, rawOwnerUid: any, teamName: string) => {
+            const invalid = !rawOwner || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(rawOwner).trim().toUpperCase());
+            if (!invalid) return { owner: rawOwner, uid: rawOwnerUid };
+            const clean = (teamName || '').replace(/\s+/g, '').toLowerCase();
+            const master: any = masterTeams?.find((t: any) => ((t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase()) === clean);
+            const mOwner = master?.ownerName;
+            if (mOwner && !['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(mOwner).trim().toUpperCase())) {
+                return { owner: mOwner, uid: master?.ownerUid || rawOwnerUid };
+            }
+            return { owner: rawOwner, uid: rawOwnerUid };
+        };
+
         const addMatch = (m: any) => {
             if (!m) return;
-            const amIHome = myIdentities.includes(String(m.homeOwnerUid)) || myIdentities.includes(String(m.homeOwner));
-            const amIAway = myIdentities.includes(String(m.awayOwnerUid)) || myIdentities.includes(String(m.awayOwner));
+            // 🛠️ [집계 픽스 v2] masterTeams 폴백 적용
+            const hResolved = resolveOwnerOfTeam(m.homeOwner, m.homeOwnerUid, m.home);
+            const aResolved = resolveOwnerOfTeam(m.awayOwner, m.awayOwnerUid, m.away);
+            const amIHome = myIdentities.includes(String(hResolved.uid)) || myIdentities.includes(String(hResolved.owner));
+            const amIAway = myIdentities.includes(String(aResolved.uid)) || myIdentities.includes(String(aResolved.owner));
 
             const isMyMatch = amIHome || amIAway;
             const isNotBye = m.home !== 'BYE' && m.away !== 'BYE' && !m.home?.includes('부전승') && !m.away?.includes('부전승');
-            
+
             if (m.status === 'COMPLETED' && isMyMatch && isNotBye) {
                 // 🔥 [버그 픽스] m.id가 없어서 중복으로 취급되어 사라지던 문제를 고유한 문자열 조합(Key)으로 해결했습니다!
                 const matchKey = `${m.home}_${m.away}_${m.homeScore}_${m.awayScore}_${m.stage || ''}`;
                 if (!ownerMatches.find(ext => ext._key === matchKey)) {
-                    ownerMatches.push({ ...m, amIHome, _key: matchKey });
+                    // 🛠️ [집계 픽스 v2] amIAway 함께 저장 — 양쪽 소유 매치(예: 베컴의 PSG vs NAPOLI) 대응
+                    ownerMatches.push({ ...m, amIHome, amIAway, _key: matchKey });
                 }
             }
         };
@@ -353,10 +401,12 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
         const stats: Record<string, { name: string, logo: string, tier?: string, w: number, d: number, l: number, total: number }> = {};
         
         myMatches.forEach(m => {
-            const isHome = m.amIHome; 
+            // 🛠️ [집계 픽스 v2] 양쪽 다 내 소유인 매치 — 상대가 자기 자신이므로 H2H 에서 제외 (self-match)
+            if (m.amIHome && m.amIAway) return;
+            const isHome = m.amIHome;
             let targetUid = isHome ? m.awayOwnerUid : m.homeOwnerUid;
             let targetRawName = isHome ? m.awayOwner : m.homeOwner;
-            let targetTeamName = isHome ? m.away : m.home; 
+            let targetTeamName = isHome ? m.away : m.home;
             
             let targetName = '';
             let logo = FALLBACK_IMG; 
@@ -407,14 +457,17 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
     const { mostWins, mostLosses, rival } = getH2HStats();
 
     const getTeamRecentMatches = (teamName: string) => {
+        // 🛠️ [집계 픽스 v2] 양쪽 소유 매치에서도 teamName 이 매치 어느 사이드든 맞으면 포함
+        //   기존 버그: amIHome 한쪽만 보고 PSG vs NAPOLI (둘 다 내 팀) 매치에서 NAPOLI 검색하면 PSG 사이드만 보고 미스
         const teamMatches = myMatches.filter(m => {
-            const isHome = m.amIHome;
-            const myTeamStr = isHome ? m.home : m.away;
-            return myTeamStr === teamName;
+            const mineHome = m.amIHome && m.home === teamName;
+            const mineAway = m.amIAway && m.away === teamName;
+            return mineHome || mineAway;
         });
-        
+
         return teamMatches.reverse().slice(0, 5).map(m => {
-            const isHome = m.amIHome;
+            // 🛠️ teamName 이 home 인지 away 인지로 사이드 결정 (양쪽 소유 매치 정확 매칭)
+            const isHome = m.home === teamName;
             const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
             const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
             const opTeam = isHome ? m.away : m.home;

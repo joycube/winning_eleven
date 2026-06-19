@@ -70,6 +70,140 @@ export const AdminView = ({
         alert("스케줄 삭제 완료");
     };
 
+    // 🛠️ [옵션A-4] 매치 owner 데이터 일괄 복구 마이그레이션
+    //   대상: seasons[*].rounds[*].matches[*]
+    //   동작:
+    //     1) homeOwner/awayOwner 가 비어있거나 TBD 면 masterTeams[teamName].ownerName/ownerUid 로 채움
+    //     2) 3·4위전 매치(stage=3RD_PLACE/THIRD/34 또는 id=v-3rd)는 semi 패자로 home/away 자동 채움
+    //   안전:
+    //     - 이미 owner 데이터 있는 매치는 건드리지 않음
+    //     - 점수 등 다른 필드 보존
+    //     - dry-run 결과 먼저 콘솔/alert 로 보고 → 사용자 확인 후 실제 저장
+    const handleRunOwnerMigration = async () => {
+        if (!confirm("⚠️ [매치 owner 일괄 복구]\n\n모든 시즌의 매치 데이터를 순회하면서 homeOwner/awayOwner 가 비어있거나 TBD 인 매치를 masterTeams 기반으로 자동 보정합니다.\n\n• 3·4위전 자동 채움 포함\n• 점수/하이라이트 등 다른 필드는 그대로 보존\n• 이미 owner 가 정상인 매치는 건드리지 않음\n\n실행하시겠습니까?")) return;
+
+        try {
+            const { resolveVirtualMatchTeams } = await import('../utils/playoffProgression');
+            const isInvalid = (v: any) =>
+                !v || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(v).trim().toUpperCase());
+            const cleanName = (v: any) => String(v || '').replace(/\s+/g, '').toLowerCase();
+            const is3rdMatch = (mm: any) => {
+                if (!mm) return false;
+                if (mm.id === 'v-3rd' || String(mm.id || '').toLowerCase().includes('3rd')) return true;
+                const st = String(mm.stage || '').toUpperCase();
+                return st.includes('3RD') || st.includes('THIRD') || st.includes('34');
+            };
+
+            const seasonsSnap = await getDocs(collection(db, 'seasons'));
+            const batch = writeBatch(db);
+            let fixedMatches = 0;
+            let touchedSeasons = 0;
+            let fixed3rdPlace = 0;
+            const details: string[] = [];
+
+            seasonsSnap.docs.forEach(docSnap => {
+                const sData = docSnap.data() as any;
+                if (!sData?.rounds || !Array.isArray(sData.rounds)) return;
+                let seasonChanged = false;
+
+                let newRounds = sData.rounds.map((r: any) => {
+                    if (!r?.matches) return r;
+                    return {
+                        ...r,
+                        matches: r.matches.map((m: any) => {
+                            if (!m) return m;
+                            let patch: any = {};
+
+                            // home owner 보정
+                            if (isInvalid(m.homeOwner) && m.home && !['TBD', 'BYE'].includes(String(m.home).toUpperCase())) {
+                                const master: any = masterTeams.find(t =>
+                                    cleanName((t as any).name) === cleanName(m.home) ||
+                                    cleanName((t as any).teamName) === cleanName(m.home)
+                                );
+                                if (master?.ownerName && !isInvalid(master.ownerName)) {
+                                    patch.homeOwner = master.ownerName;
+                                    if (master.ownerUid) patch.homeOwnerUid = master.ownerUid;
+                                }
+                            }
+                            // away owner 보정
+                            if (isInvalid(m.awayOwner) && m.away && !['TBD', 'BYE'].includes(String(m.away).toUpperCase())) {
+                                const master: any = masterTeams.find(t =>
+                                    cleanName((t as any).name) === cleanName(m.away) ||
+                                    cleanName((t as any).teamName) === cleanName(m.away)
+                                );
+                                if (master?.ownerName && !isInvalid(master.ownerName)) {
+                                    patch.awayOwner = master.ownerName;
+                                    if (master.ownerUid) patch.awayOwnerUid = master.ownerUid;
+                                }
+                            }
+
+                            if (Object.keys(patch).length > 0) {
+                                fixedMatches += 1;
+                                seasonChanged = true;
+                                details.push(`  [${sData.name || sData.id}] ${m.home} vs ${m.away} (${m.matchLabel || m.stage || ''}) → ${Object.keys(patch).join(', ')} 보정`);
+                                return { ...m, ...patch };
+                            }
+                            return m;
+                        }),
+                    };
+                });
+
+                // 3·4위전 패자 propagation — 인라인 처리 (resolveVirtualMatchTeams 만 활용)
+                const r3 = resolveVirtualMatchTeams('v-3rd', newRounds);
+                if (r3) {
+                    let touched3rd = false;
+                    newRounds = newRounds.map((rr: any) => ({
+                        ...rr,
+                        matches: (rr.matches || []).map((mm: any) => {
+                            if (!is3rdMatch(mm) || mm.status === 'COMPLETED') return mm;
+                            const needH = isInvalid(mm.home);
+                            const needA = isInvalid(mm.away);
+                            if (!needH && !needA) return mm;
+                            touched3rd = true;
+                            return {
+                                ...mm,
+                                ...(needH ? { home: r3.home.name, homeLogo: r3.home.logo, homeOwner: r3.home.owner, homeOwnerUid: r3.home.ownerUid } : {}),
+                                ...(needA ? { away: r3.away.name, awayLogo: r3.away.logo, awayOwner: r3.away.owner, awayOwnerUid: r3.away.ownerUid } : {}),
+                            };
+                        }),
+                    }));
+                    if (touched3rd) {
+                        fixed3rdPlace += 1;
+                        seasonChanged = true;
+                        details.push(`  [${sData.name || sData.id}] 3·4위전 자동 채움`);
+                    }
+                }
+
+                if (seasonChanged) {
+                    touchedSeasons += 1;
+                    batch.update(doc(db, 'seasons', docSnap.id), { rounds: newRounds });
+                }
+            });
+
+            console.info('[옵션A-4 마이그레이션 결과]');
+            console.info(`  보정된 매치: ${fixedMatches}건`);
+            console.info(`  3·4위전 자동 채움: ${fixed3rdPlace}건`);
+            console.info(`  영향받은 시즌: ${touchedSeasons}건`);
+            details.forEach(d => console.info(d));
+
+            if (touchedSeasons === 0) {
+                alert('✅ 보정이 필요한 매치가 없습니다. 모든 매치의 owner 데이터가 이미 정상입니다.');
+                return;
+            }
+
+            if (!confirm(`📊 마이그레이션 미리보기\n\n• owner 보정 매치: ${fixedMatches}건\n• 3·4위전 자동 채움: ${fixed3rdPlace}건\n• 영향 시즌: ${touchedSeasons}건\n\n상세 내역은 콘솔에 출력되었습니다.\n\n실제 저장하시겠습니까?`)) {
+                alert('취소되었습니다. 저장 안됨.');
+                return;
+            }
+
+            await batch.commit();
+            alert(`✅ 매치 owner 마이그레이션 완료!\n• 보정 매치: ${fixedMatches}건\n• 3·4위전: ${fixed3rdPlace}건\n• 시즌: ${touchedSeasons}건`);
+        } catch (error: any) {
+            console.error('🚨 owner 마이그레이션 에러:', error);
+            alert(`🚨 마이그레이션 에러: ${error?.message || error}`);
+        }
+    };
+
     // 🔥 [핵심 픽스] 과거 시즌의 누락된 PO 데이터를 일괄 복구하는 강력한 마이그레이션 스크립트!
     // 🛠️ [HoF 픽스 v3] 선수 키에 teamName 포함 — 같은 선수가 클럽/국대로 뛰면 별도 entry로 분리 + 명시적 owners 배열
     const handleRunMigration = async () => {
@@ -488,6 +622,8 @@ export const AdminView = ({
                                 <SystemCard title="배너 관리" subtitle="Main Banners" icon={<ImageIcon size={32}/>} color="from-pink-500 to-rose-700" onClick={() => setAdminTab('BANNER')} />
                                 {/* 🔥 여기에 장부 일괄 복구 버튼을 추가했습니다! */}
                                 <SystemCard title="장부 일괄 복구" subtitle="DB Migration" icon={<DatabaseBackup size={32}/>} color="from-red-600 to-rose-900" onClick={handleRunMigration} />
+                                {/* 🛠️ [옵션A-4] 매치 owner 일괄 복구 — 3·4위전 자동 채움 + masterTeams 폴백 */}
+                                <SystemCard title="매치 OWNER 복구" subtitle="Match Owner Repair" icon={<DatabaseBackup size={32}/>} color="from-yellow-600 to-orange-900" onClick={handleRunOwnerMigration} />
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in slide-in-from-right-4 w-full">

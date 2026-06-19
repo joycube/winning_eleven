@@ -320,10 +320,11 @@ export default function FootballLeagueApp() {
 
         {/* 🔥 [핵심 픽스] HistoryView 에만 오차율 0%의 perfectHistoryData 주입 */}
         {/* 🛠️ [Finance v4 / 옵션1 정제] seasons 전달 → 진행 중 시즌 W/D/L/PTS 합산 */}
-        {currentView === 'HISTORY' && <HistoryView historyData={perfectHistoryData} owners={owners} seasons={seasons} user={authUser} />}
+        {/* 🛠️ [옵션A-3] masterTeams 전달 → owner TBD/빈값 매치도 팀명으로 폴백 매칭 */}
+        {currentView === 'HISTORY' && <HistoryView historyData={perfectHistoryData} owners={owners} seasons={seasons} masterTeams={masterTeams} user={authUser} />}
 
         {currentView === 'FINANCE' && (
-          <FinanceView owners={owners} seasons={seasons} user={authUser as any} />
+          <FinanceView owners={owners} seasons={seasons} masterTeams={masterTeams} user={authUser as any} />
         )}
 
         {currentView === 'OWNERROOM' && (

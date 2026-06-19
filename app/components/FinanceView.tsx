@@ -20,6 +20,7 @@ declare module 'react' {
 interface FinanceViewProps {
   owners: Owner[];
   seasons: Season[];
+  masterTeams?: any[];
   user?: {
     uid: string;
     mappedOwnerId: string;
@@ -38,7 +39,7 @@ interface SettlementGroup {
   sumTx: number;
 }
 
-export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
+export const FinanceView = ({ owners, seasons, masterTeams = [], user }: FinanceViewProps) => {
   const [activeTab, setActiveTab] = useState<'STATEMENT' | 'SETTLEMENT' | 'HALL_OF_FAME'>('HALL_OF_FAME');
   
   const [dbLedgers, setDbLedgers] = useState<any[]>([]);
@@ -108,7 +109,8 @@ export const FinanceView = ({ owners, seasons, user }: FinanceViewProps) => {
   // 🛠️ [Finance v4 / 옵션1 폴백] useHistoryRecords 호출 → 비로그인 트로피 폴백용
   //   useHistoryRecords 가 finance_ledger 실패 시 history_records.teams[0/1/2] 로 폴백
   //   여기서 그 메달 카운트(golds + silvers + bronzes) 를 가져와 활용
-  const { historyData: hofData } = useHistoryRecords(owners, seasons);
+  //   🛠️ [옵션A-3] masterTeams 전달 → owner TBD/빈값 매치도 폴백 매칭
+  const { historyData: hofData } = useHistoryRecords(owners, seasons, masterTeams);
 
   const computedOwners = useMemo(() => {
     return owners.map(owner => {

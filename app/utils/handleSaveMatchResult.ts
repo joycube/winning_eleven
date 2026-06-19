@@ -14,7 +14,51 @@ import type { Match, MasterTeam, Season } from '../types';
 import { calculateMatchSnapshot } from './predictor';
 import { processTournamentAdvancement } from './scheduler';
 import { sendAutoPush } from './pushUtil';
-import { getEffectiveMatch, applyLeaguePlayoffProgression } from './playoffProgression';
+import { getEffectiveMatch, applyLeaguePlayoffProgression, resolveVirtualMatchTeams } from './playoffProgression';
+
+// 🛠️ [옵션A-2] owner 자동 채움 안전망
+//   - 매치 저장 직전 homeOwner/awayOwner 가 비어있거나 TBD 면
+//     masterTeams[teamName].ownerName/ownerUid 로 자동 채워서 DB에 영구 저장
+//   - 신규 매치 데이터는 항상 정상 owner 보장 → 모든 통계 consumer 자동 정상화
+const isInvalidOwner = (v: any) =>
+  !v || ['-', 'TBD', 'CPU', 'SYSTEM', 'BYE'].includes(String(v).trim().toUpperCase());
+
+const fillOwnerFromMasterTeams = (m: any, masterTeams: MasterTeam[]): any => {
+  if (!m) return m;
+  const clean = (s: any) => String(s || '').replace(/\s+/g, '').toLowerCase();
+  const findMaster = (teamName: string) => {
+    if (!teamName) return undefined;
+    const t = clean(teamName);
+    return (masterTeams as any[])?.find((mt: any) =>
+      clean(mt?.name) === t || clean(mt?.teamName) === t
+    );
+  };
+
+  let patch: any = {};
+  if (isInvalidOwner(m.homeOwner) && m.home && !['TBD', 'BYE'].includes(String(m.home).toUpperCase())) {
+    const master: any = findMaster(m.home);
+    if (master?.ownerName && !isInvalidOwner(master.ownerName)) {
+      patch.homeOwner = master.ownerName;
+      if (master.ownerUid) patch.homeOwnerUid = master.ownerUid;
+    }
+  }
+  if (isInvalidOwner(m.awayOwner) && m.away && !['TBD', 'BYE'].includes(String(m.away).toUpperCase())) {
+    const master: any = findMaster(m.away);
+    if (master?.ownerName && !isInvalidOwner(master.ownerName)) {
+      patch.awayOwner = master.ownerName;
+      if (master.ownerUid) patch.awayOwnerUid = master.ownerUid;
+    }
+  }
+  return Object.keys(patch).length > 0 ? { ...m, ...patch } : m;
+};
+
+const fillOwnersInRounds = (rounds: any[], masterTeams: MasterTeam[]): any[] => {
+  if (!rounds) return rounds;
+  return rounds.map((r: any) => ({
+    ...r,
+    matches: (r?.matches || []).map((m: any) => fillOwnerFromMasterTeams(m, masterTeams)),
+  }));
+};
 
 interface SaveMatchResultDeps {
   editingMatch: Match | null;
@@ -280,6 +324,37 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
           }),
         }));
       }
+
+      // 🛠️ [옵션A-1] CUP — 3·4위전 패자 자동 채움 (인라인)
+      //   semi-final 두 매치가 모두 COMPLETED 되었을 때만 동작.
+      //   resolveVirtualMatchTeams('v-3rd', ...) 가 semi 패자 추론을 담당.
+      //   stage 가 3RD_PLACE / THIRD / 34 거나 id 가 v-3rd 인 매치를 찾아 home/away 채움.
+      //   이미 점수 입력된(COMPLETED) 3·4위전은 보존.
+      try {
+        const r3 = resolveVirtualMatchTeams('v-3rd', newRounds);
+        if (r3) {
+          const is3rd = (mm: any) => {
+            if (!mm) return false;
+            if (mm.id === 'v-3rd' || String(mm.id || '').toLowerCase().includes('3rd')) return true;
+            const st = String(mm.stage || '').toUpperCase();
+            return st.includes('3RD') || st.includes('THIRD') || st.includes('34');
+          };
+          const isTbd = (v: any) => !v || ['', '-', 'TBD', 'BYE'].includes(String(v).trim().toUpperCase());
+          newRounds = newRounds.map((rr: any) => ({
+            ...rr,
+            matches: (rr.matches || []).map((mm: any) => {
+              if (!is3rd(mm) || mm.status === 'COMPLETED') return mm;
+              return {
+                ...mm,
+                ...(isTbd(mm.home) ? { home: r3.home.name, homeLogo: r3.home.logo, homeOwner: r3.home.owner, homeOwnerUid: r3.home.ownerUid } : {}),
+                ...(isTbd(mm.away) ? { away: r3.away.name, awayLogo: r3.away.logo, awayOwner: r3.away.owner, awayOwnerUid: r3.away.ownerUid } : {}),
+              };
+            }),
+          }));
+        }
+      } catch (error) {
+        console.error('🚨 3·4위전 자동 채우기 에러:', error);
+      }
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -295,6 +370,18 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
         // 진출 로직 실패해도 점수 저장은 진행 (방어적)
         console.error('🚨 LEAGUE_PLAYOFF 진출 자동 채우기 에러:', error);
       }
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 🛠️ [옵션A-2] owner 자동 채움 안전망 — DB 저장 직전 일괄 적용
+    //   - 모든 라운드의 모든 매치 순회 → owner 비어있거나 TBD 면 masterTeams 로 보정
+    //   - 신규 매치 생성/진출 propagation 누락분까지 통합 커버
+    //   - 통계 consumer 가 매번 폴백 코드 가질 필요 없게 만드는 핵심 안전망
+    // ──────────────────────────────────────────────────────────────────
+    try {
+      newRounds = fillOwnersInRounds(newRounds, masterTeams);
+    } catch (error) {
+      console.error('🚨 owner 자동 채움 에러:', error);
     }
 
     await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds });

@@ -29,10 +29,11 @@ const INITIAL_VISIBLE = 20;
 const STEP = 20;
 const MAX_VISIBLE = 100;
 
-export const HistoryView = ({ owners = [], seasons = [], user = null }: HistoryViewProps) => {
+export const HistoryView = ({ owners = [], seasons = [], masterTeams = [], user = null }: HistoryViewProps & { masterTeams?: any[] }) => {
   // 🔥 [FM 정석] 무거운 계산 없이 가벼워진 훅에서 이미 완성된 통계를 바로 가져옵니다.
   //   🛠️ [Finance v4 / 옵션1 정제] seasons 전달 → 진행 중 시즌의 W/D/L/PTS 도 합산
-  const { historyData, isHistoryLoading } = useHistoryRecords(owners, seasons);
+  //   🛠️ [옵션A-3] masterTeams 전달 → owner 가 비어있거나 TBD 인 매치도 팀명으로 폴백 매칭
+  const { historyData, isHistoryLoading } = useHistoryRecords(owners, seasons, masterTeams);
 
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');

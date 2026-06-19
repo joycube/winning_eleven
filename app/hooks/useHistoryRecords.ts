@@ -13,7 +13,9 @@ import { resolveOwnerByLedger } from '../utils/financeMatching';
 //   Owner 통계: seasons (라이브) 의 매치 데이터로 통일 → 마감 + 진행 모두 반영
 //   Team / Player 통계: history_records 그대로 (변경 없음)
 //   Medal / Prize: finance_ledger (마감된 시즌만)
-export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
+// 🛠️ [옵션A-3] masterTeams 파라미터 추가 — owner 가 비어있거나 TBD 인 매치에 대해
+//   masterTeams[teamName].ownerName/ownerUid 로 폴백 매칭 → 레거시 데이터 W/D/L 누락 방지
+export const useHistoryRecords = (owners: any[] = [], seasons: any[] = [], masterTeams: any[] = []) => {
     const [rawDocs, setRawDocs] = useState<any[]>([]);
     // 🛠️ [Finance v4 / 옵션1] finance_ledger 도 함께 로드
     const [rawLedgers, setRawLedgers] = useState<any[]>([]);
@@ -167,11 +169,27 @@ export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
         // 🛠️ [Finance v4 / 옵션1 정제] 오너 W/D/L/PTS — seasons 라이브 데이터로 통일 (마감 + 진행 모두 반영)
         //   ownerMap 에 기존 history_records 기반 누적값이 있을 수 있으므로 라이브 합산은 별도 키 처리 후 머지
         //   owner 식별자 통합: nickname / uid / docId / id / legacyName / legacyNames / mappedOwnerId
-        const resolveOwnerKey = (ownerName: any, ownerUid?: string): string | null => {
-            const id = String(ownerUid || '').trim();
-            const name = String(ownerName || '').trim();
+        // 🛠️ [옵션A-3] masterTeams 폴백 추가 — owner 가 TBD/빈값인 매치에서 팀 이름으로 owner 추론
+        const resolveOwnerKey = (ownerName: any, ownerUid?: string, teamName?: string): string | null => {
+            let id = String(ownerUid || '').trim();
+            let name = String(ownerName || '').trim();
+
+            // 🛠️ [옵션A-3] 1차: owner 가 비어있거나 TBD 면 masterTeams 에서 팀명으로 보정
+            const isInvalid = (v: string) => !v || ['', '-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(v);
+            if ((isInvalid(name) || isInvalid(id)) && teamName) {
+                const cleanT = (teamName || '').replace(/\s+/g, '').toLowerCase();
+                const master: any = (masterTeams || []).find((t: any) =>
+                    ((t?.name || t?.teamName || '').replace(/\s+/g, '').toLowerCase()) === cleanT
+                );
+                if (master && master.ownerName && !isInvalid(String(master.ownerName).trim())) {
+                    if (isInvalid(name)) name = String(master.ownerName).trim();
+                    if (isInvalid(id) && master.ownerUid) id = String(master.ownerUid).trim();
+                }
+            }
+
             if (!id && !name) return null;
-            if (['', '-', 'CPU', 'SYSTEM', 'TBD', 'BYE'].includes(name)) return null;
+            if (isInvalid(name) && isInvalid(id)) return null;
+
             const found = owners.find((o: any) =>
                 (id && (o.uid === id || o.docId === id || String(o.id) === id)) ||
                 (name && (o.nickname === name || o.legacyName === name || (Array.isArray(o.legacyNames) && o.legacyNames.includes(name)) || o.mappedOwnerId === name))
@@ -191,8 +209,9 @@ export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
                     const hs = Number(m.homeScore || 0);
                     const as_ = Number(m.awayScore || 0);
 
-                    const homeKey = resolveOwnerKey(m.homeOwner, m.homeOwnerUid);
-                    const awayKey = resolveOwnerKey(m.awayOwner, m.awayOwnerUid);
+                    // 🛠️ [옵션A-3] teamName 인자 추가 — masterTeams 폴백 트리거
+                    const homeKey = resolveOwnerKey(m.homeOwner, m.homeOwnerUid, m.home);
+                    const awayKey = resolveOwnerKey(m.awayOwner, m.awayOwnerUid, m.away);
 
                     const updateOwner = (key: string | null, ownerName: string, didWin: boolean, didDraw: boolean) => {
                         if (!key) return;
@@ -309,7 +328,7 @@ export const useHistoryRecords = (owners: any[] = [], seasons: any[] = []) => {
         const sortedPlayers = Array.from(playerMap.values());
 
         setHistoryData({ owners: sortedOwners, teams: sortedTeams, players: sortedPlayers });
-    }, [rawDocs, rawLedgers, owners, seasons]); // 👈 owners + ledger + seasons 변화 시 재계산
+    }, [rawDocs, rawLedgers, owners, seasons, masterTeams]); // 👈 owners + ledger + seasons + masterTeams 변화 시 재계산
 
     return { historyData, isHistoryLoading };
 };
