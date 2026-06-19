@@ -38,7 +38,7 @@ export const HistoryView = ({ owners = [], seasons = [], masterTeams = [], user 
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
-  const [masterTeams, setMasterTeams] = useState<any[]>([]);
+  // 🛠️ [옵션A-3] 로컬 masterTeams fetch 제거 — page.tsx 에서 prop 으로 받음 (중복 fetch 방지 + 이름 충돌 해소)
 
   // 🛠️ [HoF 더보기 패치] 탭별로 노출 개수 상태 관리
   const [teamsVisible, setTeamsVisible] = useState<number>(INITIAL_VISIBLE);
@@ -54,18 +54,6 @@ export const HistoryView = ({ owners = [], seasons = [], masterTeams = [], user 
   useEffect(() => {
     setPlayersVisible(INITIAL_VISIBLE);
   }, [histPlayerMode]);
-
-  useEffect(() => {
-      const fetchLogos = async () => {
-          try {
-              const snap = await getDocs(collection(db, "master_teams"));
-              setMasterTeams(snap.docs.map(d => d.data()));
-          } catch (e) {
-              console.error("마스터 팀 로고 에러:", e);
-          }
-      };
-      fetchLogos();
-  }, []);
 
   const getRealLogo = (teamName: string, currentLogo: string) => {
       if (!teamName) return currentLogo || FALLBACK_IMG;
