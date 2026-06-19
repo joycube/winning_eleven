@@ -114,7 +114,22 @@ export const AdminView = ({
                             if (!m) return m;
                             let patch: any = {};
 
-                            // home owner 보정
+                            // 🛠️ [추가] owners 컬렉션 기반 ownerUid 백필 — owner 이름이 정상인데 UID 만 비어있는 케이스 대응
+                            //   (정합성 점검에서 발견된 174건 owner 누락의 대부분이 이 패턴)
+                            const findOwnerUid = (ownerName: any): string | null => {
+                                if (!ownerName || isInvalid(ownerName)) return null;
+                                const name = String(ownerName).trim();
+                                const found = (owners || []).find((o: any) =>
+                                    o?.nickname === name ||
+                                    o?.legacyName === name ||
+                                    (Array.isArray(o?.legacyNames) && o.legacyNames.includes(name)) ||
+                                    (o as any)?.mappedOwnerId === name ||
+                                    (o as any)?.displayName === name
+                                );
+                                return (found as any)?.uid || (found as any)?.docId || null;
+                            };
+
+                            // home owner 보정 (이름 누락 케이스)
                             if (isInvalid(m.homeOwner) && m.home && !['TBD', 'BYE'].includes(String(m.home).toUpperCase())) {
                                 const master: any = masterTeams.find(t =>
                                     cleanName((t as any).name) === cleanName(m.home) ||
@@ -123,9 +138,19 @@ export const AdminView = ({
                                 if (master?.ownerName && !isInvalid(master.ownerName)) {
                                     patch.homeOwner = master.ownerName;
                                     if (master.ownerUid) patch.homeOwnerUid = master.ownerUid;
+                                    else {
+                                        const uid = findOwnerUid(master.ownerName);
+                                        if (uid) patch.homeOwnerUid = uid;
+                                    }
                                 }
                             }
-                            // away owner 보정
+                            // 🛠️ [추가] home UID 단독 누락 (이름은 정상)
+                            if (!patch.homeOwnerUid && !isInvalid(m.homeOwner) && !m.homeOwnerUid) {
+                                const uid = findOwnerUid(m.homeOwner);
+                                if (uid) patch.homeOwnerUid = uid;
+                            }
+
+                            // away owner 보정 (이름 누락 케이스)
                             if (isInvalid(m.awayOwner) && m.away && !['TBD', 'BYE'].includes(String(m.away).toUpperCase())) {
                                 const master: any = masterTeams.find(t =>
                                     cleanName((t as any).name) === cleanName(m.away) ||
@@ -134,7 +159,16 @@ export const AdminView = ({
                                 if (master?.ownerName && !isInvalid(master.ownerName)) {
                                     patch.awayOwner = master.ownerName;
                                     if (master.ownerUid) patch.awayOwnerUid = master.ownerUid;
+                                    else {
+                                        const uid = findOwnerUid(master.ownerName);
+                                        if (uid) patch.awayOwnerUid = uid;
+                                    }
                                 }
+                            }
+                            // 🛠️ [추가] away UID 단독 누락 (이름은 정상)
+                            if (!patch.awayOwnerUid && !isInvalid(m.awayOwner) && !m.awayOwnerUid) {
+                                const uid = findOwnerUid(m.awayOwner);
+                                if (uid) patch.awayOwnerUid = uid;
                             }
 
                             if (Object.keys(patch).length > 0) {
