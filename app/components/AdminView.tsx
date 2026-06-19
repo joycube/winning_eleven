@@ -271,38 +271,60 @@ export const AdminView = ({
 
                     const tie1Winner = computeAggWinner(tie1leg1, tie1leg2);
                     const tie2Winner = computeAggWinner(tie2leg1, tie2leg2);
-                    const semiWinner = computeAggWinner(semi1, semi2);
 
                     let touchedPO = 0;
+
+                    // 🛠️ [핵심] 2단계 분리 픽스
+                    //   1단계: SEMI_FINAL 의 TBD home/away 를 tie winner 로 채움
+                    //   2단계: 변경된 newRounds 에서 SEMI 매치를 다시 가져와서 semi winner 재계산 → FINAL.away 채움
+                    //   배경: 같은 newRounds.map 안에서 1단계 변경분이 변수에 안 반영되어 semi.home/away 가 'TBD' 그대로 보임
+                    //         → semiWinner.name='TBD' 가 되어 FINAL.away 가 의미없는 덮어쓰기됨
+
+                    // ── 1단계: SEMI_FINAL home/away 보정 ──
                     newRounds = newRounds.map((rr: any) => ({
                         ...rr,
                         matches: (rr.matches || []).map((mm: any) => {
                             if (!mm) return mm;
                             const st = String(mm.stage || '').toUpperCase();
+                            if (st !== 'SEMI_FINAL') return mm;
                             const label = String(mm.matchLabel || '');
+                            const isLeg1 = label.includes('1차전');
+                            const isLeg2 = label.includes('2차전');
+                            if (!isLeg1 && !isLeg2) return mm;
 
-                            // SEMI_FINAL — leg1: home=tie1 winner, away=tie2 winner / leg2: 교차
-                            if (st === 'SEMI_FINAL') {
-                                const isLeg1 = label.includes('1차전');
-                                const isLeg2 = label.includes('2차전');
-                                if (!isLeg1 && !isLeg2) return mm;
-
-                                let patch: any = {};
-                                if (isLeg1) {
-                                    if (isInvalid(mm.home) && tie1Winner) patch = { ...patch, home: tie1Winner.name, homeLogo: tie1Winner.logo, homeOwner: tie1Winner.owner, homeOwnerUid: tie1Winner.ownerUid };
-                                    if (isInvalid(mm.away) && tie2Winner) patch = { ...patch, away: tie2Winner.name, awayLogo: tie2Winner.logo, awayOwner: tie2Winner.owner, awayOwnerUid: tie2Winner.ownerUid };
-                                } else if (isLeg2) {
-                                    if (isInvalid(mm.home) && tie2Winner) patch = { ...patch, home: tie2Winner.name, homeLogo: tie2Winner.logo, homeOwner: tie2Winner.owner, homeOwnerUid: tie2Winner.ownerUid };
-                                    if (isInvalid(mm.away) && tie1Winner) patch = { ...patch, away: tie1Winner.name, awayLogo: tie1Winner.logo, awayOwner: tie1Winner.owner, awayOwnerUid: tie1Winner.ownerUid };
-                                }
-                                if (Object.keys(patch).length > 0) {
-                                    touchedPO += 1;
-                                    return { ...mm, ...patch };
-                                }
+                            let patch: any = {};
+                            if (isLeg1) {
+                                if (isInvalid(mm.home) && tie1Winner) patch = { ...patch, home: tie1Winner.name, homeLogo: tie1Winner.logo, homeOwner: tie1Winner.owner, homeOwnerUid: tie1Winner.ownerUid };
+                                if (isInvalid(mm.away) && tie2Winner) patch = { ...patch, away: tie2Winner.name, awayLogo: tie2Winner.logo, awayOwner: tie2Winner.owner, awayOwnerUid: tie2Winner.ownerUid };
+                            } else if (isLeg2) {
+                                if (isInvalid(mm.home) && tie2Winner) patch = { ...patch, home: tie2Winner.name, homeLogo: tie2Winner.logo, homeOwner: tie2Winner.owner, homeOwnerUid: tie2Winner.ownerUid };
+                                if (isInvalid(mm.away) && tie1Winner) patch = { ...patch, away: tie1Winner.name, awayLogo: tie1Winner.logo, awayOwner: tie1Winner.owner, awayOwnerUid: tie1Winner.ownerUid };
                             }
-                            // FINAL — away: SEMI 합산 winner (home 은 정규리그 1위로 이미 채워짐)
-                            if (st === 'FINAL') {
-                                if (isInvalid(mm.away) && semiWinner) {
+                            if (Object.keys(patch).length > 0) {
+                                touchedPO += 1;
+                                return { ...mm, ...patch };
+                            }
+                            return mm;
+                        }),
+                    }));
+
+                    // ── 2단계: 변경된 newRounds 에서 SEMI 매치 재참조 → semi winner 계산 → FINAL.away 채움 ──
+                    const allMatchesPhase2: any[] = newRounds.flatMap((r: any) => r?.matches || []);
+                    const semiMatchesPhase2 = allMatchesPhase2.filter((m: any) =>
+                        String(m?.stage || '').toUpperCase() === 'SEMI_FINAL'
+                    );
+                    const semi1Phase2 = semiMatchesPhase2.find((m: any) => String(m?.matchLabel || '').includes('1차전'));
+                    const semi2Phase2 = semiMatchesPhase2.find((m: any) => String(m?.matchLabel || '').includes('2차전'));
+                    const semiWinner = computeAggWinner(semi1Phase2, semi2Phase2);
+
+                    if (semiWinner && !isInvalid(semiWinner.name)) {
+                        newRounds = newRounds.map((rr: any) => ({
+                            ...rr,
+                            matches: (rr.matches || []).map((mm: any) => {
+                                if (!mm) return mm;
+                                const st = String(mm.stage || '').toUpperCase();
+                                if (st !== 'FINAL') return mm;
+                                if (isInvalid(mm.away)) {
                                     touchedPO += 1;
                                     return {
                                         ...mm,
@@ -312,15 +334,15 @@ export const AdminView = ({
                                         awayOwnerUid: semiWinner.ownerUid,
                                     };
                                 }
-                            }
-                            return mm;
-                        }),
-                    }));
+                                return mm;
+                            }),
+                        }));
+                    }
 
                     if (touchedPO > 0) {
                         fixed3rdPlace += touchedPO;
                         seasonChanged = true;
-                        details.push(`  [${sData.name || sData.id}] LEAGUE_PLAYOFF SEMI/FINAL ${touchedPO}건 보정 (stage+label 기반)`);
+                        details.push(`  [${sData.name || sData.id}] LEAGUE_PLAYOFF SEMI/FINAL ${touchedPO}건 보정 (2-phase)`);
                     }
                 }
 
