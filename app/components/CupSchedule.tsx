@@ -391,14 +391,15 @@ export const CupSchedule = ({
           });
 
           // KNOCKOUT 통계
+          //   🛠️ [픽스] KO 탭은 placeholder(v-r8-* 등) 슬롯이 있는 한 항상 표시.
+          //   카운트는 "완료수 / 전체 슬롯수" 로 일관화 (예: 새 시즌 0/8 → 진행 중 3/8 → 완료 8/8).
           const koMatches: any[] = [];
           if (displayStages?.roundOf8) koMatches.push(...displayStages.roundOf8);
           if (displayStages?.roundOf4) koMatches.push(...displayStages.roundOf4);
           if (displayStages?.thirdPlace) koMatches.push(...displayStages.thirdPlace);
           if (displayStages?.final) koMatches.push(...displayStages.final);
-          const realKo = koMatches.filter((m: any) => m.id && !m.id.startsWith('v-'));
-          const koTotal = realKo.length;
-          const koDone = realKo.filter((m: any) => m.status === 'COMPLETED').length;
+          const totalKo = koMatches.length; // placeholder 포함 전체 KO 슬롯 수
+          const koDone = koMatches.filter((m: any) => m.status === 'COMPLETED').length;
 
           // 첫 진입 시 디폴트 탭 — 진행 중 그룹 우선, 없으면 첫 그룹
           if (!scheduleTab) {
@@ -418,9 +419,10 @@ export const CupSchedule = ({
                 }`}
               >
                 <span className="block leading-tight">전체</span>
-                <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{(Object.values(groupStats).reduce((s, v) => s + v.total, 0)) + koTotal}경기</span>
+                <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{(Object.values(groupStats).reduce((s, v) => s + v.total, 0)) + totalKo}경기</span>
               </button>
-              {koTotal > 0 && (
+              {/* 🛠️ [픽스] placeholder(v-r8-* 등) 슬롯이 있으면 항상 표시 — 새 시즌이라도 "0/8경기" 로 시작 */}
+              {totalKo > 0 && (
                 <button
                   onClick={() => setScheduleTab('KO')}
                   className={`shrink-0 min-w-[110px] py-2 rounded-lg text-xs font-black italic transition-all border ${
@@ -428,10 +430,10 @@ export const CupSchedule = ({
                   }`}
                 >
                   <span className="block leading-tight">🏆 KNOCKOUT</span>
-                  <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{koDone}/{koTotal}경기</span>
+                  <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{koDone}/{totalKo}경기</span>
                 </button>
               )}
-              {sortedGroups.length > 0 && (koTotal > 0 || true) && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
+              {sortedGroups.length > 0 && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
               {sortedGroups.map(g => {
                 const isSelected = scheduleTab === g;
                 const stat = groupStats[g];
