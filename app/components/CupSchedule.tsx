@@ -74,8 +74,20 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
             <div className="text-[11px] font-black text-emerald-400 shrink-0 max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap pr-1.5">
                 {authorInfo ? authorInfo.nickname : ''}
             </div>
-            <div className="text-[12px] text-slate-300 flex-1 font-medium line-clamp-1 break-all">
-                {latestComment?.text}
+            {/* 🛠️ [스티커 표시 픽스] LiveFeed/MatchTalkCarousel 와 동일하게 [STICKER]URL → 이미지 렌더 */}
+            <div className="flex-1 min-w-0 flex items-center">
+                {latestComment?.text?.startsWith('[STICKER]') ? (
+                    <img
+                        src={String(latestComment.text).replace('[STICKER]', '')}
+                        className="h-5 w-auto object-contain drop-shadow-sm"
+                        alt="sticker"
+                        onError={(e: any) => { e.target.style.display = 'none'; }}
+                    />
+                ) : (
+                    <span className="text-[12px] text-slate-300 font-medium line-clamp-1 break-all">
+                        {latestComment?.text}
+                    </span>
+                )}
             </div>
             <div className="bg-slate-900 px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-500 border border-slate-700 shrink-0 shadow-inner flex items-center leading-none ml-1">
                 +{commentCount}
