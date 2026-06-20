@@ -421,47 +421,87 @@ export const CupSchedule = ({
             setTimeout(() => setScheduleTab(defaultTab), 0);
           }
 
+          // 🛠️ [B안 레이아웃] 전체 통계 사전 집계
+          const totalAllMatches = Object.values(groupStats).reduce((s, v) => s + v.total, 0) + totalKo;
+          const doneAllMatches = Object.values(groupStats).reduce((s, v) => s + v.done, 0) + koDone;
+
           return (
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 pt-1 px-1 mb-6">
-              {/* 🛠️ [Schedule 탭 순서] 전체 → KNOCKOUT → 그룹들 */}
-              <button
-                onClick={() => setScheduleTab('ALL')}
-                className={`shrink-0 min-w-[72px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                  scheduleTab === 'ALL' ? 'bg-rose-700 text-white border-rose-500 shadow-lg' : 'bg-slate-900 text-rose-400 border-rose-900/40 hover:border-rose-700'
-                }`}
-              >
-                <span className="block leading-tight">전체</span>
-                <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{(Object.values(groupStats).reduce((s, v) => s + v.total, 0)) + totalKo}경기</span>
-              </button>
-              {/* 🛠️ [픽스] placeholder(v-r8-* 등) 슬롯이 있으면 항상 표시 — 새 시즌이라도 "0/8경기" 로 시작 */}
-              {totalKo > 0 && (
+            <div className="mb-6">
+              {/* 🛠️ [B안] 상단 메인 카테고리 — 전체 / KNOCKOUT (모바일·PC 공통 2열) */}
+              <div className={`grid ${totalKo > 0 ? 'grid-cols-2' : 'grid-cols-1'} gap-2 sm:gap-2.5 mb-2 sm:mb-2.5`}>
+                {/* 전체 */}
                 <button
-                  onClick={() => setScheduleTab('KO')}
-                  className={`shrink-0 min-w-[110px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                    scheduleTab === 'KO' ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg' : 'bg-slate-900 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
+                  onClick={() => setScheduleTab('ALL')}
+                  className={`px-3 py-2.5 sm:px-4 sm:py-3.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                    scheduleTab === 'ALL'
+                      ? 'bg-rose-700 text-white border-rose-500 shadow-lg'
+                      : 'bg-rose-950/30 text-rose-400 border-rose-900/40 hover:border-rose-700'
                   }`}
                 >
-                  <span className="block leading-tight">🏆 KNOCKOUT</span>
-                  <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{koDone}/{totalKo}경기</span>
+                  <div className="flex flex-col items-start min-w-0">
+                    <span className="hidden sm:inline text-[9px] font-medium opacity-65 tracking-widest uppercase">All Matches</span>
+                    <span className="text-[11px] sm:text-[15px] font-black italic leading-tight">전체</span>
+                  </div>
+                  <span className="shrink-0 tabular-nums">
+                    <span className="hidden sm:inline text-lg font-black">{doneAllMatches}<span className="text-[12px] opacity-60">/{totalAllMatches}</span></span>
+                    <span className="sm:hidden text-[10px] opacity-80 font-normal not-italic">{totalAllMatches}경기</span>
+                  </span>
                 </button>
-              )}
-              {sortedGroups.length > 0 && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
-              {sortedGroups.map(g => {
-                const isSelected = scheduleTab === g;
-                const stat = groupStats[g];
-                return (
+                {/* KNOCKOUT */}
+                {totalKo > 0 && (
                   <button
-                    key={`tab-grp-${g}`}
-                    onClick={() => setScheduleTab(g)}
-                    className={`shrink-0 min-w-[78px] sm:min-w-[92px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                      isSelected ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
+                    onClick={() => setScheduleTab('KO')}
+                    className={`px-3 py-2.5 sm:px-4 sm:py-3.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                      scheduleTab === 'KO'
+                        ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg'
+                        : 'bg-yellow-950/20 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
                     }`}
                   >
-                    <span className="block leading-tight">{g}조</span>
-                    <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{stat.done}/{stat.total}경기</span>
+                    <div className="flex flex-col items-start min-w-0">
+                      <span className="hidden sm:inline text-[9px] font-medium opacity-65 tracking-widest uppercase">Knockout Stage</span>
+                      <span className="text-[11px] sm:text-[15px] font-black italic leading-tight">
+                        <span className="sm:hidden">🏆 KO</span>
+                        <span className="hidden sm:inline">🏆 토너먼트</span>
+                      </span>
+                    </div>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="hidden sm:inline text-lg font-black">{koDone}<span className="text-[12px] opacity-60">/{totalKo}</span></span>
+                      <span className="sm:hidden text-[10px] opacity-80 font-normal not-italic">{koDone}/{totalKo}경기</span>
+                    </span>
                   </button>
-                );
-              })}
+                )}
+              </div>
+              {/* 🛠️ [B안] 하단 그룹 균등 분할 */}
+              {sortedGroups.length > 0 && (
+                <div
+                  className="grid gap-1.5 sm:gap-2"
+                  style={{ gridTemplateColumns: `repeat(${sortedGroups.length}, minmax(0, 1fr))` }}
+                >
+                  {sortedGroups.map(g => {
+                    const isSelected = scheduleTab === g;
+                    const stat = groupStats[g];
+                    const isComplete = stat.done === stat.total && stat.total > 0;
+                    return (
+                      <button
+                        key={`tab-grp-${g}`}
+                        onClick={() => setScheduleTab(g)}
+                        className={`py-2 sm:py-3 rounded-lg border transition-all text-center whitespace-nowrap ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg'
+                            : isComplete
+                              ? 'bg-slate-900 text-emerald-400 border-slate-800 hover:border-emerald-600'
+                              : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
+                        }`}
+                      >
+                        <span className="text-[10px] sm:text-[13px] font-black italic">{g}조</span>
+                        <span className="text-[9px] sm:text-[10px] font-normal not-italic opacity-80 ml-1.5 tabular-nums">
+                          {isComplete && <span className="mr-0.5">✓</span>}{stat.done}/{stat.total}<span className="hidden sm:inline">경기</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}

@@ -579,53 +579,92 @@ export const ScheduleView = ({
                             setTimeout(() => setRoundTab(`R${defaultIdx}`), 0);
                         }
 
+                        // 🛠️ [B안] 사전 집계
+                        const poTotal = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).total, 0);
+                        const poDone = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).done, 0);
+                        const regularTotal = regularRounds.reduce((sum: number, r: any) => sum + roundStats(r).total, 0);
+                        const regularDone = regularRounds.reduce((sum: number, r: any) => sum + roundStats(r).done, 0);
+                        const totalAll = poTotal + regularTotal;
+                        const doneAll = poDone + regularDone;
                         return (
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 px-1 mb-4">
-                                {/* 🛠️ [Schedule 탭 순서] 전체 → PO → 라운드들 */}
-                                <button
-                                    onClick={() => setRoundTab('ALL')}
-                                    className={`shrink-0 min-w-[64px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                                        roundTab === 'ALL' ? 'bg-rose-700 text-white border-rose-500 shadow-lg' : 'bg-slate-900 text-rose-400 border-rose-900/40 hover:border-rose-700'
-                                    }`}
-                                >
-                                    <span className="block leading-tight">전체</span>
-                                </button>
-                                {poRounds.length > 0 && (() => {
-                                    const isSel = roundTab === 'PO';
-                                    const poTotal = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).total, 0);
-                                    const poDone = poRounds.reduce((sum: number, r: any) => sum + roundStats(r).done, 0);
-                                    return (
+                            <div className="mb-4">
+                                {/* 🛠️ [B안] 상단 메인 카테고리 — 전체 / PO (모바일·PC 공통 2열) */}
+                                <div className={`grid ${poRounds.length > 0 ? 'grid-cols-2' : 'grid-cols-1'} gap-2 sm:gap-2.5 mb-2 sm:mb-2.5`}>
+                                    {/* 전체 */}
+                                    <button
+                                        onClick={() => setRoundTab('ALL')}
+                                        className={`px-3 py-2.5 sm:px-4 sm:py-3.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                                            roundTab === 'ALL'
+                                                ? 'bg-rose-700 text-white border-rose-500 shadow-lg'
+                                                : 'bg-rose-950/30 text-rose-400 border-rose-900/40 hover:border-rose-700'
+                                        }`}
+                                    >
+                                        <div className="flex flex-col items-start min-w-0">
+                                            <span className="hidden sm:inline text-[9px] font-medium opacity-65 tracking-widest uppercase">All Matches</span>
+                                            <span className="text-[11px] sm:text-[15px] font-black italic leading-tight">전체</span>
+                                        </div>
+                                        <span className="shrink-0 tabular-nums">
+                                            <span className="hidden sm:inline text-lg font-black">{doneAll}<span className="text-[12px] opacity-60">/{totalAll}</span></span>
+                                            <span className="sm:hidden text-[10px] opacity-80 font-normal not-italic">{totalAll}경기</span>
+                                        </span>
+                                    </button>
+                                    {/* PO */}
+                                    {poRounds.length > 0 && (
                                         <button
                                             onClick={() => setRoundTab('PO')}
-                                            className={`shrink-0 min-w-[100px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                                                isSel ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg' : 'bg-slate-900 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
+                                            className={`px-3 py-2.5 sm:px-4 sm:py-3.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                                                roundTab === 'PO'
+                                                    ? 'bg-yellow-500 text-slate-900 border-yellow-400 shadow-lg'
+                                                    : 'bg-yellow-950/20 text-yellow-400 border-yellow-700/40 hover:border-yellow-500'
                                             }`}
                                         >
-                                            <span className="block leading-tight">🏆 PO</span>
-                                            <span className="block text-[8px] font-normal not-italic opacity-80 mt-0.5">{poDone}/{poTotal}경기</span>
+                                            <div className="flex flex-col items-start min-w-0">
+                                                <span className="hidden sm:inline text-[9px] font-medium opacity-65 tracking-widest uppercase">Playoffs</span>
+                                                <span className="text-[11px] sm:text-[15px] font-black italic leading-tight">🏆 PO</span>
+                                            </div>
+                                            <span className="shrink-0 tabular-nums">
+                                                <span className="hidden sm:inline text-lg font-black">{poDone}<span className="text-[12px] opacity-60">/{poTotal}</span></span>
+                                                <span className="sm:hidden text-[10px] opacity-80 font-normal not-italic">{poDone}/{poTotal}경기</span>
+                                            </span>
                                         </button>
-                                    );
-                                })()}
-                                {regularRounds.length > 0 && <div className="w-px bg-slate-800 mx-1 shrink-0" />}
-                                {regularRounds.map((r: any, idx: number) => {
-                                    const tabKey = `R${idx}`;
-                                    const isSel = roundTab === tabKey;
-                                    const s = roundStats(r);
-                                    const status = s.total === 0 ? '예정' : s.done === s.total ? '✓ 완료' : s.done > 0 ? '진행 중' : '예정';
-                                    const statusColor = s.done === s.total && s.total > 0 ? 'text-emerald-400' : s.done > 0 ? 'text-yellow-400' : 'text-slate-500';
-                                    return (
-                                        <button
-                                            key={tabKey}
-                                            onClick={() => setRoundTab(tabKey)}
-                                            className={`shrink-0 min-w-[68px] py-2 rounded-lg text-xs font-black italic transition-all border ${
-                                                isSel ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
-                                            }`}
-                                        >
-                                            <span className="block leading-tight">{idx + 1}R</span>
-                                            <span className={`block text-[8px] font-normal not-italic mt-0.5 ${isSel ? 'text-white opacity-90' : statusColor}`}>{status}</span>
-                                        </button>
-                                    );
-                                })}
+                                    )}
+                                </div>
+                                {/* 🛠️ [B안] 하단 라운드 균등 분할 */}
+                                {regularRounds.length > 0 && (
+                                    <div
+                                        className="grid gap-1.5 sm:gap-2"
+                                        style={{ gridTemplateColumns: `repeat(${Math.min(regularRounds.length, 8)}, minmax(0, 1fr))` }}
+                                    >
+                                        {regularRounds.map((r: any, idx: number) => {
+                                            const tabKey = `R${idx}`;
+                                            const isSel = roundTab === tabKey;
+                                            const s = roundStats(r);
+                                            const isComplete = s.done === s.total && s.total > 0;
+                                            const isInProgress = s.done > 0 && s.done < s.total;
+                                            const statusColor = isSel ? 'text-white opacity-90' :
+                                                isComplete ? 'text-emerald-400' :
+                                                isInProgress ? 'text-yellow-400' : 'text-slate-500';
+                                            return (
+                                                <button
+                                                    key={tabKey}
+                                                    onClick={() => setRoundTab(tabKey)}
+                                                    className={`py-2 sm:py-3 rounded-lg border transition-all text-center whitespace-nowrap ${
+                                                        isSel
+                                                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg'
+                                                            : isComplete
+                                                                ? 'bg-slate-900 text-emerald-400 border-slate-800 hover:border-emerald-600'
+                                                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600'
+                                                    }`}
+                                                >
+                                                    <span className="text-[10px] sm:text-[13px] font-black italic">{idx + 1}R</span>
+                                                    <span className={`text-[9px] sm:text-[10px] font-normal not-italic ml-1.5 tabular-nums ${statusColor}`}>
+                                                        {isComplete && <span className="mr-0.5">✓</span>}{s.done}/{s.total}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         );
                     })()}
