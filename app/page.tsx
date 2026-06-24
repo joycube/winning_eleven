@@ -298,6 +298,22 @@ export default function FootballLeagueApp() {
             historyData={combinedHistoryData}
             viewSeasonId={viewSeasonId}
             setViewSeasonId={setViewSeasonId}
+            // 🛠️ [L2 v2.2] NEXT/LAST 매치카드 클릭 → 해당 시즌 스케쥴 + matchId 로 자동 스크롤
+            //   - handleViewChange 안 씀 (latestSeasonId 로 덮어쓰는 부작용 있음)
+            //   - 직접 setCurrentView + setViewSeasonId + URL 에 matchId 박기
+            //   - ScheduleView 가 mount 시 URL ?matchId=... 읽어서 scrollIntoView 자동 수행
+            onNavigateToSchedule={(sid: number, matchId?: string) => {
+              setCurrentView('SCHEDULE');
+              if (sid) setViewSeasonId(sid);
+              if (typeof window !== 'undefined') {
+                const params = new URLSearchParams(window.location.search);
+                params.set('view', 'SCHEDULE');
+                if (sid) params.set('season', String(sid));
+                if (matchId) params.set('matchId', matchId);
+                else params.delete('matchId');
+                window.history.pushState(null, '', `?${params.toString()}`);
+              }
+            }}
           />
         )}
 

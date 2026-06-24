@@ -1,0 +1,186 @@
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+
+import { L2_HeroBanner } from './L2_HeroBanner';
+import { L2_QuickStats } from './L2_QuickStats';
+import { L2_NextMatchCarousel } from './L2_NextMatchCarousel';
+import { L2_LastResultCarousel } from './L2_LastResultCarousel';
+import { L2_TeamRanking } from './L2_TeamRanking';
+import { L2_TopScorers } from './L2_TopScorers';
+import { L2_OwnersForm } from './L2_OwnersForm';
+import { L2_HighlightsCarousel } from './L2_HighlightsCarousel';
+import { L2_CommunicationTabs } from './L2_CommunicationTabs';
+import { ChampionsCarousel } from './ChampionsCarousel';
+import HighlightViewerModal from './HighlightViewerModal';
+
+interface Props {
+  user: any;
+  notices: any[];
+  seasons: any[];
+  masterTeams: any[];
+  owners: any[];
+  activeRankingData?: any;
+  historyData?: any;
+  activeSeason?: any;
+  posts: any[];
+  highlights?: any[];
+  uidDict?: Record<string, string>;
+  setViewMode: (mode: any) => void;
+  setCategory: (cat: string) => void;
+  setSelectedPostId: (id: string | null) => void;
+  viewSeasonId?: number;
+  setViewSeasonId?: (id: number) => void;
+  /** 🛠️ [v2 픽스] NEXT/LAST 카드 클릭 시 스케쥴 + 해당 매치 자동 스크롤 */
+  onNavigateToSchedule?: (seasonId: number, matchId?: string) => void;
+}
+
+/**
+ * 🛠️ [L2] 새 락커룸 메인 대시보드
+ *  - L_LockerRoomDashboard 의 자리를 대체
+ *  - 8개 섹션을 한 페이지에 배치
+ *  - 자동 슬라이드 캐러셀 / 시즌+누적 토글 / 시각화 그래프
+ */
+export default function L2_LockerRoomDashboard({
+  user, notices = [], seasons = [], masterTeams = [], owners = [],
+  activeRankingData, historyData,
+  posts = [], highlights = [], uidDict,
+  setViewMode, setCategory, setSelectedPostId,
+  viewSeasonId = 0,
+  setViewSeasonId,
+  onNavigateToSchedule,
+}: Props) {
+  const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
+  const [selectedHighlight, setSelectedHighlight] = useState<any>(null);
+
+  // match_comments 실시간 구독 (MatchTalkCarousel 용)
+  useEffect(() => {
+    const q = query(collection(db, 'match_comments'));
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // 최신순 정렬
+      docs.sort((a: any, b: any) => {
+        const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : Number(a.createdAt || 0);
+        const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : Number(b.createdAt || 0);
+        return tb - ta;
+      });
+      setMatchCommentsData(docs);
+    }, () => {
+      // 권한 거부 등 — 무시
+      setMatchCommentsData([]);
+    });
+    return () => unsub();
+  }, []);
+
+  // 매치 카드 클릭 — 매치톡 LIST 화면으로 진입
+  const handleMatchClick = (m: any) => {
+    if (!m?.id) return;
+    setSelectedPostId(`match_${m.id}`);
+    setViewMode('LIST');
+    const params = new URLSearchParams(window.location.search);
+    params.set('view', 'LOCKERROOM');
+    params.set('postId', `match_${m.id}`);
+    window.history.pushState(null, '', `?${params.toString()}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // 하이라이트 클릭 — 모달 오픈
+  const handleHighlightClick = (h: any) => {
+    setSelectedHighlight(h);
+  };
+
+  return (
+    <div className="w-full">
+      {/* 1. Hero */}
+      <L2_HeroBanner seasons={seasons} viewSeasonId={viewSeasonId} />
+
+      {/* 2. Quick Stats */}
+      <L2_QuickStats
+        seasons={seasons}
+        owners={owners}
+        masterTeams={masterTeams}
+        viewSeasonId={viewSeasonId}
+      />
+
+      {/* 3+4. NEXT / LAST 캐러셀 — PC 2열, 모바일 1열 */}
+      {/* 🛠️ [v2 픽스] 클릭 시 스케쥴표 이동 우선 (없으면 매치톡 fallback) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+        <L2_NextMatchCarousel
+          seasons={seasons}
+          masterTeams={masterTeams}
+          owners={owners}
+          activeRankingData={activeRankingData}
+          historyData={historyData}
+          onNavigateToSchedule={onNavigateToSchedule}
+          onMatchClick={handleMatchClick}
+        />
+        <L2_LastResultCarousel
+          seasons={seasons}
+          masterTeams={masterTeams}
+          owners={owners}
+          activeRankingData={activeRankingData}
+          historyData={historyData}
+          onNavigateToSchedule={onNavigateToSchedule}
+          onMatchClick={handleMatchClick}
+        />
+      </div>
+
+      {/* 🛠️ [v2 픽스] HALL OF CHAMPIONS — 기존 ChampionsCarousel 복원 */}
+      <ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams} />
+
+      {/* 5+6. Team Ranking + Top Scorers — PC 2열, 모바일 1열 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <L2_TeamRanking
+          seasons={seasons}
+          owners={owners}
+          masterTeams={masterTeams}
+          viewSeasonId={viewSeasonId}
+        />
+        <L2_TopScorers
+          seasons={seasons}
+          owners={owners}
+          masterTeams={masterTeams}
+          viewSeasonId={viewSeasonId}
+        />
+      </div>
+
+      {/* 7. Owners Form */}
+      <L2_OwnersForm seasons={seasons} owners={owners} masterTeams={masterTeams} />
+
+      {/* 8. Highlights */}
+      <L2_HighlightsCarousel
+        seasons={seasons}
+        masterTeams={masterTeams}
+        owners={owners}
+        onHighlightClick={handleHighlightClick}
+      />
+
+      {/* 9. Communication */}
+      <L2_CommunicationTabs
+        user={user}
+        posts={posts}
+        owners={owners}
+        seasons={seasons}
+        masterTeams={masterTeams}
+        notices={notices}
+        matchCommentsData={matchCommentsData}
+        setViewMode={setViewMode}
+        setCategory={setCategory}
+        setSelectedPostId={setSelectedPostId}
+      />
+
+      {/* 하이라이트 모달 — activeVideo props 시그니처 사용 */}
+      {selectedHighlight && (
+        <HighlightViewerModal
+          activeVideo={selectedHighlight}
+          owners={owners}
+          seasons={seasons}
+          authUser={user}
+          onClose={() => setSelectedHighlight(null)}
+        />
+      )}
+    </div>
+  );
+}

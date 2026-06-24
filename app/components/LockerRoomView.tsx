@@ -6,7 +6,9 @@ import { db } from '../firebase';
 import { User, Clock } from 'lucide-react';
 import MatchTalkBoard from './MatchTalkBoard';
 
-import L_LockerRoomDashboard from './L_LockerRoomDashboard';
+// 🛠️ [L2 교체] L_LockerRoomDashboard 대신 새 대시보드 사용
+//   기존 L_LockerRoomDashboard 는 백업으로 파일은 보존 (롤백 가능)
+import L2_LockerRoomDashboard from './L2_LockerRoomDashboard';
 import L_CommunityList from './L_CommunityList';
 import L_PostDetail from './L_PostDetail';
 import L_PostEditor from './L_PostEditor';
@@ -27,16 +29,18 @@ interface LockerRoomViewProps {
   seasons?: any[];
   masterTeams?: any[];
   owners?: any[];
-  activeRankingData?: any; 
-  historyData?: any; 
-  activeSeason?: any; 
-  viewSeasonId?: number; 
-  setViewSeasonId?: any; 
+  activeRankingData?: any;
+  historyData?: any;
+  activeSeason?: any;
+  viewSeasonId?: number;
+  setViewSeasonId?: any;
+  /** 🛠️ [L2] NEXT/LAST 매치카드 클릭 시 스케쥴표 + 해당 매치 자동 스크롤 — page.tsx 에서 전달 */
+  onNavigateToSchedule?: (seasonId: number, matchId?: string) => void;
 }
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 
-export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason, viewSeasonId, setViewSeasonId }: LockerRoomViewProps) {
+export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason, viewSeasonId, setViewSeasonId, onNavigateToSchedule }: LockerRoomViewProps) {
   const [posts, setPosts] = useState<any[]>([]);
   const [highlights, setHighlights] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'MAIN' | 'LIST' | 'WRITE' | 'EDIT' | 'HIGHLIGHTS'>('MAIN');
@@ -129,14 +133,15 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
       )}
 
       {viewMode === 'MAIN' && (
-          <L_LockerRoomDashboard 
-              user={user} notices={notices} seasons={seasons} masterTeams={masterTeams} 
-              owners={owners} historyData={historyData} activeSeason={activeSeason} 
-              posts={posts} highlights={highlights} uidDict={uidDict} 
-              setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId} 
+          <L2_LockerRoomDashboard
+              user={user} notices={notices} seasons={seasons} masterTeams={masterTeams}
+              owners={owners} historyData={historyData} activeSeason={activeSeason}
+              posts={posts} highlights={highlights} uidDict={uidDict}
+              setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId}
               activeRankingData={activeRankingData}
-              viewSeasonId={viewSeasonId} 
-              setViewSeasonId={setViewSeasonId} 
+              viewSeasonId={viewSeasonId}
+              setViewSeasonId={setViewSeasonId}
+              onNavigateToSchedule={onNavigateToSchedule}
           />
       )}
 
