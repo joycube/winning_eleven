@@ -27,27 +27,30 @@ export const L2_NextMatchCarousel = ({
 }: Props) => {
   const nextMatches = useMemo(() => {
     const all: any[] = [];
-    // 🛠️ [v2.1 픽스] 시즌 status 필터 추가 + 정렬 순서 개선
-    //   문제 1: 마감된 시즌의 미진행/빈 점수 매치가 NEXT 후보로 잘못 들어옴
-    //   문제 2: 옛 시즌(id 작은) 우선 정렬 → 진행 중 시즌 매치가 뒤로 밀림
-    //   해결: status === 'COMPLETED' 시즌 제외 + id 내림차순 (최신 시즌 먼저)
-    const sortedSeasons = [...(seasons || [])]
+    // 🛠️ [v2.4] 시즌 status 필터(완료 시즌 제외) 후, 스케쥴 위치(라운드/매치 순서)를 그대로 보존해 수집.
+    //   정렬은 아래에서 "가장 먼저 해야 할 경기부터"(스케쥴 오름차순)로 일괄 처리.
+    (seasons || [])
       .filter((s: any) => String(s.status || '').toUpperCase() !== 'COMPLETED')
-      .sort((a: any, b: any) => b.id - a.id);
-    sortedSeasons.forEach((s: any) => {
-      (s.rounds || []).forEach((r: any) => {
-        (r.matches || []).forEach((m: any) => {
-          // 매치 필터 — COMPLETED 제외 + 점수 박힌 매치 제외 + TBD/BYE 제외
-          if (m.status === 'COMPLETED') return;
-          if (m.home === 'BYE' || m.away === 'BYE') return;
-          if (m.home === 'TBD' || m.away === 'TBD') return;
-          if (!m.home || !m.away) return;
-          const hsStr = String(m.homeScore ?? '').trim();
-          const asStr = String(m.awayScore ?? '').trim();
-          if (hsStr !== '' || asStr !== '') return; // 점수 들어가 있으면 NEXT 아님
-          all.push({ ...m, _seasonName: s.name, _seasonId: s.id });
+      .forEach((s: any) => {
+        (s.rounds || []).forEach((r: any, rIdx: number) => {
+          (r.matches || []).forEach((m: any, mIdx: number) => {
+            // 매치 필터 — COMPLETED 제외 + 점수 박힌 매치 제외 + TBD/BYE 제외
+            if (m.status === 'COMPLETED') return;
+            if (m.home === 'BYE' || m.away === 'BYE') return;
+            if (m.home === 'TBD' || m.away === 'TBD') return;
+            if (!m.home || !m.away) return;
+            const hsStr = String(m.homeScore ?? '').trim();
+            const asStr = String(m.awayScore ?? '').trim();
+            if (hsStr !== '' || asStr !== '') return; // 점수 들어가 있으면 NEXT 아님
+            all.push({ ...m, _seasonName: s.name, _seasonId: s.id, _rIdx: rIdx, _mIdx: mIdx });
+          });
         });
       });
+    // 가장 먼저 해야 할 경기부터 — 스케쥴(시즌 → 라운드 → 매치) 오름차순
+    all.sort((a, b) => {
+      if (a._seasonId !== b._seasonId) return a._seasonId - b._seasonId;
+      if (a._rIdx !== b._rIdx) return a._rIdx - b._rIdx;
+      return a._mIdx - b._mIdx;
     });
     return all.slice(0, 5);
   }, [seasons]);

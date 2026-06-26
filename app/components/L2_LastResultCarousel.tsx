@@ -43,9 +43,9 @@ export const L2_LastResultCarousel = ({
         });
       });
     });
-    // 정렬: timestamp 큰 게 먼저, 같으면 시즌 id 큰 게 먼저, 같으면 round idx, mIdx 큰 게 먼저
+    // 🛠️ [v2.4] 가장 최신 경기부터 — 스케쥴(시즌 → 라운드 → 매치) 내림차순.
+    //   (기존엔 timestamp 1순위였으나, 완료 매치 중 일부만 timestamp 가 있어 순서가 뒤섞였음 → 스케쥴 위치 기준으로 변경)
     return all.sort((a, b) => {
-      if (a._ts !== b._ts) return b._ts - a._ts;
       if (a._seasonId !== b._seasonId) return b._seasonId - a._seasonId;
       if (a._rIdx !== b._rIdx) return b._rIdx - a._rIdx;
       return b._mIdx - a._mIdx;

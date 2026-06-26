@@ -56,16 +56,16 @@ export const L2_OwnersForm = ({ seasons, owners }: Props) => {
         });
       });
     });
-    // 정렬: 최신순 (recentForm 계산용)
+    // 🛠️ [v2.4] 정렬 기준을 스케쥴 위치(시즌 → 라운드 → 매치)로 통일.
+    //   (timestamp 1순위는 일부 매치에만 timestamp 가 있어 순서가 뒤섞였음)
+    // 정렬: 최신순 (recentForm 계산용) — 스케쥴 내림차순
     const sortedRecent = [...allMatches].sort((a, b) => {
-      if (a._ts !== b._ts) return b._ts - a._ts;
       if (a._seasonId !== b._seasonId) return b._seasonId - a._seasonId;
       if (a._rIdx !== b._rIdx) return b._rIdx - a._rIdx;
       return b._mIdx - a._mIdx;
     });
-    // 정렬: 오래된 것부터 (bestStreak 계산용)
+    // 정렬: 오래된 것부터 (bestStreak 계산용) — 스케쥴 오름차순
     const sortedOld = [...allMatches].sort((a, b) => {
-      if (a._ts !== b._ts) return a._ts - b._ts;
       if (a._seasonId !== b._seasonId) return a._seasonId - b._seasonId;
       if (a._rIdx !== b._rIdx) return a._rIdx - b._rIdx;
       return a._mIdx - b._mIdx;
@@ -150,8 +150,12 @@ export const L2_OwnersForm = ({ seasons, owners }: Props) => {
             {/* 우측: 이름 + 폼 + 연승 */}
             <div className="min-w-0 flex-1">
               <div className="text-[11px] font-black italic text-white mb-1.5 leading-tight break-keep">{o.nickname}</div>
+              {/* 🛠️ [v2.4] 최신 경기를 맨 뒤(오른쪽)에 — 빈 칸은 왼쪽, 그다음 오래된→최신 순 */}
               <div className="flex gap-1 mb-1.5">
-                {o.recentForm.map((r, i) => {
+                {Array.from({ length: Math.max(0, 5 - o.recentForm.length) }).map((_, i) => (
+                  <span key={`empty_${i}`} className="w-4 h-4 rounded-sm bg-slate-700" />
+                ))}
+                {[...o.recentForm].reverse().map((r, i) => {
                   const bg = r === 'W' ? 'bg-emerald-500' : r === 'D' ? 'bg-yellow-400 text-slate-900' : 'bg-red-500';
                   const color = r === 'D' ? 'text-slate-900' : 'text-white';
                   return (
@@ -160,9 +164,6 @@ export const L2_OwnersForm = ({ seasons, owners }: Props) => {
                     </span>
                   );
                 })}
-                {Array.from({ length: Math.max(0, 5 - o.recentForm.length) }).map((_, i) => (
-                  <span key={`empty_${i}`} className="w-4 h-4 rounded-sm bg-slate-700" />
-                ))}
               </div>
               <div className="text-[9px] text-slate-400">
                 🔥 최고 연승: <span className="text-yellow-400 font-bold">{o.bestStreak}승</span>
