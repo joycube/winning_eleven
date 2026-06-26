@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
 import { useHistoryRecords } from '../hooks/useHistoryRecords';
+import { resolveCurrentSeason } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -25,12 +26,12 @@ const colorMap: Record<string, { ring: string; label: string; sub: string }> = {
  *  3. 시즌 득점왕 (선수) — 팀 엠블럼
  *  4. 누적 득점왕 (선수) — 팀 엠블럼
  */
-export const L2_QuickStats = ({ seasons, owners, masterTeams, viewSeasonId }: Props) => {
+export const L2_QuickStats = ({ seasons, owners, masterTeams }: Props) => {
   const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
 
   const stats = useMemo(() => {
-    const current = (seasons || []).find((s: any) => s.id === viewSeasonId)
-      || [...(seasons || [])].sort((a: any, b: any) => b.id - a.id)[0];
+    // 🛠️ [v2.3] "시즌" 통계도 Hero/Ranking 과 동일한 현재 시즌으로 통일 (드롭다운 선택과 무관)
+    const current = resolveCurrentSeason(seasons);
 
     // --- 시즌 1위 (오너) ---
     const seasonOwnerStats: Record<string, { name: string; pts: number; uid?: string }> = {};
@@ -164,7 +165,7 @@ export const L2_QuickStats = ({ seasons, owners, masterTeams, viewSeasonId }: Pr
         teamLogo: getTeamLogo(totalTopScorer.team, totalTopScorer.teamLogo),
       } : null,
     ].filter(Boolean) as any[];
-  }, [seasons, viewSeasonId, historyData, owners, masterTeams]);
+  }, [seasons, historyData, owners, masterTeams]);
 
   if (stats.length === 0) return null;
 
