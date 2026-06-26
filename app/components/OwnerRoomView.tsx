@@ -374,7 +374,11 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
 
     const myMatches = getMyMatches();
 
-    const recentForm = myMatches.slice(-5).map(m => {
+    // 🛠️ [v2.4] 폼은 실제 진행 시각(timestamp) 순으로 — 없으면 수집(스케쥴) 순서 유지(안정 정렬).
+    //   slice(-5) → 최근 5경기, 맨 뒤(오른쪽)가 최신. L2_OwnersForm 과 동일 정책.
+    const recentForm = [...myMatches]
+        .sort((a, b) => (Number(a.timestamp || 0)) - (Number(b.timestamp || 0)))
+        .slice(-5).map(m => {
         const isHome = m.amIHome;
         const myScore = isHome ? Number(m.homeScore || 0) : Number(m.awayScore || 0);
         const opScore = isHome ? Number(m.awayScore || 0) : Number(m.homeScore || 0);
