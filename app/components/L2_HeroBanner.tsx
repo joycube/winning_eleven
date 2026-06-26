@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Season } from '../types';
+import { resolveCurrentSeason } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -13,16 +14,13 @@ interface Props {
  *  - 현재 진행 중 시즌 정보 + 진행률
  *  - 비활성 시즌이면 "현재 진행 중인 시즌이 없습니다" 표시
  */
-export const L2_HeroBanner = ({ seasons, viewSeasonId }: Props) => {
+export const L2_HeroBanner = ({ seasons }: Props) => {
   const { current, doneMatches, totalMatches, progress, seasonIdx } = useMemo(() => {
-    // 진행 중 시즌 우선 — viewSeasonId 매칭 → 없으면 status 'ACTIVE'/'IN_PROGRESS' → 없으면 마지막 시즌
-    const activeStatuses = ['ACTIVE', 'IN_PROGRESS', 'OPEN'];
+    // 🛠️ [v2.3 픽스] Hero 배너는 항상 "가장 최신 시즌"으로 고정.
+    //   - 기존: viewSeasonId(사용자가 둘러보는 시즌)에 따라 배너가 바뀜 → CURRENT 의미가 흔들림
+    //   - 변경: 진행 중 시즌 우선 → 없으면 미완료 중 최신 → 없으면 id 최대(가장 최근 생성) 시즌
     const sorted = [...(seasons || [])].sort((a: any, b: any) => a.id - b.id);
-    let s =
-      sorted.find((x: any) => x.id === viewSeasonId) ||
-      sorted.find((x: any) => activeStatuses.includes(String(x.status || '').toUpperCase())) ||
-      sorted.filter((x: any) => x.status !== 'COMPLETED').slice(-1)[0] ||
-      sorted.slice(-1)[0];
+    const s = resolveCurrentSeason(seasons);
 
     if (!s) return { current: null, doneMatches: 0, totalMatches: 0, progress: 0, seasonIdx: 0 };
 
@@ -44,7 +42,7 @@ export const L2_HeroBanner = ({ seasons, viewSeasonId }: Props) => {
       progress: total > 0 ? Math.round((done / total) * 100) : 0,
       seasonIdx: idx,
     };
-  }, [seasons, viewSeasonId]);
+  }, [seasons]);
 
   if (!current) {
     return (

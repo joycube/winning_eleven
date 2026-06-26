@@ -3,6 +3,8 @@
 import React, { useMemo, useState } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
 import { useHistoryRecords } from '../hooks/useHistoryRecords';
+import { useLeagueStats } from '../hooks/useLeagueStats';
+import { resolveCurrentSeasonId } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -32,41 +34,39 @@ const findTeamMaster = (masterTeams: MasterTeam[], teamName: string) => {
 };
 
 /**
- * 🛠️ [L2] 득점왕 랭킹 — 시즌/누적 토글
- *  - 시즌: 현재 시즌 매치의 scorer 집계
+ * [L2] 득점왕 랭킹 — 시즌/누적 토글
+ *  - 시즌: 공식 엔진(useLeagueStats)의 현재 시즌 득점 집계 사용
  *  - 누적: history_records.players
  *  - 각 행: 선수명 + 팀 엠블럼 + 팀명 + 오너 프로필 + 오너이름 + 수평바 + 골수
  */
-export const L2_TopScorers = ({ seasons, owners, masterTeams, viewSeasonId }: Props) => {
+export const L2_TopScorers = ({ seasons, owners, masterTeams }: Props) => {
   const [mode, setMode] = useState<'SEASON' | 'ALL'>('SEASON');
   const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
 
+  // [v2.3 전면 교체] 시즌 득점왕을 매치에서 직접 재계산하지 않고 공식 엔진 결과를 사용.
+  //   - 선수-팀-오너 키를 정규화해 집계 → 동일 선수가 표기 차이로 쪼개지지 않음
+  //   - 오너는 팀의 정규화된 오너로 귀속 → 매치별 오너 오타에 영향 없음
+  //   대상 시즌은 Hero/TeamRanking 과 동일하게 "현재 진행 시즌"으로 통일.
+  const currentSeasonId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
+  const { activeRankingData } = useLeagueStats(seasons, currentSeasonId, owners, []);
+
   const players = useMemo(() => {
     if (mode === 'SEASON') {
-      const current = (seasons || []).find((s: any) => s.id === viewSeasonId)
-        || [...(seasons || [])].sort((a: any, b: any) => b.id - a.id)[0];
-      if (!current) return [];
-      const stats: Record<string, any> = {};
-      (current.rounds || []).forEach((r: any) => {
-        (r.matches || []).forEach((m: any) => {
-          if (m.status !== 'COMPLETED') return;
-          const processScorer = (list: any[], teamName: string, teamLogo: string, ownerName: string, ownerUid: string) => {
-            (list || []).forEach((s: any) => {
-              const pName = typeof s === 'string' ? s : s.name;
-              const count = typeof s === 'string' ? 1 : (s.count || 1);
-              if (!pName) return;
-              const key = `${pName}_${teamName}`;
-              if (!stats[key]) stats[key] = { name: pName, team: teamName, teamLogo, ownerName, ownerUid, goals: 0 };
-              stats[key].goals += count;
-            });
-          };
-          processScorer(m.homeScorers, m.home, m.homeLogo, m.homeOwner, m.homeOwnerUid);
-          processScorer(m.awayScorers, m.away, m.awayLogo, m.awayOwner, m.awayOwnerUid);
-        });
+      // 공식 엔진 결과 — 정규 + 플레이오프 골을 선수별로 합산 후 재정렬.
+      const merged = new Map<string, any>();
+      const addAll = (list: any[]) => (list || []).forEach((p: any) => {
+        const key = `${p.name}|${p.team}|${p.owner}`;
+        if (!merged.has(key)) {
+          merged.set(key, { name: p.name, team: p.team, teamLogo: p.teamLogo, ownerName: p.owner, ownerUid: undefined, goals: 0 });
+        }
+        merged.get(key).goals += (Number(p.goals) || 0);
       });
-      return Object.values(stats).sort((a: any, b: any) => b.goals - a.goals).slice(0, 8);
+      addAll(activeRankingData?.regularPlayers || []);
+      addAll(activeRankingData?.playoffPlayers || []);
+      return Array.from(merged.values())
+        .sort((a: any, b: any) => b.goals - a.goals)
+        .slice(0, 8);
     } else {
-      // 🛠️ [v2 픽스] 누적 데이터도 명시적 정렬 (historyData.players 가 항상 정렬돼있다고 가정 불가)
       return (historyData?.players || [])
         .slice()
         .sort((a: any, b: any) => (Number(b.goals) || 0) - (Number(a.goals) || 0))
@@ -80,7 +80,7 @@ export const L2_TopScorers = ({ seasons, owners, masterTeams, viewSeasonId }: Pr
           goals: p.goals,
         }));
     }
-  }, [mode, seasons, viewSeasonId, historyData]);
+  }, [mode, activeRankingData, historyData]);
 
   const maxGoals = players.length > 0 ? Math.max(...players.map((p: any) => p.goals || 0)) : 1;
 
@@ -144,7 +144,7 @@ export const L2_TopScorers = ({ seasons, owners, masterTeams, viewSeasonId }: Pr
                     style={{ width: `${Math.max(5, (p.goals / Math.max(maxGoals, 1)) * 100)}%` }}
                   />
                 </div>
-                {/* 🛠️ [v2 픽스] 오너 — 모바일에서도 노출 (사진 + 이름) */}
+                {/* 오너 — 모바일에서도 노출 (사진 + 이름) */}
                 <div className="flex items-center gap-1 shrink-0">
                   <img src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                   <span className="text-[8px] sm:text-[9px] text-slate-400 whitespace-nowrap max-w-[60px] sm:max-w-none truncate">{ownerInfo.nickname}</span>

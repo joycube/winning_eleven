@@ -15,6 +15,7 @@ import { L2_HighlightsCarousel } from './L2_HighlightsCarousel';
 import { L2_CommunicationTabs } from './L2_CommunicationTabs';
 import { ChampionsCarousel } from './ChampionsCarousel';
 import HighlightViewerModal from './HighlightViewerModal';
+import { L2_LockerRoomSkeleton } from './L2_LockerRoomSkeleton';
 
 interface Props {
   user: any;
@@ -55,6 +56,15 @@ export default function L2_LockerRoomDashboard({
   const [matchCommentsData, setMatchCommentsData] = useState<any[]>([]);
   const [selectedHighlight, setSelectedHighlight] = useState<any>(null);
 
+  // 🛠️ [v2.3] 스켈레톤 로딩 — seasons 도착 전까지 골격 UI 표시.
+  //   안전망: 7초 지나면 데이터가 비어도 스켈레톤 해제(빈 상태 노출)
+  const [skeletonTimedOut, setSkeletonTimedOut] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSkeletonTimedOut(true), 7000);
+    return () => clearTimeout(t);
+  }, []);
+  const isLoading = !skeletonTimedOut && (!seasons || seasons.length === 0);
+
   // match_comments 실시간 구독 (MatchTalkCarousel 용)
   useEffect(() => {
     const q = query(collection(db, 'match_comments'));
@@ -90,6 +100,15 @@ export default function L2_LockerRoomDashboard({
   const handleHighlightClick = (h: any) => {
     setSelectedHighlight(h);
   };
+
+  // 데이터 로딩 중 — 스켈레톤 골격 표시
+  if (isLoading) {
+    return (
+      <div className="w-full">
+        <L2_LockerRoomSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

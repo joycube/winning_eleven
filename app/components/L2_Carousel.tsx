@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 interface L2_CarouselProps<T> {
   items: T[];
@@ -47,6 +47,11 @@ export function L2_Carousel<T>({
   const [isPaused, setIsPaused] = useState(false);
   const n = items.length;
 
+  // 🛠️ [v2.3] 모바일 터치 스와이프 — 좌우로 밀어서 슬라이드 이동
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const SWIPE_THRESHOLD = 40; // px 이상 밀어야 슬라이드 전환
+
   // index 가 범위 밖이면 보정 (items 변동 시)
   useEffect(() => {
     if (currentIdx >= n && n > 0) setCurrentIdx(0);
@@ -59,6 +64,25 @@ export function L2_Carousel<T>({
     setCurrentIdx(i => (i + 1) % n);
   }, [n]);
   const goTo = useCallback((idx: number) => setCurrentIdx(idx), []);
+
+  // 터치 스와이프 핸들러
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsPaused(true);
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    setIsPaused(false);
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // 세로 스크롤 의도면 무시 (가로 이동이 세로보다 클 때만 스와이프 처리)
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) goNext();
+    else goPrev();
+  }, [goNext, goPrev]);
 
   // 자동 슬라이드
   useEffect(() => {
@@ -98,11 +122,11 @@ export function L2_Carousel<T>({
 
       {/* 메인 컨텐츠 */}
       <div
-        className="relative overflow-hidden"
+        className="relative overflow-hidden touch-pan-y"
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
       >
         <div
           className="flex transition-transform duration-500 ease-out"
@@ -120,14 +144,14 @@ export function L2_Carousel<T>({
           <>
             <button
               onClick={goPrev}
-              className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-900/85 border border-slate-700 items-center justify-center text-white text-base backdrop-blur-sm hover:bg-slate-800 hover:border-slate-500 transition z-10"
+              className="flex absolute left-1.5 sm:left-2 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/85 border border-slate-700 items-center justify-center text-white text-base backdrop-blur-sm hover:bg-slate-800 hover:border-slate-500 active:scale-95 transition z-10"
               aria-label="이전"
             >
               ‹
             </button>
             <button
               onClick={goNext}
-              className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-900/85 border border-slate-700 items-center justify-center text-white text-base backdrop-blur-sm hover:bg-slate-800 hover:border-slate-500 transition z-10"
+              className="flex absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/85 border border-slate-700 items-center justify-center text-white text-base backdrop-blur-sm hover:bg-slate-800 hover:border-slate-500 active:scale-95 transition z-10"
               aria-label="다음"
             >
               ›

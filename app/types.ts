@@ -172,7 +172,11 @@ export interface CupEntry {
   size?: string; 
 }
 
-export const FALLBACK_IMG = "https://via.placeholder.com/64?text=FC";
+// 🛠️ [v2.3 픽스] 폴백 이미지를 인라인 데이터 URI로 교체.
+//   기존: https://via.placeholder.com — 외부 서비스 종료(2024)로 로드 실패.
+//   → onError 핸들러가 폴백도 실패시켜 무한 반복 → 모바일 사파리 메모리 폭주/크래시 유발.
+//   데이터 URI는 네트워크 요청이 없어 절대 실패하지 않음 → 루프 원천 차단.
+export const FALLBACK_IMG = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='64'%20height='64'%3E%3Crect%20width='64'%20height='64'%20fill='%23334155'/%3E%3Ccircle%20cx='32'%20cy='26'%20r='11'%20fill='%23475569'/%3E%3Crect%20x='14'%20y='40'%20width='36'%20height='18'%20rx='9'%20fill='%23475569'/%3E%3C/svg%3E";
 
 export interface NoticeComment {
   id: string;

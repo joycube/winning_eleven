@@ -3,6 +3,8 @@
 import React, { useMemo, useState } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
 import { useHistoryRecords } from '../hooks/useHistoryRecords';
+import { useLeagueStats } from '../hooks/useLeagueStats';
+import { resolveCurrentSeasonId } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -24,37 +26,35 @@ const findOwnerProfile = (owners: Owner[], key?: string, name?: string) => {
 };
 
 /**
- * 🛠️ [L2] 팀 랭킹 — 시즌/누적 토글
- *  - 시즌: 현재 시즌의 팀별 점수 집계
+ * [L2] 팀 랭킹 — 시즌/누적 토글
+ *  - 시즌: 공식 엔진(useLeagueStats)의 현재 시즌 순위표 사용
  *  - 누적: history_records.teams
  *  - 각 행: 팀 로고 + 팀명 + 오너 프로필 + 오너이름 + 수평바 + 점수
  */
-export const L2_TeamRanking = ({ seasons, owners, masterTeams, viewSeasonId }: Props) => {
+export const L2_TeamRanking = ({ seasons, owners, masterTeams }: Props) => {
   const [mode, setMode] = useState<'SEASON' | 'ALL'>('SEASON');
   const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
 
+  // [v2.3 전면 교체] 시즌 순위를 매치에서 직접 재계산하지 않고 공식 엔진 결과를 사용.
+  //   - 팀은 season.teams(고정 로스터) 기반 → 같은 팀 중복 버그 원천 차단
+  //   - 오너는 정규화(getCanonicalOwnerName) → 매치별 표기 차이로 오너가 틀어지지 않음
+  //   - 플레이오프/녹아웃 매치는 리그 순위에서 제외 (엔진 처리)
+  //   대상 시즌은 Hero 와 동일하게 "현재 진행 시즌"으로 통일.
+  const currentSeasonId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
+  const { activeRankingData } = useLeagueStats(seasons, currentSeasonId, owners, []);
+
   const teams = useMemo(() => {
     if (mode === 'SEASON') {
-      const current = (seasons || []).find((s: any) => s.id === viewSeasonId)
-        || [...(seasons || [])].sort((a: any, b: any) => b.id - a.id)[0];
-      if (!current) return [];
-      const stats: Record<string, any> = {};
-      (current.rounds || []).forEach((r: any) => {
-        (r.matches || []).forEach((m: any) => {
-          if (m.status !== 'COMPLETED') return;
-          if (m.home === 'BYE' || m.away === 'BYE' || m.home === 'TBD' || m.away === 'TBD') return;
-          const hs = Number(m.homeScore || 0);
-          const as = Number(m.awayScore || 0);
-          if (!stats[m.home]) stats[m.home] = { name: m.home, logo: m.homeLogo, ownerName: m.homeOwner, ownerUid: m.homeOwnerUid, pts: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 };
-          if (!stats[m.away]) stats[m.away] = { name: m.away, logo: m.awayLogo, ownerName: m.awayOwner, ownerUid: m.awayOwnerUid, pts: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 };
-          stats[m.home].gf += hs; stats[m.home].ga += as;
-          stats[m.away].gf += as; stats[m.away].ga += hs;
-          if (hs > as) { stats[m.home].pts += 3; stats[m.home].w++; stats[m.away].l++; }
-          else if (hs < as) { stats[m.away].pts += 3; stats[m.away].w++; stats[m.home].l++; }
-          else { stats[m.home].pts += 1; stats[m.away].pts += 1; stats[m.home].d++; stats[m.away].d++; }
-        });
-      });
-      return Object.values(stats).sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga)).slice(0, 8);
+      // 공식 엔진 결과(현재 시즌 순위표) — 이미 정렬·정규화·중복제거 완료
+      return (activeRankingData?.teams || []).slice(0, 8).map((t: any) => ({
+        name: t.name,
+        logo: t.logo,
+        ownerName: t.ownerName,
+        ownerUid: t.ownerUid,
+        pts: t.points,
+        w: t.win, d: t.draw, l: t.loss,
+        gf: t.gf, ga: t.ga,
+      }));
     } else {
       return (historyData?.teams || []).slice(0, 8).map((t: any) => ({
         name: t.name,
@@ -66,7 +66,7 @@ export const L2_TeamRanking = ({ seasons, owners, masterTeams, viewSeasonId }: P
         gf: t.gf, ga: t.ga,
       }));
     }
-  }, [mode, seasons, viewSeasonId, historyData]);
+  }, [mode, activeRankingData, historyData]);
 
   const maxPts = teams.length > 0 ? Math.max(...teams.map((t: any) => t.pts || 0)) : 1;
 
