@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { Season, Match, MasterTeam, Owner } from '../types';
 import { L2_Carousel } from './L2_Carousel';
 import { MatchCard } from './MatchCard';
+import { resolveCurrentSeason } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -26,29 +27,25 @@ export const L2_NextMatchCarousel = ({
   seasons, masterTeams, owners, activeRankingData, historyData, onNavigateToSchedule, onMatchClick,
 }: Props) => {
   const nextMatches = useMemo(() => {
+    // 🛠️ [v2.4] 현재 진행 시즌(가장 나중에 만든 시즌)만 대상으로 — Hero/랭킹과 동일 시즌 노출.
+    const cur = resolveCurrentSeason(seasons);
+    if (!cur) return [];
     const all: any[] = [];
-    // 🛠️ [v2.4] 시즌 status 필터(완료 시즌 제외) 후, 스케쥴 위치(라운드/매치 순서)를 그대로 보존해 수집.
-    //   정렬은 아래에서 "가장 먼저 해야 할 경기부터"(스케쥴 오름차순)로 일괄 처리.
-    (seasons || [])
-      .filter((s: any) => String(s.status || '').toUpperCase() !== 'COMPLETED')
-      .forEach((s: any) => {
-        (s.rounds || []).forEach((r: any, rIdx: number) => {
-          (r.matches || []).forEach((m: any, mIdx: number) => {
-            // 매치 필터 — COMPLETED 제외 + 점수 박힌 매치 제외 + TBD/BYE 제외
-            if (m.status === 'COMPLETED') return;
-            if (m.home === 'BYE' || m.away === 'BYE') return;
-            if (m.home === 'TBD' || m.away === 'TBD') return;
-            if (!m.home || !m.away) return;
-            const hsStr = String(m.homeScore ?? '').trim();
-            const asStr = String(m.awayScore ?? '').trim();
-            if (hsStr !== '' || asStr !== '') return; // 점수 들어가 있으면 NEXT 아님
-            all.push({ ...m, _seasonName: s.name, _seasonId: s.id, _rIdx: rIdx, _mIdx: mIdx });
-          });
-        });
+    (cur.rounds || []).forEach((r: any, rIdx: number) => {
+      (r.matches || []).forEach((m: any, mIdx: number) => {
+        // 매치 필터 — COMPLETED 제외 + 점수 박힌 매치 제외 + TBD/BYE 제외
+        if (m.status === 'COMPLETED') return;
+        if (m.home === 'BYE' || m.away === 'BYE') return;
+        if (m.home === 'TBD' || m.away === 'TBD') return;
+        if (!m.home || !m.away) return;
+        const hsStr = String(m.homeScore ?? '').trim();
+        const asStr = String(m.awayScore ?? '').trim();
+        if (hsStr !== '' || asStr !== '') return; // 점수 들어가 있으면 NEXT 아님
+        all.push({ ...m, _seasonName: cur.name, _seasonId: cur.id, _rIdx: rIdx, _mIdx: mIdx });
       });
-    // 가장 먼저 해야 할 경기부터 — 스케쥴(시즌 → 라운드 → 매치) 오름차순
+    });
+    // 가장 먼저 해야 할 경기부터 — 스케쥴(라운드 → 매치) 오름차순
     all.sort((a, b) => {
-      if (a._seasonId !== b._seasonId) return a._seasonId - b._seasonId;
       if (a._rIdx !== b._rIdx) return a._rIdx - b._rIdx;
       return a._mIdx - b._mIdx;
     });

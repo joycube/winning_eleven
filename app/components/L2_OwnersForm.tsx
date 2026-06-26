@@ -56,16 +56,17 @@ export const L2_OwnersForm = ({ seasons, owners }: Props) => {
         });
       });
     });
-    // 🛠️ [v2.4] 정렬 기준을 스케쥴 위치(시즌 → 라운드 → 매치)로 통일.
-    //   (timestamp 1순위는 일부 매치에만 timestamp 가 있어 순서가 뒤섞였음)
-    // 정렬: 최신순 (recentForm 계산용) — 스케쥴 내림차순
+    // 🛠️ [v2.4] 실제 진행 시각(timestamp) 우선 정렬, 같거나 없으면 스케쥴 위치로 보정.
+    // 정렬: 최신순 (recentForm 계산용)
     const sortedRecent = [...allMatches].sort((a, b) => {
+      if (a._ts !== b._ts) return b._ts - a._ts;
       if (a._seasonId !== b._seasonId) return b._seasonId - a._seasonId;
       if (a._rIdx !== b._rIdx) return b._rIdx - a._rIdx;
       return b._mIdx - a._mIdx;
     });
-    // 정렬: 오래된 것부터 (bestStreak 계산용) — 스케쥴 오름차순
+    // 정렬: 오래된 것부터 (bestStreak 계산용)
     const sortedOld = [...allMatches].sort((a, b) => {
+      if (a._ts !== b._ts) return a._ts - b._ts;
       if (a._seasonId !== b._seasonId) return a._seasonId - b._seasonId;
       if (a._rIdx !== b._rIdx) return a._rIdx - b._rIdx;
       return a._mIdx - b._mIdx;

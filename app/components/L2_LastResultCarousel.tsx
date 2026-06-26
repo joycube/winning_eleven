@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { Season, Match, MasterTeam, Owner } from '../types';
 import { L2_Carousel } from './L2_Carousel';
 import { MatchCard } from './MatchCard';
+import { resolveCurrentSeason } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
@@ -26,27 +27,28 @@ export const L2_LastResultCarousel = ({
   seasons, masterTeams, owners, activeRankingData, historyData, onNavigateToSchedule, onMatchClick,
 }: Props) => {
   const lastMatches = useMemo(() => {
+    // 🛠️ [v2.4] 현재 진행 시즌(가장 나중에 만든 시즌)만 대상으로 — Hero/랭킹과 동일 시즌 노출.
+    const cur = resolveCurrentSeason(seasons);
+    if (!cur) return [];
     const all: any[] = [];
-    (seasons || []).forEach((s: any) => {
-      (s.rounds || []).forEach((r: any, rIdx: number) => {
-        (r.matches || []).forEach((m: any, mIdx: number) => {
-          if (m.status !== 'COMPLETED') return;
-          if (m.home === 'BYE' || m.away === 'BYE') return;
-          all.push({
-            ...m,
-            _seasonName: s.name,
-            _seasonId: s.id,
-            _rIdx: rIdx,
-            _mIdx: mIdx,
-            _ts: Number(m.timestamp || 0),
-          });
+    (cur.rounds || []).forEach((r: any, rIdx: number) => {
+      (r.matches || []).forEach((m: any, mIdx: number) => {
+        if (m.status !== 'COMPLETED') return;
+        if (m.home === 'BYE' || m.away === 'BYE') return;
+        all.push({
+          ...m,
+          _seasonName: cur.name,
+          _seasonId: cur.id,
+          _rIdx: rIdx,
+          _mIdx: mIdx,
+          _ts: Number(m.timestamp || 0),
         });
       });
     });
-    // 🛠️ [v2.4] 가장 최신 경기부터 — 스케쥴(시즌 → 라운드 → 매치) 내림차순.
-    //   (기존엔 timestamp 1순위였으나, 완료 매치 중 일부만 timestamp 가 있어 순서가 뒤섞였음 → 스케쥴 위치 기준으로 변경)
+    // 🛠️ [v2.4] 가장 최신 경기부터 — 실제 진행 시각(timestamp) 내림차순.
+    //   timestamp 가 같거나(둘 다 미기록) 없으면 스케쥴 위치(라운드 → 매치) 내림차순으로 보정.
     return all.sort((a, b) => {
-      if (a._seasonId !== b._seasonId) return b._seasonId - a._seasonId;
+      if (a._ts !== b._ts) return b._ts - a._ts;
       if (a._rIdx !== b._rIdx) return b._rIdx - a._rIdx;
       return b._mIdx - a._mIdx;
     }).slice(0, 5);

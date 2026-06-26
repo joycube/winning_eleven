@@ -124,6 +124,7 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
       newRounds[0].matches[matchIndex] = {
         ...newRounds[0].matches[matchIndex],
         homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+        timestamp: Date.now(), // 🛠️ [v2.4] 진행(기록) 시각 — 최신순 정렬용
         ...safeRecords,
       };
 
@@ -273,6 +274,7 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
             ...m,
             ...teamFix,
             homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+            timestamp: Date.now(), // 🛠️ [v2.4] 진행(기록) 시각 — 최신순 정렬용
             ...safeRecords,
             homePredictRate: predictionSnapshot.homePredictRate,
             awayPredictRate: predictionSnapshot.awayPredictRate,
@@ -289,6 +291,7 @@ export const createHandleSaveMatchResult = (deps: SaveMatchResultDeps) => {
           ...effectiveMatch,
           id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           homeScore: hScore, awayScore: aScore, youtubeUrl: yt, status: 'COMPLETED',
+          timestamp: Date.now(), // 🛠️ [v2.4] 진행(기록) 시각 — 최신순 정렬용
           ...safeRecords,
           homePredictRate: predictionSnapshot.homePredictRate,
           awayPredictRate: predictionSnapshot.awayPredictRate,
