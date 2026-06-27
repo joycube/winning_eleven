@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
-import { Season, MasterTeam, Owner, FALLBACK_IMG } from '../types';
-import { L2_Carousel } from './L2_Carousel';
+import React, { useMemo } from 'react';
+import { Season, MasterTeam, Owner } from '../types';
 
 interface Props {
   seasons: Season[];
   masterTeams: MasterTeam[];
   owners: Owner[];
   onHighlightClick?: (h: any) => void;
+  /** "더 보기" — 전체 하이라이트 보드로 이동 (옵션) */
+  onViewAll?: () => void;
 }
 
 // YouTube ID 추출
@@ -24,11 +25,12 @@ const getThumbnail = (url: string) => {
 };
 
 /**
- * 🛠️ [L2] 하이라이트 캐러셀 (최대 5개)
- *  - youtubeUrl 있는 COMPLETED 매치
- *  - 메인 카드 + 하단 5개 썸네일 nav
+ * 🛠️ [L2 v2.6] 하이라이트 — 세로 카드 한 줄 가로 스와이프.
+ *  - 가로(16:9) 영상을 세로 카드에 넣고, 위아래는 썸네일을 블러한 "레터박스"로 채워 영상과 색이 어우러짐.
+ *  - 상단 밴드: 시즌명 + 경기  / 하단 밴드: 팀 스코어(예: 노르웨이 3:0 한국)
+ *  - PC/태블릿은 한 줄에 여러 장, 모바일은 좌우 스와이프 → 공간 활용 ↑
  */
-export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick }: Props) => {
+export const L2_HighlightsCarousel = ({ seasons, onHighlightClick, onViewAll }: Props) => {
   const highlights = useMemo(() => {
     const all: any[] = [];
     (seasons || []).forEach((s: any) => {
@@ -48,7 +50,7 @@ export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick }
     return all.sort((a, b) => {
       if (a._ts !== b._ts) return b._ts - a._ts;
       return b._seasonId - a._seasonId;
-    }).slice(0, 5);
+    }).slice(0, 12);
   }, [seasons]);
 
   if (highlights.length === 0) {
@@ -63,82 +65,98 @@ export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick }
 
   return (
     <div className="mb-3">
-      <L2_Carousel
-        items={highlights}
-        autoSlideMs={5000}
-        dotColor="bg-red-500"
-        showDots={false}
-        headerLeft={
-          <div className="flex items-center gap-2">
-            <span className="w-[3px] h-[14px] rounded bg-red-500" />
-            <span className="text-[13px] font-black italic text-white tracking-wide">HIGHLIGHTS</span>
-            <span className="text-[10px] text-red-400 font-bold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              {highlights.length}개
-            </span>
-          </div>
-        }
-        renderItem={(h: any) => (
-          <div
-            onClick={() => onHighlightClick && onHighlightClick(h)}
-            className="px-1 cursor-pointer group"
+      {/* 헤더 */}
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="w-[3px] h-[14px] rounded bg-red-500" />
+          <span className="text-[13px] font-black italic text-white tracking-wide">HIGHLIGHTS</span>
+          <span className="text-[10px] text-red-400 font-bold flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            {highlights.length}개
+          </span>
+        </div>
+        {onViewAll && (
+          <button
+            onClick={onViewAll}
+            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 border border-slate-700 hover:border-slate-500 px-2.5 py-1 rounded-full transition"
           >
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-red-500/50 transition">
-              <div className="relative aspect-video bg-slate-800">
+            더 보기 <span className="text-[12px] leading-none">›</span>
+          </button>
+        )}
+      </div>
+
+      {/* 세로 카드 한 줄 — 가로 스와이프 */}
+      <div
+        className="flex gap-3 overflow-x-auto pb-1 snap-x [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {highlights.map((h: any, idx: number) => (
+          <button
+            key={`${h._seasonId}_${h.id || idx}`}
+            onClick={() => onHighlightClick && onHighlightClick(h)}
+            className="relative shrink-0 w-[150px] sm:w-[160px] rounded-xl overflow-hidden border border-slate-800 hover:border-red-500/60 snap-start text-left group transition"
+          >
+            {/* 레터박스 배경 — 썸네일 블러 (영상과 색 어우러짐) */}
+            {h._thumbnail ? (
+              <img
+                src={h._thumbnail}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover scale-125"
+                style={{ filter: 'blur(14px)', opacity: 0.5 }}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-red-900/40 to-slate-900" />
+            )}
+            <div className="absolute inset-0 bg-slate-950/45" />
+
+            {/* 콘텐츠 */}
+            <div className="relative flex flex-col">
+              {/* 상단 밴드: 시즌 + 경기 */}
+              <div className="px-2.5 pt-2.5 pb-2 min-w-0">
+                <div className="text-[10px] font-black italic text-white truncate">🏆 {h._seasonName}</div>
+                <div className="text-[9px] text-white/65 truncate mt-0.5">{h.matchLabel || '경기'}</div>
+              </div>
+
+              {/* 영상 (16:9) */}
+              <div className="relative aspect-video bg-black/40">
                 {h._thumbnail ? (
                   <img
                     src={h._thumbnail}
                     alt=""
                     className="w-full h-full object-cover"
-                    onError={(e: any) => { e.target.style.display = 'none'; }}
+                    onError={(e: any) => { e.currentTarget.style.opacity = '0'; }}
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-red-900/40 to-slate-900" />
                 )}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition">
-                  <div className="w-12 h-12 rounded-full bg-red-600/95 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-110 transition">▶</div>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition">
+                  <div className="w-9 h-9 rounded-full bg-red-600/95 text-white flex items-center justify-center text-base shadow-lg group-hover:scale-110 transition">▶</div>
                 </div>
-                <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded">YT</div>
-                {/* 매치 정보 오버레이 */}
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 bg-black/65 px-2 py-1 rounded">
-                    <span className="text-[10px] text-white font-bold">{h.home}</span>
-                    <span className="text-[10px] text-white font-bold">{h.homeScore}:{h.awayScore}</span>
-                    <span className="text-[10px] text-white font-bold">{h.away}</span>
-                  </div>
-                  {h.matchLabel && (
-                    <span className="text-[9px] bg-black/65 text-white px-2 py-1 rounded font-bold truncate">{h.matchLabel}</span>
-                  )}
-                </div>
+                <div className="absolute top-1.5 right-1.5 bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">YT</div>
               </div>
-              <div className="p-3">
-                <div className="text-[11px] font-black text-white italic line-clamp-1">
-                  {h.home} {h.homeScore}:{h.awayScore} {h.away}
-                </div>
-                <div className="text-[9px] text-slate-500 mt-1 flex justify-between">
-                  <span className="truncate">{h._seasonName}</span>
-                  <span className="ml-2 shrink-0">{h.matchLabel || ''}</span>
+
+              {/* 하단 밴드: 스코어 */}
+              <div className="px-2 pt-2 pb-2.5 text-center">
+                <div className="text-[10px] font-black italic text-white truncate">
+                  {h.home} <span className="text-red-300">{h.homeScore}:{h.awayScore}</span> {h.away}
                 </div>
               </div>
             </div>
-          </div>
+          </button>
+        ))}
+
+        {/* 더 보기 카드 */}
+        {onViewAll && (
+          <button
+            onClick={onViewAll}
+            className="shrink-0 w-[150px] sm:w-[160px] rounded-xl border border-dashed border-slate-700 hover:border-slate-500 flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-white transition snap-start"
+          >
+            <span className="w-9 h-9 rounded-full border border-slate-600 flex items-center justify-center text-lg">›</span>
+            <span className="text-[11px] font-bold">전체 보기</span>
+          </button>
         )}
-        renderThumbnail={(h: any, idx: number, isActive: boolean) => (
-          <div className="relative aspect-video bg-slate-800 rounded-md overflow-hidden">
-            {h._thumbnail ? (
-              <img src={h._thumbnail} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-red-900/40 to-slate-900" />
-            )}
-            {isActive && (
-              <div className="absolute inset-0 bg-emerald-500/20" />
-            )}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/65 px-1 py-0.5">
-              <span className="text-[7px] text-white font-bold block truncate">{h.home} {h.homeScore}:{h.awayScore}</span>
-            </div>
-          </div>
-        )}
-      />
+      </div>
     </div>
   );
 };

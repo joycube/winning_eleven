@@ -190,6 +190,7 @@ export default function L2_LockerRoomDashboard({
         masterTeams={masterTeams}
         owners={owners}
         onHighlightClick={handleHighlightClick}
+        onViewAll={() => setViewMode('HIGHLIGHTS')}
       />
 
       {/* 9. Communication */}
