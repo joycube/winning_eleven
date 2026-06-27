@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useMemo } from 'react';
-import { Season, MasterTeam, Owner } from '../types';
+import { Season, MasterTeam, Owner, FALLBACK_IMG } from '../types';
+
+// 팀 엠블럼 로고 — masterTeams 우선, 없으면 매치 로고, 그래도 없으면 폴백
+const findTeamLogo = (masterTeams: any[], name: string, fallback?: string) => {
+  if (!name) return fallback || FALLBACK_IMG;
+  const clean = name.replace(/\s+/g, '').toLowerCase();
+  const m = (masterTeams || []).find((t: any) =>
+    ((t.name || t.teamName || '').replace(/\s+/g, '').toLowerCase()) === clean
+  );
+  return m?.logo || fallback || FALLBACK_IMG;
+};
 
 interface Props {
   seasons: Season[];
@@ -30,7 +40,7 @@ const getThumbnail = (url: string) => {
  *  - 상단 밴드: 시즌명 + 경기  / 하단 밴드: 팀 스코어(예: 노르웨이 3:0 한국)
  *  - PC/태블릿은 한 줄에 여러 장, 모바일은 좌우 스와이프 → 공간 활용 ↑
  */
-export const L2_HighlightsCarousel = ({ seasons, onHighlightClick, onViewAll }: Props) => {
+export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick, onViewAll }: Props) => {
   const highlights = useMemo(() => {
     const all: any[] = [];
     (seasons || []).forEach((s: any) => {
@@ -112,8 +122,8 @@ export const L2_HighlightsCarousel = ({ seasons, onHighlightClick, onViewAll }: 
 
             {/* 콘텐츠 */}
             <div className="relative flex flex-col">
-              {/* 상단 밴드: 시즌 + 경기 */}
-              <div className="px-2.5 pt-2.5 pb-2 min-w-0">
+              {/* 상단 밴드: 시즌 + 경기 (중앙 정렬) */}
+              <div className="px-2.5 pt-2.5 pb-2 min-w-0 text-center">
                 <div className="text-[10px] font-black italic text-white truncate">🏆 {h._seasonName}</div>
                 <div className="text-[9px] text-white/65 truncate mt-0.5">{h.matchLabel || '경기'}</div>
               </div>
@@ -136,11 +146,17 @@ export const L2_HighlightsCarousel = ({ seasons, onHighlightClick, onViewAll }: 
                 <div className="absolute top-1.5 right-1.5 bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">YT</div>
               </div>
 
-              {/* 하단 밴드: 스코어 */}
-              <div className="px-2 pt-2 pb-2.5 text-center">
-                <div className="text-[10px] font-black italic text-white truncate">
+              {/* 하단 밴드: 양옆 엠블럼 + 스코어 */}
+              <div className="px-2 pt-2 pb-2.5 flex items-center justify-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
+                  <img src={findTeamLogo(masterTeams, h.home, h.homeLogo)} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                </span>
+                <span className="text-[10px] font-black italic text-white truncate min-w-0">
                   {h.home} <span className="text-red-300">{h.homeScore}:{h.awayScore}</span> {h.away}
-                </div>
+                </span>
+                <span className="w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
+                  <img src={findTeamLogo(masterTeams, h.away, h.awayLogo)} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                </span>
               </div>
             </div>
           </button>
