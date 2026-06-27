@@ -28,6 +28,7 @@ interface Props {
   owners: any[];
   activeRankingData?: any;
   historyData?: any;
+  historyRecords?: any[];
   activeSeason?: any;
   posts: any[];
   highlights?: any[];
@@ -49,7 +50,7 @@ interface Props {
  */
 export default function L2_LockerRoomDashboard({
   user, notices = [], seasons = [], masterTeams = [], owners = [],
-  activeRankingData, historyData,
+  activeRankingData, historyData, historyRecords = [],
   posts = [], highlights = [], uidDict,
   setViewMode, setCategory, setSelectedPostId,
   viewSeasonId = 0,
@@ -71,7 +72,7 @@ export default function L2_LockerRoomDashboard({
   // 🛠️ [v2.5 성능] 무거운 집계 훅을 대시보드에서 1회만 실행 → 자식들에 props 전달.
   //   기존: TeamRanking/TopScorers/QuickStats 가 각자 useHistoryRecords(Firestore 2컬렉션 fetch)·useLeagueStats 를
   //         중복 호출 → 락커룸 1렌더에 동일 계산이 3회/2회 반복(메인스레드 블로킹·메모리 누적·GIF 끊김·간헐 크래시).
-  const { historyData: hofData } = useHistoryRecords(owners, seasons, masterTeams);
+  const { historyData: hofData } = useHistoryRecords(owners, seasons, masterTeams, historyRecords);
   const seasonRankingId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
   const { activeRankingData: seasonRanking } = useLeagueStats(seasons, seasonRankingId, owners, []);
 
@@ -158,7 +159,7 @@ export default function L2_LockerRoomDashboard({
       </div>
 
       {/* 🛠️ [v2 픽스] HALL OF CHAMPIONS — 기존 ChampionsCarousel 복원 */}
-      <ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams} />
+      <ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams} historyRecords={historyRecords} />
 
       {/* 5+6. Team Ranking + Top Scorers — PC 2열, 모바일 1열 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

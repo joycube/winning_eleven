@@ -31,6 +31,7 @@ interface LockerRoomViewProps {
   owners?: any[];
   activeRankingData?: any;
   historyData?: any;
+  historyRecords?: any[];
   activeSeason?: any;
   viewSeasonId?: number;
   setViewSeasonId?: any;
@@ -40,7 +41,7 @@ interface LockerRoomViewProps {
 
 const normalizeName = (str?: string | null): string => (str || '').replace(/[\s\.\-\_]/g, '').toLowerCase();
 
-export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, activeSeason, viewSeasonId, setViewSeasonId, onNavigateToSchedule }: LockerRoomViewProps) {
+export default function LockerRoomView({ user, notices = [], seasons = [], masterTeams = [], owners = [], activeRankingData, historyData, historyRecords = [], activeSeason, viewSeasonId, setViewSeasonId, onNavigateToSchedule }: LockerRoomViewProps) {
   const [posts, setPosts] = useState<any[]>([]);
   const [highlights, setHighlights] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'MAIN' | 'LIST' | 'WRITE' | 'EDIT' | 'HIGHLIGHTS'>('MAIN');
@@ -50,21 +51,17 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [uidDict, setUidDict] = useState<Record<string, string>>({});
 
+  // 🛠️ [v2.5 성능] history_records 재요청 제거 — useLeagueData 가 이미 구독 중인 historyRecords 로 dict 생성
   useEffect(() => {
-    const fetchHistoryDict = async () => {
-        const snap = await getDocs(collection(db, 'history_records'));
-        const dict: Record<string, string> = {};
-        snap.docs.forEach(doc => {
-            const data = doc.data();
-            data.teams?.forEach((t:any) => {
-                if (t.owner && t.ownerId) dict[t.owner] = t.ownerId;
-                if (t.legacyName && t.ownerId) dict[t.legacyName] = t.ownerId;
-            });
+    const dict: Record<string, string> = {};
+    (historyRecords || []).forEach((data: any) => {
+        data.teams?.forEach((t:any) => {
+            if (t.owner && t.ownerId) dict[t.owner] = t.ownerId;
+            if (t.legacyName && t.ownerId) dict[t.legacyName] = t.ownerId;
         });
-        setUidDict(dict);
-    };
-    fetchHistoryDict();
-  }, []);
+    });
+    setUidDict(dict);
+  }, [historyRecords]);
 
   const isMaster = useMemo(() => {
       if (!user) return false;
@@ -136,6 +133,7 @@ export default function LockerRoomView({ user, notices = [], seasons = [], maste
           <L2_LockerRoomDashboard
               user={user} notices={notices} seasons={seasons} masterTeams={masterTeams}
               owners={owners} historyData={historyData} activeSeason={activeSeason}
+              historyRecords={historyRecords}
               posts={posts} highlights={highlights} uidDict={uidDict}
               setViewMode={setViewMode} setCategory={setCategory} setSelectedPostId={setSelectedPostId}
               activeRankingData={activeRankingData}

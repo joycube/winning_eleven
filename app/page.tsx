@@ -296,6 +296,7 @@ export default function FootballLeagueApp() {
             owners={owners}
             activeRankingData={activeRankingData}
             historyData={combinedHistoryData}
+            historyRecords={historyRecords}
             viewSeasonId={viewSeasonId}
             setViewSeasonId={setViewSeasonId}
             // 🛠️ [L2 v2.2] NEXT/LAST 매치카드 클릭 → 해당 시즌 스케쥴 + matchId 로 자동 스크롤

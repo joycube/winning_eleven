@@ -15,27 +15,32 @@ import { resolveOwnerByLedger } from '../utils/financeMatching';
 //   Medal / Prize: finance_ledger (마감된 시즌만)
 // 🛠️ [옵션A-3] masterTeams 파라미터 추가 — owner 가 비어있거나 TBD 인 매치에 대해
 //   masterTeams[teamName].ownerName/ownerUid 로 폴백 매칭 → 레거시 데이터 W/D/L 누락 방지
-export const useHistoryRecords = (owners: any[] = [], seasons: any[] = [], masterTeams: any[] = []) => {
+export const useHistoryRecords = (owners: any[] = [], seasons: any[] = [], masterTeams: any[] = [], injectedHistoryRecords?: any[]) => {
     const [rawDocs, setRawDocs] = useState<any[]>([]);
     // 🛠️ [Finance v4 / 옵션1] finance_ledger 도 함께 로드
     const [rawLedgers, setRawLedgers] = useState<any[]>([]);
     const [historyData, setHistoryData] = useState<any>({ teams: [], owners: [], players: [] });
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
-    // 1. DB 데이터는 딱 한 번만 불러옵니다.
+    // 🛠️ [v2.5 성능] history_records 가 주입되면(useLeagueData 가 이미 라이브 구독 중) 재요청하지 않고 그대로 사용.
+    const useInjected = injectedHistoryRecords !== undefined;
+    useEffect(() => {
+        if (useInjected) setRawDocs(injectedHistoryRecords || []);
+    }, [useInjected, injectedHistoryRecords]);
+
+    // 1. DB 데이터 로드 — history_records 는 주입 안 됐을 때만, finance_ledger 는 항상.
     //    🛠️ [Finance v4 / 옵션1 보강] history_records 는 공개 / finance_ledger 는 로그인 필요
     //    비로그인 상태에선 ledger 가 권한 거부되므로 둘을 분리해서 fetch (allSettled)
-    //    history_records 만 받아도 명예의 전당 W/D/L 표시는 정상 작동 (메달/상금은 0)
     useEffect(() => {
         const fetchAll = async () => {
             const [histResult, ledgerResult] = await Promise.allSettled([
-                getDocs(collection(db, 'history_records')),
+                useInjected ? Promise.resolve(null) : getDocs(collection(db, 'history_records')),
                 getDocs(collection(db, 'finance_ledger')),
             ]);
 
-            if (histResult.status === 'fulfilled') {
-                setRawDocs(histResult.value.docs.map(d => d.data()));
-            } else {
+            if (!useInjected && histResult.status === 'fulfilled' && histResult.value) {
+                setRawDocs((histResult.value as any).docs.map((d: any) => d.data()));
+            } else if (!useInjected && histResult.status === 'rejected') {
                 console.error('history_records 로드 에러:', histResult.reason);
             }
 

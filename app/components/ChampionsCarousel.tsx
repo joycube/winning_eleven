@@ -14,27 +14,19 @@ interface ChampionsCarouselProps {
     seasons: Season[];
     owners: Owner[];
     masterTeams: MasterTeam[];
+    historyRecords?: any[];
 }
 
-export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCarouselProps) => {
-    const [historyData, setHistoryData] = useState<Record<string, any>>({});
-
-    useEffect(() => {
-        const fetchHistoryRecords = async () => {
-            try {
-                const q = query(collection(db, 'history_records'));
-                const snap = await getDocs(q);
-                const newHistory: Record<string, any> = {};
-                snap.docs.forEach(doc => {
-                    newHistory[doc.id] = doc.data(); 
-                });
-                setHistoryData(newHistory);
-            } catch (err) {
-                console.error("Failed to fetch history_records for champions:", err);
-            }
-        };
-        fetchHistoryRecords();
-    }, []);
+export const ChampionsCarousel = ({ seasons, owners, masterTeams, historyRecords = [] }: ChampionsCarouselProps) => {
+    // 🛠️ [v2.5 성능] history_records 재요청 제거 — 부모가 전달한 historyRecords(useLeagueData 라이브 구독) 사용.
+    //   useLeagueData 가 seasonId(=doc.id)를 넣어주므로 seasonId 로 키 매핑.
+    const historyData = useMemo<Record<string, any>>(() => {
+        const map: Record<string, any> = {};
+        (historyRecords || []).forEach((r: any) => {
+            if (r?.seasonId != null) map[String(r.seasonId)] = r;
+        });
+        return map;
+    }, [historyRecords]);
 
     // 🛠️ [UI 픽스 v2-fix] resolveOwnerInfo 회귀 수정
     //   - 정규화(소문자/trim) + 확장 후보 키(docId, id, uid, nickname, legacyName, legacyNames[], mappedOwnerId)
