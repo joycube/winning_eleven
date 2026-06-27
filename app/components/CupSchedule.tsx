@@ -2,7 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore'; 
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import LoopingGif from './LoopingGif';
 import { db } from '../firebase'; 
 import { Season, Match, MasterTeam, Owner, FALLBACK_IMG } from '../types';
 import { MatchCard } from './MatchCard';
@@ -67,7 +68,7 @@ const MatchCommentSnippet = ({ matchId, onClick, owners }: { matchId: string, on
         // 🛠️ [호버/연결 픽스] wrapper rounded-3xl 과 라운드 일치 + -mt-4 pt-5 로 카드 바닥과 자연스럽게 흡수
         <div onClick={onClick} className="relative -mt-4 pt-5 pb-3 px-4 bg-[#0a1020] rounded-b-3xl shadow-[inset_0_8px_12px_-8px_rgba(0,0,0,0.4)] flex items-center gap-2 cursor-pointer hover:bg-[#0d1428] transition-colors z-0">
             {authorInfo ? (
-                <img src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
+                <LoopingGif src={authorInfo.photo} className="w-4 h-4 rounded-full object-cover border border-slate-600 shrink-0 shadow-sm" alt="profile" />
             ) : (
                 <MessageSquare size={13} className="text-emerald-500 shrink-0 mr-1" />
             )}

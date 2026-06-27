@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../firebase';
+import LoopingGif from './LoopingGif';
 import { collection, getDocs } from 'firebase/firestore';
 import { FALLBACK_IMG, Owner, Season } from '../types';
 // 🛠️ [Finance v4 / P0] ledger ↔ owner 통합 매칭
@@ -470,7 +471,7 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
             })
             .map(owner => (
             <div key={owner.id} onClick={() => { setSelectedOwnerId(owner.id); setTargetOwnerId('ALL'); setSettlementSeason('ALL'); setStatementSeason('ALL'); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all border whitespace-nowrap shrink-0 ${selectedOwnerId === owner.id ? 'bg-slate-800 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'}`}>
-              <img src={owner.photo} className="w-5 h-5 rounded-full object-cover" alt="" /><span className={`text-[11px] font-bold ${selectedOwnerId === owner.id ? 'text-white' : 'text-slate-500'}`}>{owner.nickname}</span>
+              <LoopingGif src={owner.photo} className="w-5 h-5 rounded-full object-cover" alt="" /><span className={`text-[11px] font-bold ${selectedOwnerId === owner.id ? 'text-white' : 'text-slate-500'}`}>{owner.nickname}</span>
             </div>
           ))}
         </div>
@@ -482,7 +483,7 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
             <div className="absolute -right-4 -top-4 text-[100px] opacity-5">🏆</div>
             <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
-              <img src={activeOwner.photo} className="w-20 h-20 rounded-full border-4 border-slate-800 shadow-xl object-cover" alt="" />
+              <LoopingGif src={activeOwner.photo} className="w-20 h-20 rounded-full border-4 border-slate-800 shadow-xl object-cover" alt="" />
               <div className="flex-1 text-center md:text-left w-full">
                 <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-1">{activeOwner.nickname}</h3>
                 <p className="text-xs text-yellow-500 font-bold tracking-widest uppercase mb-4">Total Trophies: {activeOwner.trophies} 🏆</p>
@@ -777,7 +778,7 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
                     <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-5xl filter drop-shadow-2xl z-20 animate-bounce" style={{ animationDuration: '3s' }}>👑</div>
                     <div className="w-24 h-24 rounded-full p-[2px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
                       <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#020617]">
-                        <img src={champ.photo} alt={champ.nickname} className="w-full h-full object-cover" />
+                        <LoopingGif src={champ.photo} alt={champ.nickname} className="w-full h-full object-cover" />
                       </div>
                     </div>
                   </div>
@@ -832,7 +833,7 @@ export const FinanceView = ({ owners, seasons, masterTeams = [], user }: Finance
                     <td className="p-3 text-center text-sm font-black text-slate-500">{i + 2}</td>
                     <td className="p-3">
                       <div className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
-                        <img src={o.photo} className="w-7 h-7 rounded-full border border-slate-800 shrink-0 object-cover" alt="" />
+                        <LoopingGif src={o.photo} className="w-7 h-7 rounded-full border border-slate-800 shrink-0 object-cover" alt="" />
                         <span className="font-black text-white text-[11px] tracking-tight truncate">{o.nickname}</span>
                       </div>
                     </td>

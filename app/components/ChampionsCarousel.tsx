@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useMemo, useEffect, useState } from 'react';
 import { Trophy } from 'lucide-react';
+import LoopingGif from './LoopingGif';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -301,7 +302,7 @@ export const ChampionsCarousel = ({ seasons, owners, masterTeams }: ChampionsCar
                                     
                                     <div className={`w-16 h-16 rounded-full p-[2px] bg-gradient-to-b ${profileRingClass} shadow-md`}>
                                         <div className="w-full h-full rounded-full overflow-hidden border border-slate-900 bg-slate-800">
-                                            <img src={champ.ownerPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = DEFAULT_AVATAR; }} />
+                                            <LoopingGif src={champ.ownerPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = DEFAULT_AVATAR; }} />
                                         </div>
                                     </div>
                                     

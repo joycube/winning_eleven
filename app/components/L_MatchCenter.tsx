@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalendarDays, MessageSquare, ChevronRight, Clock } from 'lucide-react'; 
+import { CalendarDays, MessageSquare, ChevronRight, Clock } from 'lucide-react';
+import LoopingGif from './LoopingGif';
 import { FALLBACK_IMG } from '../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -31,7 +32,7 @@ const RecentMatchTalkPreview = ({ match, owners, onEnter }: any) => {
         <div onClick={onEnter} className="bg-[#080d1a] border-t border-slate-800/80 py-3 px-4 sm:px-6 flex items-center justify-between group/talk cursor-pointer hover:bg-[#0b1221] transition-colors">
             {latestComment ? (
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <img src={getOwnerProfileLocal(latestComment.authorUid, latestComment.authorName)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
+                    <LoopingGif src={getOwnerProfileLocal(latestComment.authorUid, latestComment.authorName)} className="w-5 h-5 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="" onError={(e:any)=>{e.target.src=FALLBACK_IMG}} />
                     <div className="flex items-baseline gap-1.5 min-w-0">
                         <span className="text-[10px] font-black text-blue-400 shrink-0">{latestComment.authorName}</span>
                         <span className="text-[11px] text-slate-300 font-medium truncate">{latestComment.text?.startsWith('[STICKER]') ? '(스티커를 보냈습니다 ✨)' : latestComment.text}</span>

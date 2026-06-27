@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useMemo } from 'react';
 import { FALLBACK_IMG, Owner } from '../types';
+import LoopingGif from './LoopingGif';
 
 interface ROwnersTabProps {
   currentSeason: any;
@@ -149,7 +150,7 @@ export default function R_OwnersTab({
                             <div className="absolute -top-10 -left-6 text-7xl filter drop-shadow-2xl z-20 crown-bounce origin-bottom-left" style={{ transform: 'rotate(-15deg)' }}>👑</div>
                             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-[4px] bg-gradient-to-tr from-yellow-200 via-yellow-500 to-yellow-100 shadow-[0_0_30px_rgba(234,179,8,0.6)] relative z-10">
                                 <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-950 bg-slate-900">
-                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                    <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                 </div>
                             </div>
                             <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30 overflow-hidden flex items-center justify-center">
@@ -203,7 +204,7 @@ export default function R_OwnersTab({
                         <div className="relative pt-3 shrink-0 pl-2">
                             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-slate-300 via-slate-400 to-slate-200 shadow-xl relative z-10">
                                 <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                    <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                 </div>
                             </div>
                             <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-slate-400 z-30 overflow-hidden flex items-center justify-center">
@@ -249,7 +250,7 @@ export default function R_OwnersTab({
                         <div className="relative pt-3 shrink-0 pl-2">
                             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-orange-300 via-orange-500 to-orange-200 shadow-xl relative z-10">
                                 <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                    <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                 </div>
                             </div>
                             <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-orange-400 z-30 overflow-hidden flex items-center justify-center">
@@ -299,7 +300,7 @@ export default function R_OwnersTab({
                         <div className="relative pt-3 shrink-0 pl-2">
                             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-blue-300 via-blue-500 to-blue-200 shadow-xl relative z-10">
                                 <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                                    <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                    <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                 </div>
                             </div>
                             <div className="absolute -bottom-2 -right-1 w-12 h-12 bg-white rounded-full p-1.5 shadow-2xl border-2 border-blue-400 z-30 overflow-hidden flex items-center justify-center">
@@ -351,7 +352,7 @@ export default function R_OwnersTab({
                       <div className="relative pt-3 pl-2">
                           <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-tr from-emerald-300 via-emerald-500 to-emerald-200 shadow-2xl relative z-10">
                               <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-900 bg-slate-800">
-                                  <img src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                  <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                               </div>
                           </div>
                           <div className="absolute -bottom-3 inset-x-0 flex justify-center z-30">
@@ -411,7 +412,7 @@ export default function R_OwnersTab({
                                 <td className="py-4 pl-1 pr-4">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-10 h-10 rounded-full bg-slate-800 border overflow-hidden flex-shrink-0 shadow-lg ${actualRank === 2 ? 'border-slate-400' : actualRank === 3 ? 'border-orange-500' : 'border-slate-700'}`}>
-                                            <img src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                                            <LoopingGif src={matchedOwner?.photo || FALLBACK_IMG} className="w-full h-full object-cover" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                         </div>
                                         <span className="font-bold text-sm whitespace-nowrap">{resolvedNick}</span>
                                     </div>

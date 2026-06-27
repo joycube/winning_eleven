@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
+import LoopingGif from './LoopingGif';
 // 🔒 [Critical 패치 v4] arrayUnion / arrayRemove 추가 (C4: 좋아요 원자적 처리)
 import { doc, updateDoc, deleteDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send, BarChart2, Users, CheckCircle2 } from 'lucide-react';
@@ -325,7 +326,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                     
                     <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-3">
-                            <img src={authorData.photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-9 h-9 rounded-full object-cover border border-slate-700 bg-slate-800 shadow-sm" />
+                            <LoopingGif src={authorData.photo} onError={(e: any) => { e.target.src = COMMON_DEFAULT_PROFILE; }} alt="profile" className="w-9 h-9 rounded-full object-cover border border-slate-700 bg-slate-800 shadow-sm" />
                             <div className="flex flex-col">
                                 <span className="text-[13px] font-bold text-emerald-400 leading-tight">{authorData.name}</span>
                                 <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5">
@@ -466,7 +467,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                             return (
                                 <div key={comment.id} className="border-b border-slate-800/60 py-5 w-full last:border-0">
                                     <div className="flex gap-3 sm:gap-4 w-full">
-                                        <img src={authorProfileImg} alt="profile" className="w-10 h-10 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+                                        <LoopingGif src={authorProfileImg} alt="profile" className="w-10 h-10 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-baseline gap-2 mb-2">
                                                 <span className="font-bold text-emerald-400 text-[13px] sm:text-[14px] whitespace-nowrap">{cName}</span>
@@ -523,7 +524,7 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
 
                                                 return (
                                                     <div key={reply.id} className="flex gap-3 w-full">
-                                                        <img src={rProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+                                                        <LoopingGif src={rProfileImg} alt="profile" className="w-8 h-8 rounded-full object-cover shrink-0 bg-slate-800 shadow-sm border border-slate-700" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-baseline gap-2 mb-1.5">
                                                                 <span className="font-bold text-slate-300 text-[12px] sm:text-[13px] whitespace-nowrap">{rName}</span>

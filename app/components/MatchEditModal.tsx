@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Match, Owner, FALLBACK_IMG } from '../types'; 
+import { Match, Owner, FALLBACK_IMG } from '../types';
+import LoopingGif from './LoopingGif';
 import { RecordInput } from './RecordInput'; 
 import { db } from '../firebase'; 
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -381,7 +382,7 @@ export const MatchEditModal = ({ match, onClose, onSave, isTournament, teamPlaye
                                   return (
                                       <div key={c.id} className={`flex gap-2.5 w-full mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                           <div className="shrink-0 flex flex-col items-center">
-                                              <img src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
+                                              <LoopingGif src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
                                           </div>
                                           
                                           <div className={`flex flex-col max-w-[78%] ${isMe ? 'items-end' : 'items-start'}`}>

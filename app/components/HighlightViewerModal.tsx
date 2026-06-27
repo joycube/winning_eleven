@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Heart, Eye, MessageSquare, Send, ThumbsUp } from 'lucide-react';
+import LoopingGif from './LoopingGif';
 import { doc, updateDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FALLBACK_IMG, Owner } from '../types';
@@ -103,7 +104,7 @@ const TeamStatCard = ({ teamName, teamLogo, historicalTeamsData, owners, fallbac
 
     return (
         <div className="flex items-center gap-2 bg-slate-900/80 p-3 rounded-lg border border-slate-800 w-full shadow-inner h-full">
-            <img src={ownerPhoto} className="w-10 h-10 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
+            <LoopingGif src={ownerPhoto} className="w-10 h-10 rounded-full object-cover border border-slate-700 bg-slate-800 shrink-0" alt="owner" onError={(e:any)=>e.target.src=COMMON_DEFAULT_PROFILE} />
             <div className="flex flex-col min-w-0 flex-1 justify-center">
                 <span className="text-xs font-black text-emerald-400 truncate leading-tight mb-1">{ownerName}</span>
                 <div className="flex items-center gap-1.5">
@@ -147,7 +148,7 @@ const CommentItem = ({ comment, onReply, onLike, isReply = false, authUser, owne
 
     return (
         <div className={`flex gap-2 sm:gap-3 py-3 sm:py-4 ${!isReply ? 'border-b border-slate-800/50' : 'ml-10 sm:ml-12 mt-2 border-l-2 border-slate-800 pl-3 sm:pl-4'}`}>
-            <img src={profileImg} className={`${isReply ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'} rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700`} alt="" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
+            <LoopingGif src={profileImg} className={`${isReply ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'} rounded-full object-cover shrink-0 bg-slate-800 border border-slate-700`} alt="" onError={(e:any)=>{e.target.src=COMMON_DEFAULT_PROFILE}} />
             <div className="flex flex-col flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs sm:text-[13px] font-black text-emerald-400 italic">{displayAuthorName}</span>

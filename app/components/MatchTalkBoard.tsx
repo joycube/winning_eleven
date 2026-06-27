@@ -2,7 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { db } from '../firebase'; 
+import { db } from '../firebase';
+import LoopingGif from './LoopingGif';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { ArrowLeft, Send, Trash2, MessageSquare } from 'lucide-react';
 import { FALLBACK_IMG, Owner } from '../types'; 
@@ -307,7 +308,7 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
                                     return (
                                         <div key={c.id} className={`flex gap-2.5 w-full mb-1 relative ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                             <div className="shrink-0 flex flex-col items-center">
-                                                <img src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
+                                                <LoopingGif src={authorInfo.photo} className="w-10 h-10 sm:w-11 sm:h-11 rounded-[14px] sm:rounded-2xl object-cover shadow-sm border border-slate-700 bg-slate-800" alt="profile" />
                                             </div>
                                             
                                             <div className={`flex flex-col max-w-[78%] ${isMe ? 'items-end' : 'items-start'}`}>

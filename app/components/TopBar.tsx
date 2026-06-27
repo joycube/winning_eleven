@@ -1,6 +1,7 @@
 "use client";
-import React, { useState, useRef } from 'react'; 
-import { Trophy, Settings, LogIn, LogOut, BellRing } from 'lucide-react'; 
+import React, { useState, useRef } from 'react';
+import { Trophy, Settings, LogIn, LogOut, BellRing } from 'lucide-react';
+import LoopingGif from './LoopingGif';
 import { useAuth } from '../hooks/useAuth';
 import { usePushNotification } from '../hooks/usePushNotification'; 
 import { QuickArcadeDraftModal } from './QuickArcadeDraftModal'; 
@@ -114,7 +115,7 @@ export const TopBar = ({ setCurrentView, masterTeams = [], owners = [] }: TopBar
                     {authUser ? (
                         <div className="flex items-center gap-2 sm:gap-3">
                             <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-900 border border-slate-700 pl-1 pr-1 sm:pr-3 py-1 rounded-full shadow-inner">
-                                <img src={authUser.photoURL || ''} alt="Profile" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-slate-600 object-cover shrink-0" />
+                                <LoopingGif src={authUser.photoURL || ''} alt="Profile" className="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-slate-600 object-cover shrink-0" />
                                 {/* 모바일에서는 닉네임 숨김 */}
                                 <span className="hidden sm:block text-[11px] font-bold text-slate-300 truncate max-w-[90px]">
                                     {authUser.mappedOwnerId || authUser.displayName}
