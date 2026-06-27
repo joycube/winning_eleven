@@ -108,8 +108,16 @@ export default function L2_LockerRoomDashboard({
   };
 
   // 하이라이트 클릭 — 모달 오픈
+  //   🛠️ [v2.6] 카러셀은 매치 객체(home/away/_seasonId)를 넘기지만, 모달은 하이라이트 컬렉션 필드명
+  //   (homeTeam/awayTeam/seasonId/seasonName)을 읽음 → 매핑(정규화)해서 팀명·오너·시즌전적이 정상 표시되게 함.
   const handleHighlightClick = (h: any) => {
-    setSelectedHighlight(h);
+    setSelectedHighlight({
+      ...h,
+      homeTeam: h.homeTeam ?? h.home,
+      awayTeam: h.awayTeam ?? h.away,
+      seasonName: h.seasonName ?? h._seasonName,
+      seasonId: h.seasonId ?? h._seasonId,
+    });
   };
 
   // 데이터 로딩 중 — 스켈레톤 골격 표시

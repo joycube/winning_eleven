@@ -346,7 +346,16 @@ export default function HighlightViewerModal({ activeVideo, onClose, authUser, o
             <style>{`button[class*="fixed bottom-"], .scroll-to-top { display: none !important; }`}</style>
             <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { onClose(); viewedPostRef.current = null; }}></div>
             <div className="relative w-full max-w-6xl bg-[#0b0e14] sm:rounded-2xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col md:flex-row h-full sm:h-[85vh]">
-                
+
+                {/* 🛠️ [v2.6] 모바일 닫기 — 영상 우측 상단 항상 노출 (하단 플로팅 요소에 가려지지 않게) */}
+                <button
+                    onClick={() => { onClose(); viewedPostRef.current = null; }}
+                    aria-label="닫기"
+                    className="md:hidden absolute top-2 right-2 z-50 w-9 h-9 rounded-full bg-black/70 border border-slate-700 text-white flex items-center justify-center backdrop-blur-sm active:scale-95"
+                >
+                    <X size={18} />
+                </button>
+
                 <div className="flex-1 flex flex-col bg-black md:bg-transparent h-full md:overflow-y-auto custom-scrollbar">
                     <div className="aspect-video w-full bg-black shrink-0 relative">
                         {getYoutubeId(getValidVideoUrl(activeVideo)) ? (
