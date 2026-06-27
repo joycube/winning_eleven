@@ -119,8 +119,8 @@ export const L2_TopScorers = ({ owners, masterTeams, historyData, seasonRanking 
                   <div className="min-w-0 flex-1">
                     <span className="text-[11px] font-black italic text-white truncate block">{p.name}</span>
                     <div className="flex items-center gap-1 mt-0.5 min-w-0">
-                      <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0" style={{ transform: 'translateZ(0)' }}>
-                        <img src={teamLogo} alt="" className="w-[78%] h-[78%] object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                      <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0 p-px" style={{ transform: 'translateZ(0)' }}>
+                        <img src={teamLogo} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                       </div>
                       <span className="text-[8px] text-slate-400 truncate">{p.team || '-'}</span>
                     </div>

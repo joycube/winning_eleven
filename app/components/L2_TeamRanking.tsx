@@ -99,8 +99,8 @@ export const L2_TeamRanking = ({ owners, historyData, seasonRanking }: Props) =>
                 {/* 정보 영역 — 고정 폭(그래프 시작점 정렬, South Korea 기준 / 길면 말줄임) */}
                 <div className="flex items-center gap-2 shrink-0 w-[136px] sm:w-[156px]">
                   <span className={`text-[13px] font-black italic w-4 text-center shrink-0 ${rankColor}`}>{idx + 1}</span>
-                  <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center overflow-hidden ring-1 ring-slate-700 shrink-0" style={{ transform: 'translateZ(0)' }}>
-                    <img src={t.logo || FALLBACK_IMG} alt="" className="w-[78%] h-[78%] object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                  <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center overflow-hidden ring-1 ring-slate-700 shrink-0 p-[3px]" style={{ transform: 'translateZ(0)' }}>
+                    <img src={t.logo || FALLBACK_IMG} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[11px] font-black italic text-white truncate">{t.name}</div>

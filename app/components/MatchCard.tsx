@@ -147,8 +147,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className={`relative min-h-[110px] rounded-xl border flex flex-col items-center justify-center p-3 transition-all overflow-hidden ${isTbdOrBye ? 'bg-black/40 border-slate-800/50 opacity-60' : 'bg-slate-900/40 border-slate-700/50 group-hover:border-slate-500/50'} ${isWinner ? 'shadow-[inset_0_0_20px_rgba(16,185,129,0.1)] border-emerald-500/30 bg-emerald-900/10' : ''}`}>
           
           <div className="relative mb-3">
-            <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center overflow-hidden ring-2 ring-slate-900 ${isTbdOrBye ? 'bg-slate-800/50' : 'bg-white'}`}>
-              <img src={displayLogo} className={`${isTbdOrBye ? 'w-full h-full' : 'w-[75%] h-[75%]'} object-contain`} alt={name} onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
+            <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center overflow-hidden ring-2 ring-slate-900 ${isTbdOrBye ? 'bg-slate-800/50' : 'bg-white p-1.5'}`}>
+              <img src={displayLogo} className="w-full h-full object-contain" alt={name} onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
             </div>
             {!isTbdOrBye && getTierBadge(master?.tier)}
           </div>

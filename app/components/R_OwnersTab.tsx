@@ -153,8 +153,8 @@ export default function R_OwnersTab({
                                     <LoopingGif src={displayPhoto} className="w-full h-full object-cover" alt="owner" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                                 </div>
                             </div>
-                            <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-2 shadow-2xl border-2 border-yellow-400 z-30 overflow-hidden flex items-center justify-center">
-                                <img src={team.logo || FALLBACK_IMG} className="w-[70%] h-[70%] object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                            <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-white rounded-full p-[14px] shadow-2xl border-2 border-yellow-400 z-30 overflow-hidden flex items-center justify-center">
+                                <img src={team.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                             </div>
                         </div>
                         <div className="flex-1 text-center md:text-left">

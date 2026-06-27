@@ -186,11 +186,11 @@ export const L2_QuickStats = ({ seasons, owners, masterTeams, historyData }: Pro
                   />
                 </div>
               ) : (
-                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center overflow-hidden ring-2 ring-slate-800">
+                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center overflow-hidden ring-2 ring-slate-800 p-1">
                   <img
                     src={s.teamLogo || FALLBACK_IMG}
                     alt=""
-                    className="w-[78%] h-[78%] object-contain"
+                    className="w-full h-full object-contain"
                     onError={(e: any) => { e.target.src = FALLBACK_IMG; }}
                   />
                 </div>

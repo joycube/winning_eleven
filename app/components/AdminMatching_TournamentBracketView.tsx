@@ -54,8 +54,8 @@ export const AdminMatching_TournamentBracketView = ({ knockoutStages, isUserView
             return (
                 <div className={`flex items-center justify-between px-3 py-2.5 h-[50px] transition-colors ${isWinner ? 'bg-gradient-to-r from-emerald-900/40 to-transparent' : ''} ${isTbd ? 'opacity-30' : ''}`}>
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd ? 'bg-slate-700' : 'bg-white'}`}>
-                            <img src={displayLogo} className={`${isTbd ? 'w-full h-full opacity-60' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+                        <div className={`w-8 h-8 rounded-full shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isTbd ? 'bg-slate-700' : 'bg-white p-[5px]'}`}>
+                            <img src={displayLogo} className={`w-full h-full object-contain ${isTbd ? 'opacity-60' : ''}`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
                         </div>
                         <div className="flex flex-col justify-center min-w-0">
                             <span className={`text-[11px] font-black leading-tight truncate uppercase tracking-tight ${isWinner ? 'text-white' : 'text-slate-400'}`}>

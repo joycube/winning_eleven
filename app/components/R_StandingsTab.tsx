@@ -295,8 +295,8 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
         }}
       >
         <div className="relative w-10 h-10 flex-shrink-0">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md'}`}>
-            <img src={displayLogo} className={`${isTbd ? 'w-full h-full' : 'w-[70%] h-[70%]'} object-contain`} alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isTbd ? 'bg-slate-800' : 'bg-white shadow-md p-1.5'}`}>
+            <img src={displayLogo} className="w-full h-full object-contain" alt="" onError={(e:any) => { e.target.src = FALLBACK_IMG; }} />
           </div>
           {!isTbd && getTierBadge(info.tier)}
         </div>
