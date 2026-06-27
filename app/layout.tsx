@@ -1,6 +1,7 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // 🔒 [Day 1 — Next.js 14 호환] viewport/themeColor 를 별도 export 로 분리
 //   Next 14 부터 metadata.viewport / metadata.themeColor 는 deprecated → 새 Viewport export 사용
@@ -48,6 +49,7 @@ export default function RootLayout({
     <html lang="ko">
       <body className="antialiased bg-[#020617] text-white">
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
