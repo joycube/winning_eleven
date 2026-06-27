@@ -2,15 +2,15 @@
 
 import React, { useMemo, useState } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
-import { useHistoryRecords } from '../hooks/useHistoryRecords';
-import { useLeagueStats } from '../hooks/useLeagueStats';
-import { resolveCurrentSeasonId } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
   owners: Owner[];
   masterTeams: MasterTeam[];
   viewSeasonId: number;
+  // 🛠️ [v2.5 성능] 무거운 집계는 부모(대시보드)에서 1회 계산해 전달받음
+  historyData?: any;       // 누적(ALL) — useHistoryRecords 결과
+  seasonRanking?: any;     // 시즌 — useLeagueStats(activeRankingData) 결과
 }
 
 const findOwnerProfile = (owners: Owner[], key?: string, name?: string) => {
@@ -39,20 +39,12 @@ const findTeamMaster = (masterTeams: MasterTeam[], teamName: string) => {
  *  - 누적: history_records.players
  *  - 각 행: 선수명 + 팀 엠블럼 + 팀명 + 오너 프로필 + 오너이름 + 수평바 + 골수
  */
-export const L2_TopScorers = ({ seasons, owners, masterTeams }: Props) => {
+export const L2_TopScorers = ({ owners, masterTeams, historyData, seasonRanking }: Props) => {
   const [mode, setMode] = useState<'SEASON' | 'ALL'>('SEASON');
-  const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
-
-  // [v2.3 전면 교체] 시즌 득점왕을 매치에서 직접 재계산하지 않고 공식 엔진 결과를 사용.
-  //   - 선수-팀-오너 키를 정규화해 집계 → 동일 선수가 표기 차이로 쪼개지지 않음
-  //   - 오너는 팀의 정규화된 오너로 귀속 → 매치별 오너 오타에 영향 없음
-  //   대상 시즌은 Hero/TeamRanking 과 동일하게 "현재 진행 시즌"으로 통일.
-  const currentSeasonId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
-  const { activeRankingData } = useLeagueStats(seasons, currentSeasonId, owners, []);
 
   const players = useMemo(() => {
     if (mode === 'SEASON') {
-      // 공식 엔진 결과 — 정규 + 플레이오프 골을 선수별로 합산 후 재정렬.
+      // 공식 엔진 결과(부모 전달) — 정규 + 플레이오프 골을 선수별로 합산 후 재정렬.
       const merged = new Map<string, any>();
       const addAll = (list: any[]) => (list || []).forEach((p: any) => {
         const key = `${p.name}|${p.team}|${p.owner}`;
@@ -61,8 +53,8 @@ export const L2_TopScorers = ({ seasons, owners, masterTeams }: Props) => {
         }
         merged.get(key).goals += (Number(p.goals) || 0);
       });
-      addAll(activeRankingData?.regularPlayers || []);
-      addAll(activeRankingData?.playoffPlayers || []);
+      addAll(seasonRanking?.regularPlayers || []);
+      addAll(seasonRanking?.playoffPlayers || []);
       return Array.from(merged.values())
         .sort((a: any, b: any) => b.goals - a.goals)
         .slice(0, 8);
@@ -80,7 +72,7 @@ export const L2_TopScorers = ({ seasons, owners, masterTeams }: Props) => {
           goals: p.goals,
         }));
     }
-  }, [mode, activeRankingData, historyData]);
+  }, [mode, seasonRanking, historyData]);
 
   const maxGoals = players.length > 0 ? Math.max(...players.map((p: any) => p.goals || 0)) : 1;
 

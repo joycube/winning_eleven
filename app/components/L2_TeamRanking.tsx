@@ -2,15 +2,15 @@
 
 import React, { useMemo, useState } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
-import { useHistoryRecords } from '../hooks/useHistoryRecords';
-import { useLeagueStats } from '../hooks/useLeagueStats';
-import { resolveCurrentSeasonId } from './L2_currentSeason';
 
 interface Props {
   seasons: Season[];
   owners: Owner[];
   masterTeams: MasterTeam[];
   viewSeasonId: number;
+  // 🛠️ [v2.5 성능] 무거운 집계는 부모(대시보드)에서 1회 계산해 전달받음
+  historyData?: any;       // 누적(ALL) — useHistoryRecords 결과
+  seasonRanking?: any;     // 시즌 — useLeagueStats(activeRankingData) 결과
 }
 
 const findOwnerProfile = (owners: Owner[], key?: string, name?: string) => {
@@ -31,22 +31,13 @@ const findOwnerProfile = (owners: Owner[], key?: string, name?: string) => {
  *  - 누적: history_records.teams
  *  - 각 행: 팀 로고 + 팀명 + 오너 프로필 + 오너이름 + 수평바 + 점수
  */
-export const L2_TeamRanking = ({ seasons, owners, masterTeams }: Props) => {
+export const L2_TeamRanking = ({ owners, historyData, seasonRanking }: Props) => {
   const [mode, setMode] = useState<'SEASON' | 'ALL'>('SEASON');
-  const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
-
-  // [v2.3 전면 교체] 시즌 순위를 매치에서 직접 재계산하지 않고 공식 엔진 결과를 사용.
-  //   - 팀은 season.teams(고정 로스터) 기반 → 같은 팀 중복 버그 원천 차단
-  //   - 오너는 정규화(getCanonicalOwnerName) → 매치별 표기 차이로 오너가 틀어지지 않음
-  //   - 플레이오프/녹아웃 매치는 리그 순위에서 제외 (엔진 처리)
-  //   대상 시즌은 Hero 와 동일하게 "현재 진행 시즌"으로 통일.
-  const currentSeasonId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
-  const { activeRankingData } = useLeagueStats(seasons, currentSeasonId, owners, []);
 
   const teams = useMemo(() => {
     if (mode === 'SEASON') {
-      // 공식 엔진 결과(현재 시즌 순위표) — 이미 정렬·정규화·중복제거 완료
-      return (activeRankingData?.teams || []).slice(0, 8).map((t: any) => ({
+      // 공식 엔진 결과(현재 시즌 순위표) — 이미 정렬·정규화·중복제거 완료 (부모에서 전달)
+      return (seasonRanking?.teams || []).slice(0, 8).map((t: any) => ({
         name: t.name,
         logo: t.logo,
         ownerName: t.ownerName,
@@ -66,7 +57,7 @@ export const L2_TeamRanking = ({ seasons, owners, masterTeams }: Props) => {
         gf: t.gf, ga: t.ga,
       }));
     }
-  }, [mode, activeRankingData, historyData]);
+  }, [mode, seasonRanking, historyData]);
 
   const maxPts = teams.length > 0 ? Math.max(...teams.map((t: any) => t.pts || 0)) : 1;
 

@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useHistoryRecords } from '../hooks/useHistoryRecords';
+import { useLeagueStats } from '../hooks/useLeagueStats';
+import { resolveCurrentSeasonId } from './L2_currentSeason';
 
 import { L2_HeroBanner } from './L2_HeroBanner';
 import { L2_QuickStats } from './L2_QuickStats';
@@ -65,6 +68,13 @@ export default function L2_LockerRoomDashboard({
   }, []);
   const isLoading = !skeletonTimedOut && (!seasons || seasons.length === 0);
 
+  // 🛠️ [v2.5 성능] 무거운 집계 훅을 대시보드에서 1회만 실행 → 자식들에 props 전달.
+  //   기존: TeamRanking/TopScorers/QuickStats 가 각자 useHistoryRecords(Firestore 2컬렉션 fetch)·useLeagueStats 를
+  //         중복 호출 → 락커룸 1렌더에 동일 계산이 3회/2회 반복(메인스레드 블로킹·메모리 누적·GIF 끊김·간헐 크래시).
+  const { historyData: hofData } = useHistoryRecords(owners, seasons, masterTeams);
+  const seasonRankingId = useMemo(() => resolveCurrentSeasonId(seasons), [seasons]);
+  const { activeRankingData: seasonRanking } = useLeagueStats(seasons, seasonRankingId, owners, []);
+
   // match_comments 실시간 구독 (MatchTalkCarousel 용)
   useEffect(() => {
     const q = query(collection(db, 'match_comments'));
@@ -121,6 +131,7 @@ export default function L2_LockerRoomDashboard({
         owners={owners}
         masterTeams={masterTeams}
         viewSeasonId={viewSeasonId}
+        historyData={hofData}
       />
 
       {/* 3+4. NEXT / LAST 캐러셀 — PC 2열, 모바일 1열 */}
@@ -156,12 +167,16 @@ export default function L2_LockerRoomDashboard({
           owners={owners}
           masterTeams={masterTeams}
           viewSeasonId={viewSeasonId}
+          historyData={hofData}
+          seasonRanking={seasonRanking}
         />
         <L2_TopScorers
           seasons={seasons}
           owners={owners}
           masterTeams={masterTeams}
           viewSeasonId={viewSeasonId}
+          historyData={hofData}
+          seasonRanking={seasonRanking}
         />
       </div>
 

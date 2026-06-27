@@ -2,7 +2,6 @@
 
 import React, { useMemo } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
-import { useHistoryRecords } from '../hooks/useHistoryRecords';
 import { resolveCurrentSeason } from './L2_currentSeason';
 
 interface Props {
@@ -10,6 +9,8 @@ interface Props {
   owners: Owner[];
   masterTeams: MasterTeam[];
   viewSeasonId: number;
+  // 🛠️ [v2.5 성능] 누적 통계는 부모(대시보드)에서 1회 계산해 전달받음 (useHistoryRecords 결과)
+  historyData?: any;
 }
 
 const colorMap: Record<string, { ring: string; label: string; sub: string }> = {
@@ -26,9 +27,7 @@ const colorMap: Record<string, { ring: string; label: string; sub: string }> = {
  *  3. 시즌 득점왕 (선수) — 팀 엠블럼
  *  4. 누적 득점왕 (선수) — 팀 엠블럼
  */
-export const L2_QuickStats = ({ seasons, owners, masterTeams }: Props) => {
-  const { historyData } = useHistoryRecords(owners, seasons, masterTeams);
-
+export const L2_QuickStats = ({ seasons, owners, masterTeams, historyData }: Props) => {
   const stats = useMemo(() => {
     // 🛠️ [v2.3] "시즌" 통계도 Hero/Ranking 과 동일한 현재 시즌으로 통일 (드롭다운 선택과 무관)
     const current = resolveCurrentSeason(seasons);
