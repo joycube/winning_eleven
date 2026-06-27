@@ -24,8 +24,17 @@ export const LoopingGif = ({ src, alt = '', className, onError, loopMs = 3000 }:
 
   useEffect(() => {
     if (!isGif) return;
-    const id = setInterval(() => setTick((t) => t + 1), loopMs);
-    return () => clearInterval(id);
+    // 여러 아바타가 동시에 remount 돼 깜빡이지 않도록 시작 시점을 분산(stagger)
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const startDelay = Math.random() * loopMs;
+    const start = setTimeout(() => {
+      setTick((t) => t + 1);
+      interval = setInterval(() => setTick((t) => t + 1), loopMs);
+    }, startDelay);
+    return () => {
+      clearTimeout(start);
+      if (interval) clearInterval(interval);
+    };
   }, [isGif, loopMs]);
 
   return (

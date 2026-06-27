@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
+import LoopingGif from './LoopingGif';
 
 interface Props {
   seasons: Season[];
@@ -138,7 +139,7 @@ export const L2_TopScorers = ({ owners, masterTeams, historyData, seasonRanking 
                 </div>
                 {/* 오너 — 모바일에서도 노출 (사진 + 이름) */}
                 <div className="flex items-center gap-1 shrink-0">
-                  <img src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                  <LoopingGif src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                   <span className="text-[8px] sm:text-[9px] text-slate-400 whitespace-nowrap max-w-[60px] sm:max-w-none truncate">{ownerInfo.nickname}</span>
                 </div>
                 <span className={`text-[12px] font-black italic w-8 text-right tabular-nums ${rankColor}`}>
