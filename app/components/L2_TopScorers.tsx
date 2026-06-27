@@ -113,20 +113,20 @@ export const L2_TopScorers = ({ owners, masterTeams, historyData, seasonRanking 
             const teamLogo = master?.logo || p.teamLogo || FALLBACK_IMG;
             return (
               <div key={`${p.name}_${p.team}_${idx}`} className="flex items-center gap-2 sm:gap-3 p-2 bg-slate-800/50 rounded-lg">
-                <span className={`text-[13px] font-black italic w-4 text-center ${rankColor}`}>{idx + 1}</span>
-                {/* 선수 + 팀 */}
-                <div className="flex items-center gap-2 min-w-0" style={{ flex: '0 0 auto', maxWidth: '40%' }}>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[11px] font-black italic text-white truncate">{p.name}</span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0">
+                {/* 정보 영역 — 고정 폭(그래프 시작점 정렬, 길면 말줄임) */}
+                <div className="flex items-center gap-2 shrink-0 w-[108px] sm:w-[128px]">
+                  <span className={`text-[13px] font-black italic w-4 text-center shrink-0 ${rankColor}`}>{idx + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[11px] font-black italic text-white truncate block">{p.name}</span>
+                    <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                      <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0" style={{ transform: 'translateZ(0)' }}>
                         <img src={teamLogo} alt="" className="w-[78%] h-[78%] object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                       </div>
                       <span className="text-[8px] text-slate-400 truncate">{p.team || '-'}</span>
                     </div>
                   </div>
                 </div>
-                {/* 바 */}
+                {/* 그래프 영역 */}
                 <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full ${
@@ -137,12 +137,12 @@ export const L2_TopScorers = ({ owners, masterTeams, historyData, seasonRanking 
                     style={{ width: `${Math.max(5, (p.goals / Math.max(maxGoals, 1)) * 100)}%` }}
                   />
                 </div>
-                {/* 오너 — 모바일에서도 노출 (사진 + 이름) */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <LoopingGif src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
-                  <span className="text-[8px] sm:text-[9px] text-slate-400 whitespace-nowrap max-w-[60px] sm:max-w-none truncate">{ownerInfo.nickname}</span>
+                {/* 오너 — 고정 폭(그래프 끝점 정렬) */}
+                <div className="flex items-center gap-1 shrink-0 w-[58px] sm:w-[78px] justify-end">
+                  <LoopingGif src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800 shrink-0" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                  <span className="text-[8px] sm:text-[9px] text-slate-400 truncate">{ownerInfo.nickname}</span>
                 </div>
-                <span className={`text-[12px] font-black italic w-8 text-right tabular-nums ${rankColor}`}>
+                <span className={`text-[12px] font-black italic w-8 text-right tabular-nums shrink-0 ${rankColor}`}>
                   {p.goals}<span className="text-[8px] opacity-60 ml-0.5">⚽</span>
                 </span>
               </div>

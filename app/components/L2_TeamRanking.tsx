@@ -96,21 +96,21 @@ export const L2_TeamRanking = ({ owners, historyData, seasonRanking }: Props) =>
             const ownerInfo = findOwnerProfile(owners, t.ownerUid, t.ownerName);
             return (
               <div key={`${t.name}_${idx}`} className="flex items-center gap-2 sm:gap-3 p-2 bg-slate-800/50 rounded-lg">
-                <span className={`text-[13px] font-black italic w-4 text-center ${rankColor}`}>{idx + 1}</span>
-                <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center overflow-hidden ring-1 ring-slate-700 shrink-0">
-                  <img src={t.logo || FALLBACK_IMG} alt="" className="w-[78%] h-[78%] object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
-                </div>
-                <div className="min-w-0 hidden sm:block">
-                  <div className="text-[11px] font-black italic text-white truncate">{t.name}</div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <LoopingGif src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
-                    <span className="text-[9px] text-slate-400 truncate">{ownerInfo.nickname}</span>
+                {/* 정보 영역 — 고정 폭(그래프 시작점 정렬, South Korea 기준 / 길면 말줄임) */}
+                <div className="flex items-center gap-2 shrink-0 w-[136px] sm:w-[156px]">
+                  <span className={`text-[13px] font-black italic w-4 text-center shrink-0 ${rankColor}`}>{idx + 1}</span>
+                  <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center overflow-hidden ring-1 ring-slate-700 shrink-0" style={{ transform: 'translateZ(0)' }}>
+                    <img src={t.logo || FALLBACK_IMG} alt="" className="w-[78%] h-[78%] object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-black italic text-white truncate">{t.name}</div>
+                    <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                      <LoopingGif src={ownerInfo.photo} alt="" className="w-3.5 h-3.5 rounded-full object-cover bg-slate-700 border border-slate-800 shrink-0" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
+                      <span className="text-[9px] text-slate-400 truncate">{ownerInfo.nickname}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="sm:hidden flex flex-col min-w-0">
-                  <span className="text-[10px] font-black italic text-white truncate">{t.name}</span>
-                  <span className="text-[8px] text-slate-400 truncate">{ownerInfo.nickname}</span>
-                </div>
+                {/* 그래프 영역 */}
                 <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full ${
@@ -121,7 +121,7 @@ export const L2_TeamRanking = ({ owners, historyData, seasonRanking }: Props) =>
                     style={{ width: `${Math.max(5, (t.pts / Math.max(maxPts, 1)) * 100)}%` }}
                   />
                 </div>
-                <span className={`text-[12px] font-black italic w-8 text-right tabular-nums ${rankColor}`}>{t.pts}</span>
+                <span className={`text-[12px] font-black italic w-8 text-right tabular-nums shrink-0 ${rankColor}`}>{t.pts}</span>
               </div>
             );
           })}
