@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
 import { resolveCurrentSeason } from './L2_currentSeason';
+import LoopingGif from './LoopingGif';
 
 interface Props {
   seasons: Season[];
@@ -177,7 +178,7 @@ export const L2_QuickStats = ({ seasons, owners, masterTeams, historyData }: Pro
             <div className="shrink-0">
               {s.type === 'OWNER' ? (
                 <div className={`w-9 h-9 rounded-full p-[2px] bg-gradient-to-br ${c.ring}`}>
-                  <img
+                  <LoopingGif
                     src={s.imageUrl || FALLBACK_IMG}
                     alt=""
                     className="w-full h-full rounded-full object-cover bg-slate-700"

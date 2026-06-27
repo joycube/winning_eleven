@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { ShieldCheck, User, CheckCircle2, TrendingUp, Trophy, Coins, Activity, Clock, Swords, Flame, Skull, Crosshair, Settings, Users, Sparkles, ChevronRight } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import { useHistoryRecords } from '../hooks/useHistoryRecords';
+import LoopingGif from './LoopingGif';
 // 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
 import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
 
@@ -263,7 +264,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                 </p>
 
                 <div className="bg-[#0B1120] p-4 rounded-xl border border-slate-800 flex items-center justify-center gap-3 shadow-inner">
-                    <img src={user.photoURL} alt="profile" className="w-11 h-11 rounded-full border border-slate-700 shadow-sm" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                    <LoopingGif src={user.photoURL} alt="profile" className="w-11 h-11 rounded-full border border-slate-700 shadow-sm" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                     <div className="flex flex-col text-left">
                         <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mb-0.5">대기 중인 계정</span>
                         <span className="text-sm font-black text-white truncate max-w-[180px]">{user.displayName || user.email}</span>
@@ -636,7 +637,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                         <div className="relative">
                             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-slate-600 via-white/80 to-slate-800 p-0.5 shadow-2xl overflow-hidden flex items-center justify-center relative z-10">
                                 <div className="w-full h-full rounded-full bg-[#050b14] p-1 flex items-center justify-center overflow-hidden">
-                                    <img src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
+                                    <LoopingGif src={profileImage} alt="logo" className="w-full h-full object-cover rounded-full" onError={(e:any)=>{e.target.onerror=null; e.target.src=FALLBACK_IMG;}} />
                                 </div>
                             </div>
                             <div className={`absolute -bottom-1 -right-1 bg-gradient-to-br text-white p-1.5 rounded-full border-[3px] border-[#020617] z-20 ${badgeGlow}`}>

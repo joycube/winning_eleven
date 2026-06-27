@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Season, Owner, MasterTeam, FALLBACK_IMG } from '../types';
+import LoopingGif from './LoopingGif';
 
 interface Props {
   seasons: Season[];
@@ -142,7 +143,7 @@ export const L2_OwnersForm = ({ seasons, owners }: Props) => {
         {ownerStats.map((o) => (
           <div key={o.uid} className="bg-slate-800/50 rounded-lg p-3 flex items-center gap-3">
             {/* 좌측: 큰 프로필 사진 (40px) */}
-            <img
+            <LoopingGif
               src={o.photo}
               alt=""
               className="w-10 h-10 rounded-full object-cover bg-slate-700 ring-2 ring-purple-500/40 shrink-0"
