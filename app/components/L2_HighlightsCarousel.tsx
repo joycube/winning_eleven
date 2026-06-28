@@ -105,22 +105,26 @@ export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick, 
           <button
             key={`${h._seasonId}_${h.id || idx}`}
             onClick={() => onHighlightClick && onHighlightClick(h)}
-            className="relative shrink-0 w-[150px] sm:w-[160px] rounded-xl overflow-hidden border border-slate-800 hover:border-red-500/60 snap-start text-left group transition"
+            className="relative shrink-0 w-[158px] sm:w-[168px] rounded-2xl overflow-hidden border border-blue-900/50 hover:border-yellow-400/60 snap-start text-left group transition"
+            style={{ backgroundColor: '#1c1cc0' }}
           >
+            {/* 투톤 배경 — 큰 반원(밝은 형광 블루)으로 색 구분 (그라데이션 X) */}
+            <div
+              aria-hidden="true"
+              className="absolute left-1/2 -translate-x-1/2 rounded-full"
+              style={{ width: '240%', aspectRatio: '1', top: '40%', backgroundColor: '#3a5bff' }}
+            />
+
             {/* 콘텐츠 */}
             <div className="relative flex flex-col">
-              {/* 상단 밴드: eFootball 브랜드 배경 + 시즌/경기 (중앙) */}
-              <div className="relative h-[52px] flex flex-col items-center justify-center px-2.5 overflow-hidden">
-                <img src="/icon.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.45 }} />
-                <div className="absolute inset-0 bg-slate-950/55" />
-                <div className="relative text-center min-w-0 w-full">
-                  <div className="text-[10px] font-black italic text-white truncate drop-shadow">🏆 {h._seasonName}</div>
-                  <div className="text-[9px] text-white/75 truncate mt-0.5 drop-shadow">{h.matchLabel || '경기'}</div>
-                </div>
+              {/* 상단: 시즌(옐로) + 게임(화이트) — 하단보다 높게 */}
+              <div className="px-3 pt-3 pb-2.5 text-center min-w-0">
+                <div className="text-[11px] font-black italic truncate drop-shadow" style={{ color: '#ffe600' }}>🏆 {h._seasonName}</div>
+                <div className="text-[9px] font-semibold text-white truncate mt-0.5 drop-shadow">{h.matchLabel || '경기'}</div>
               </div>
 
-              {/* 영상 — 가운데 기준 확장(꽉 참), 16:9 썸네일이라 검은 띠 없음 */}
-              <div className="relative h-[150px] sm:h-[160px] bg-black">
+              {/* 영상 — 풀폭, 16:9 썸네일이라 검은 레터박스 없음 (좌우 여백으로 반원 곡선 노출) */}
+              <div className="relative h-[150px] sm:h-[158px] bg-black mx-2 rounded-lg overflow-hidden">
                 {h._thumbnail ? (
                   <img
                     src={h._thumbnail}
@@ -132,22 +136,19 @@ export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick, 
                   <div className="w-full h-full bg-gradient-to-br from-red-900/40 to-slate-900" />
                 )}
                 <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition">
-                  <div className="w-10 h-10 rounded-full bg-red-600/95 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-110 transition">▶</div>
+                  <div className="w-11 h-11 rounded-full bg-red-600/95 text-white flex items-center justify-center text-lg shadow-lg group-hover:scale-110 transition">▶</div>
                 </div>
-                <div className="absolute top-1.5 right-1.5 bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">YT</div>
               </div>
 
-              {/* 하단 밴드: eFootball 브랜드 배경 + 양옆 엠블럼 + 스코어 */}
-              <div className="relative h-[52px] flex items-center justify-center gap-1.5 px-2 overflow-hidden">
-                <img src="/icon.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.45 }} />
-                <div className="absolute inset-0 bg-slate-950/55" />
-                <span className="relative w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
+              {/* 하단: 엠블럼 + 팀명 + 점수 — 상단보다 낮게 */}
+              <div className="px-2 pt-2 pb-2.5 flex items-center justify-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
                   <img src={findTeamLogo(masterTeams, h.home, h.homeLogo)} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                 </span>
-                <span className="relative text-[10px] font-black italic text-white truncate min-w-0 drop-shadow">
-                  {h.home} <span className="text-red-300">{h.homeScore}:{h.awayScore}</span> {h.away}
+                <span className="text-[10px] font-black italic text-white truncate min-w-0 drop-shadow">
+                  {h.home} <span style={{ color: '#ffe600' }}>{h.homeScore}:{h.awayScore}</span> {h.away}
                 </span>
-                <span className="relative w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
+                <span className="w-4 h-4 rounded-full bg-white p-0.5 overflow-hidden shrink-0 flex items-center justify-center" style={{ transform: 'translateZ(0)' }}>
                   <img src={findTeamLogo(masterTeams, h.away, h.awayLogo)} alt="" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = FALLBACK_IMG; }} />
                 </span>
               </div>
