@@ -131,6 +131,9 @@ export default function L2_LockerRoomDashboard({
 
   return (
     <div className="w-full">
+      {/* 0. HALL OF CHAMPIONS — 맨 위로 이동 */}
+      <ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams} historyRecords={historyRecords} />
+
       {/* 1. Hero */}
       <L2_HeroBanner seasons={seasons} viewSeasonId={viewSeasonId} />
 
@@ -165,9 +168,6 @@ export default function L2_LockerRoomDashboard({
           onMatchClick={handleMatchClick}
         />
       </div>
-
-      {/* 🛠️ [v2 픽스] HALL OF CHAMPIONS — 기존 ChampionsCarousel 복원 */}
-      <ChampionsCarousel seasons={seasons} owners={owners} masterTeams={masterTeams} historyRecords={historyRecords} />
 
       {/* 5+6. Team Ranking + Top Scorers — PC 2열, 모바일 1열 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
