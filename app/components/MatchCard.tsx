@@ -101,7 +101,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     else if (t === 'B') colors = 'bg-amber-600 text-white border-amber-400';
     
     return (
-      <div className={`absolute -bottom-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-0.5 rounded-full border-2 border-slate-950 font-black text-[9px] shadow-lg z-20 ${colors}`}>
+      <div className={`absolute -bottom-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-0.5 rounded-full border-2 border-emerald-900 font-black text-[9px] shadow-lg z-20 ${colors}`}>
         {t}
       </div>
     );
@@ -147,7 +147,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
       <div className={`relative min-h-[90px] rounded-xl flex flex-col items-center justify-center p-2 transition-all overflow-hidden ${isTbdOrBye ? 'opacity-50' : ''} ${isWinner ? 'bg-black/15' : ''}`}>
 
           <div className="relative mb-2">
-            <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center overflow-hidden ring-2 ring-slate-900 ${isTbdOrBye ? 'bg-slate-800/50' : 'bg-white p-1.5'}`}>
+            <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center overflow-hidden ${isTbdOrBye ? 'bg-slate-800/50' : 'bg-white p-1.5'}`}>
               <img src={displayLogo} className="w-full h-full object-contain" alt={name} onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
             </div>
             {!isTbdOrBye && getTierBadge(master?.tier)}
@@ -226,7 +226,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
                           <div className="bg-red-600 p-1.5 rounded-full cursor-pointer hover:bg-red-500 transition-colors shadow-[0_0_10px_rgba(220,38,38,0.4)] pointer-events-auto" onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }} title="하이라이트 영상 보기">
                               <svg width="10" height="10" viewBox="0 0 12 12" className="fill-white"><polygon points="3,2 3,10 10,6" /></svg>
                           </div>
-                      ) : <div className="w-[1px] h-3 bg-slate-800"></div>}
+                      ) : <div className="w-px h-4 bg-white/20 rounded-full"></div>}
                     </div>
                     <div className="flex flex-col text-left w-full min-w-0 pl-2">
                         {(match.awayScorers || []).map((s:any, idx:number)=>(
