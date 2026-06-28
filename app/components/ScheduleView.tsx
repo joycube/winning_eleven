@@ -729,8 +729,8 @@ export const ScheduleView = ({
                                                         <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
                                                             <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                                 <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
-                                                                <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             </div>
+                                                            <div className="text-right text-[8px] text-slate-500/80 font-bold italic pr-3 pt-1">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                             <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                                         </div>
                                                     );
@@ -822,8 +822,8 @@ export const ScheduleView = ({
                                                     <div key={m.id} ref={(el) => { matchRefs.current[m.id] = el; }} className="group/cell flex flex-col mb-2 transition-transform duration-300 hover:-translate-y-0.5">
                                                         <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} />
-                                                            <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
+                                                        <div className="text-right text-[8px] text-slate-500/80 font-bold italic pr-3 pt-1">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                                     </div>
                                                 );

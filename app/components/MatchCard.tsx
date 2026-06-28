@@ -144,9 +144,9 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     const isWinner = isCompleted && Number(score) > Number(oppScore);
 
     return (
-      <div className={`relative min-h-[110px] rounded-xl flex flex-col items-center justify-center p-3 transition-all overflow-hidden ${isTbdOrBye ? 'opacity-50' : ''} ${isWinner ? 'bg-black/15' : ''}`}>
-          
-          <div className="relative mb-3">
+      <div className={`relative min-h-[90px] rounded-xl flex flex-col items-center justify-center p-2 transition-all overflow-hidden ${isTbdOrBye ? 'opacity-50' : ''} ${isWinner ? 'bg-black/15' : ''}`}>
+
+          <div className="relative mb-2">
             <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center overflow-hidden ring-2 ring-slate-900 ${isTbdOrBye ? 'bg-slate-800/50' : 'bg-white p-1.5'}`}>
               <img src={displayLogo} className="w-full h-full object-contain" alt={name} onError={(e) => { e.currentTarget.src = FALLBACK_IMG; }} />
             </div>
@@ -174,31 +174,31 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
   };
 
   return (
-    <div onClick={() => onClick(match)} className="group relative overflow-hidden p-4 sm:p-5 rounded-3xl border border-emerald-800/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-emerald-400/60 cursor-pointer flex flex-col" style={{ backgroundColor: '#064e3b' }}>
+    <div onClick={() => onClick(match)} className="group relative overflow-hidden p-3.5 sm:p-4 rounded-3xl border border-emerald-800/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-emerald-400/60 cursor-pointer flex flex-col" style={{ backgroundColor: '#064e3b' }}>
 
         {/* 투톤 — 큰 반원(형광 에메랄드) */}
-        <div aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 rounded-full pointer-events-none" style={{ width: '130%', aspectRatio: '1', top: '42%', backgroundColor: '#10b981' }} />
+        <div aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 rounded-full pointer-events-none" style={{ width: '135%', aspectRatio: '1', top: '46%', backgroundColor: '#0a8f63' }} />
 
         {/* 내용 (반원 위로) */}
         <div className="relative z-10 flex flex-col flex-1">
 
         {/* 상단 라운드 라벨 — 하이라이트 배지 */}
-        <div className="text-center mb-4 pb-2">
+        <div className="text-center mb-3">
             <span className="inline-block bg-emerald-200 text-emerald-900 text-[10px] font-black italic tracking-wide uppercase px-3 py-1 rounded-full shadow">
                 🏆 {match.matchLabel || 'Match Fixture'}
             </span>
         </div>
 
         {/* 중앙 2분할 매치 카드 영역 */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-stretch mb-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 relative items-stretch mb-3">
             
             {/* 🛠️ [C-3 정제] 중앙 스코어/VS — 박스 테두리 제거, 점수만 큼직하게 떠 있는 형태 */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center justify-center pointer-events-none">
                 {isCompleted ? (
-                    <div className="flex items-baseline gap-2 px-2.5 py-1 rounded-lg bg-black/45 backdrop-blur-sm">
-                        <span className={`text-base font-black italic tracking-tighter ${Number(match.homeScore) > Number(match.awayScore) ? 'text-yellow-300' : 'text-white'}`}>{match.homeScore}</span>
-                        <span className="text-[10px] text-emerald-200 font-black">:</span>
-                        <span className={`text-base font-black italic tracking-tighter ${Number(match.awayScore) > Number(match.homeScore) ? 'text-yellow-300' : 'text-white'}`}>{match.awayScore}</span>
+                    <div className="flex items-baseline gap-2 px-3 py-1 rounded-lg bg-black/45 backdrop-blur-sm">
+                        <span className={`text-2xl font-black italic tracking-tighter ${Number(match.homeScore) > Number(match.awayScore) ? 'text-yellow-300' : 'text-white'}`}>{match.homeScore}</span>
+                        <span className="text-xs text-emerald-200 font-black">:</span>
+                        <span className={`text-2xl font-black italic tracking-tighter ${Number(match.awayScore) > Number(match.homeScore) ? 'text-yellow-300' : 'text-white'}`}>{match.awayScore}</span>
                     </div>
                 ) : (
                     <div className="bg-black/45 backdrop-blur-sm px-2 py-1 rounded-md border border-white/20 text-[9px] font-black text-emerald-100 italic shadow-lg">VS</div>
@@ -263,14 +263,14 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
         {showGraph && (
             <div className="mt-auto space-y-1.5 border-t border-white/15 pt-3">
                 <div className="flex justify-between items-end px-1">
-                  <span className="text-[9px] font-black text-yellow-300">{prediction.hRate}%</span>
-                  <span className="text-[8px] font-bold text-emerald-100 tracking-tighter italic">무 {prediction.dRate}%</span>
-                  <span className="text-[9px] font-black text-sky-300">{prediction.aRate}%</span>
+                  <span className="text-[10px] font-black text-amber-300">{prediction.hRate}%</span>
+                  <span className="text-[9px] font-bold text-slate-200 tracking-tighter italic">무 {prediction.dRate}%</span>
+                  <span className="text-[10px] font-black text-sky-300">{prediction.aRate}%</span>
                 </div>
-                <div className="relative h-2 bg-black/40 rounded-full overflow-hidden flex border border-white/15 shadow-inner">
-                    <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-emerald-500 transition-all duration-1000 ease-out" />
-                    <div style={{ width: isLoaded ? `${prediction.dRate}%` : '0%' }} className="h-full bg-slate-600 transition-all duration-1000 ease-out" />
-                    <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-blue-500 transition-all duration-1000 ease-out" />
+                <div className="relative h-3 bg-black/40 rounded-full overflow-hidden flex shadow-inner">
+                    <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-amber-400 transition-all duration-1000 ease-out" />
+                    <div style={{ width: isLoaded ? `${prediction.dRate}%` : '0%' }} className="h-full bg-slate-400 transition-all duration-1000 ease-out" />
+                    <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-sky-500 transition-all duration-1000 ease-out" />
                 </div>
             </div>
         )}
