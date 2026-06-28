@@ -177,7 +177,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
     <div onClick={() => onClick(match)} className="group relative overflow-hidden p-3.5 sm:p-4 rounded-3xl border border-emerald-800/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-emerald-400/60 cursor-pointer flex flex-col" style={{ backgroundColor: '#064e3b' }}>
 
         {/* 투톤 — 큰 반원(형광 에메랄드) */}
-        <div aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 rounded-full pointer-events-none" style={{ width: '135%', aspectRatio: '1', top: '46%', backgroundColor: '#0a8f63' }} />
+        <div aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 rounded-full pointer-events-none" style={{ width: '280%', aspectRatio: '1', top: '40%', backgroundColor: '#0a8f63' }} />
 
         {/* 내용 (반원 위로) */}
         <div className="relative z-10 flex flex-col flex-1">
