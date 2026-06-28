@@ -539,7 +539,7 @@ export const CupSchedule = ({
                                                         <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                             <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                             {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">ANALYSIS:</span>{m.commentary}</p></div>)}
-                                                            <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
+                                                            <div className="block text-right text-[8px] text-slate-500/80 font-bold italic px-3 pb-2 pt-1">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                         </div>
                                                         <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                                     </div>
@@ -578,7 +578,7 @@ export const CupSchedule = ({
                                                 <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                     <MatchCard match={safeMatch} onClick={() => !isPlaceholder && onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && !isPlaceholder && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic"><span className="text-emerald-500 font-bold mr-1">COMMENTARY:</span>{m.commentary}</p></div>)}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
+                                                    <div className="block text-right text-[8px] text-slate-500/80 font-bold italic px-3 pb-2 pt-1">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
                                                 {!isPlaceholder && <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />}
                                             </div>
@@ -610,7 +610,7 @@ export const CupSchedule = ({
                                                 <div className="relative rounded-3xl bg-[#0f172a] shadow-lg transition-shadow duration-300 group-hover/cell:shadow-[0_20px_50px_-15px_rgba(16,185,129,0.35)] z-10">
                                                     <MatchCard match={safeMatch} onClick={() => onMatchClick(safeMatch)} activeRankingData={activeRankingData} historyData={historyData} masterTeams={masterTeams} owners={owners} />
                                                     {m.commentary && (<div className="mx-4 mb-4 p-3 bg-slate-900/50 border border-slate-800 rounded-xl"><p className="text-[11px] text-slate-400 leading-relaxed italic">{m.commentary}</p></div>)}
-                                                    <div className="absolute bottom-2 right-3 text-[8px] text-slate-500/80 font-bold italic pointer-events-none z-10">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
+                                                    <div className="block text-right text-[8px] text-slate-500/80 font-bold italic px-3 pb-2 pt-1">{`시즌 '${pureSeasonName}' / ${getTodayFormatted()}`}</div>
                                                 </div>
                                                 <MatchCommentSnippet matchId={safeMatch.id} onClick={() => onMatchClick(safeMatch)} owners={owners} />
                                             </div>

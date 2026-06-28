@@ -195,7 +195,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
             {/* 🛠️ [C-3 정제] 중앙 스코어/VS — 박스 테두리 제거, 점수만 큼직하게 떠 있는 형태 */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center justify-center pointer-events-none">
                 {isCompleted ? (
-                    <div className="flex items-baseline gap-2 px-3 py-1 rounded-lg bg-black/45 backdrop-blur-sm">
+                    <div className="flex items-baseline gap-2 px-3.5 py-1.5 rounded-xl bg-black/55 backdrop-blur-sm ring-1 ring-white/10 shadow-lg">
                         <span className={`text-2xl font-black italic tracking-tighter ${Number(match.homeScore) > Number(match.awayScore) ? 'text-yellow-300' : 'text-white'}`}>{match.homeScore}</span>
                         <span className="text-xs text-emerald-200 font-black">:</span>
                         <span className={`text-2xl font-black italic tracking-tighter ${Number(match.awayScore) > Number(match.homeScore) ? 'text-yellow-300' : 'text-white'}`}>{match.awayScore}</span>
@@ -211,7 +211,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
         {/* 🛠️ [C-3 정제] 득점/어시스트 — 영역 박스라인 제거, 한 섹션으로 통합, 어시스트 행 추가 */}
         {isCompleted && (match.homeScorers?.length > 0 || match.awayScorers?.length > 0 || (match as any).homeAssists?.length > 0 || (match as any).awayAssists?.length > 0 || match.youtubeUrl) && (
-            <div className="mb-3 pt-3 border-t border-white/15 space-y-1">
+            <div className="mb-3 pt-3 border-t border-white/20 space-y-1">
                 {/* 득점자 행 */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
                     <div className="flex flex-col text-right w-full min-w-0 pr-2">
@@ -261,7 +261,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData, mast
 
         {/* 🛠️ [C-3 정제] 3분할 예상승률 (승/무/패) */}
         {showGraph && (
-            <div className="mt-auto space-y-1.5 border-t border-white/15 pt-3">
+            <div className="mt-auto space-y-1.5 pt-3">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[10px] font-black text-amber-300">{prediction.hRate}%</span>
                   <span className="text-[9px] font-bold text-slate-200 tracking-tighter italic">무 {prediction.dRate}%</span>
