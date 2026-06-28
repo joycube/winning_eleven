@@ -123,8 +123,8 @@ export const L2_HighlightsCarousel = ({ seasons, masterTeams, onHighlightClick, 
                 <div className="text-[9px] font-semibold text-white truncate mt-0.5 drop-shadow">{h.matchLabel || '경기'}</div>
               </div>
 
-              {/* 영상 — 풀폭, 16:9 썸네일이라 검은 레터박스 없음 (좌우 여백으로 반원 곡선 노출) */}
-              <div className="relative h-[150px] sm:h-[158px] bg-black mx-2 rounded-lg overflow-hidden">
+              {/* 영상 — 카드 좌우 끝까지 꽉, 16:9 썸네일이라 검은 레터박스 없음 */}
+              <div className="relative h-[150px] sm:h-[158px] bg-black overflow-hidden">
                 {h._thumbnail ? (
                   <img
                     src={h._thumbnail}
