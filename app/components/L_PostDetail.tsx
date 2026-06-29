@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import LoopingGif from './LoopingGif';
 // 🔒 [Critical 패치 v4] arrayUnion / arrayRemove 추가 (C4: 좋아요 원자적 처리)
 import { doc, updateDoc, deleteDoc, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { sendAutoPush } from '../utils/pushUtil';
 import { ArrowLeft, MessageSquare, ThumbsUp, Send, BarChart2, Users, CheckCircle2 } from 'lucide-react';
 import { FALLBACK_IMG } from '../types';
 import StickerSelector from './StickerSelector';
@@ -240,6 +241,12 @@ export default function L_PostDetail({ user, owners, notices, posts, selectedPos
                 updatedComments.push({ id: `cmt_${Date.now()}`, authorId: user.uid, authorUid: user.uid, authorName: authorName, authorPhoto: authorPhoto, text: textToSubmit, createdAt: Date.now(), parentId: isReply ? replyingTo!.parentId : null, likes: [], isEdited: false });
                 await updateDoc(doc(db, 'posts', activePost.id), { comments: updatedComments });
             }
+            // 🔔 새 댓글 알림 (전체 발송)
+            try {
+                const preview = stickerUrl ? '스티커를 남겼습니다' : textToSubmit.slice(0, 40);
+                const postTitle = activePost?.title ? `"${activePost.title}" — ` : '';
+                sendAutoPush('💬 새 댓글', `${postTitle}${authorName}님: ${preview}`);
+            } catch (e) {}
             isReply ? setReplyText('') : setCommentText(''); if (isReply) setReplyingTo(null);
         } finally { setIsSending(false); }
     };

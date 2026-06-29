@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase';
 import LoopingGif from './LoopingGif';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import { sendAutoPush } from '../utils/pushUtil';
 import { ArrowLeft, Send, Trash2, MessageSquare } from 'lucide-react';
 import { FALLBACK_IMG, Owner } from '../types'; 
 
@@ -241,13 +242,18 @@ const MatchTalkBoard = ({ user, seasons, masterTeams, owners, activeRankingData,
         setIsSending(true);
         try {
             await addDoc(collection(db, 'match_comments'), {
-                matchId: activePost.realMatchId, 
-                authorId: user.uid, 
-                authorUid: user.uid, 
+                matchId: activePost.realMatchId,
+                authorId: user.uid,
+                authorUid: user.uid,
                 authorName: user.mappedOwnerId || 'GUEST',
-                text: commentText.trim(), 
+                text: commentText.trim(),
                 createdAt: Date.now(),
             });
+            // 🔔 매치톡 알림 (전체 발송)
+            try {
+                const matchLabel = activePost?.home && activePost?.away ? `[${activePost.home} vs ${activePost.away}] ` : '';
+                sendAutoPush('💬 매치톡', `${matchLabel}${user.mappedOwnerId || 'GUEST'}님: ${commentText.trim().slice(0, 40)}`);
+            } catch (e) {}
             setCommentText('');
         } catch (e) { 
             alert("댓글 처리 실패"); 
