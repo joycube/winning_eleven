@@ -18,11 +18,23 @@ export const useLeagueStats = (seasons: Season[], viewSeasonId: number, owners: 
         if (ownerByUid) return ownerByUid.nickname;
 
         const normalizedSearch = searchInput.replace(/\s+/g, '').toLowerCase();
-        const ownerByName = owners.find(o => 
+        const ownerByName = owners.find(o =>
             (o.nickname || '').replace(/\s+/g, '').toLowerCase() === normalizedSearch
         );
+        if (ownerByName) return ownerByName.nickname;
 
-        return ownerByName ? ownerByName.nickname : rawIdOrName;
+        // 🔥 [UID 연동 픽스] 과거 닉네임(legacyName/legacyNames)도 현재 nickname 으로 통일.
+        //   닉네임 변경 시 enqueueNicknameChange 가 구 닉네임을 legacyNames 에 누적하므로,
+        //   과거 시즌/매치에 구 이름으로 저장된 기록도 현재 닉네임 한 명으로 합산된다.
+        const ownerByLegacy = owners.find(o => {
+            const legacyN = ((o as any).legacyName || '').replace(/\s+/g, '').toLowerCase();
+            if (legacyN && legacyN === normalizedSearch) return true;
+            const legacyArr: string[] = (o as any).legacyNames || [];
+            return legacyArr.some(n => (n || '').replace(/\s+/g, '').toLowerCase() === normalizedSearch);
+        });
+        if (ownerByLegacy) return ownerByLegacy.nickname;
+
+        return rawIdOrName;
     };
 
     // 🔥 'TBD' 유령 추적 및 실제 팀명 치환 (안전하게 유지)

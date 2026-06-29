@@ -3,15 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Owner, FALLBACK_IMG } from '../types';
+import { Owner, MasterTeam, FALLBACK_IMG } from '../types';
 // 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
 import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
 
 interface AdminUserTrackerProps {
   owners: Owner[];
+  masterTeams?: MasterTeam[]; // 🔥 [UID 연동 픽스] 닉변 시 master_teams.ownerName 동기화용
 }
 
-export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
+export const AdminUserTracker = ({ owners, masterTeams }: AdminUserTrackerProps) => {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -131,6 +132,7 @@ export const AdminUserTracker = ({ owners }: AdminUserTrackerProps) => {
               accountUid: uid,
               newNickname,
               oldNickname: ownerMatch.nickname,
+              masterTeams, // 🔥 [UID 연동 픽스] 내 소유 팀 ownerName 도 함께 갱신
           });
           // 추가 필드 (photo / role)
           batch.update(doc(db, 'users', String(ownerMatch.docId || uid)), { photo: data.photo });

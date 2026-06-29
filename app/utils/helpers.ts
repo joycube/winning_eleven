@@ -54,6 +54,7 @@ export const checkNicknameAvailable = (
  * - user_accounts/{accountUid}.mappedOwnerId = newNickname (계정 연동돼 있을 때)
  *
  * 호출 측에서는 자신의 추가 필드(photo / role / favoriteTeamId 등)를 별도로 batch.update 해주면 됨.
+ * masterTeams 를 넘기면 내 소유 팀들의 ownerName 도 같은 batch 로 동기화한다 (향후 매치 백필이 새 닉네임을 쓰도록).
  */
 export const enqueueNicknameChange = (
     db: Firestore,
@@ -63,9 +64,10 @@ export const enqueueNicknameChange = (
         accountUid?: string | null;
         newNickname: string;
         oldNickname?: string | null;
+        masterTeams?: MasterTeam[]; // 🔥 [UID 연동 픽스] 내 소유 팀들의 ownerName 동기화용
     }
 ): void => {
-    const { ownerDocId, accountUid, newNickname, oldNickname } = opts;
+    const { ownerDocId, accountUid, newNickname, oldNickname, masterTeams } = opts;
 
     // 1) users/{ownerDocId}.nickname + legacyNames 누적
     const userPayload: any = { nickname: newNickname };
@@ -77,6 +79,29 @@ export const enqueueNicknameChange = (
     // 2) user_accounts/{accountUid}.mappedOwnerId 동기화 (계정 연동된 경우만)
     if (accountUid) {
         batch.update(doc(db, 'user_accounts', accountUid), { mappedOwnerId: newNickname });
+    }
+
+    // 3) 🔥 [UID 연동 픽스] master_teams.ownerName 동기화.
+    //   배경: 새 매치 저장 시 homeOwner/awayOwner 는 master_teams[teamName].ownerName 으로 백필된다.
+    //         닉네임을 바꿔도 master_teams 가 구 이름을 유지하면 이후 매치에 구 이름이 계속 들어가
+    //         전역 통계(순위/득점왕)가 구·신 이름으로 갈라질 수 있다.
+    //   대책: 내가 소유한(ownerUid 가 내 계정/문서 UID 거나, ownerName 이 구 닉네임인) 팀들의
+    //         ownerName 을 같은 배치로 새 닉네임으로 갱신한다.
+    if (masterTeams && masterTeams.length > 0) {
+        const norm = (v: any) => String(v ?? '').replace(/\s+/g, '').toLowerCase();
+        const oldN = norm(oldNickname);
+        masterTeams.forEach((t: any) => {
+            const teamOwnerUid = String(t.ownerUid ?? '').trim();
+            const matchByUid = !!teamOwnerUid && (teamOwnerUid === accountUid || teamOwnerUid === ownerDocId);
+            const matchByName = !!oldN && norm(t.ownerName) === oldN;
+            if (!matchByUid && !matchByName) return;
+            const teamDocId = t.docId || (t.id != null ? String(t.id) : '');
+            if (!teamDocId) return;
+            const teamPayload: any = { ownerName: newNickname };
+            // ownerUid 가 비어있던 레거시 팀은 이번 기회에 UID 도 채워 향후 이름 의존을 줄인다.
+            if (!teamOwnerUid && accountUid) teamPayload.ownerUid = accountUid;
+            batch.update(doc(db, 'master_teams', teamDocId), teamPayload);
+        });
     }
 };
 

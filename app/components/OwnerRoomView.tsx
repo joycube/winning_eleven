@@ -581,6 +581,7 @@ export default function OwnerRoomView({ user, masterTeams, seasons, owners }: an
                     accountUid: user.uid,
                     newNickname: editNickname,
                     oldNickname: myOwnerData?.nickname || null,
+                    masterTeams: masterTeams, // 🔥 [UID 연동 픽스] 내 소유 팀 ownerName 도 함께 갱신
                 });
             }
 

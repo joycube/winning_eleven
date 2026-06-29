@@ -998,14 +998,14 @@ export const AdminView = ({
                                 </div>
 
                                 {adminTab === 'CREATE_SEASON' && <AdminSeasonCreate onCreateSuccess={(id) => setAdminTab(id)} />}
-                                {adminTab === 'USERS' && <AdminUserTracker owners={owners} />}
+                                {adminTab === 'USERS' && <AdminUserTracker owners={owners} masterTeams={masterTeams} />}
                                 {adminTab === 'NOTICE' && <AdminNoticeManager />}
                                 {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
 
                                 {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} owners={owners} />}
 
                                 {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
-                                {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} />}
+                                {adminTab === 'OWNER' && <AdminOwnerManager owners={owners} masterTeams={masterTeams} />}
                                 {adminTab === 'REAL' && <AdminRealWorldManager leagues={leagues} masterTeams={masterTeams} />}
                             </div>
                         )}
