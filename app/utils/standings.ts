@@ -32,24 +32,29 @@ export function compareHeadToHead(a: any, b: any, h2h: H2HMap): number {
   return (ba.gf || 0) - (ab.gf || 0);
 }
 
+// 승점/골득실/득점 게터 — points/pts 필드명 모두 호환
+const getPts = (t: any) => Number(t?.points ?? t?.pts ?? 0);
+const getGd = (t: any) => Number(t?.gd ?? 0);
+const getGf = (t: any) => Number(t?.gf ?? 0);
+
 // 순위 정렬 + rank 부여. 완전 동률(승점·골득실·승자승·득점)일 때만 동순위.
-export function rankGroupTeams<T extends { name?: string; teamName?: string; points: number; gd: number; gf?: number }>(
+export function rankGroupTeams<T extends { name?: string; teamName?: string; [k: string]: any }>(
   teams: T[], matches: any[]
 ): (T & { rank: number })[] {
   const h2h = buildHeadToHead(matches);
   const sorted = [...(teams || [])].sort((a: any, b: any) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.gd !== a.gd) return b.gd - a.gd;
+    if (getPts(b) !== getPts(a)) return getPts(b) - getPts(a);
+    if (getGd(b) !== getGd(a)) return getGd(b) - getGd(a);
     const h = compareHeadToHead(a, b, h2h);
     if (h !== 0) return h;
-    return (b.gf || 0) - (a.gf || 0);
+    return getGf(b) - getGf(a);
   });
   const ranked: (T & { rank: number })[] = [];
   sorted.forEach((t: any, i) => {
     let rank = i + 1;
     if (i > 0) {
       const p: any = ranked[i - 1];
-      if (t.points === p.points && t.gd === p.gd && compareHeadToHead(t, p, h2h) === 0 && (t.gf || 0) === (p.gf || 0)) {
+      if (getPts(t) === getPts(p) && getGd(t) === getGd(p) && compareHeadToHead(t, p, h2h) === 0 && getGf(t) === getGf(p)) {
         rank = p.rank;
       }
     }

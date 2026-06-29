@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { deleteDoc, doc, updateDoc, collection, writeBatch, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Banner } from '../types';
+import { rankGroupTeams } from '../utils/standings';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement';
 import { AdminBannerManager } from './AdminBannerManager';
 import { AdminSeasonCreate } from './AdminSeasonCreate';
@@ -664,7 +665,7 @@ export const AdminView = ({
                     seasonId: season.id,
                     seasonName: season.name,
                     type: season.type,
-                    teams: Object.values(teamStats).map((t: any) => ({ ...t, ownerId: t.ownerId || getRealUid(t.owner) || null, legacyName: t.owner || '' })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
+                    teams: rankGroupTeams(Object.values(teamStats).map((t: any) => ({ ...t, ownerId: t.ownerId || getRealUid(t.owner) || null, legacyName: t.owner || '' })), allMatches),
                     players: Object.values(playerStats).map((p: any) => ({ ...p, ownerId: p.ownerId || getRealUid(p.owner) || null, legacyName: p.owner || '' })).sort((a:any, b:any) => b.goals - a.goals),
                     owners: Object.values(ownerStats).sort((a:any, b:any) => b.pts - a.pts)
                 };
@@ -793,7 +794,7 @@ export const AdminView = ({
             let firstOwner = '', secondOwner = '', thirdOwner = '';
             let grandChampionOwner = '';
 
-            const sortedTeams = Object.values(teamStats).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+            const sortedTeams = rankGroupTeams(Object.values(teamStats), allMatches);
 
             if (season.type === 'LEAGUE') {
                 firstOwner = sortedTeams[0]?.owner || '';
@@ -828,7 +829,7 @@ export const AdminView = ({
                     if (hs > as) { firstOwner = finalMatch.homeOwner; secondOwner = finalMatch.awayOwner; }
                     else { firstOwner = finalMatch.awayOwner; secondOwner = finalMatch.homeOwner; }
                 }
-                const sortedFallback = Object.values(teamStats).filter((t:any) => t.owner !== firstOwner && t.owner !== secondOwner).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+                const sortedFallback = rankGroupTeams(Object.values(teamStats).filter((t:any) => t.owner !== firstOwner && t.owner !== secondOwner), allMatches);
                 thirdOwner = sortedFallback[0]?.owner || '';
             }
 
@@ -891,11 +892,11 @@ export const AdminView = ({
                 seasonName: season.name,
                 type: season.type,
                 closedAt: new Date().toISOString(),
-                teams: Object.values(teamStats).map((t: any) => ({
+                teams: rankGroupTeams(Object.values(teamStats).map((t: any) => ({
                     ...t,
                     ownerId: t.ownerId || getRealUid(t.owner) || null,
                     legacyName: t.owner || ''
-                })).sort((a:any, b:any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf),
+                })), allMatches),
                 players: Object.values(playerStats).map((p: any) => ({
                     ...p,
                     ownerId: p.ownerId || getRealUid(p.owner) || null,

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc } from 'firebase/firestore';
 import { Season, MasterTeam, Owner } from '../types';
+import { rankGroupTeams } from '../utils/standings';
 import { TeamCard } from './TeamCard';
 import { AdminLiveBracket_LeaguePO } from './AdminLiveBracket_LeaguePO';
 
@@ -53,11 +54,8 @@ export const AdminMatching_Step3_LeaguePO = ({ state, targetSeason, masterTeams,
             });
         });
 
-        const sortedTeams = Object.values(stats).sort((a: any, b: any) => {
-            if (b.pts !== a.pts) return b.pts - a.pts;
-            if (b.gd !== a.gd) return b.gd - a.gd;
-            return b.gf - a.gf;
-        });
+        // 🛠️ 순위 단일 소스 — 승점→골득실→승자승→득점 (정규리그 매치 기준)
+        const sortedTeams = rankGroupTeams(Object.values(stats), leagueRounds.flatMap((r: any) => r.matches || []));
 
         const top5 = sortedTeams.slice(0, 5).map((t: any, idx) => ({
             ...t,
