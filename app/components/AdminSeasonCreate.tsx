@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { setDoc, doc } from 'firebase/firestore';
+import { sendAutoPush } from '../utils/pushUtil';
 
 interface AdminSeasonCreateProps {
     onCreateSuccess: (id: number) => void;
@@ -99,6 +100,10 @@ export const AdminSeasonCreate = ({ onCreateSuccess }: AdminSeasonCreateProps) =
 
         try {
             await setDoc(doc(db, "seasons", String(id)), newSeason);
+            // 🔔 새 시즌 알림 (전체 발송)
+            try {
+                sendAutoPush('🎮 새 시즌 오픈!', `${finalName} 시즌이 시작되었습니다. 지금 확인하세요!`);
+            } catch (e) {}
             alert(`${type} 시즌 생성 완료!`);
             onCreateSuccess(id);
         } catch (error: any) {

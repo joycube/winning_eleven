@@ -38,8 +38,8 @@ export const sendAutoPush = async (title: string, body: string, specificToken?: 
     // 보낼 대상이 없으면 종료
     if (targetTokens.length === 0) return;
 
-    // 🔒 [Critical 패치] 푸시 API는 이제 ADMIN 인증을 요구합니다.
-    //   로그인된 ADMIN 사용자의 Firebase ID Token을 Authorization 헤더로 첨부.
+    // 🔒 푸시 API는 로그인 회원 인증을 요구합니다.
+    //   로그인된 사용자의 Firebase ID Token을 Authorization 헤더로 첨부.
     const currentUser = auth?.currentUser;
     if (!currentUser) {
       console.warn('푸시 발송 스킵: 로그인된 사용자가 없습니다.');
@@ -70,7 +70,7 @@ export const sendAutoPush = async (title: string, body: string, specificToken?: 
     });
 
     if (!res.ok) {
-      // ADMIN이 아닌 일반 유저가 호출하면 401/403이 떨어집니다.
+      // 비로그인/토큰 만료 등이면 401 이 떨어집니다.
       // 자동 발송 흐름이므로 사용자에게 alert를 띄우지 않고 로그만 남깁니다.
       console.warn(`푸시 발송 실패 (status=${res.status})`);
       return;
