@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { addDoc, collection, deleteDoc, doc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
-import { Owner } from '../types';
+import { Owner, MasterTeam } from '../types';
 import { UserCheck, UserPlus, Trash2, Search, ShieldAlert } from 'lucide-react';
 // 🔥 [High 패치 H1+H2] 닉네임 변경 통합 헬퍼 사용
 import { checkNicknameAvailable, enqueueNicknameChange } from '../utils/helpers';
@@ -10,9 +10,10 @@ const COMMON_DEFAULT_PROFILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
 interface Props {
   owners: Owner[];
+  masterTeams?: MasterTeam[]; // 🔥 [UID 연동 픽스] 닉변 시 master_teams.ownerName 동기화용
 }
 
-export const AdminOwnerManager = ({ owners }: Props) => {
+export const AdminOwnerManager = ({ owners, masterTeams }: Props) => {
   const [activeTab, setActiveTab] = useState<'EXISTING' | 'PENDING'>('EXISTING');
   
   const [name, setName] = useState('');
@@ -81,6 +82,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                 accountUid: targetAcc?.docId || null,
                 newNickname: name,
                 oldNickname,
+                masterTeams, // 🔥 [UID 연동 픽스] 내 소유 팀 ownerName 도 함께 갱신
             });
         }
 
@@ -125,6 +127,7 @@ export const AdminOwnerManager = ({ owners }: Props) => {
                     accountUid: targetAcc.docId || null,
                     newNickname: name,
                     oldNickname: existingOwner.nickname,
+                    masterTeams, // 🔥 [UID 연동 픽스] 내 소유 팀 ownerName 도 함께 갱신
                 });
             }
             const extraUserPayload: any = { role };
