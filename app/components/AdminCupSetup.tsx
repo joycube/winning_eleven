@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { updateDoc, doc, collection, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import { Season, MasterTeam, Owner, Team, League, FALLBACK_IMG, Match, CupEntry } from '../types';
 import { getSortedTeamsLogic, getTierBadgeColor } from '../utils/helpers'; // 🔥 getTierBadgeColor 임포트 추가
+import { rankGroupTeams } from '../utils/standings';
 import { QuickDraftModal } from './QuickDraftModal';
 import { TeamCard } from './TeamCard';
 import { AdminCupStep2 } from './AdminCupStep2';
@@ -104,7 +105,8 @@ export const AdminCupSetup = ({ targetSeason, owners, leagues, masterTeams, onNa
     const winners: CupEntry[] = [];
     const groupsList = Array.from(new Set(matches.map(m => m.group || ''))).sort();
     groupsList.forEach((g: string) => {
-      const gTeams = Object.values(stats).filter(t => t.group === g).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+      // 🛠️ 순위 단일 소스 — 순위표와 동일 로직(승점→골득실→승자승→득점)으로 시드
+      const gTeams = rankGroupTeams(Object.values(stats).filter(t => t.group === g), matches);
       [0, 1].forEach(rankIdx => {
         if(gTeams[rankIdx]) {
             const master = masterTeams.find(mt => mt.name === gTeams[rankIdx].name);

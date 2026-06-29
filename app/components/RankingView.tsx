@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Owner } from '../types'; 
+import { Owner } from '../types';
+import { rankGroupTeams } from '../utils/standings';
 
 import R_StandingsTab from './R_StandingsTab';
 import R_OwnersTab from './R_OwnersTab';
@@ -133,24 +134,12 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
     return Object.values(teamStats);
   }, [currentSeason, activeRankingData]);
 
-  const getRankedTeams = (teams: any[]) => {
-    const sorted = [...(teams || [])].sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.gd !== a.gd) return b.gd - a.gd;
-      return (b.gf || 0) - (a.gf || 0);
-    });
-    
-    const ranked: any[] = [];
-    sorted.forEach((t, i) => {
-      let rank = i + 1;
-      if (i > 0) {
-        const p = ranked[i - 1];
-        if (t.points === p.points && t.gd === p.gd && (t.gf || 0) === (p.gf || 0)) rank = p.rank;
-      }
-      ranked.push({ ...t, rank });
-    });
-    return ranked;
-  };
+  // 🛠️ [순위 단일 소스] 공용 유틸 사용 — 승점 → 골득실 → 승자승 → 득점
+  const allSeasonMatches = useMemo(
+    () => (currentSeason?.rounds || []).flatMap((r: any) => r.matches || []),
+    [currentSeason]
+  );
+  const getRankedTeams = (teams: any[]) => rankGroupTeams(teams, allSeasonMatches);
 
   // 🔥 [핵심 수술 2] 부모가 직접 100% 완벽한 단일 진실 공급원(SSOT)인 sortedTeams를 생성
   const sortedTeams = useMemo(() => getRankedTeams(computedTeamsData), [computedTeamsData]);

@@ -2,8 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useMemo } from 'react';
-import { FALLBACK_IMG, Owner, Match } from '../types'; 
-import { ChevronRight, PlayCircle } from 'lucide-react'; 
+import { FALLBACK_IMG, Owner, Match } from '../types';
+import { ChevronRight, PlayCircle } from 'lucide-react';
+import { rankGroupTeams } from '../utils/standings';
 
 import AdminMatching_TournamentBracketView from './AdminMatching_TournamentBracketView';
 import { AdminMatching_LeaguePOBracketView } from './AdminMatching_LeaguePOBracketView';
@@ -192,55 +193,13 @@ export default function R_StandingsTab({ currentSeason, computedTeamsData, sorte
       };
   }, [currentSeason, knockoutStages, masterTeams, owners]);
 
-  // 🛠️ [순위 픽스] 맞대결(head-to-head) 집계 — 승점·골득실 동률 시 승자승 타이브레이커
-  const headToHead = useMemo(() => {
-    const norm = (s: string) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, '');
-    const map: Record<string, Record<string, { pts: number; gd: number; gf: number }>> = {};
-    const ensure = (a: string, b: string) => { if (!map[a]) map[a] = {}; if (!map[a][b]) map[a][b] = { pts: 0, gd: 0, gf: 0 }; };
-    (currentSeason?.rounds || []).forEach((r: any) => (r.matches || []).forEach((m: any) => {
-      if (m.status !== 'COMPLETED') return;
-      if ([m.home, m.away].some((x: any) => !x || x === 'BYE' || x === 'TBD')) return;
-      const h = norm(m.home), a = norm(m.away), hs = Number(m.homeScore || 0), as = Number(m.awayScore || 0);
-      ensure(h, a); ensure(a, h);
-      map[h][a].gf += hs; map[h][a].gd += (hs - as);
-      map[a][h].gf += as; map[a][h].gd += (as - hs);
-      if (hs > as) map[h][a].pts += 3; else if (as > hs) map[a][h].pts += 3; else { map[h][a].pts++; map[a][h].pts++; }
-    }));
-    return map;
-  }, [currentSeason]);
-
-  const getRankedTeams = (teams: any[]) => {
-    const norm = (s: string) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, '');
-    // 승자승: 두 팀 맞대결 승점 → 골득실 → 득점 비교 (맞대결 없으면 0)
-    const h2hCompare = (a: any, b: any) => {
-      const na = norm(a.name || a.teamName), nb = norm(b.name || b.teamName);
-      const ab = headToHead[na]?.[nb]; const ba = headToHead[nb]?.[na];
-      if (!ab || !ba) return 0;
-      if (ab.pts !== ba.pts) return ba.pts - ab.pts;
-      if (ab.gd !== ba.gd) return ba.gd - ab.gd;
-      return (ba.gf || 0) - (ab.gf || 0);
-    };
-    const sorted = [...(teams || [])].sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.gd !== a.gd) return b.gd - a.gd;
-      const h = h2hCompare(a, b);            // 승점·골득실 동률 → 승자승
-      if (h !== 0) return h;
-      return (b.gf || 0) - (a.gf || 0);
-    });
-
-    const ranked: any[] = [];
-    sorted.forEach((t, i) => {
-      let rank = i + 1;
-      if (i > 0) {
-        const p = ranked[i - 1];
-        if (t.points === p.points && t.gd === p.gd && h2hCompare(t, p) === 0 && (t.gf || 0) === (p.gf || 0)) {
-          rank = p.rank;
-        }
-      }
-      ranked.push({ ...t, rank });
-    });
-    return ranked;
-  };
+  // 🛠️ [순위 단일 소스] 시즌 전체 매치 (승자승 집계용)
+  const allSeasonMatches = useMemo(
+    () => (currentSeason?.rounds || []).flatMap((r: any) => r.matches || []),
+    [currentSeason]
+  );
+  // 공용 유틸 사용 — 승점 → 골득실 → 승자승 → 득점
+  const getRankedTeams = (teams: any[]) => rankGroupTeams(teams, allSeasonMatches);
 
   const getRealRankBadge = (rank: number | undefined | null) => {
     if (!rank) return <div className="bg-slate-800 text-slate-500 text-[9px] font-bold px-1.5 py-[1px] rounded-[3px] border border-slate-700/50 leading-none shrink-0">R.-</div>;
